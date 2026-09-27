@@ -1,7 +1,6 @@
 module;
 
 #include <rstd/macro.hpp>
-#include <spirv_reflect.h>
 
 #include <glslang/Public/ShaderLang.h>
 #include <glslang/Public/ResourceLimits.h>
@@ -17,6 +16,7 @@ import wescene.core;
 import wescene.types;
 import wescene.utils;
 import rstd;
+import spirvto;
 import rstd.log;
 import rstd.cppstd;
 
@@ -82,63 +82,48 @@ void EnsureGlslangProcess() {
     });
 }
 
-ShaderScalarKind ReflectedScalarKind(const SpvReflectBlockVariable& variable) {
-    if (variable.type_description == nullptr) return ShaderScalarKind::Unknown;
-    const auto flags = variable.type_description->type_flags;
-    if ((flags & SPV_REFLECT_TYPE_FLAG_FLOAT) != 0) return ShaderScalarKind::Float;
-    if ((flags & SPV_REFLECT_TYPE_FLAG_BOOL) != 0) return ShaderScalarKind::Boolean;
-    if ((flags & SPV_REFLECT_TYPE_FLAG_INT) == 0) return ShaderScalarKind::Unknown;
-    return variable.numeric.scalar.signedness != 0 ? ShaderScalarKind::SignedInteger
-                                                   : ShaderScalarKind::UnsignedInteger;
-}
-
-ShaderMatrixMajor ReflectedMatrixMajor(const SpvReflectBlockVariable& variable) {
-    if ((variable.decoration_flags & SPV_REFLECT_DECORATION_ROW_MAJOR) != 0)
-        return ShaderMatrixMajor::Row;
-    if ((variable.decoration_flags & SPV_REFLECT_DECORATION_COLUMN_MAJOR) != 0)
-        return ShaderMatrixMajor::Column;
-    return ShaderMatrixMajor::None;
-}
-
-unsigned ReflectedMatrixStride(const SpvReflectBlockVariable& variable, ShaderMatrixMajor major) {
-    if (variable.numeric.matrix.stride != 0) return variable.numeric.matrix.stride;
-    const auto major_count = major == ShaderMatrixMajor::Row ? variable.numeric.matrix.row_count
-                                                             : variable.numeric.matrix.column_count;
-    if (major_count == 0 || variable.array.stride == 0 ||
-        variable.array.stride % major_count != 0) {
-        return 0;
+ShaderScalarKind ReflectedScalarKind(const spirvto::BlockVariable& variable) {
+    switch (variable.numeric.scalar_kind) {
+    case spirvto::ScalarKind::Float: return ShaderScalarKind::Float;
+    case spirvto::ScalarKind::Boolean: return ShaderScalarKind::Boolean;
+    case spirvto::ScalarKind::SignedInteger: return ShaderScalarKind::SignedInteger;
+    case spirvto::ScalarKind::UnsignedInteger: return ShaderScalarKind::UnsignedInteger;
+    default: return ShaderScalarKind::Unknown;
     }
-    return variable.array.stride / major_count;
 }
 
-usize ReflectedArrayCount(const SpvReflectArrayTraits& array) {
+ShaderMatrixMajor ReflectedMatrixMajor(const spirvto::BlockVariable& variable) {
+    switch (variable.matrix_major) {
+    case spirvto::MatrixMajor::Row: return ShaderMatrixMajor::Row;
+    case spirvto::MatrixMajor::Column: return ShaderMatrixMajor::Column;
+    default: return ShaderMatrixMajor::None;
+    }
+}
+
+usize ReflectedArrayCount(slice<spirvto::Word> dimensions) {
     usize count { 1 };
-    for (rstd::uint32_t index = 0; index < array.dims_count; ++index) {
-        count *= usize(array.dims[index]);
-    }
+    for (auto dimension : dimensions) count *= usize(dimension);
     return count;
 }
 
-auto ReflectBlockedUniform(const SpvReflectBlockVariable& variable, int block_index)
+auto ReflectBlockedUniform(const spirvto::BlockVariable& variable, int block_index)
     -> ShaderReflected::BlockedUniform {
     ShaderReflected::BlockedUniform uniform {};
     uniform.block_index  = block_index;
     uniform.size         = usize(variable.size);
     uniform.offset       = variable.offset;
-    uniform.num          = ReflectedArrayCount(variable.array);
+    uniform.num          = ReflectedArrayCount(variable.array_dimensions.as_slice());
     uniform.scalar_kind  = ReflectedScalarKind(variable);
-    uniform.scalar_width = variable.numeric.scalar.width;
+    uniform.scalar_width = variable.numeric.scalar_width;
     uniform.vector_components =
-        variable.numeric.vector.component_count == 0 ? 1 : variable.numeric.vector.component_count;
-    uniform.matrix_rows    = variable.numeric.matrix.row_count;
-    uniform.matrix_columns = variable.numeric.matrix.column_count;
+        variable.numeric.vector_components == 0 ? 1 : variable.numeric.vector_components;
+    uniform.matrix_rows    = variable.numeric.matrix_rows;
+    uniform.matrix_columns = variable.numeric.matrix_columns;
     uniform.matrix_major   = ReflectedMatrixMajor(variable);
-    uniform.matrix_stride  = ReflectedMatrixStride(variable, uniform.matrix_major);
-    uniform.array_stride   = variable.array.stride;
-    uniform.array_dimensions.reserve(usize(variable.array.dims_count));
-    for (rstd::uint32_t dimension = 0; dimension < variable.array.dims_count; ++dimension) {
-        uniform.array_dimensions.push(u32(variable.array.dims[dimension]));
-    }
+    uniform.matrix_stride  = variable.matrix_stride;
+    uniform.array_stride   = variable.array_stride;
+    uniform.array_dimensions.reserve(variable.array_dimensions.len());
+    for (auto dimension : variable.array_dimensions) uniform.array_dimensions.push(u32(dimension));
     return uniform;
 }
 
@@ -152,15 +137,12 @@ bool SameBlockedUniformLayout(const ShaderReflected::BlockedUniform& lhs,
            lhs.array_dimensions == rhs.array_dimensions;
 }
 
-bool SameUniformBlockLayout(const ShaderReflected::Block&  reflected,
-                            const SpvReflectBlockVariable& block) {
-    if (reflected.size != block.size || reflected.member_map.len() != usize(block.member_count))
+bool SameUniformBlockLayout(const ShaderReflected::Block& reflected,
+                            const spirvto::BlockVariable& block) {
+    if (reflected.size != block.size || reflected.member_map.len() != block.members.len())
         return false;
-    for (rstd::uint32_t index = 0; index < block.member_count; ++index) {
-        const auto& variable = block.members[index];
-        auto        name     = as_str(variable.name);
-        if (name.is_err()) return false;
-        auto existing = reflected.member_map.get(name.unwrap());
+    for (const auto& variable : block.members) {
+        auto existing = reflected.member_map.get(variable.name.as_str());
         if (existing.is_none() ||
             ! SameBlockedUniformLayout(**existing,
                                        ReflectBlockedUniform(variable, reflected.index))) {
@@ -191,35 +173,45 @@ inline VkShaderStageFlagBits ToVkType(owe::ShaderType s) {
     return VK_SHADER_STAGE_VERTEX_BIT;
 }
 
-inline VkFormat ToVkType(SpvReflectFormat type) { return static_cast<VkFormat>(type); }
-
-inline VkShaderStageFlagBits ToVkType(SpvReflectShaderStageFlagBits s) {
-    switch (s) {
-    case SPV_REFLECT_SHADER_STAGE_VERTEX_BIT: return VK_SHADER_STAGE_VERTEX_BIT;
-    case SPV_REFLECT_SHADER_STAGE_FRAGMENT_BIT: return VK_SHADER_STAGE_FRAGMENT_BIT;
-    case SPV_REFLECT_SHADER_STAGE_GEOMETRY_BIT: return VK_SHADER_STAGE_GEOMETRY_BIT;
-    default: rstd_assert(false); return VK_SHADER_STAGE_VERTEX_BIT;
-    }
+auto ReflectedFormat(const spirvto::NumericType& type) -> VkFormat {
+    if (type.matrix_columns || type.vector_components < 1 || type.vector_components > 4)
+        return VK_FORMAT_UNDEFINED;
+    const bool floating       = type.scalar_kind == spirvto::ScalarKind::Float;
+    const bool signed_integer = type.scalar_kind == spirvto::ScalarKind::SignedInteger;
+    if (! floating && ! signed_integer && type.scalar_kind != spirvto::ScalarKind::UnsignedInteger)
+        return VK_FORMAT_UNDEFINED;
+    const unsigned     category       = floating ? 2 : signed_integer ? 1 : 0;
+    constexpr VkFormat formats16[][3] = {
+        { VK_FORMAT_R16_UINT, VK_FORMAT_R16_SINT, VK_FORMAT_R16_SFLOAT },
+        { VK_FORMAT_R16G16_UINT, VK_FORMAT_R16G16_SINT, VK_FORMAT_R16G16_SFLOAT },
+        { VK_FORMAT_R16G16B16_UINT, VK_FORMAT_R16G16B16_SINT, VK_FORMAT_R16G16B16_SFLOAT },
+        { VK_FORMAT_R16G16B16A16_UINT, VK_FORMAT_R16G16B16A16_SINT, VK_FORMAT_R16G16B16A16_SFLOAT },
+    };
+    constexpr VkFormat formats32[][3] = {
+        { VK_FORMAT_R32_UINT, VK_FORMAT_R32_SINT, VK_FORMAT_R32_SFLOAT },
+        { VK_FORMAT_R32G32_UINT, VK_FORMAT_R32G32_SINT, VK_FORMAT_R32G32_SFLOAT },
+        { VK_FORMAT_R32G32B32_UINT, VK_FORMAT_R32G32B32_SINT, VK_FORMAT_R32G32B32_SFLOAT },
+        { VK_FORMAT_R32G32B32A32_UINT, VK_FORMAT_R32G32B32A32_SINT, VK_FORMAT_R32G32B32A32_SFLOAT },
+    };
+    constexpr VkFormat formats64[][3] = {
+        { VK_FORMAT_R64_UINT, VK_FORMAT_R64_SINT, VK_FORMAT_R64_SFLOAT },
+        { VK_FORMAT_R64G64_UINT, VK_FORMAT_R64G64_SINT, VK_FORMAT_R64G64_SFLOAT },
+        { VK_FORMAT_R64G64B64_UINT, VK_FORMAT_R64G64B64_SINT, VK_FORMAT_R64G64B64_SFLOAT },
+        { VK_FORMAT_R64G64B64A64_UINT, VK_FORMAT_R64G64B64A64_SINT, VK_FORMAT_R64G64B64A64_SFLOAT },
+    };
+    if (type.scalar_width == 16) return formats16[type.vector_components - 1][category];
+    if (type.scalar_width == 32) return formats32[type.vector_components - 1][category];
+    if (type.scalar_width == 64) return formats64[type.vector_components - 1][category];
+    return VK_FORMAT_UNDEFINED;
 }
 
-inline owe::ShaderType FromSpvStage(SpvReflectShaderStageFlagBits s) {
-    switch (s) {
-    case SPV_REFLECT_SHADER_STAGE_VERTEX_BIT: return ShaderType::VERTEX;
-    case SPV_REFLECT_SHADER_STAGE_FRAGMENT_BIT: return ShaderType::FRAGMENT;
-    case SPV_REFLECT_SHADER_STAGE_GEOMETRY_BIT: return ShaderType::GEOMETRY;
-    default: rstd_assert(false); return ShaderType::VERTEX;
+auto ReflectedStage(spirvto::spv::ExecutionModel model) -> Option<owe::ShaderType> {
+    switch (model) {
+    case spirvto::spv::ExecutionModel::Vertex: return Some(ShaderType::VERTEX);
+    case spirvto::spv::ExecutionModel::Fragment: return Some(ShaderType::FRAGMENT);
+    case spirvto::spv::ExecutionModel::Geometry: return Some(ShaderType::GEOMETRY);
+    default: return None<owe::ShaderType>();
     }
-}
-
-template<typename T, typename FUNC>
-bool EnumAllRef(Vec<T>& vec, FUNC&& func) {
-    unsigned count { 0 };
-    auto     result = func(&count, nullptr);
-    rstd_assert(result == SPV_REFLECT_RESULT_SUCCESS);
-    vec.resize(usize(count), T {});
-    result = func(&count, vec.as_mut_ptr().as_raw_ptr());
-    rstd_assert(result == SPV_REFLECT_RESULT_SUCCESS);
-    return result == SPV_REFLECT_RESULT_SUCCESS;
 }
 
 inline EShLanguage ToEShLanguage(owe::ShaderType s) {
@@ -267,57 +259,78 @@ inline const char* DefaultEntryName(SourceLang lang, owe::ShaderType s) {
 } // namespace
 
 bool owe::vulkan::GenReflect(slice<ShaderCode> codes, Vec<Uni_ShaderSpv>& spvs,
-                             ShaderReflected& ref) {
-    spvs.clear();
+                             ShaderReflected& output) {
+    Vec<Uni_ShaderSpv>      stages;
+    ShaderReflected         ref;
     BTreeMap<String, usize> uniform_block_indices;
     for (const auto& code : codes) {
-        spv_reflect::ShaderModule spv_ref(code.len().to_primitive() * sizeof(rstd::uint32_t),
-                                          code.data(),
-                                          SPV_REFLECT_MODULE_FLAG_NO_COPY);
-        VkShaderStageFlagBits     stage = ::ToVkType(spv_ref.GetShaderStage());
-        {
-            auto spv   = Box<ShaderSpv>::make();
-            spv->stage = ::FromSpvStage(spv_ref.GetShaderStage());
-            spv->spirv = code.clone();
-            if (const char* ep = spv_ref.GetEntryPointName(); ep && ep[0] != '\0') {
-                spv->entry_point = rstd::into(as_str(ep).unwrap());
-            }
-            spvs.push(rstd::move(spv));
+        auto reflection = spirvto::reflect(code.as_slice());
+        if (reflection.is_err()) {
+            const auto error = reflection.unwrap_err();
+            rstd_error("SPIR-V reflection failed at word {}: {}",
+                       error.word_offset,
+                       static_cast<unsigned>(error.kind));
+            return false;
         }
-        Vec<SpvReflectInterfaceVariable*> inputs;
-        Vec<SpvReflectDescriptorBinding*> bindings;
-
-        bool ok = EnumAllRef(bindings, [&](auto&&... args) {
-            return spv_ref.EnumerateDescriptorBindings(args...);
-        });
-        if (! ok) return false;
+        auto& reflected    = *reflection;
+        auto  shader_stage = ReflectedStage(reflected.execution_model);
+        if (shader_stage.is_none()) return false;
+        VkShaderStageFlagBits stage = ::ToVkType(*shader_stage);
+        {
+            auto spv         = Box<ShaderSpv>::make();
+            spv->stage       = *shader_stage;
+            spv->spirv       = code.clone();
+            spv->entry_point = reflected.entry_point.clone();
+            stages.push(rstd::move(spv));
+        }
 
         VkDescriptorSetLayoutBinding vkbinding {};
         vkbinding.stageFlags = stage;
 
-        for (auto pb : bindings) {
-            auto& b = *pb;
-            if (! b.accessed && b.descriptor_type != SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+        for (const auto& b : reflected.bindings) {
+            if (! b.accessed && b.type != spirvto::DescriptorType::UniformBuffer) continue;
+            if (b.count != 1) {
+                rstd_error("descriptor arrays are unsupported: {}", b.name);
+                return false;
+            }
+            if (b.type == spirvto::DescriptorType::Sampler) {
+                bool paired = false;
+                for (const auto& image : reflected.bindings) {
+                    if (image.accessed && image.set == b.set && image.binding == b.binding &&
+                        image.count == b.count &&
+                        (image.type == spirvto::DescriptorType::SampledImage ||
+                         image.type == spirvto::DescriptorType::CombinedImageSampler))
+                        paired = true;
+                }
+                if (! paired) {
+                    rstd_error("unpaired sampler is unsupported: {}", b.name);
+                    return false;
+                }
                 continue;
+            }
 
-            auto name = as_str(b.name[0] == '\0' && b.type_description->type_name != nullptr
-                                   ? b.type_description->type_name
-                                   : b.name);
-            if (name.is_err()) return false;
-            const auto bind_name = name.unwrap();
+            const auto bind_name =
+                b.name.as_str().is_empty() ? b.type_name.as_str() : b.name.as_str();
+            if (b.type != spirvto::DescriptorType::UniformBuffer &&
+                b.type != spirvto::DescriptorType::SampledImage &&
+                b.type != spirvto::DescriptorType::CombinedImageSampler &&
+                b.type != spirvto::DescriptorType::Sampler)
+                return false;
 
             if (auto existing = ref.binding_map.get_mut(bind_name); existing.is_some()) {
-                auto&      bind = **existing;
-                const auto descriptor_type =
-                    b.descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_SAMPLED_IMAGE
-                        ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
-                        : static_cast<VkDescriptorType>(b.descriptor_type);
+                auto&      bind            = **existing;
+                const auto descriptor_type = b.type == spirvto::DescriptorType::UniformBuffer
+                                                 ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+                                             : b.type == spirvto::DescriptorType::Sampler
+                                                 ? VK_DESCRIPTOR_TYPE_SAMPLER
+                                                 : VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
                 if (bind.set != b.set || bind.layout.binding != b.binding ||
-                    bind.layout.descriptorType != descriptor_type) {
+                    bind.layout.descriptorType != descriptor_type ||
+                    bind.layout.descriptorCount != b.count) {
                     rstd_error("descriptor {} differs across shader stages", bind_name);
                     return false;
                 }
-                if (b.descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER) {
+                if (b.type == spirvto::DescriptorType::UniformBuffer) {
                     auto block_index = uniform_block_indices.get(bind_name);
                     if (block_index.is_none() ||
                         ! SameUniformBlockLayout(ref.blocks[**block_index], b.block)) {
@@ -329,15 +342,13 @@ bool owe::vulkan::GenReflect(slice<ShaderCode> codes, Vec<Uni_ShaderSpv>& spvs,
                 bind.layout.stageFlags |= stage;
                 continue;
             }
-            if (b.descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER) {
+            if (b.type == spirvto::DescriptorType::UniformBuffer) {
                 auto& block      = b.block;
-                auto  block_name = as_str(block.name);
-                if (block_name.is_err()) return false;
+                auto  block_name = block.name.as_str();
                 ref.blocks.push(ShaderReflected::Block {
                     .index      = static_cast<int>(ref.blocks.len().to_primitive()),
                     .size       = block.size,
-                    .name       = rstd::into(block_name.unwrap()->is_empty() ? bind_name
-                                                                             : block_name.unwrap()),
+                    .name       = rstd::into(block_name.is_empty() ? bind_name : block_name),
                     .set        = b.set,
                     .binding    = b.binding,
                     .member_map = {} });
@@ -346,36 +357,25 @@ bool owe::vulkan::GenReflect(slice<ShaderCode> codes, Vec<Uni_ShaderSpv>& spvs,
                                                    ref.blocks.len() - usize(1));
 
                 vkbinding.binding         = b.binding;
-                vkbinding.descriptorCount = 1;
+                vkbinding.descriptorCount = b.count;
                 vkbinding.descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 
-                for (rstd::uint32_t i = 0; i < block.member_count; i++) {
-                    auto& unif        = block.members[i];
-                    auto  member_name = as_str(unif.name);
-                    if (member_name.is_err()) return false;
-                    (void)ref_block.member_map.insert(rstd::into(member_name.unwrap()),
+                for (const auto& unif : block.members) {
+                    if (! unif.members.is_empty() || unif.array_dimensions.len() > usize(1)) {
+                        rstd_error("nested uniform layouts are unsupported: {}", unif.name);
+                        return false;
+                    }
+                    (void)ref_block.member_map.insert(unif.name.clone(),
                                                       ReflectBlockedUniform(unif, ref_block.index));
                 }
-            } else if (b.descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ||
-                       b.descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_SAMPLED_IMAGE) {
-                // Our HLSL synth emits `Texture2D + SamplerState` at the same
-                // binding with `[[vk::combinedImageSampler]]`. glslang doesn't
-                // expand that attribute into an OpTypeSampledImage; SPIRV-Reflect
-                // sees SAMPLED_IMAGE (the Texture2D half) accessed and the
-                // SamplerState as unaccessed. Bind it as a VK combined image
-                // sampler — per Vulkan 1.0 §14.5.2 a COMBINED_IMAGE_SAMPLER
-                // descriptor is legal to access via either OpTypeSampledImage
-                // or separate OpTypeImage/OpTypeSampler.
+            } else if (b.type == spirvto::DescriptorType::CombinedImageSampler ||
+                       b.type == spirvto::DescriptorType::SampledImage) {
+                // HLSL uses separate image/sampler variables at the same binding.
                 vkbinding.binding         = b.binding;
-                vkbinding.descriptorCount = 1;
+                vkbinding.descriptorCount = b.count;
                 vkbinding.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            } else if (b.descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_SAMPLER) {
-                // The paired SamplerState half of the combined image sampler
-                // pair — already covered by the SAMPLED_IMAGE entry at the
-                // same binding.
-                continue;
             } else {
-                rstd_error("unknown DescriptorBinding {}", (int)b.descriptor_type);
+                rstd_error("unknown DescriptorBinding {}", (int)b.type);
                 return false;
             }
 
@@ -387,13 +387,11 @@ bool owe::vulkan::GenReflect(slice<ShaderCode> codes, Vec<Uni_ShaderSpv>& spvs,
         }
 
         if (stage == VK_SHADER_STAGE_VERTEX_BIT) {
-            EnumAllRef(inputs, [&](auto&&... args) {
-                return spv_ref.EnumerateInputVariables(args...);
-            });
-
-            for (auto pinput : inputs) {
-                auto& input = *pinput;
-                if ((input.decoration_flags & SPV_REFLECT_DECORATION_BUILT_IN) != 0) continue;
+            for (const auto& input : reflected.inputs) {
+                if (input.built_in) continue;
+                if (! input.members.is_empty() || ! input.array_dimensions.is_empty() ||
+                    input.numeric.matrix_columns != 0 || input.component != 0)
+                    return false;
 
                 if (input.location == u32::MAX.to_primitive()) {
                     rstd_error("shader input {} no location", input.name);
@@ -401,22 +399,22 @@ bool owe::vulkan::GenReflect(slice<ShaderCode> codes, Vec<Uni_ShaderSpv>& spvs,
                 }
                 ShaderReflected::Input rinput;
                 rinput.location = input.location;
-                rinput.format   = ::ToVkType(input.format);
+                rinput.format   = ReflectedFormat(input.numeric);
 
                 // Strip HLSL struct-prefixed names. glslang HLSL emits VS
                 // inputs as `<entry_param_name>.<field>` (e.g. our wrapper's
                 // `_ww_in.a_Position`). DXC used `in.var.<SEMANTIC>`. C++
                 // vertex-buffer layout matches by bare attribute name
                 // (`a_Position`), so strip everything up to the final `.`.
-                if (! input.name) return false;
-                auto input_name = CStr::from_ptr(input.name).to_str();
-                if (input_name.is_err()) return false;
-                auto name = input_name.unwrap();
+                if (rinput.format == VK_FORMAT_UNDEFINED) return false;
+                auto name = input.name.as_str();
                 if (auto split = name.rsplit_once("."_str)) name = split->template get<1>();
                 (void)ref.input_location_map.insert(String::make(name), rstd::move(rinput));
             }
         }
     }
+    spvs   = rstd::move(stages);
+    output = rstd::move(ref);
     return true;
 }
 

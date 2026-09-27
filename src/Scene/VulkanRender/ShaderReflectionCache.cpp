@@ -45,14 +45,21 @@ auto ShaderReflectionCache::Query(const SceneShader& shader)
     -> Option<ref<CachedShaderReflection>> {
     auto key    = MakeShaderReflectionKey(shader);
     auto cached = m_entries.get(key);
-    if (cached.is_some()) return cached;
+    if (cached.is_some()) return Some((**cached).deref());
+
+    if (shader.reflection.is_some() && (*shader.reflection)->Matches(shader.codes.as_slice())) {
+        (void)m_entries.insert(key, shader.reflection->clone());
+        return Some((**m_entries.get(key)).deref());
+    }
 
     Vec<Uni_ShaderSpv> spvs;
     ShaderReflected    reflected;
     if (! m_backend->GenReflect(shader.codes.as_slice(), spvs, reflected)) return rstd::None();
 
-    (void)m_entries.insert(key, MakeCachedReflection(rstd::move(spvs), rstd::move(reflected)));
-    return m_entries.get(key);
+    (void)m_entries.insert(key,
+                           rstd::sync::Arc<CachedShaderReflection>::make(
+                               MakeCachedReflection(rstd::move(spvs), rstd::move(reflected))));
+    return Some((**m_entries.get(key)).deref());
 }
 
 void ShaderReflectionCache::Clear() { m_entries.clear(); }

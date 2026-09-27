@@ -44,8 +44,8 @@ rstd-bench = { version = "0.1.5" }
 rstd-test = { version = "0.1.5" }
 licrypto = { version = "0.1.1" }
 vvk = { version = "0.1.0" }
+spirvto = { version = "0.1.0" }
 wavsen = { git = "https://github.com/hypengw/wavsen.git" }
-spirv-reflect = { git = "https://github.com/hypengw/SPIRV-Reflect.git", branch = "toml" }
 vrento = { git = "https://github.com/vecren/vrento.git" }
 
 [workspace.external-dependencies.pkg-config.glfw]

@@ -43,16 +43,8 @@ struct Impl<hash::Hash, owe::vulkan::ShaderReflectionKey>
 export namespace owe::vulkan
 {
 
-struct CachedShaderStage {
-    String     entry_point;
-    ShaderType stage;
-    ShaderCode spirv;
-};
-
-struct CachedShaderReflection {
-    Vec<CachedShaderStage> stages;
-    ShaderReflected        reflected;
-};
+using CachedShaderStage      = SceneShaderStage;
+using CachedShaderReflection = SceneShaderReflection;
 
 class ShaderReflectionCache : NoCopy, NoMove {
 public:
@@ -63,8 +55,8 @@ public:
     void Clear();
 
 private:
-    rstd::ref<rstd::dyn<ShaderBackend>>                  m_backend;
-    HashMap<ShaderReflectionKey, CachedShaderReflection> m_entries;
+    rstd::ref<rstd::dyn<ShaderBackend>>                                   m_backend;
+    HashMap<ShaderReflectionKey, rstd::sync::Arc<CachedShaderReflection>> m_entries;
 };
 
 auto MakeSceneShaderRequest(const SceneShader&) -> resource::ShaderRequest;

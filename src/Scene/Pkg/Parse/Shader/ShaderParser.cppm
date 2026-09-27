@@ -170,6 +170,7 @@ private:
 struct CompileMaterialShaderResult {
     bool                                   ok { false };
     Vec<ShaderCode>                        spvs;
+    Option<Arc<SceneShaderReflection>>     reflection;
     ShaderInfo                             info;
     Vec<ShaderTexInfo>                     tex_info;
     Vec<SceneShaderUniformBlockInterface>  uniform_blocks;
@@ -204,8 +205,9 @@ public:
     static bool CompileToSpv(ref<str> scene_id, mut_ref<ShaderUnit[]>, Vec<ShaderCode>& spvs,
                              ShaderInfo*, slice<ShaderTexInfo>, ShaderCache* cache = nullptr);
 
-    static void UpdateSceneShaderVariantDescFromCompiledUnits(SceneShaderVariantDesc&,
-                                                              slice<ShaderUnit>, slice<ShaderCode>);
+    static Option<Arc<SceneShaderReflection>>
+    UpdateSceneShaderVariantDescFromCompiledUnits(SceneShaderVariantDesc&, slice<ShaderUnit>,
+                                                  slice<ShaderCode>);
 
     // Lightweight entry point: compile the vert+frag shader pair for one
     // material directly, without instantiating a Scene or running the

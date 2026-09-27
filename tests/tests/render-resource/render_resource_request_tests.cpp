@@ -984,6 +984,89 @@ TEST(ShaderBackend, PreprocessesBoundedSourceAndAllowsAliasedOutput) {
     EXPECT_EQ(output.as_str(), expected.as_str());
 }
 
+TEST(ShaderBackend, ReusesPreparedReflectionAndRejectsChangedCode) {
+    using namespace owe::vulkan;
+    auto           backend = MakeShaderBackend();
+    ShaderCompUnit unit {
+        .stage       = owe::ShaderType::VERTEX,
+        .src         = "#version 450\nvoid main() { gl_Position = vec4(0, 0, 0, 1); }"_Str,
+        .entry_point = "main"_Str,
+    };
+    Vec<Uni_ShaderSpv> compiled;
+    ASSERT_TRUE(backend->CompileAndLinkShaderUnits(
+        slice<ShaderCompUnit>::from_raw_parts(&unit, usize(1)), {}, compiled));
+    owe::SceneShader shader;
+    shader.codes.push(compiled[usize()]->spirv.clone());
+    auto prepared = Arc<owe::SceneShaderReflection>::make();
+    ASSERT_TRUE(backend->GenReflect(shader.codes.as_slice(), compiled, prepared->reflected));
+    for (auto& stage : compiled) {
+        prepared->stages.push(owe::SceneShaderStage {
+            .entry_point = rstd::move(stage->entry_point),
+            .stage       = stage->stage,
+            .spirv       = rstd::move(stage->spirv),
+        });
+    }
+    shader.reflection = Some(prepared.clone());
+    ShaderReflectionCache cache(backend.as_ref());
+    auto                  first = cache.Query(shader);
+    ASSERT_TRUE(first.is_some());
+    EXPECT_EQ(&**first, &*prepared);
+    cache.Clear();
+    auto reloaded = cache.Query(shader);
+    ASSERT_TRUE(reloaded.is_some());
+    EXPECT_EQ(&**reloaded, &*prepared);
+    auto original                  = shader.codes.clone();
+    shader.codes[usize()][usize()] = 0;
+    EXPECT_TRUE(cache.Query(shader).is_none());
+    shader.codes = rstd::move(original);
+    EXPECT_EQ(&**cache.Query(shader), &*prepared);
+}
+
+TEST(ShaderBackend, ReflectionFailureDoesNotPublishPartialOutput) {
+    using namespace owe::vulkan;
+    ShaderCompUnit unit {
+        .stage       = owe::ShaderType::VERTEX,
+        .src         = "#version 450\nvoid main() { gl_Position = vec4(0, 0, 0, 1); }"_Str,
+        .entry_point = "main"_Str,
+    };
+    Vec<Uni_ShaderSpv> compiled;
+    ASSERT_TRUE(CompileAndLinkShaderUnits(
+        slice<ShaderCompUnit>::from_raw_parts(&unit, usize(1)), {}, compiled));
+    Vec<owe::ShaderCode> invalid;
+    invalid.push(compiled[usize()]->spirv.clone());
+    invalid.push(owe::ShaderCode {});
+    Vec<Uni_ShaderSpv> stages;
+    auto               sentinel = Box<ShaderSpv>::make();
+    sentinel->entry_point       = "unchanged"_Str;
+    stages.push(rstd::move(sentinel));
+    ShaderReflected reflection;
+    reflection.blocks.push(ShaderReflected::Block { .name = "unchanged"_Str });
+    EXPECT_FALSE(GenReflect(invalid.as_slice(), stages, reflection));
+    ASSERT_EQ(stages.len(), usize(1));
+    EXPECT_EQ(stages[usize()]->entry_point.as_str(), "unchanged"_str);
+    ASSERT_EQ(reflection.blocks.len(), usize(1));
+    EXPECT_EQ(reflection.blocks[usize()].name.as_str(), "unchanged"_str);
+}
+
+TEST(ShaderBackend, RejectsUnsupportedDescriptorArrays) {
+    using namespace owe::vulkan;
+    ShaderCompUnit unit {
+        .stage       = owe::ShaderType::FRAGMENT,
+        .src         = "#version 450\nlayout(set=0,binding=0) uniform sampler2D images[2];\n"
+                       "layout(location=0) out vec4 color;\n"
+                       "void main() { color = texture(images[0], vec2(0)); }"_Str,
+        .entry_point = "main"_Str,
+    };
+    Vec<Uni_ShaderSpv> compiled;
+    ASSERT_TRUE(CompileAndLinkShaderUnits(
+        slice<ShaderCompUnit>::from_raw_parts(&unit, usize(1)), {}, compiled));
+    Vec<owe::ShaderCode> codes;
+    codes.push(compiled[usize()]->spirv.clone());
+    ShaderReflected reflected;
+    EXPECT_FALSE(GenReflect(codes.as_slice(), compiled, reflected));
+    EXPECT_TRUE(reflected.binding_map.is_empty());
+}
+
 TEST(ShaderBackend, CompilesOwnedSourcesWithDefaultAndExplicitEntryPoints) {
     using namespace rstd::prelude;
     using namespace owe::vulkan;

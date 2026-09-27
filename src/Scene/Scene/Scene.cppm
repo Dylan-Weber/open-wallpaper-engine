@@ -6,6 +6,7 @@ export import vrento.geometry;
 export import vrento.node;
 export import vrento.material;
 export import vrento.camera;
+import vrento.shader_compile;
 import eigen;
 import rstd;
 import wescene.core;
@@ -118,6 +119,25 @@ struct SceneShaderDescriptorSetInterface {
     void clone_from(const SceneShaderDescriptorSetInterface& other) { *this = other.clone(); }
 };
 
+struct SceneShaderStage {
+    String     entry_point;
+    ShaderType stage;
+    ShaderCode spirv;
+};
+
+struct SceneShaderReflection {
+    Vec<SceneShaderStage>           stages;
+    vrento::vulkan::ShaderReflected reflected;
+
+    bool Matches(slice<ShaderCode> codes) const {
+        if (codes.len() != stages.len()) return false;
+        for (usize i {}; i < codes.len(); ++i) {
+            if (codes[i] != stages[i].spirv) return false;
+        }
+        return true;
+    }
+};
+
 struct SceneShader {
 public:
     u32                    id { 0 };
@@ -125,7 +145,8 @@ public:
     ShaderMatrixConvention matrix_convention { ShaderMatrixConvention::ColumnVector };
     ShaderMatrixAbi        matrix_abi { ShaderMatrixAbi::NativeSpirv };
 
-    Vec<ShaderCode> codes;
+    Vec<ShaderCode>                    codes;
+    Option<Arc<SceneShaderReflection>> reflection;
 
     Vec<ShaderAttribute>                   attrs;
     Vec<SceneSamplerBinding>               sampler_bindings;

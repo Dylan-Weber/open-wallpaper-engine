@@ -54,7 +54,7 @@ workspace = true
 workspace = true
 pub = true
 
-[dependencies.spirv-reflect]
+[dependencies.spirvto]
 workspace = true
 
 [external-dependencies.cmake.glslang]

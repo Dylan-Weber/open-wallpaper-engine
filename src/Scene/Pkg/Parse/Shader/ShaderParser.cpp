@@ -2954,9 +2954,8 @@ void MergeVariantFallbackMetadata(ShaderInfo& info, const SceneShaderVariantDesc
 
 } // namespace
 
-void ShaderParser::UpdateSceneShaderVariantDescFromCompiledUnits(SceneShaderVariantDesc& desc,
-                                                                 slice<ShaderUnit>       units,
-                                                                 slice<ShaderCode>       codes) {
+Option<Arc<SceneShaderReflection>> ShaderParser::UpdateSceneShaderVariantDescFromCompiledUnits(
+    SceneShaderVariantDesc& desc, slice<ShaderUnit> units, slice<ShaderCode> codes) {
     for (rstd::size_t i = 0; i < desc.stages.len().to_primitive() && i < units.len().to_primitive();
          ++i) {
         desc.stages[usize(i)].active_texture_slots =
@@ -2968,7 +2967,7 @@ void ShaderParser::UpdateSceneShaderVariantDescFromCompiledUnits(SceneShaderVari
 
     Vec<vulkan::Uni_ShaderSpv> spvs;
     vulkan::ShaderReflected    reflected;
-    if (! vulkan::GenReflect(codes, spvs, reflected)) return;
+    if (! vulkan::GenReflect(codes, spvs, reflected)) return None();
 
     desc.sampler_bindings.clear();
     constexpr ref<str> texture_prefix { "g_Texture"_str };
@@ -3174,6 +3173,16 @@ void ShaderParser::UpdateSceneShaderVariantDescFromCompiledUnits(SceneShaderVari
                      [](const auto& lhs, const auto& rhs) {
                          return lhs.set < rhs.set;
                      });
+    auto result       = Arc<SceneShaderReflection>::make();
+    result->reflected = rstd::move(reflected);
+    for (auto& stage : spvs) {
+        result->stages.push(SceneShaderStage {
+            .entry_point = rstd::move(stage->entry_point),
+            .stage       = stage->stage,
+            .spirv       = rstd::move(stage->spirv),
+        });
+    }
+    return Some(rstd::move(result));
 }
 
 CompileSceneShaderVariantResult
@@ -3252,14 +3261,19 @@ ShaderParser::CompileSceneShaderVariant(const SceneShaderVariantDesc& desc, fs::
         return result;
     }
     result.variant.default_uniforms = result.info.svs.clone();
-    ShaderParser::UpdateSceneShaderVariantDescFromCompiledUnits(
+    auto reflection                 = ShaderParser::UpdateSceneShaderVariantDescFromCompiledUnits(
         result.variant, units.as_slice(), spvs.as_slice());
+    if (reflection.is_none()) {
+        result.error = "shader reflection failed"_Str;
+        return result;
+    }
 
     auto shader               = Arc<SceneShader>::make();
     shader->name              = desc.shader_name.clone();
     shader->matrix_convention = ShaderMatrixConvention::RowVector;
     shader->matrix_abi        = ShaderMatrixAbi::Hlsl;
     shader->codes             = rstd::move(spvs);
+    shader->reflection        = rstd::move(reflection);
     shader->sampler_bindings  = result.variant.sampler_bindings.clone();
     shader->uniform_blocks    = result.variant.uniform_blocks.clone();
     shader->descriptor_sets   = result.variant.descriptor_sets.clone();
@@ -3356,8 +3370,13 @@ CompileMaterialShaderResult ShaderParser::CompileMaterialShader(const Json& mate
         return r;
     }
     SceneShaderVariantDesc variant;
-    ShaderParser::UpdateSceneShaderVariantDescFromCompiledUnits(
+    r.reflection = ShaderParser::UpdateSceneShaderVariantDescFromCompiledUnits(
         variant, units.as_slice(), r.spvs.as_slice());
+    if (r.reflection.is_none()) {
+        r.ok    = false;
+        r.error = "shader reflection failed"_Str;
+        return r;
+    }
     r.uniform_blocks  = rstd::move(variant.uniform_blocks);
     r.descriptor_sets = rstd::move(variant.descriptor_sets);
     return r;
