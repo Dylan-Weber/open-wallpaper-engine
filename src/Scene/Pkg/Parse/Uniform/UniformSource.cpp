@@ -320,21 +320,9 @@ auto UniformSceneState::LogicalParallaxState(const UniformNodeState& state) cons
             }
         }
     }
-    // Layer cameras (compose/passthrough) and effect_projection redirects land on the
-    // effect owner, which is not the parallax origin. Walk to an empty-camera ancestor
-    // so every pass of the layer shares the same origin as sibling draws (e.g. photo).
-    if (! current->node->Camera().is_empty()) {
-        for (auto* parent = current->node->Parent(); parent != nullptr; parent = parent->Parent()) {
-            if (auto* found = FindNodeState(parent);
-                found != nullptr && found->node->Camera().is_empty()) {
-                current = found;
-                break;
-            }
-        }
-    }
-
-    // An authored ancestor owns parallax for the composed subtree. Descendant layers still carry
-    // their bindings so they remain valid when propagation is disabled or the hierarchy changes.
+    // Effect toggles change camera routing, not the implicit origin of a composed surface.
+    bool inherit_origin =
+        ! current->parallax.authored && current->node->HasLayer() && ! current->node->Perspective();
     const UniformNodeState* cursor    = current;
     auto                    remaining = m_nodes.len();
     while (remaining != usize()) {
@@ -343,7 +331,17 @@ auto UniformSceneState::LogicalParallaxState(const UniformNodeState& state) cons
         --remaining;
         if (! parent->propagate_parallax_to_children) break;
         cursor = parent;
-        if (parent->parallax.authored) current = parent;
+        if (parent->parallax.authored) {
+            current        = parent;
+            inherit_origin = false;
+        } else if (inherit_origin) {
+            if (parent->node->Perspective()) {
+                inherit_origin = false;
+            } else if (! parent->node->HasLayer()) {
+                current        = parent;
+                inherit_origin = false;
+            }
+        }
     }
     return current;
 }

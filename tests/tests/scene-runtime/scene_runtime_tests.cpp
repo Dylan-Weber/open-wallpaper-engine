@@ -1992,33 +1992,8 @@ TEST(UniformSourceParallax, InactiveEffectDoesNotReplaceLayerOrigin) {
     }
 }
 
-// Regression test: verify that compose/passthrough rendering under a photo
-// with camera parallax uses the same parallax origin as the parent photo.
-//
-// Previously, a composelayer containing effects could produce a duplicated,
-// offset copy of the character when its framebuffer sample was blended back
-// with partial opacity. The regression was caused by LogicalParallaxState
-// resolving the parallax origin at the compose/effect-projection node
-// (layer camera / effect_projection_node) instead of continuing to an
-// ancestor with an empty camera. As a result, the compose/effect pass used
-// the compose node's world position as its parallax origin, while the photo
-// pass used the parent origin. With typical parallax amounts (e.g. 0.07),
-// this difference was large enough to produce a visible, pixel-scale offset.
-//
-// The fix is expected to resolve through non-empty cameras until a common
-// empty-camera ancestor is found, ensuring that the photo, compose, and
-// effect passes share the same parallax origin.
-//
-// This fixture also guards against a false negative by explicitly computing
-// the offset produced by the previous buggy behavior and verifying that it
-// differs significantly from the photo offset (so the case would still fail
-// if the buggy compose-world origin were used).
-//
-// Real-world regression case:
-// Steam Workshop wallpaper 3430271967 (photo + puppet + composelayer 音圈).
-// After rebuilding the scene plugin and reloading the wallpaper, enable
-// camera parallax and move the mouse. The character must remain aligned
-// without producing a secondary/ghost image.
+// Wallpaper 3430271967 blends a framebuffer sample back through a child effect.
+// Its implicit parallax origin must match the photo, including after effect toggles.
 TEST(UniformSourceParallax, ComposeLayerCameraSharesParentParallaxOrigin) {
     auto camera_node = Arc<owe::SceneNode>::make(Eigen::Vector3f { 1920.0f, 1080.0f, 0.0f },
                                                  Eigen::Vector3f::Ones(),
@@ -2044,6 +2019,9 @@ TEST(UniformSourceParallax, ComposeLayerCameraSharesParentParallaxOrigin) {
     photo->AppendChild(compose.clone());
     effect->SetParentAnchor(compose.as_ptr());
     compose->SetCamera("_rt_node_8_layer_camera"_str);
+    auto layer =
+        Arc<owe::SceneNodeLayer>::make(compose.as_ptr(), 3840.0f, 2160.0f, "_rt_composite"_str);
+    compose->AttachLayer(layer.clone());
 
     auto photo_state         = Arc<owe::UniformNodeState>::make(photo.clone(), resolver.clone());
     auto compose_state       = Arc<owe::UniformNodeState>::make(compose.clone(), resolver.clone());
@@ -2057,14 +2035,23 @@ TEST(UniformSourceParallax, ComposeLayerCameraSharesParentParallaxOrigin) {
 
     const auto photo_offset =
         state->ComputeParallaxOffset(*photo_state, *camera, owe::SceneRenderViewKind::Primary);
-    const auto compose_offset =
-        state->ComputeParallaxOffset(*compose_state, *camera, owe::SceneRenderViewKind::Primary);
-    const auto effect_offset =
-        state->ComputeParallaxOffset(*effect_state, *camera, owe::SceneRenderViewKind::Primary);
-    EXPECT_NEAR(compose_offset[usize()], photo_offset[usize()], 1e-4f);
-    EXPECT_NEAR(compose_offset[usize(1)], photo_offset[usize(1)], 1e-4f);
-    EXPECT_NEAR(effect_offset[usize()], photo_offset[usize()], 1e-4f);
-    EXPECT_NEAR(effect_offset[usize(1)], photo_offset[usize(1)], 1e-4f);
+    for (double pointer : { 0.5, 0.9 }) {
+        state->SetPointerInput(pointer, pointer);
+        state->Advance(owe::SceneFrame {});
+        const auto expected_offset =
+            state->ComputeParallaxOffset(*photo_state, *camera, owe::SceneRenderViewKind::Primary);
+        for (bool intermediate : { true, false, true }) {
+            layer->ConfigureSourceDraw(intermediate);
+            const auto compose_offset = state->ComputeParallaxOffset(
+                *compose_state, *camera, owe::SceneRenderViewKind::Primary);
+            const auto effect_offset = state->ComputeParallaxOffset(
+                *effect_state, *camera, owe::SceneRenderViewKind::Primary);
+            EXPECT_NEAR(compose_offset[usize()], expected_offset[usize()], 1e-4f);
+            EXPECT_NEAR(compose_offset[usize(1)], expected_offset[usize(1)], 1e-4f);
+            EXPECT_NEAR(effect_offset[usize()], expected_offset[usize()], 1e-4f);
+            EXPECT_NEAR(effect_offset[usize(1)], expected_offset[usize(1)], 1e-4f);
+        }
+    }
 
     // Fixture must still discriminate the old bug: origin at compose world
     // position (not photo) yields a clearly different shift at amount 0.07.
@@ -2077,6 +2064,87 @@ TEST(UniformSourceParallax, ComposeLayerCameraSharesParentParallaxOrigin) {
     const float buggy_delta = std::hypot(buggy_offset.x() - photo_offset[usize()],
                                          buggy_offset.y() - photo_offset[usize(1)]);
     EXPECT_GT(buggy_delta, 1.0f);
+}
+
+TEST(UniformSourceParallax, ComposedOriginRespectsPropagationAndAuthoredDepth) {
+    auto camera =
+        Arc<owe::SceneCamera>::make(owe::SceneCamera::MakeOrthographic(3840, 2160, -1.0, 1.0));
+    auto resolver = Arc<owe::UniformCameraResolver>::make(camera.clone());
+    auto state    = Arc<owe::UniformSceneState>::make(Arc<owe::AudioResponseDemand>::make());
+    state->SetOrthographicImplicitParallax(true);
+    state->CameraParallax() = { true, 0.1f, 0.0f, 0.0f };
+    auto parent             = Arc<owe::SceneNode>::make(
+        Eigen::Vector3f { 100.0f, 200.0f, 0.0f }, Eigen::Vector3f::Ones(), Eigen::Vector3f::Zero());
+    auto child = Arc<owe::SceneNode>::make(
+        Eigen::Vector3f { 30.0f, 40.0f, 0.0f }, Eigen::Vector3f::Ones(), Eigen::Vector3f::Zero());
+    child->SetParentAnchor(parent.as_ptr());
+    child->SetCamera("layer"_str);
+    auto layer =
+        Arc<owe::SceneNodeLayer>::make(child.as_ptr(), 3840.0f, 2160.0f, "_rt_composite"_str);
+    child->AttachLayer(layer.clone());
+    auto effect             = Arc<owe::SceneNode>::make();
+    auto parent_state       = Arc<owe::UniformNodeState>::make(parent.clone(), resolver.clone());
+    auto child_state        = Arc<owe::UniformNodeState>::make(child.clone(), resolver.clone());
+    auto effect_state       = Arc<owe::UniformNodeState>::make(effect.clone(), resolver.clone());
+    parent_state->object_id = i32(1);
+    child_state->object_id = effect_state->object_id = i32(2);
+    effect_state->effect_projection_node             = Some(child.clone());
+    state->SetNodeState({ .index = u32(1), .generation = u32(1) }, parent_state.clone());
+    state->SetNodeState({ .index = u32(2), .generation = u32(1) }, child_state.clone());
+    state->SetNodeState({ .index = u32(3), .generation = u32(1) }, effect_state.clone());
+    auto expect_offset = [&](float x, float y) {
+        for (bool intermediate : { true, false, true }) {
+            layer->ConfigureSourceDraw(intermediate);
+            for (auto source : { child_state.as_ptr(), effect_state.as_ptr() }) {
+                const auto offset = state->ComputeParallaxOffset(
+                    *source, *camera, owe::SceneRenderViewKind::Primary);
+                EXPECT_NEAR(offset[usize()], x, 1e-4f);
+                EXPECT_NEAR(offset[usize(1)], y, 1e-4f);
+            }
+        }
+    };
+    parent_state->parallax                       = { { 1.0f, 1.0f }, true };
+    parent_state->propagate_parallax_to_children = false;
+    child_state->parallax                        = { { 0.0f, 0.0f }, true };
+    expect_offset(0.0f, 0.0f);
+    child_state->parallax.depth = { 0.5f, 0.5f };
+    expect_offset(6.5f, 12.0f);
+    child_state->parallax.authored = false;
+    expect_offset(13.0f, 24.0f);
+    parent_state->propagate_parallax_to_children = true;
+    child_state->parallax.authored               = true;
+    expect_offset(10.0f, 20.0f);
+    parent_state->parallax.authored = false;
+    expect_offset(6.5f, 12.0f);
+    child_state->parallax.depth = { 0.0f, 0.0f };
+    expect_offset(0.0f, 0.0f);
+    child_state->parallax.authored = false;
+    expect_offset(10.0f, 20.0f);
+    child->SetPerspective(true);
+    expect_offset(13.0f, 24.0f);
+    child->SetPerspective(false);
+    parent->SetPerspective(true);
+    expect_offset(13.0f, 24.0f);
+    parent->SetPerspective(false);
+
+    auto ancestor            = Arc<owe::SceneNode>::make();
+    auto ancestor_state      = Arc<owe::UniformNodeState>::make(ancestor.clone(), resolver.clone());
+    ancestor_state->parallax = { { 2.0f, 2.0f }, true };
+    state->SetNodeState({ .index = u32(4), .generation = u32(1) }, ancestor_state.clone());
+    parent->SetParentAnchor(ancestor.as_ptr());
+    parent->SetCamera("parent_layer"_str);
+    parent->AttachLayer(
+        Arc<owe::SceneNodeLayer>::make(parent.as_ptr(), 3840.0f, 2160.0f, "_rt_parent"_str));
+    parent_state->propagate_parallax_to_children = false;
+    expect_offset(13.0f, 24.0f);
+    parent_state->propagate_parallax_to_children = true;
+    expect_offset(0.0f, 0.0f);
+    ancestor_state->parallax.authored = false;
+    expect_offset(0.0f, 0.0f);
+    child->SetParentAnchor(nullptr);
+    expect_offset(3.0f, 4.0f);
+    child->SetParentAnchor(parent.as_ptr());
+    expect_offset(0.0f, 0.0f);
 }
 
 TEST(UniformSourceParallax, OrthographicOmittedDepthUsesImplicitParallax) {
