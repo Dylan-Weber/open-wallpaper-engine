@@ -61,7 +61,7 @@ inline bool EffectiveDepthWrite(const vrento::MaterialPipelineDesc& material) {
 }
 
 inline bool UsesDepthAttachment(const vrento::MaterialPipelineDesc& material) {
-    return material.depth_test || EffectiveDepthWrite(material);
+    return material.UsesDepthAttachment();
 }
 
 inline void SetDepthState(const vrento::MaterialPipelineDesc&    material,

@@ -92,12 +92,42 @@ enum class RenderGraphResourceRetention
     ReleaseSceneTextures,
 };
 
+enum class RenderPrepareStage
+{
+    State,
+    Graph,
+    RebuildRequired,
+    Program,
+    Upload,
+    FontUpload
+};
+struct RenderPrepareError {
+    RenderPrepareStage stage;
+};
+struct RenderItemPreparation {
+    RenderItemId          item;
+    PassInvalidationFlags flags { PassInvalidationNone };
+};
+struct ResourcePreparation {
+    slice<RenderItemPreparation> items;
+    slice<SceneMaterialId>       texture_materials;
+    bool                         textures_only {};
+};
+
 class VulkanRender {
 public:
     VulkanRender();
     ~VulkanRender();
 
     bool init(RenderInitInfo, SceneLoadBenchRecorderView load_bench = {});
+    auto tryClearLastRenderGraph(RenderGraphResourceRetention) -> Result<empty, RenderPrepareError>;
+    auto tryCompileRenderGraph(Scene&, rg::RenderGraph&, const RenderSceneSnapshot&,
+                               SceneLoadBenchRecorderView = {})
+        -> Result<empty, RenderPrepareError>;
+    auto tryPrepareResources(Scene&, const RenderSceneSnapshot&, const ResourcePreparation&)
+        -> Result<empty, RenderPrepareError>;
+    auto tryPumpFontAtlases(Scene&) -> Result<empty, RenderPrepareError>;
+    auto tryPumpVideoTextures(double) -> Result<empty, RenderPrepareError>;
 
     void destroy();
 

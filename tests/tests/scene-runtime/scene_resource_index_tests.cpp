@@ -1957,7 +1957,7 @@ TEST(SceneMaterialPipeline, PublishesOwnedStateAndRoutesEveryPipelineField) {
     material.ConsumeDirtyFlags();
     clone = material;
     EXPECT_EQ(clone.PipelineRevision(), revision + u64(1));
-    EXPECT_EQ(clone.DirtyFlags(), owe::SceneMaterialDirtyPipeline);
+    EXPECT_EQ(clone.DirtyFlags(), owe::SceneMaterialDirtyPipeline | owe::SceneMaterialDirtyGraph);
     EXPECT_FALSE(clone.Pipeline().depth_test);
 }
 
@@ -1973,7 +1973,23 @@ TEST(SceneMaterialPipeline, MoveAssignmentInvalidatesExistingPipelineRevision) {
     EXPECT_EQ(target.PipelineRevision(), revision + u64(1));
     EXPECT_EQ(target.Pipeline().cull_mode, owe::CullMode::Back);
     EXPECT_FALSE(target.Pipeline().depth_test);
-    EXPECT_EQ(target.DirtyFlags(), owe::SceneMaterialDirtyPipeline);
+    EXPECT_EQ(target.DirtyFlags(), owe::SceneMaterialDirtyPipeline | owe::SceneMaterialDirtyGraph);
+}
+
+TEST(SceneMaterialPipeline, DepthAttachmentTransitionsInvalidateGraph) {
+    owe::SceneMaterial material;
+    ASSERT_TRUE(material.SetDepthTest(true));
+    EXPECT_EQ(material.ConsumeDirtyFlags(),
+              owe::SceneMaterialDirtyPipeline | owe::SceneMaterialDirtyGraph);
+    ASSERT_TRUE(material.SetDepthWrite(true));
+    EXPECT_EQ(material.ConsumeDirtyFlags(), owe::SceneMaterialDirtyPipeline);
+    ASSERT_TRUE(material.SetDepthTest(false));
+    EXPECT_EQ(material.ConsumeDirtyFlags(), owe::SceneMaterialDirtyPipeline);
+    ASSERT_TRUE(material.SetDepthWrite(false));
+    EXPECT_EQ(material.ConsumeDirtyFlags(),
+              owe::SceneMaterialDirtyPipeline | owe::SceneMaterialDirtyGraph);
+    EXPECT_FALSE(material.SetDepthWrite(false));
+    EXPECT_EQ(material.DirtyFlags(), owe::SceneMaterialDirtyNone);
 }
 
 TEST(SceneMaterialPipeline, AssignmentDoesNotAcknowledgePendingChanges) {
@@ -1987,7 +2003,8 @@ TEST(SceneMaterialPipeline, AssignmentDoesNotAcknowledgePendingChanges) {
     target        = source;
     EXPECT_EQ(target.PipelineRevision(), revision);
     EXPECT_EQ(target.DirtyFlags(),
-              owe::SceneMaterialDirtyPipeline | owe::SceneMaterialDirtyResources);
+              owe::SceneMaterialDirtyPipeline | owe::SceneMaterialDirtyResources |
+                  owe::SceneMaterialDirtyGraph);
 }
 
 TEST(SceneMaterialDirtyEvents, RoutesMaterialDirtyByOwner) {

@@ -13,6 +13,12 @@ import wescene.vulkan;
 
 using namespace rstd::literals;
 
+TEST(RenderResourceSystem, FontAtlasWithoutResidentTextureDefersUpload) {
+    owe::resource_registry::RenderResourceSystem resources;
+    EXPECT_EQ(resources.UploadFontAtlasRegion("_text_atlas_unused"_str, nullptr, 1, 0, 0, 1, 1),
+              owe::resource_registry::FontAtlasUploadStatus::NotResident);
+}
+
 struct TextureRuntimeProbe {
     void Pump(double) {}
 };

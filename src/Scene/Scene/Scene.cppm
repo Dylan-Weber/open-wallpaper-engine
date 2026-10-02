@@ -719,8 +719,11 @@ public:
         return m_pipeline.Snapshot();
     }
     bool SetPipeline(vrento::MaterialPipelineDesc value) {
+        const bool attachment_changed =
+            Pipeline().UsesDepthAttachment() != value.UsesDepthAttachment();
         if (! m_pipeline.Set(rstd::move(value))) return false;
         SetPipelineDirty();
+        if (attachment_changed) SetGraphDirty();
         return true;
     }
     bool SetShaderValue(ref<str> uniform_name, const ShaderValue& value) {
@@ -817,32 +820,28 @@ private:
     }
 
     void copyFrom(const SceneMaterial& other) {
-        name                        = other.name.clone();
-        textures                    = other.textures.clone();
-        texture_metadata            = other.texture_metadata.clone();
-        texture_sources             = other.texture_sources.clone();
-        defines                     = other.defines.clone();
-        hasSprite                   = other.hasSprite;
-        customShader                = other.customShader.Clone();
-        const bool pipeline_changed = m_pipeline.Set(other.Pipeline());
-        shadow_variant              = other.shadow_variant.clone();
-        m_dirty_flags.fetch_or(
-            other.m_dirty_flags.load() |
-            (pipeline_changed ? SceneMaterialDirtyPipeline : SceneMaterialDirtyNone));
+        name             = other.name.clone();
+        textures         = other.textures.clone();
+        texture_metadata = other.texture_metadata.clone();
+        texture_sources  = other.texture_sources.clone();
+        defines          = other.defines.clone();
+        hasSprite        = other.hasSprite;
+        customShader     = other.customShader.Clone();
+        (void)SetPipeline(other.Pipeline());
+        shadow_variant = other.shadow_variant.clone();
+        m_dirty_flags.fetch_or(other.m_dirty_flags.load());
     }
     void moveFrom(SceneMaterial&& other) {
-        name                        = rstd::move(other.name);
-        textures                    = rstd::move(other.textures);
-        texture_metadata            = rstd::move(other.texture_metadata);
-        texture_sources             = rstd::move(other.texture_sources);
-        defines                     = rstd::move(other.defines);
-        hasSprite                   = other.hasSprite;
-        customShader                = rstd::move(other.customShader);
-        const bool pipeline_changed = m_pipeline.Set(other.Pipeline());
-        shadow_variant              = rstd::move(other.shadow_variant);
-        m_dirty_flags.fetch_or(
-            other.m_dirty_flags.load() |
-            (pipeline_changed ? SceneMaterialDirtyPipeline : SceneMaterialDirtyNone));
+        name             = rstd::move(other.name);
+        textures         = rstd::move(other.textures);
+        texture_metadata = rstd::move(other.texture_metadata);
+        texture_sources  = rstd::move(other.texture_sources);
+        defines          = rstd::move(other.defines);
+        hasSprite        = other.hasSprite;
+        customShader     = rstd::move(other.customShader);
+        (void)SetPipeline(other.Pipeline());
+        shadow_variant = rstd::move(other.shadow_variant);
+        m_dirty_flags.fetch_or(other.m_dirty_flags.load());
     }
 
     Atomic<SceneMaterialDirtyFlags> m_dirty_flags { SceneMaterialDirtyNone };

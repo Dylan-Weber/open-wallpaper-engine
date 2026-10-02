@@ -8,6 +8,7 @@ export import rstd.cppstd;
 export import wescene.load_bench;
 export import wescene.scene;
 export import wescene.vulkan_render;
+export import wescene.scene_render_pipeline;
 export import wescene.vulkan;
 export import wescene.types;
 export import wescene.utils;

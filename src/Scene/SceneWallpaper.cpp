@@ -20,6 +20,7 @@ import wescene.load_bench;
 import wescene.timer;
 import wescene.pkg.parse;
 import wescene.pkg_fs;
+import wescene.scene_loader;
 import wescene.rgraph;
 import wescene.resource;
 import wescene.scene_user_property;
@@ -118,45 +119,7 @@ float LocalTimeOfDay() {
     return static_cast<float>(seconds / 86400.0);
 }
 
-Json MakeUserPropertyDescriptor(Json value) {
-    if (value.get("value"_str).is_some()) return value;
-    auto object = rstd::json::Map::make();
-    object.insert("value"_Str, rstd::move(value));
-    return Json::Object(rstd::move(object));
-}
-
 Json RawUserProperty(ref<str> value) { return MakeUserPropertyWirePatch(value); }
-
-Json InitialUserProperty(Json value) {
-    if (value.is_string()) {
-        auto raw = *value.as_str();
-        return RawUserProperty(raw);
-    }
-    return MakeUserPropertyDescriptor(rstd::move(value));
-}
-
-bool SameSceneMaterialId(SceneMaterialId lhs, SceneMaterialId rhs) {
-    return lhs.index == rhs.index && lhs.generation == rhs.generation;
-}
-
-void PushUniqueMaterialId(Vec<SceneMaterialId>& materials, SceneMaterialId id) {
-    for (usize index {}; index < materials.len(); ++index) {
-        if (SameSceneMaterialId(materials[index], id)) return;
-    }
-    materials.push(rstd::move(id));
-}
-
-vulkan::PassInvalidationFlags MaterialDirtyToPassInvalidationFlags(SceneMaterialDirtyFlags flags) {
-    vulkan::PassInvalidationFlags out = vulkan::PassInvalidationNone;
-    if ((flags & SceneMaterialDirtyResources) != 0) {
-        out |= vulkan::ToPassInvalidationFlags(vulkan::PassInvalidation::Resources);
-    }
-    if ((flags & SceneMaterialDirtyPipeline) != 0) {
-        out |= vulkan::ToPassInvalidationFlags(vulkan::PassInvalidation::Pipeline) |
-               vulkan::ToPassInvalidationFlags(vulkan::PassInvalidation::Framebuffer);
-    }
-    return out;
-}
 
 Json RuntimeTextureProperty(ref<str> value) {
     auto object = rstd::json::Map::make();
@@ -173,51 +136,6 @@ owe::script::MediaStatus ToScriptMediaStatus(const MediaStatus& status) {
                                       .album_artist     = status.album_artist.clone(),
                                       .art_url          = status.art_url.clone(),
                                       .previous_art_url = status.previous_art_url.clone() };
-}
-
-void MergeProjectUserProperties(ref<Path> project_dir, rstd::json::Map& out) {
-    auto project_path = PathBuf::from(project_dir).join("project.json"_str);
-    auto source       = rstd::fs::read_to_string(project_path);
-    if (source.is_err()) return;
-    auto parsed = ParseJson(source->as_str(), { .allow_comments = true });
-    if (parsed.is_err()) {
-        rstd_warn(
-            "Can't parse {}: {}", project_path.as_path().to_string_lossy(), parsed.unwrap_err());
-        return;
-    }
-    auto root    = parsed.unwrap();
-    auto general = root.get("general"_str);
-    if (general.is_none()) return;
-    auto properties = (*general)->get("properties"_str);
-    if (properties.is_none()) return;
-    auto object = (*properties)->as_object();
-    if (object.is_none()) return;
-
-    (*object)->iter().for_each([&](auto entry) {
-        auto [entry_key, entry_value] = entry;
-        const auto  raw_key           = entry_key->as_str();
-        const auto& value             = *entry_value;
-        auto        key               = CanonicalSceneUserPropertyKey(raw_key);
-        auto        current           = out.get(key);
-        auto        descriptor = current.is_some() ? MergeUserPropertyDescriptor(value, **current)
-                                                   : MakeUserPropertyDescriptor(value.clone());
-        out.insert(::alloc::string::String::make(key), rstd::move(descriptor));
-    });
-}
-
-rstd::json::Map NormalizeUserProperties(const rstd::json::Map& input) {
-    auto out = rstd::json::Map::make();
-    input.iter().for_each([&](auto entry) {
-        auto [entry_key, entry_value] = entry;
-        const auto  key               = entry_key->as_str();
-        const auto& value             = *entry_value;
-        auto        canonical         = CanonicalSceneUserPropertyKey(key);
-        if (key == canonical || out.get(canonical).is_none()) {
-            out.insert(::alloc::string::String::make(canonical),
-                       InitialUserProperty(value.clone()));
-        }
-    });
-    return out;
 }
 
 } // namespace
@@ -384,22 +302,16 @@ private:
     auto loadBenchView() -> SceneLoadBenchRecorderView;
     void rebuildRenderGraph(vulkan::RenderGraphResourceRetention retention, bool evict_meshes,
                             SceneLoadBenchRecorderView load_bench = {});
-    void consumeDirtyEventsCoveredByGraphRebuild();
-    void refreshPreparedRenderTargetDirtyEvents();
-    void refreshPreparedMeshDirtyEvents();
-    void refreshPreparedMaterialDirtyEvents();
     void detachSceneAudioResponseDemandCallback();
 
     SceneRuntimeController& m_main;
 
-    Box<vulkan::VulkanRender>        m_render;
-    Option<Box<Scene>>               m_scene_owner;
-    Scene*                           m_scene { nullptr };
-    Option<Arc<UniformRuntimeInput>> m_uniform_input_owner;
-    UniformRuntimeInput*             m_uniform_input { nullptr };
-    // Identity snapshot owned by the compiled render graph.
-    RenderSceneSnapshot                 m_render_scene;
-    Option<Box<rg::RenderGraph>>        m_rg;
+    Box<vulkan::VulkanRender>           m_render;
+    Option<Box<Scene>>                  m_scene_owner;
+    Scene*                              m_scene { nullptr };
+    Option<Arc<UniformRuntimeInput>>    m_uniform_input_owner;
+    UniformRuntimeInput*                m_uniform_input { nullptr };
+    Option<Box<SceneRenderPipeline>>    m_pipeline;
     f32                                 m_speed { 1.0f };
     bool                                m_mouse_parallax { true };
     FillMode                            m_fillmode { FillMode::ASPECTCROP };
@@ -409,6 +321,7 @@ private:
     audio::ResponseEngine               m_audio_response_engine;
     scene_audio::ResponseProcessor      m_scene_audio_response;
     bool                                m_first_frame_ok { false };
+    double                              m_frame_delta {};
 
     Atomic<array<float, 2>> m_mouse_pos { array<float, 2> { 0.5f, 0.5f } };
     Atomic<u32>             m_buttons_down {};
@@ -528,7 +441,7 @@ void SceneRenderController::on(RenderMsg::Stop_payload&& m) {
 
 void SceneRenderController::onDraw() {
     frame_timer.FrameBegin();
-    if (m_rg.is_some()) {
+    if (m_pipeline.is_some() && m_scene && renderInited()) {
         const bool first_draw = ! m_first_frame_ok;
         auto       load_bench = loadBenchView();
         auto       first_frame_span =
@@ -537,21 +450,15 @@ void SceneRenderController::onDraw() {
         auto first_frame_prepare_span =
             first_draw ? SceneLoadSpan(load_bench, &SceneLoadProbeIds::render_first_frame_prepare)
                        : rstd::bench::probe::SpanGuard {};
-        {
-            auto pos = m_mouse_pos.load();
-            m_scene->SetPointerPosition(array<float, 2> { pos[usize()], pos[usize(1)] });
-            m_scene->SetPointerInWindow(cursorInWindow());
-            if (m_uniform_input) m_uniform_input->SetPointerInput(pos[usize()], pos[usize(1)]);
-        }
-        // Drive any per-Scene scenescripts before particle emission.
-        // Scripts mutate SceneNode transforms (scale/origin/angles) so
-        // they need to run before the matrix-derivation in the
-        // uniform evaluation runs inside drawFrame after scripts have updated Scene state.
-        // The runtime is a no-op when no ScriptScene is installed.
-        {
+        auto prepared = [&]() -> Result<empty, vulkan::RenderPrepareError> {
+            if ((*m_pipeline)->pending().frame) return (*m_pipeline)->retryPreparation(load_bench);
+            if (! (*m_pipeline)->ready()) {
+                auto retried = (*m_pipeline)->retryPreparation(load_bench);
+                if (retried.is_err()) return retried;
+            }
+            m_frame_delta = frame_timer.TargetFrameTime() * m_speed.to_primitive();
             owe::script::FrameInputs fi;
-            fi.frametime =
-                static_cast<float>(frame_timer.TargetFrameTime() * m_speed.to_primitive());
+            fi.frametime   = static_cast<float>(m_frame_delta);
             fi.runtime     = static_cast<float>(m_scene->Runtime().Frame().elapsed.to_primitive());
             fi.time_of_day = LocalTimeOfDay();
             auto ortho     = m_scene->Ortho();
@@ -569,30 +476,14 @@ void SceneRenderController::onDraw() {
             fi.mouse_buttons_pressed  = consumePressed().to_primitive();
             fi.mouse_buttons_released = consumeReleased().to_primitive();
             (void)m_scene_audio_response.advance(fi.frametime, fi.audio);
-            if (m_uniform_input) m_uniform_input->SetAudioSpectrum(fi.audio);
-            m_scene->TickNodeFieldAnimations();
-            owe::script::TickSceneScripts(*m_scene, fi);
-            m_scene->TickCameraPaths();
-            m_scene->TickMaterialShaderAnimations();
-            m_scene->TickTransformUpdaters();
-            if (m_scene->ConsumeRenderGraphDirty()) {
-                rebuildRenderGraph(
-                    vulkan::RenderGraphResourceRetention::KeepSceneTextures, false, load_bench);
-            }
+            return (*m_pipeline)->prepare(fi, load_bench);
+        }();
+        if (prepared.is_err()) {
+            rstd_error("scene preparation failed at {}",
+                       static_cast<unsigned>(prepared.unwrap_err().stage));
+            frame_timer.FrameEnd();
+            return;
         }
-        m_scene->Runtime().BeforeRender();
-        refreshPreparedRenderTargetDirtyEvents();
-        refreshPreparedMeshDirtyEvents();
-        refreshPreparedMaterialDirtyEvents();
-
-        /* Advance video textures (no-op if none) before drawFrame so
-         * the new RGBA frame is sampled by the same render pass. */
-        m_render->pumpVideoTextures(frame_timer.TargetFrameTime() * m_speed.to_primitive());
-
-        /* Upload any glyph rects the actuators added this tick. Runs after
-         * TickSceneScripts (which calls FontFace::Populate) and before
-         * drawFrame so newly-rasterised glyphs are visible the same frame. */
-        m_render->pumpFontAtlases(*m_scene);
 
         (void)first_frame_prepare_span.finish();
         auto first_draw_span =
@@ -602,7 +493,7 @@ void SceneRenderController::onDraw() {
         (void)first_draw_span.finish();
         (void)first_frame_span.finish();
 
-        m_scene->PassFrameTime(frame_timer.TargetFrameTime() * m_speed.to_primitive());
+        m_scene->PassFrameTime(m_frame_delta);
 
         if (first_draw) {
             m_first_frame_ok = true;
@@ -628,103 +519,18 @@ void SceneRenderController::onDraw() {
 void SceneRenderController::on(RenderMsg::SetFillMode_payload&& m) {
     m_fillmode = m.mode;
     if (m_scene && renderInited()) {
-        m_render->UpdateCameraFillMode(*m_scene, m_fillmode);
+        if (m_pipeline) (*m_pipeline)->setFillMode(m_fillmode);
     }
 }
 
 void SceneRenderController::rebuildRenderGraph(vulkan::RenderGraphResourceRetention retention,
                                                bool                                 evict_meshes,
                                                SceneLoadBenchRecorderView           load_bench) {
-    if (! m_scene || ! renderInited()) return;
-    // Program replacement must not expose the gap between equivalent binding owners.
-    [[maybe_unused]] auto audio_demand_reconciliation =
-        m_scene->AudioDemandMut()->BeginReconciliation();
-    if (m_rg.is_some()) m_render->clearLastRenderGraph(retention);
-    if (evict_meshes) m_render->evictUnusedMeshes();
-    m_render->configureRenderTargets(*m_scene);
-    {
-        auto snapshot_span = SceneLoadSpan(load_bench, &SceneLoadProbeIds::render_snapshot);
-        m_render_scene     = ExtractRenderSceneSnapshot(*m_scene);
-    }
-    {
-        auto graph_span = SceneLoadSpan(load_bench, &SceneLoadProbeIds::render_graph_build);
-        m_rg            = Some(sceneToRenderGraph(*m_scene, m_render_scene));
-    }
-
-    if (m_main.isGenGraphviz()) (*m_rg)->ToGraphviz("graph.dot"_str);
-    m_render->compileRenderGraph(*m_scene, **m_rg, m_render_scene, load_bench);
-    m_render->UpdateCameraFillMode(*m_scene, m_fillmode);
-    consumeDirtyEventsCoveredByGraphRebuild();
-    (void)m_scene->ConsumeRenderGraphDirty();
-}
-
-void SceneRenderController::consumeDirtyEventsCoveredByGraphRebuild() {
-    if (! m_scene) return;
-    (void)m_scene->ConsumePreparedMaterialDirtyEvents();
-    (void)m_scene->ConsumePreparedMeshDirtyEvents();
-    (void)m_scene->ConsumePreparedRenderTargetDirtyEvents();
-}
-
-void SceneRenderController::refreshPreparedRenderTargetDirtyEvents() {
-    if (! m_scene || ! renderInited() || m_rg.is_none()) return;
-    auto events = m_scene->ConsumePreparedRenderTargetDirtyEvents();
-    if (events.is_empty()) return;
-
-    m_render->refreshPreparedTextures(*m_scene, m_render_scene);
-}
-
-void SceneRenderController::refreshPreparedMeshDirtyEvents() {
-    if (! m_scene || ! renderInited() || m_rg.is_none()) return;
-    auto events = m_scene->ConsumePreparedMeshDirtyEvents();
-    if (events.is_empty()) return;
-
-    bool requires_graph_rebuild = events.iter().any([](auto event) {
-        return (event->flags & SceneMeshDirtyLayout) != 0;
-    });
-    if (requires_graph_rebuild) {
-        rebuildRenderGraph(vulkan::RenderGraphResourceRetention::KeepSceneTextures, false);
-        return;
-    }
-
-    for (const auto& event : events) {
-        if ((event.flags & SceneMeshDirtyData) == 0) continue;
-        m_render->refreshPreparedMesh(
-            *m_scene,
-            m_render_scene,
-            event.mesh,
-            vulkan::ToPassInvalidationFlags(vulkan::PassInvalidation::Resources));
-    }
-}
-
-void SceneRenderController::refreshPreparedMaterialDirtyEvents() {
-    if (! m_scene || ! renderInited() || m_rg.is_none()) return;
-    auto events = m_scene->ConsumePreparedMaterialDirtyEvents();
-    if (events.is_empty()) return;
-
-    bool requires_graph_rebuild = events.iter().any([](auto event) {
-        return (event->flags & SceneMaterialDirtyGraph) != 0;
-    });
-    if (requires_graph_rebuild) {
-        rebuildRenderGraph(vulkan::RenderGraphResourceRetention::KeepSceneTextures, false);
-        return;
-    }
-
-    Vec<SceneMaterialId> texture_materials;
-    for (const auto& event : events) {
-        if ((event.flags & SceneMaterialDirtyTextureBindings) != 0) {
-            PushUniqueMaterialId(texture_materials, event.material);
-        }
-    }
-    if (! texture_materials.is_empty() &&
-        ! m_render->refreshPreparedMaterialTextures(
-            *m_scene, m_render_scene, texture_materials.as_slice())) {
-        rebuildRenderGraph(vulkan::RenderGraphResourceRetention::KeepSceneTextures, false);
-        return;
-    }
-    for (const auto& event : events) {
-        auto flags = MaterialDirtyToPassInvalidationFlags(event.flags);
-        if (flags == vulkan::PassInvalidationNone) continue;
-        m_render->refreshPreparedMaterial(*m_scene, m_render_scene, event.material, flags);
+    if (m_pipeline) {
+        auto result = (*m_pipeline)->rebuild(retention, evict_meshes, load_bench);
+        if (result.is_err())
+            rstd_error("scene rebuild failed at {}",
+                       static_cast<unsigned>(result.unwrap_err().stage));
     }
 }
 
@@ -743,6 +549,7 @@ void SceneRenderController::on(RenderMsg::SetScene_payload&& m) {
         Random::seed(static_cast<Seed>(m.random_seed->to_primitive()));
     }
     detachSceneAudioResponseDemandCallback();
+    m_pipeline            = None();
     m_scene               = nullptr;
     m_uniform_input       = nullptr;
     m_scene_owner         = Some(rstd::move(m.scene));
@@ -750,6 +557,11 @@ void SceneRenderController::on(RenderMsg::SetScene_payload&& m) {
     m_scene               = m_scene_owner->get();
     m_uniform_input       = m_uniform_input_owner->as_ptr().as_raw_ptr();
     m_uniform_input->SetMouseParallax(m_mouse_parallax);
+    m_pipeline = Some(Box<SceneRenderPipeline>::make(
+        *m_scene,
+        *m_uniform_input,
+        *m_render,
+        SceneRenderPipelineOptions { m_fillmode, m_main.isGenGraphviz() }));
     m_scene_audio_response.end();
     m_first_frame_ok = false;
     if (m_scene) {
@@ -795,10 +607,13 @@ void SceneRenderController::on(RenderMsg::SetUserProperty_payload&& m) {
             vulkan::RenderGraphResourceRetention::KeepSceneTextures, false, load_bench);
         return;
     }
-    if (renderInited() && m_rg.is_some()) {
+    if (renderInited() && (m_pipeline.is_some() && (*m_pipeline)->hasGraph())) {
         auto refresh_span =
             SceneLoadSpan(load_bench, &SceneLoadProbeIds::render_user_property_refresh);
-        refreshPreparedMaterialDirtyEvents();
+        auto result = (*m_pipeline)->refreshMaterials();
+        if (result.is_err())
+            rstd_error("scene material preparation failed at {}",
+                       static_cast<unsigned>(result.unwrap_err().stage));
     }
 }
 
@@ -813,7 +628,12 @@ void SceneRenderController::on(RenderMsg::SetMediaStatus_payload&& m) {
         *m_scene,
         "$mediaPreviousThumbnail"_str,
         RuntimeTextureProperty(m.status.previous_art_url.as_str()));
-    if (renderInited() && m_rg.is_some()) refreshPreparedMaterialDirtyEvents();
+    if (renderInited() && (m_pipeline.is_some() && (*m_pipeline)->hasGraph())) {
+        auto result = (*m_pipeline)->refreshMaterials();
+        if (result.is_err())
+            rstd_error("scene media preparation failed at {}",
+                       static_cast<unsigned>(result.unwrap_err().stage));
+    }
 }
 
 void SceneRenderController::on(RenderMsg::SetAudioResponseDemandCallback_payload&& m) {
@@ -903,7 +723,7 @@ void SceneRenderController::on(RenderMsg::SwapchainReady_payload&& m) {
     }
     bool extent_changed =
         m_render->onSwapchainReady(m.width.to_primitive(), m.height.to_primitive());
-    if (extent_changed && m_scene && m_rg.is_some()) {
+    if (extent_changed && m_scene && (m_pipeline.is_some() && (*m_pipeline)->hasGraph())) {
         rebuildRenderGraph(vulkan::RenderGraphResourceRetention::KeepSceneTextures, false);
     }
     if (m_stopped)
@@ -1125,7 +945,7 @@ void SceneRuntimeController::on(MainMsg::LoadScene_payload&& m) {
 void SceneRuntimeController::on(MainMsg::Configure_payload&& m) {
     m_config = rstd::move(m.config);
     ensureLoadBench(m_config.load_bench);
-    m_user_properties = NormalizeUserProperties(m_config.user_properties);
+    m_user_properties = NormalizeSceneUserProperties(m_config.user_properties);
     on(MainMsg::SetFps_payload { u32(m_config.fps) });
     on(MainMsg::SetVolume_payload { f32(m_config.volume) });
     on(MainMsg::SetVolumeScale_payload { f32(m_config.volume_scale) });
@@ -1299,147 +1119,33 @@ void SceneRuntimeController::loadScene() {
         m_sound_manager->unmount_all();
     }
 
-    Option<ParsedScene> parsed_scene;
-
-    // mount assets dir
-    Box<fs::VFS> pVfs = Box<fs::VFS>::make();
-    auto&        vfs  = *pVfs;
-    {
-        auto span = SceneLoadSpan(loadBenchView(), &SceneLoadProbeIds::load_vfs_assets);
-        if (! vfs.is_mounted("assets"_str)) {
-            auto assets = fs::make_physical_fs(m_config.assets_dir.as_path());
-            if (assets.is_err() ||
-                vfs.mount("/assets"_str, rstd::move(assets).unwrap_unchecked(), "assets"_str)
-                    .is_err()) {
-                rstd_error("Mount assets dir failed");
-                abort_load();
-                return;
-            }
-        }
+    auto loaded = LoadScene(SceneLoadRequest {
+        .source_pkg_path = m_config.source_pkg_path.clone(),
+        .assets_dir = m_config.assets_dir.clone(),
+        .cache_dir = m_config.cache_dir.clone(),
+        .document = m_config.scene_document.clone(),
+        .user_properties = m_user_properties.clone(),
+        .capabilities = {
+            .directional_shadow = m_render_capabilities->directional_shadow(),
+            .geometry_shader_supported = m_render_capabilities->geometry_shader,
+            .max_geometry_output_vertices = u32(m_render_capabilities->max_geometry_output_vertices),
+            .max_geometry_total_output_components = u32(m_render_capabilities->max_geometry_total_output_components),
+        },
+        .load_bench = loadBenchView(),
+    }, mut_ref<wavsen::audio::SoundManager>::from_raw_parts(m_sound_manager.get()));
+    if (loaded.is_err()) {
+        rstd_error("scene load failed: {}", loaded.unwrap_err().message);
+        abort_load();
+        return;
     }
-    struct SourcePaths {
-        PathBuf package;
-        PathBuf entry;
-        PathBuf directory;
-        String  id;
-    };
-    auto source_paths = [&] {
-        auto package = m_config.source_pkg_path.clone();
-        (void)package.set_extension("pkg"_str);
-        auto entry =
-            PathBuf::from(package.as_path().file_name().unwrap_or(ref<OsStr> {}).to_os_string());
-        (void)entry.set_extension("json"_str);
-        auto directory = PathBuf::from(package.as_path().parent().unwrap_or(ref<Path> {}));
-        auto id        = String::make(
-            directory.as_path().file_name().unwrap_or(ref<OsStr> {}).to_str().unwrap());
-        return SourcePaths {
-            .package   = rstd::move(package),
-            .entry     = rstd::move(entry),
-            .directory = rstd::move(directory),
-            .id        = rstd::move(id),
-        };
-    }();
-    {
-        auto span = SceneLoadSpan(loadBenchView(), &SceneLoadProbeIds::load_project_properties);
-        MergeProjectUserProperties(source_paths.directory.as_path(), m_user_properties);
-    }
-
-    // load pkgfile. Read pkg version stamp before move-mounting so we can
-    // pass it to the scene parser; on fallback (loose dir) we have no
-    // version info and use kSceneVersionUnknown.
-    wpscene::SceneVersion pkg_v = wpscene::kSceneVersionUnknown;
-    {
-        auto span        = SceneLoadSpan(loadBenchView(), &SceneLoadProbeIds::load_package);
-        auto wfs         = fs::WPPkgFs::open(source_paths.package.as_path());
-        bool pkg_mounted = false;
-        if (wfs.is_ok()) {
-            auto stamp  = wfs->pkg_version_stamp();
-            pkg_v       = wpscene::ParsePkgVersionStamp(stamp);
-            pkg_mounted = vfs.mount("/assets"_str, wfs->mount_handle()).is_ok();
-        }
-        if (! pkg_mounted) {
-            rstd_info("load pkg file {} failed, fallback to use dir",
-                      source_paths.package.as_path().to_string_lossy());
-            pkg_v      = wpscene::kSceneVersionUnknown;
-            auto loose = fs::make_physical_fs(source_paths.directory.as_path());
-            if (loose.is_err() ||
-                vfs.mount("/assets"_str, rstd::move(loose).unwrap_unchecked()).is_err()) {
-                rstd_error("can't load pkg directory: {}",
-                           source_paths.directory.as_path().to_string_lossy());
-                abort_load();
-                return;
-            }
-        }
-    }
-    {
-        auto scene_entry = PathBuf::from("/assets"_str).join(source_paths.entry.as_path());
-        auto scene_doc   = m_config.scene_document.clone();
-        if (! scene_doc) {
-            auto span   = SceneLoadSpan(loadBenchView(), &SceneLoadProbeIds::load_scene_document);
-            auto loaded = wpscene::LoadSceneDocumentFromVfs(vfs, scene_entry.as_path(), pkg_v);
-            if (loaded) scene_doc = Some(Arc<wpscene::SceneDocument>::make(rstd::move(*loaded)));
-        }
-        if (! scene_doc) {
-            rstd_error("Not supported scene type");
-            abort_load();
-            return;
-        }
-        Option<rstd::path::PathBuf> shader_cache_dir;
-        if (! m_config.cache_dir.is_empty()) {
-            shader_cache_dir = Some(m_config.cache_dir.clone());
-            rstd_info("shader cache folder: {}", m_config.cache_dir.as_path().to_string_lossy());
-        }
-        SceneParser parser;
-        auto        parsed = parser.Parse(
-            source_paths.id.as_str(),
-            rstd::ref<wpscene::SceneDocument>::from_raw_parts((*scene_doc).as_ptr()),
-            rstd::mut_ref<fs::VFS>::from_raw_parts(&vfs),
-            rstd::mut_ref<wavsen::audio::SoundManager>::from_raw_parts(m_sound_manager.get()),
-            SceneParseOptions {
-                .load_bench      = loadBenchView(),
-                .user_properties = Some(
-                    rstd::ref<rstd::json::Map>::from_raw_parts(rstd::addressof(m_user_properties))),
-                .shader_cache_dir = rstd::move(shader_cache_dir),
-                .capabilities =
-                    SceneParseCapabilities {
-                        .directional_shadow        = m_render_capabilities->directional_shadow(),
-                        .geometry_shader_supported = m_render_capabilities->geometry_shader,
-                        .max_geometry_output_vertices =
-                            u32(m_render_capabilities->max_geometry_output_vertices),
-                        .max_geometry_total_output_components =
-                            u32(m_render_capabilities->max_geometry_total_output_components),
-                    },
-            });
-        if (parsed.is_err()) {
-            rstd_error("scene parse failed: {}", parsed.unwrap_err().message.as_str());
-            abort_load();
-            return;
-        }
-        parsed_scene       = Some(rstd::move(parsed).unwrap());
-        auto& scene        = parsed_scene->scene;
-        auto  runtime_span = SceneLoadSpan(loadBenchView(), &SceneLoadProbeIds::load_runtime_setup);
-        scene->InstallExtension(rstd::move(pVfs));
-        SceneUserPropertyMutation initial_mutation;
-        {
-            auto property_span =
-                SceneLoadSpan(loadBenchView(), &SceneLoadProbeIds::load_initial_properties);
-            initial_mutation = SceneUserPropertyApplier::ApplyAll(*scene, m_user_properties);
-        }
-        if (initial_mutation.diagnostics_changed && m_user_property_diagnostic_cb) {
-            (*m_user_property_diagnostic_cb)
-                ->operator()(CloneUserPropertyDiagnostics(scene->UserPropertyDiagnostics()));
-        }
-        if (! m_config.cache_dir.is_empty()) {
-            auto ls_dir = m_config.cache_dir.join("script_localstorage"_str);
-            (void)rstd::fs::create_dir_all(ls_dir);
-            auto ls_file = ls_dir.join(rstd::format("{}.json", source_paths.id.as_str()).as_str());
-            owe::script::SetScenePersistence(*scene, rstd::move(ls_file));
-        }
-
-        publishClearColor(scene->ClearColor());
-    }
-
-    auto parsed = rstd::move(parsed_scene).unwrap();
+    auto result       = loaded.unwrap();
+    m_user_properties = rstd::move(result.user_properties);
+    if (result.initial_mutation.diagnostics_changed && m_user_property_diagnostic_cb)
+        (*m_user_property_diagnostic_cb)
+            ->operator()(
+                CloneUserPropertyDiagnostics(result.parsed.scene->UserPropertyDiagnostics()));
+    publishClearColor(result.parsed.scene->ClearColor());
+    auto parsed = rstd::move(result.parsed);
     auto rtx    = m_render_controller->sender();
     if (rtx.send(RenderMsg::SetScene(rstd::move(parsed.scene),
                                      rstd::move(parsed.runtime_input),

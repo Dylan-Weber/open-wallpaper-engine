@@ -151,9 +151,9 @@ void AppendVideoDeviceExtensions(Vec<Extension>& device_exts) {
 #endif
 }
 
-void ReleaseCompletedRetiredResources(Device& device, RenderingResources& rr) {
+void ReleaseCompletedRetiredResources(const Device& device, RenderingResources& rr) {
     auto memory = rstd::dyn<owe::vulkan::MemoryBudgetSource>::from_ref(device);
-    rr.resources.Collect(memory.as_mut_ref());
+    rr.resources.Collect(memory.as_ref());
 }
 
 struct VulkanRender::Impl {
@@ -164,46 +164,32 @@ struct VulkanRender::Impl {
     void destroy();
 
     void drawFrame(Scene&);
+    auto preparationReady() -> Result<empty, RenderPrepareError>;
 
     bool CreateRenderingResource(RenderingResources&);
     void DestroyRenderingResource(RenderingResources&);
 
     void clearLastRenderGraph(RenderGraphResourceRetention);
     void configureRenderTargets(Scene&);
-    void compileRenderGraph(Scene&, rg::RenderGraph&);
-    void compileRenderGraph(Scene&, rg::RenderGraph&, const RenderSceneSnapshot&);
-    void compileRenderGraph(Scene&, rg::RenderGraph&, const RenderSceneSnapshot&,
-                            SceneLoadBenchRecorderView);
-    void refreshPreparedResources(Scene&);
-    void refreshPreparedResources(Scene&, const RenderSceneSnapshot&);
-    void refreshPreparedResources(Scene&, const RenderSceneSnapshot&,
-                                  resource::ResourcePlanSections);
-    void refreshPreparedTextures(Scene&, const RenderSceneSnapshot&);
+    auto compileRenderGraph(Scene&, rg::RenderGraph&, const RenderSceneSnapshot&,
+                            SceneLoadBenchRecorderView) -> Result<empty, RenderPrepareError>;
     void invalidatePreparedRenderItems(slice<owe::RenderItemId>, PassInvalidationFlags);
-    void refreshPreparedRenderItems(Scene&, const RenderSceneSnapshot&, slice<owe::RenderItemId>,
-                                    PassInvalidationFlags);
-    void refreshPreparedMaterial(Scene&, const RenderSceneSnapshot&, owe::SceneMaterialId,
-                                 PassInvalidationFlags);
-    bool refreshPreparedMaterialTextures(Scene&, const RenderSceneSnapshot&, owe::SceneMaterialId);
-    bool refreshPreparedMaterialTextures(Scene&, const RenderSceneSnapshot&,
-                                         slice<owe::SceneMaterialId>);
-    void refreshPreparedMesh(Scene&, const RenderSceneSnapshot&, owe::SceneMeshId,
-                             PassInvalidationFlags);
     Vec<PreparedPassDiagnostic> preparedPassDiagnostics() const;
     void                        UpdateCameraFillMode(Scene&, owe::FillMode);
 
     bool          initRes();
     Option<usize> acquireUploadCommandSlot(RenderingResources&);
     bool          commitPreparedUploads(SceneLoadBenchRecorderView load_bench = {});
-    bool          prepareProgram(Scene&, const RenderSceneSnapshot&, resource::ResourcePlanSections,
-                                 SceneLoadBenchRecorderView = {});
-    bool          waitForPreparedUploads(RenderingResources&);
-    void          drawFrameSwapchain(Scene&);
-    void          drawFrameOffscreen(Scene&);
-    bool          onSwapchainReady(unsigned width, unsigned height);
+    auto prepareProgram(Scene&, const RenderSceneSnapshot&, resource::ResourcePlanSections,
+                        SceneLoadBenchRecorderView = {}) -> Result<empty, RenderPrepareError>;
+    bool waitForPreparedUploads(RenderingResources&);
+    void drawFrameSwapchain(Scene&);
+    void drawFrameOffscreen(Scene&);
+    bool onSwapchainReady(unsigned width, unsigned height);
 
     Instance     m_instance;
     Box<Device>  m_device { Box<Device>::make() };
+    VkExtent2D   m_extent {};
     Box<PrePass> m_prepass { Box<PrePass>::make(PrePass::Desc {}) };
     Box<FinPass> m_finpass { Box<FinPass>::make(FinPass::Desc {}) };
     ReDrawCB     m_redraw_cb;
@@ -236,7 +222,7 @@ struct VulkanRender::Impl {
 };
 
 VulkanRender::VulkanRender(): pImpl(Box<Impl>::make()) {}
-VulkanRender::~VulkanRender() {};
+VulkanRender::~VulkanRender() = default;
 
 bool VulkanRender::inited() const { return pImpl->m_inited; }
 
@@ -306,15 +292,22 @@ void VulkanRender::deviceUuid(rstd::uint8_t out[16]) const {
     memcpy(out, id.deviceUUID, rstd::usize(16));
 }
 
-void VulkanRender::pumpVideoTextures(double dt_seconds) {
-    if (! pImpl->m_inited) return;
+void VulkanRender::pumpVideoTextures(double dt_seconds) { (void)tryPumpVideoTextures(dt_seconds); }
+
+auto VulkanRender::tryPumpVideoTextures(double dt_seconds) -> Result<empty, RenderPrepareError> {
+    auto ready = pImpl->preparationReady();
+    if (ready.is_err()) return ready;
     pImpl->m_rendering_resources.resources.PumpVideoTextures(dt_seconds);
+    return Ok(empty {});
 }
 
-void VulkanRender::pumpFontAtlases(Scene& scene) {
-    if (! pImpl->m_inited) return;
+void VulkanRender::pumpFontAtlases(Scene& scene) { (void)tryPumpFontAtlases(scene); }
+
+auto VulkanRender::tryPumpFontAtlases(Scene& scene) -> Result<empty, RenderPrepareError> {
+    auto ready = pImpl->preparationReady();
+    if (ready.is_err()) return ready;
     auto* fc = owe::text::SceneFontCache(scene);
-    if (fc == nullptr) return;
+    if (fc == nullptr) return Ok(empty {});
     for (auto* face : fc->Faces()) {
         if (face == nullptr) continue;
         auto rects = face->DirtyRects();
@@ -336,7 +329,7 @@ void VulkanRender::pumpFontAtlases(Scene& scene) {
         }
         const auto fm     = face->Metrics();
         const auto pixels = face->AtlasPixels();
-        const bool uploaded =
+        const auto uploaded =
             pImpl->m_rendering_resources.resources.UploadFontAtlasRegion(face->AtlasUrl(),
                                                                          pixels.as_raw_ptr(),
                                                                          fm.atlas_w,
@@ -344,8 +337,17 @@ void VulkanRender::pumpFontAtlases(Scene& scene) {
                                                                          min_y,
                                                                          max_x - min_x,
                                                                          max_y - min_y);
-        if (uploaded) face->ClearDirtyRects();
+        if (uploaded == resource_registry::FontAtlasUploadStatus::NotResident) {
+            // Hidden text can update its CPU atlas before a draw makes it resident.
+            continue;
+        }
+        if (uploaded == resource_registry::FontAtlasUploadStatus::Failed) {
+            rstd_error("font atlas upload failed: {}", face->AtlasUrl());
+            return Err(RenderPrepareError { RenderPrepareStage::FontUpload });
+        }
+        face->ClearDirtyRects();
     }
+    return Ok(empty {});
 }
 
 void VulkanRender::driverUuid(rstd::uint8_t out[16]) const {
@@ -366,57 +368,114 @@ bool VulkanRender::init(RenderInitInfo info, SceneLoadBenchRecorderView load_ben
 void VulkanRender::destroy() { pImpl->destroy(); }
 void VulkanRender::drawFrame(Scene& scene) { pImpl->drawFrame(scene); };
 void VulkanRender::clearLastRenderGraph(RenderGraphResourceRetention retention) {
+    (void)tryClearLastRenderGraph(retention);
+}
+
+auto VulkanRender::Impl::preparationReady() -> Result<empty, RenderPrepareError> {
+    if (! m_inited) return Err(RenderPrepareError { RenderPrepareStage::State });
+    if (! waitForPreparedUploads(m_rendering_resources))
+        return Err(RenderPrepareError { RenderPrepareStage::Upload });
+    return Ok(empty {});
+}
+
+auto VulkanRender::tryClearLastRenderGraph(RenderGraphResourceRetention retention)
+    -> Result<empty, RenderPrepareError> {
+    auto ready = pImpl->preparationReady();
+    if (ready.is_err()) return ready;
     pImpl->clearLastRenderGraph(retention);
-};
+    return Ok(empty {});
+}
+
+auto VulkanRender::tryCompileRenderGraph(Scene& scene, rg::RenderGraph& graph,
+                                         const RenderSceneSnapshot& snapshot,
+                                         SceneLoadBenchRecorderView bench)
+    -> Result<empty, RenderPrepareError> {
+    auto ready = pImpl->preparationReady();
+    if (ready.is_err()) return ready;
+    return pImpl->compileRenderGraph(scene, graph, snapshot, bench);
+}
+
+auto VulkanRender::tryPrepareResources(Scene& scene, const RenderSceneSnapshot& snapshot,
+                                       const ResourcePreparation& changes)
+    -> Result<empty, RenderPrepareError> {
+    auto ready = pImpl->preparationReady();
+    if (ready.is_err()) return ready;
+    if (pImpl->m_program.pass_records.is_empty())
+        return Err(RenderPrepareError { RenderPrepareStage::State });
+    for (const auto& change : changes.items) {
+        array<RenderItemId, 1> items { change.item };
+        pImpl->invalidatePreparedRenderItems(items.as_slice(), change.flags);
+    }
+    if (! changes.texture_materials.is_empty()) {
+        auto items = RenderItemsForMaterials(snapshot, changes.texture_materials);
+        if (pImpl->m_program.refreshMaterialTextureBindings(snapshot, items.as_slice())) {
+            pImpl->m_program.loaded = false;
+            return Err(RenderPrepareError { RenderPrepareStage::RebuildRequired });
+        }
+    }
+    pImpl->configureRenderTargets(scene);
+    pImpl->m_program.finalizeFramePassRequests(scene);
+    pImpl->m_program.finalizeResourceRequests(scene);
+    return pImpl->prepareProgram(scene,
+                                 snapshot,
+                                 changes.textures_only ? resource::ResourcePlanTextures
+                                                       : resource::ResourcePlanAll);
+}
 void VulkanRender::configureRenderTargets(Scene& scene) { pImpl->configureRenderTargets(scene); }
 void VulkanRender::compileRenderGraph(Scene& scene, rg::RenderGraph& rg) {
-    pImpl->compileRenderGraph(scene, rg);
+    auto snapshot = ExtractRenderSceneSnapshot(scene);
+    (void)tryCompileRenderGraph(scene, rg, snapshot);
 }
 void VulkanRender::compileRenderGraph(Scene& scene, rg::RenderGraph& rg,
-                                      const RenderSceneSnapshot& render_scene) {
-    pImpl->compileRenderGraph(scene, rg, render_scene);
+                                      const RenderSceneSnapshot& snapshot) {
+    (void)tryCompileRenderGraph(scene, rg, snapshot);
 }
 void VulkanRender::compileRenderGraph(Scene& scene, rg::RenderGraph& rg,
-                                      const RenderSceneSnapshot& render_scene,
-                                      SceneLoadBenchRecorderView load_bench) {
-    pImpl->compileRenderGraph(scene, rg, render_scene, load_bench);
+                                      const RenderSceneSnapshot& snapshot,
+                                      SceneLoadBenchRecorderView bench) {
+    (void)tryCompileRenderGraph(scene, rg, snapshot, bench);
 }
 void VulkanRender::refreshPreparedResources(Scene& scene) {
-    pImpl->refreshPreparedResources(scene);
+    auto snapshot = ExtractRenderSceneSnapshot(scene);
+    refreshPreparedResources(scene, snapshot);
 }
-void VulkanRender::refreshPreparedResources(Scene& scene, const RenderSceneSnapshot& render_scene) {
-    pImpl->refreshPreparedResources(scene, render_scene);
+void VulkanRender::refreshPreparedResources(Scene& scene, const RenderSceneSnapshot& snapshot) {
+    (void)tryPrepareResources(scene, snapshot, {});
 }
-void VulkanRender::refreshPreparedTextures(Scene& scene, const RenderSceneSnapshot& render_scene) {
-    pImpl->refreshPreparedTextures(scene, render_scene);
+void VulkanRender::refreshPreparedTextures(Scene& scene, const RenderSceneSnapshot& snapshot) {
+    (void)tryPrepareResources(scene, snapshot, { .textures_only = true });
 }
-void VulkanRender::invalidatePreparedRenderItems(slice<owe::RenderItemId> render_items,
+void VulkanRender::invalidatePreparedRenderItems(slice<owe::RenderItemId> items,
                                                  PassInvalidationFlags    flags) {
-    pImpl->invalidatePreparedRenderItems(render_items, flags);
+    if (pImpl->preparationReady().is_err()) return;
+    pImpl->invalidatePreparedRenderItems(items, flags);
 }
-void VulkanRender::refreshPreparedRenderItems(Scene& scene, const RenderSceneSnapshot& render_scene,
-                                              slice<owe::RenderItemId> render_items,
+void VulkanRender::refreshPreparedRenderItems(Scene& scene, const RenderSceneSnapshot& snapshot,
+                                              slice<owe::RenderItemId> items,
                                               PassInvalidationFlags    flags) {
-    pImpl->refreshPreparedRenderItems(scene, render_scene, render_items, flags);
+    Vec<RenderItemPreparation> changes;
+    for (auto item : items) changes.push({ item, flags });
+    (void)tryPrepareResources(scene, snapshot, { .items = changes.as_slice() });
 }
-void VulkanRender::refreshPreparedMaterial(Scene& scene, const RenderSceneSnapshot& render_scene,
+void VulkanRender::refreshPreparedMaterial(Scene& scene, const RenderSceneSnapshot& snapshot,
                                            owe::SceneMaterialId  material,
                                            PassInvalidationFlags flags) {
-    pImpl->refreshPreparedMaterial(scene, render_scene, material, flags);
+    refreshPreparedRenderItems(scene, snapshot, snapshot.renderItemsFor(material), flags);
 }
 bool VulkanRender::refreshPreparedMaterialTextures(Scene&                     scene,
-                                                   const RenderSceneSnapshot& render_scene,
+                                                   const RenderSceneSnapshot& snapshot,
                                                    owe::SceneMaterialId       material) {
-    return pImpl->refreshPreparedMaterialTextures(scene, render_scene, material);
+    array<owe::SceneMaterialId, 1> materials { material };
+    return refreshPreparedMaterialTextures(scene, snapshot, materials.as_slice());
 }
 bool VulkanRender::refreshPreparedMaterialTextures(Scene&                      scene,
-                                                   const RenderSceneSnapshot&  render_scene,
+                                                   const RenderSceneSnapshot&  snapshot,
                                                    slice<owe::SceneMaterialId> materials) {
-    return pImpl->refreshPreparedMaterialTextures(scene, render_scene, materials);
+    return tryPrepareResources(scene, snapshot, { .texture_materials = materials }).is_ok();
 }
-void VulkanRender::refreshPreparedMesh(Scene& scene, const RenderSceneSnapshot& render_scene,
+void VulkanRender::refreshPreparedMesh(Scene& scene, const RenderSceneSnapshot& snapshot,
                                        owe::SceneMeshId mesh, PassInvalidationFlags flags) {
-    pImpl->refreshPreparedMesh(scene, render_scene, mesh, flags);
+    refreshPreparedRenderItems(scene, snapshot, snapshot.renderItemsFor(mesh), flags);
 }
 Vec<PreparedPassDiagnostic> VulkanRender::preparedPassDiagnostics() const {
     return pImpl->preparedPassDiagnostics();
@@ -441,6 +500,7 @@ bool VulkanRender::Impl::init(RenderInitInfo info, SceneLoadBenchRecorderView lo
 
     m_redraw_cb = rstd::move(info.redraw_callback);
     VkExtent2D extent { info.width, info.height };
+    m_extent = extent;
     if (extent.width * extent.height < 500 * 500) {
         rstd_error("too small swapchain image size: {}x{}", extent.width, extent.height);
     } else {
@@ -526,6 +586,7 @@ bool VulkanRender::Impl::init(RenderInitInfo info, SceneLoadBenchRecorderView lo
             rstd_error("init vulkan device failed");
             return false;
         }
+        m_extent = m_device->out_extent();
         if (! m_rendering_resources.resources.Initialize(*m_device)) {
             rstd_error("resource registry init failed");
             return false;
@@ -801,9 +862,7 @@ void VulkanRender::Impl::drawFrameSwapchain(Scene& scene) {
     // Failed preparation must not consume a swapchain image or signal its acquire semaphore.
     if (! waitForPreparedUploads(rr)) return;
     auto texture_frames = rstd::dyn<SceneTextureAnimationView>::from_ref(scene);
-    if (! m_program.update(
-            scene.Runtime().Frame(), m_device->out_extent(), texture_frames.as_ref(), rr))
-        return;
+    if (! m_program.update(scene.Runtime().Frame(), m_extent, texture_frames.as_ref(), rr)) return;
     resource_index             = (resource_index + 1) % 3;
     rstd::uint32_t image_index = 0;
     {
@@ -962,9 +1021,7 @@ void VulkanRender::Impl::drawFrameOffscreen(Scene& scene) {
     }
     if (! waitForPreparedUploads(rr)) return;
     auto texture_frames = rstd::dyn<SceneTextureAnimationView>::from_ref(scene);
-    if (! m_program.update(
-            scene.Runtime().Frame(), m_device->out_extent(), texture_frames.as_ref(), rr))
-        return;
+    if (! m_program.update(scene.Runtime().Frame(), m_extent, texture_frames.as_ref(), rr)) return;
 
     (void)rr.command.Begin(VkCommandBufferBeginInfo {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -1078,7 +1135,7 @@ void VulkanRender::Impl::drawFrameOffscreen(Scene& scene) {
 
 bool VulkanRender::Impl::onSwapchainReady(unsigned width, unsigned height) {
     if (! m_inited) return false;
-    auto& cur            = m_device->out_extent();
+    auto& cur            = m_extent;
     bool  extent_changed = (width != cur.width) || (height != cur.height);
     if (! extent_changed) {
         // Format-only changes flow through ExSwapchain::format() and
@@ -1086,14 +1143,14 @@ bool VulkanRender::Impl::onSwapchainReady(unsigned width, unsigned height) {
         return false;
     }
     if (! waitForPreparedUploads(m_rendering_resources)) return false;
-    m_device->set_out_extent(VkExtent2D { width, height });
+    m_extent = VkExtent2D { width, height };
     return true;
 }
 
 void VulkanRender::Impl::UpdateCameraFillMode(owe::Scene& scene, owe::FillMode fillmode) {
     using namespace owe;
-    auto width  = m_device->out_extent().width;
-    auto height = m_device->out_extent().height;
+    auto width  = m_extent.width;
+    auto height = m_extent.height;
 
     if (width == 0) return;
     auto   projection_extent = scene.OrthographicProjectionExtent();
@@ -1168,23 +1225,13 @@ void VulkanRender::Impl::configureRenderTargets(Scene& scene) {
         rstd::cmp::min(limits.maxFramebufferWidth, limits.maxImageDimension2D),
         rstd::cmp::min(limits.maxFramebufferHeight, limits.maxImageDimension2D),
     };
-    m_program.finalizeRenderTargetSizes(
-        scene, m_device->out_extent(), max_framebuffer_extent, m_msaa_samples);
+    m_program.finalizeRenderTargetSizes(scene, m_extent, max_framebuffer_extent, m_msaa_samples);
 }
 
-void VulkanRender::Impl::compileRenderGraph(Scene& scene, rg::RenderGraph& rg) {
-    auto render_scene = ExtractRenderSceneSnapshot(scene);
-    compileRenderGraph(scene, rg, render_scene);
-}
-
-void VulkanRender::Impl::compileRenderGraph(Scene& scene, rg::RenderGraph& rg,
-                                            const RenderSceneSnapshot& render_scene) {
-    compileRenderGraph(scene, rg, render_scene, {});
-}
-
-bool VulkanRender::Impl::prepareProgram(Scene& scene, const RenderSceneSnapshot& render_scene,
+auto VulkanRender::Impl::prepareProgram(Scene& scene, const RenderSceneSnapshot& render_scene,
                                         resource::ResourcePlanSections sections,
-                                        SceneLoadBenchRecorderView     load_bench) {
+                                        SceneLoadBenchRecorderView     load_bench)
+    -> Result<empty, RenderPrepareError> {
     // Prepared refresh replaces binding owners before recreating equivalent bindings.
     [[maybe_unused]] auto audio_demand_reconciliation =
         scene.AudioDemandMut()->BeginReconciliation();
@@ -1193,13 +1240,13 @@ bool VulkanRender::Impl::prepareProgram(Scene& scene, const RenderSceneSnapshot&
     while (status == RenderProgramPrepareStatus::BatchReady) {
         if (! commitPreparedUploads(load_bench)) {
             m_program.abortPrepare(m_rendering_resources);
-            return false;
+            return Err(RenderPrepareError { RenderPrepareStage::Upload });
         }
         status = m_program.continuePrepare(scene, *m_device, m_rendering_resources, load_bench);
     }
     if (status == RenderProgramPrepareStatus::Failed) {
         m_program.abortPrepare(m_rendering_resources);
-        return false;
+        return Err(RenderPrepareError { RenderPrepareStage::Program });
     }
 
     {
@@ -1208,17 +1255,18 @@ bool VulkanRender::Impl::prepareProgram(Scene& scene, const RenderSceneSnapshot&
     }
     if (! commitPreparedUploads(load_bench)) {
         m_program.abortPrepare(m_rendering_resources);
-        return false;
+        return Err(RenderPrepareError { RenderPrepareStage::Upload });
     }
     m_rendering_resources.resources.CommitPreparePlan();
     m_program.loaded = true;
-    return true;
+    return Ok(empty {});
 }
 
-void VulkanRender::Impl::compileRenderGraph(Scene& scene, rg::RenderGraph& rg,
+auto VulkanRender::Impl::compileRenderGraph(Scene& scene, rg::RenderGraph& rg,
                                             const RenderSceneSnapshot& render_scene,
-                                            SceneLoadBenchRecorderView load_bench) {
-    if (! m_inited) return;
+                                            SceneLoadBenchRecorderView load_bench)
+    -> Result<empty, RenderPrepareError> {
+    if (! m_inited) return Err(RenderPrepareError { RenderPrepareStage::State });
     m_pending_load_bench = load_bench;
     auto compile_span    = SceneLoadSpan(load_bench, &SceneLoadProbeIds::render_graph_compile);
     m_program.loaded     = false;
@@ -1227,7 +1275,7 @@ void VulkanRender::Impl::compileRenderGraph(Scene& scene, rg::RenderGraph& rg,
         auto program_span = SceneLoadSpan(load_bench, &SceneLoadProbeIds::render_program_build);
         if (! m_program.buildFromGraph(rg)) {
             rstd_error("compile render graph failed: dependency cycle");
-            return;
+            return Err(RenderPrepareError { RenderPrepareStage::Graph });
         }
         m_program.injectFramePasses(*m_prepass, *m_finpass);
     }
@@ -1238,78 +1286,13 @@ void VulkanRender::Impl::compileRenderGraph(Scene& scene, rg::RenderGraph& rg,
         m_program.finalizeFramePassRequests(scene);
         m_program.finalizeResourceRequests(scene);
     }
-    (void)prepareProgram(scene, render_scene, resource::ResourcePlanAll, load_bench);
+    return prepareProgram(scene, render_scene, resource::ResourcePlanAll, load_bench);
 };
-
-void VulkanRender::Impl::refreshPreparedResources(Scene& scene) {
-    auto render_scene = ExtractRenderSceneSnapshot(scene);
-    refreshPreparedResources(scene, render_scene);
-}
-
-void VulkanRender::Impl::refreshPreparedResources(Scene&                     scene,
-                                                  const RenderSceneSnapshot& render_scene) {
-    refreshPreparedResources(scene, render_scene, resource::ResourcePlanAll);
-}
-
-void VulkanRender::Impl::refreshPreparedTextures(Scene&                     scene,
-                                                 const RenderSceneSnapshot& render_scene) {
-    refreshPreparedResources(scene, render_scene, resource::ResourcePlanTextures);
-}
-
-void VulkanRender::Impl::refreshPreparedResources(Scene&                         scene,
-                                                  const RenderSceneSnapshot&     render_scene,
-                                                  resource::ResourcePlanSections sections) {
-    if (! m_inited || m_program.pass_records.is_empty()) return;
-
-    configureRenderTargets(scene);
-    m_program.finalizeFramePassRequests(scene);
-    m_program.finalizeResourceRequests(scene);
-    (void)prepareProgram(scene, render_scene, sections);
-}
 
 void VulkanRender::Impl::invalidatePreparedRenderItems(slice<owe::RenderItemId> render_items,
                                                        PassInvalidationFlags    flags) {
     if (! m_inited) return;
     m_program.invalidateRenderItems(render_items, flags);
-}
-
-void VulkanRender::Impl::refreshPreparedRenderItems(Scene&                     scene,
-                                                    const RenderSceneSnapshot& render_scene,
-                                                    slice<owe::RenderItemId>   render_items,
-                                                    PassInvalidationFlags      flags) {
-    invalidatePreparedRenderItems(render_items, flags);
-    refreshPreparedResources(scene, render_scene);
-}
-
-void VulkanRender::Impl::refreshPreparedMaterial(Scene&                     scene,
-                                                 const RenderSceneSnapshot& render_scene,
-                                                 owe::SceneMaterialId       material,
-                                                 PassInvalidationFlags      flags) {
-    refreshPreparedRenderItems(scene, render_scene, render_scene.renderItemsFor(material), flags);
-}
-
-bool VulkanRender::Impl::refreshPreparedMaterialTextures(Scene&                     scene,
-                                                         const RenderSceneSnapshot& render_scene,
-                                                         owe::SceneMaterialId       material) {
-    rstd::array<owe::SceneMaterialId, 1> materials { material };
-    return refreshPreparedMaterialTextures(scene, render_scene, materials.as_slice());
-}
-
-bool VulkanRender::Impl::refreshPreparedMaterialTextures(Scene&                      scene,
-                                                         const RenderSceneSnapshot&  render_scene,
-                                                         slice<owe::SceneMaterialId> materials) {
-    if (! m_inited || m_program.pass_records.is_empty()) return true;
-    auto render_items = RenderItemsForMaterials(render_scene, materials);
-    bool requires_graph_rebuild =
-        m_program.refreshMaterialTextureBindings(render_scene, render_items.as_slice());
-    if (requires_graph_rebuild) return false;
-    refreshPreparedResources(scene, render_scene);
-    return true;
-}
-
-void VulkanRender::Impl::refreshPreparedMesh(Scene& scene, const RenderSceneSnapshot& render_scene,
-                                             owe::SceneMeshId mesh, PassInvalidationFlags flags) {
-    refreshPreparedRenderItems(scene, render_scene, render_scene.renderItemsFor(mesh), flags);
 }
 
 Vec<PreparedPassDiagnostic> VulkanRender::Impl::preparedPassDiagnostics() const {
