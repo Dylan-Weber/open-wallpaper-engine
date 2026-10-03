@@ -261,11 +261,12 @@ public:
     // scripts attached to `visible`).
     using TextSetter      = Arc<dyn<FnMut<void(ref<str>)>>>;
     using PointSizeGetter = Arc<dyn<FnMut<double()>>>;
-    using PointSizeSetter = Arc<dyn<FnMut<void(double)>>>;
+    using PointSizeSetter = Arc<dyn<FnMut<bool(double)>>>;
+    using TextAlignSetter = Arc<dyn<FnMut<bool(ref<str>)>>>;
     void RegisterTextSetter(owe::SceneNode* node, TextSetter setter);
     void RegisterTextAlignSetters(owe::SceneNode* node, String horizontal, String vertical,
-                                  double point_size, TextSetter set_horizontal,
-                                  TextSetter              set_vertical,
+                                  double point_size, TextAlignSetter set_horizontal,
+                                  TextAlignSetter         set_vertical,
                                   Option<PointSizeGetter> get_point_size = {},
                                   Option<PointSizeSetter> set_point_size = {});
     using NodeOriginGetter = Arc<dyn<FnMut<Vec3Value()>>>;

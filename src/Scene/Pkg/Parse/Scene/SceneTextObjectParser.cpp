@@ -144,21 +144,6 @@ struct TextRuntimeTargets {
     }
 };
 
-bool EnsureTextAtlas(Scene& scene, text::FontFace& face) {
-    auto atlas_url = face.AtlasUrl();
-    if (scene.Texture(atlas_url).is_some()) return true;
-    auto atlas_image = text::BuildAtlasImage(face, atlas_url);
-    if (atlas_image.is_none()) return false;
-    auto         image = rstd::move(atlas_image).unwrap_unchecked();
-    SceneTexture stex;
-    stex.url    = rstd::into(atlas_url);
-    stex.sample = image->header.sample;
-    scene.RegisterTexture(String::make(atlas_url), rstd::move(stex));
-    scene.RegisterRuntimeImage(String::make(atlas_url), rstd::move(image));
-    face.ClearDirtyRects();
-    return true;
-}
-
 auto UserPropertyValue(Option<ref<rstd::json::Map>> user_props, ref<str> key) -> Option<ref<Json>> {
     if (key->is_empty()) return None();
     auto        props   = rstd_try(user_props);
@@ -256,8 +241,7 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
         return;
     }
 
-    // --- font resolution: VFS first (WE shared /assets + pkg overlay),
-    //     then host system font dirs.
+    // Package font references belong to the scene VFS.
     String font_name;
     if (obj.font.is_string()) {
         font_name = String::make(*obj.font.as_str());
@@ -268,7 +252,8 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
         }
     }
 
-    text::FontCache::ResolvedBlob resolved;
+    auto           resources = text::EnsureSceneTextResources(*context.scene);
+    text::TextFont font;
     // `systemfont_<family>` is WE's alias for a host system font — never exists
     // in the pkg, so skip the VFS round-trip and let fontconfig resolve it.
     // Some scenes write it with a leading dir (e.g. `fonts/systemfont_arial`),
@@ -289,46 +274,29 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
             font_source_key = vfs_path.clone();
             auto key        = font_source_key.as_str();
             if (auto cached = context.font_sources.get(key); cached.is_some()) {
-                resolved = (**cached).clone();
+                font.source = Some(vectext::FontSource(**cached));
             } else {
                 auto blob = fs::ReadFileBytes(*context.vfs, fs::Path(vfs_path));
                 if (blob.is_ok() && ! blob->is_empty()) {
-                    resolved.bytes  = Some(Arc<Vec<u8>>::make(rstd::move(blob).unwrap_unchecked()));
-                    resolved.source = vfs_path.clone();
+                    auto registered = resources->RegisterFont(blob->as_slice());
+                    if (registered.is_err()) {
+                        rstd_error("text '{}': font registration failed", obj.name);
+                        return;
+                    }
+                    font.source = Some(registered.unwrap());
+                    (void)context.font_sources.insert(vfs_path.clone(), registered.unwrap());
                 }
             }
         }
     }
-    if (! resolved.bytes) {
-        font_source_key = rstd::format("system:{}", font_name);
-        auto key        = font_source_key.as_str();
-        if (auto cached = context.font_sources.get(key); cached.is_some()) {
-            resolved = (**cached).clone();
-        } else {
-            resolved = text::FontCache::ResolveSystemFont(font_name,
-                                                          /*fallback_to_any=*/true);
-        }
-    }
-    if (! resolved.bytes) {
-        rstd_error("text '{}': could not resolve font '{}'", obj.name, font_name);
-        return;
-    }
-
-    if (font_source_key.is_empty()) font_source_key = String::make(resolved.source.as_str());
-    auto source_key = font_source_key.as_str();
-    if (! context.font_sources.contains_key(source_key)) {
-        (void)context.font_sources.insert(String::make(source_key), resolved.clone());
-    }
-    const auto& font_source = **context.font_sources.get(source_key);
-
-    rstd::uint32_t px = TextPointSizeToPx(obj.pointsize);
-
-    auto& font_cache = text::EnsureSceneFontCache(*context.scene);
-    auto* face       = font_cache.GetFace(font_source, px);
-    if (face == nullptr) {
-        rstd_error("text '{}': FreeType failed to open '{}'", obj.name, resolved.source);
-        return;
-    }
+    if (is_systemfont) {
+        auto file = fs::Path(font_name.as_str()).file_name();
+        font.family =
+            String::make(file->to_str().unwrap().strip_prefix("systemfont_"_str).unwrap());
+    } else
+        font.family = font_name.clone();
+    auto px   = TextPointSizeToPx(obj.pointsize);
+    font.size = px;
 
     auto shader = text::GetTextSceneShader();
     if (! shader) {
@@ -342,79 +310,21 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
         return;
     }
 
-    // Populate the seed text's glyphs up front so the first SetText has the
-    // initial layout's bbox. Runtime SetText calls (from the script actuator)
-    // do their own Populate of the latest string each tick.
-    {
-        auto seed = text::DecodeUtf8(s_text.as_str().as_bytes());
-        face->Populate(seed.as_slice());
-    }
-
-    // --- atlas-texture registration. We snapshot the per-face CPU atlas
-    // (seed glyphs + the white cell) and register it with the Scene.
-    // TextureCache::CreateTex will pick this up on first material bind.
-    // Subsequent glyph adds emit dirty rects which the renderer re-uploads
-    // each frame via TextureCache::PumpFontAtlases.
-    auto atlas_url = face->AtlasUrl();
-    if (! EnsureTextAtlas(*context.scene, *face)) {
-        rstd_error("text '{}': atlas snapshot failed", obj.name);
-        return;
-    }
-
-    // --- mesh capacity. Static text exactly fits its initial layout;
-    //     dynamic text reserves headroom so SetText can grow
-    //     the string at runtime without reallocating GPU buffers.
-    rstd::size_t initial_codepoints =
-        text::DecodeUtf8(s_text.as_str().as_bytes()).len().to_primitive();
-    bool         has_bg = obj.opaquebackground;
-    rstd::size_t peak_quads;
-    if (wants_dynamic_text) {
-        // The glyph mesh renders into the layer RT (sized below to the same
-        // ceiling), so the only quads that can ever be visible are those that
-        // fit the RT grid. Budget to that cap — terminal/log scripts (e.g.
-        // 2268178377) append unbounded text but the layouter clips everything
-        // past the RT anyway. Conservative narrow-glyph advance avoids
-        // undercounting columns for tight fonts.
-        const auto& fm  = face->Metrics();
-        const float adv = rstd::cmp::max(static_cast<float>(fm.pixel_size) * 0.25f, 1.0f);
-        const float lh = fm.line_height > 1.0f ? fm.line_height : static_cast<float>(fm.pixel_size);
-        const float obj_w       = obj.size[usize(0)] > 0.0f ? obj.size[usize(0)] : 1024.0f;
-        const float obj_h       = obj.size[usize(1)] > 0.0f ? obj.size[usize(1)] : 256.0f;
-        const float rt_w        = rstd::cmp::max(obj_w * 3.0f, 1024.0f);
-        const float rt_h        = rstd::cmp::max(obj_h * 2.0f, 256.0f);
-        const rstd::size_t cols = static_cast<rstd::size_t>(f32(rt_w / adv).ceil().to_primitive());
-        const rstd::size_t rows =
-            static_cast<rstd::size_t>(f32(rt_h / rstd::cmp::max(lh, 1.0f)).ceil().to_primitive());
-        const rstd::size_t rt_cap =
-            rstd::cmp::min<rstd::size_t>(16384, rstd::cmp::max<rstd::size_t>(64, cols * rows));
-        peak_quads = rstd::cmp::max<rstd::size_t>(rt_cap, initial_codepoints * 4);
-        if (has_bg) ++peak_quads;
-    } else {
-        peak_quads = initial_codepoints + (has_bg ? 1u : 0u);
-        if (peak_quads == 0) return;
-    }
-
+    const bool has_bg                      = obj.opaquebackground;
     const bool supports_runtime_text_write = wants_dynamic_text || context.scene_has_scripts;
-    auto       sp_mesh = Arc<SceneMesh>::make(/*dynamic=*/supports_runtime_text_write);
-    {
-        SceneVertexArray vertex(MakeAttrSet({ VAttr::Position, VAttr::TexCoord, VAttr::Color }),
-                                usize(peak_quads * 4));
-        sp_mesh->AddVertexArray(rstd::move(vertex));
-        sp_mesh->AddIndexArray(SceneIndexArray(usize(peak_quads * 6)));
-    }
+    const rstd::size_t peak_quads          = 16384;
+    auto               sp_mesh             = Arc<SceneMesh>::make(supports_runtime_text_write);
     {
         SceneMaterial material;
-        material.name = "text"_Str;
-        material.textures.push(rstd::into(atlas_url));
+        material.name    = "text"_Str;
         material.defines = Vec<String>::make();
         material.defines.push("g_Texture0"_Str);
-        material.SetBlendMode(direct_text || copy_background_seed ? BlendMode::Translucent
-                                                                  : BlendMode::Normal);
+        material.SetBlendMode(direct_text || copy_background_seed || has_bg ? BlendMode::Translucent
+                                                                            : BlendMode::Normal);
         material.customShader.shader = shader.clone();
         sp_mesh->AddMaterial(rstd::move(material));
     }
 
-    // --- layouter owns the cache (FontFace lifetime) + mesh ref + style.
     text::TextLayoutStyle style;
     style.mesh_origin =
         direct_text ? text::TextMeshOrigin::Layout : text::TextMeshOrigin::InkBounds;
@@ -447,9 +357,16 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
 
     const float text_padding = style.padding;
     const float wrap_width   = style.wrap_width;
-    auto        layouter =
-        Arc<text::TextLayouter>::make(face, sp_mesh.clone(), rstd::move(style), peak_quads);
-    layouter->SetText(s_text);
+    auto        layouter     = Arc<text::TextLayouter>::make(resources.clone(),
+                                                             rstd::move(font),
+                                                             sp_mesh.clone(),
+                                                             rstd::move(style),
+                                                             peak_quads,
+                                                             context.scene.get());
+    if (layouter->SetText(s_text).is_err()) {
+        rstd_error("text '{}': initial layout failed", obj.name);
+        return;
+    }
     auto current_text       = Arc<String>::make(s_text.clone());
     auto current_point_size = Arc<double>::make(obj.pointsize);
 
@@ -996,42 +913,37 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
     update_text_layout->operator()(initial_metrics);
 
     auto set_halign =
-        Arc<dyn<Fn<void(ref<str>)>>>::make([layouter           = layouter.clone(),
+        Arc<dyn<Fn<bool(ref<str>)>>>::make([layouter           = layouter.clone(),
                                             update_text_layout = update_text_layout.clone(),
                                             anchor_state = anchor_state.clone()](ref<str> align) {
+            if (layouter->SetHorizontalAlign(align).is_err()) {
+                rstd_warn("text alignment update failed");
+                return false;
+            }
             anchor_state->horizontal = rstd::into(align);
-            layouter->SetHorizontalAlign(align);
             update_text_layout->operator()(layouter->Metrics());
+            return true;
         });
-    auto set_valign = Arc<dyn<Fn<void(ref<str>)>>>::make(
+    auto set_valign = Arc<dyn<Fn<bool(ref<str>)>>>::make(
         [anchor_state      = anchor_state.clone(),
          apply_text_anchor = apply_text_anchor.clone()](ref<str> align) {
             anchor_state->vertical = rstd::into(align);
             apply_text_anchor->operator()();
+            return true;
         });
     auto set_pointsize = script::JsRuntime::PointSizeSetter::make(
-        [scene              = context.scene.get(),
-         font_cache_ptr     = &font_cache,
-         font_source        = font_source.clone(),
-         layouter           = layouter.clone(),
+        [layouter           = layouter.clone(),
          update_text_layout = update_text_layout.clone(),
-         current_text       = current_text.clone(),
          current_point_size = current_point_size.clone()](double next_point_size) {
-            if (scene == nullptr || font_cache_ptr == nullptr ||
-                ! f64(next_point_size).is_finite() || next_point_size <= 0.0) {
-                return;
+            if (! f64(next_point_size).is_finite() || next_point_size <= 0) return false;
+            if (layouter->SetPixelSize(TextPointSizeToPx(static_cast<float>(next_point_size)))
+                    .is_err()) {
+                rstd_warn("text pointsize update failed");
+                return false;
             }
-            auto* next_face = font_cache_ptr->GetFace(
-                font_source, TextPointSizeToPx(static_cast<float>(next_point_size)));
-            if (next_face == nullptr) return;
-            next_face->Populate(text::DecodeUtf8(current_text->as_str().as_bytes()).as_slice());
-            if (! EnsureTextAtlas(*scene, *next_face)) return;
             *current_point_size = next_point_size;
-            if (auto* mat = layouter->Mesh().Material()) {
-                (void)scene->SetMaterialTextureSlot(*mat, u32(), next_face->AtlasUrl());
-            }
-            layouter->SetFace(next_face);
             update_text_layout->operator()(layouter->Metrics());
+            return true;
         });
 
     auto& script_runtime = EnsureScriptScene(context).runtime();
@@ -1040,11 +952,11 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
         rstd::into(anchor_state->horizontal.as_str()),
         rstd::into(anchor_state->vertical.as_str()),
         obj.pointsize,
-        script::JsRuntime::TextSetter::make([set_halign = set_halign.clone()](ref<str> value) {
-            set_halign->operator()(value);
+        script::JsRuntime::TextAlignSetter::make([set_halign = set_halign.clone()](ref<str> value) {
+            return set_halign->operator()(value);
         }),
-        script::JsRuntime::TextSetter::make([set_valign = set_valign.clone()](ref<str> value) {
-            set_valign->operator()(value);
+        script::JsRuntime::TextAlignSetter::make([set_valign = set_valign.clone()](ref<str> value) {
+            return set_valign->operator()(value);
         }),
         Some(script::JsRuntime::PointSizeGetter::make(
             [current_point_size = current_point_size.clone()]() {
@@ -1062,10 +974,11 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
                                             update_text_layout = update_text_layout.clone(),
                                             current_text       = current_text.clone()](ref<str> s) {
             if (s == current_text->as_str()) return;
+            if (layouter->SetText(s).is_err()) {
+                rstd_warn("text update failed");
+                return;
+            }
             *current_text = rstd::into(s);
-            if (auto* active_face = layouter->Face())
-                active_face->Populate(text::DecodeUtf8(s.as_bytes()).as_slice());
-            layouter->SetText(s);
             update_text_layout->operator()(layouter->Metrics());
         });
     if (has_text_user) {
@@ -1159,7 +1072,7 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
               static_cast<int>(text_w),
               static_cast<int>(text_h),
               scripted_tag,
-              resolved.source);
+              font_name);
 }
 
 void ParseTextObj(SceneParseContext& context, wpscene::TextObject& text) {

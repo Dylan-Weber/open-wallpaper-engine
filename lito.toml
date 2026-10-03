@@ -47,6 +47,7 @@ vvk = { version = "0.1.0" }
 spirvto = { version = "0.1.0" }
 wavsen = { git = "https://github.com/hypengw/wavsen.git" }
 vrento = { git = "https://github.com/vecren/vrento.git" }
+vectext = { git = "https://github.com/vecren/vectext.git" }
 
 [workspace.external-dependencies.pkg-config.glfw]
 module = "glfw3"
@@ -65,12 +66,6 @@ module = "wayland-egl"
 
 [workspace.external-dependencies.pkg-config.lz4]
 module = "liblz4"
-
-[workspace.external-dependencies.pkg-config.fontconfig]
-module = "fontconfig"
-
-[workspace.external-dependencies.pkg-config.freetype]
-module = "freetype2"
 
 [workspace.external-dependencies.pkg-config.waywallen-bridge]
 module = "waywallen-bridge"
@@ -101,7 +96,7 @@ rev = "3c051980ab7e783dfbfb1c70c014ce5e05ecf24c"
 package = "qjs"
 source = "quickjs"
 config-directory = "lib/cmake/quickjs"
-cache = { BUILD_SHARED_LIBS = false, QJS_BUILD_EXAMPLES = false, QJS_BUILD_CLI_STATIC = false, QJS_BUILD_CLI_WITH_MIMALLOC = false, QJS_BUILD_CLI_WITH_STATIC_MIMALLOC = false, QJS_ENABLE_INSTALL = true }
+cache = { CMAKE_INSTALL_LIBDIR = "lib", BUILD_SHARED_LIBS = false, QJS_BUILD_EXAMPLES = false, QJS_BUILD_CLI_STATIC = false, QJS_BUILD_CLI_WITH_MIMALLOC = false, QJS_BUILD_CLI_WITH_STATIC_MIMALLOC = false, QJS_ENABLE_INSTALL = true }
 
 [workspace.external-sources.cef]
 [workspace.external-sources.cef.archives.x86_64]

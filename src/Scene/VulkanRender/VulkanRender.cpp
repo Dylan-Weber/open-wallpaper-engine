@@ -306,11 +306,10 @@ void VulkanRender::pumpFontAtlases(Scene& scene) { (void)tryPumpFontAtlases(scen
 auto VulkanRender::tryPumpFontAtlases(Scene& scene) -> Result<empty, RenderPrepareError> {
     auto ready = pImpl->preparationReady();
     if (ready.is_err()) return ready;
-    auto* fc = owe::text::SceneFontCache(scene);
-    if (fc == nullptr) return Ok(empty {});
-    for (auto* face : fc->Faces()) {
-        if (face == nullptr) continue;
-        auto rects = face->DirtyRects();
+    auto* fonts = owe::text::SceneTextResources(scene);
+    if (fonts == nullptr) return Ok(empty {});
+    for (auto& page : fonts->Pages()) {
+        auto rects = page->DirtyRects();
         if (rects.is_empty()) continue;
         // Coalesce all dirty rects into one AABB. Typical: ≤ a handful of
         // glyph slots per frame, so a single upload covering the union beats
@@ -327,12 +326,12 @@ auto VulkanRender::tryPumpFontAtlases(Scene& scene) -> Result<empty, RenderPrepa
             if (rx2 > max_x) max_x = rx2;
             if (ry2 > max_y) max_y = ry2;
         }
-        const auto fm     = face->Metrics();
-        const auto pixels = face->AtlasPixels();
+        const auto extent = page->Extent();
+        const auto pixels = page->AtlasPixels();
         const auto uploaded =
-            pImpl->m_rendering_resources.resources.UploadFontAtlasRegion(face->AtlasUrl(),
+            pImpl->m_rendering_resources.resources.UploadFontAtlasRegion(page->AtlasUrl(),
                                                                          pixels.as_raw_ptr(),
-                                                                         fm.atlas_w,
+                                                                         extent,
                                                                          min_x,
                                                                          min_y,
                                                                          max_x - min_x,
@@ -342,10 +341,10 @@ auto VulkanRender::tryPumpFontAtlases(Scene& scene) -> Result<empty, RenderPrepa
             continue;
         }
         if (uploaded == resource_registry::FontAtlasUploadStatus::Failed) {
-            rstd_error("font atlas upload failed: {}", face->AtlasUrl());
+            rstd_error("font atlas upload failed: {}", page->AtlasUrl());
             return Err(RenderPrepareError { RenderPrepareStage::FontUpload });
         }
-        face->ClearDirtyRects();
+        page->ClearDirtyRects();
     }
     return Ok(empty {});
 }

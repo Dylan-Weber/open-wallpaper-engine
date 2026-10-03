@@ -522,8 +522,8 @@ struct EngineHostState {
         String                             horizontal { "center"_Str };
         String                             vertical { "center"_Str };
         double                             point_size { 1.0 };
-        JsRuntime::TextSetter              set_horizontal;
-        JsRuntime::TextSetter              set_vertical;
+        JsRuntime::TextAlignSetter         set_horizontal;
+        JsRuntime::TextAlignSetter         set_vertical;
         Option<JsRuntime::PointSizeGetter> get_point_size;
         Option<JsRuntime::PointSizeSetter> set_point_size;
     };
@@ -2413,8 +2413,9 @@ JSValue NodeSetVAlign(JSContext* ctx, JSValueConst this_val, JSValueConst val) {
     if (it.is_none()) return JS_UNDEFINED;
     const char* s = JS_ToCString(ctx, val);
     if (s == nullptr) return JS_UNDEFINED;
-    (**it).vertical = rstd::into(rstd::cppstd::as_str(s).unwrap());
-    if ((**it).set_vertical) (**it).set_vertical->operator()((**it).vertical.as_str());
+    auto next = rstd::cppstd::as_str(s).unwrap();
+    if (! (**it).set_vertical || (**it).set_vertical->operator()(next))
+        (**it).vertical = String::make(next);
     JS_FreeCString(ctx, s);
     return JS_UNDEFINED;
 }
@@ -2426,8 +2427,9 @@ JSValue NodeSetHAlign(JSContext* ctx, JSValueConst this_val, JSValueConst val) {
     if (it.is_none()) return JS_UNDEFINED;
     const char* s = JS_ToCString(ctx, val);
     if (s == nullptr) return JS_UNDEFINED;
-    (**it).horizontal = rstd::into(rstd::cppstd::as_str(s).unwrap());
-    if ((**it).set_horizontal) (**it).set_horizontal->operator()((**it).horizontal.as_str());
+    auto next = rstd::cppstd::as_str(s).unwrap();
+    if (! (**it).set_horizontal || (**it).set_horizontal->operator()(next))
+        (**it).horizontal = String::make(next);
     JS_FreeCString(ctx, s);
     return JS_UNDEFINED;
 }
@@ -2471,8 +2473,8 @@ JSValue NodeSetPointSize(JSContext* ctx, JSValueConst this_val, JSValueConst val
     double point_size = (**it).point_size;
     if (JS_ToFloat64(ctx, &point_size, val) < 0 || ! f64(point_size).is_finite())
         return JS_UNDEFINED;
-    (**it).point_size = point_size;
-    if ((**it).set_point_size) (*(**it).set_point_size)->operator()(point_size);
+    if ((**it).set_point_size.is_none() || (*(**it).set_point_size)->operator()(point_size))
+        (**it).point_size = point_size;
     return JS_UNDEFINED;
 }
 
@@ -3972,8 +3974,9 @@ void JsRuntime::RegisterTextSetter(owe::SceneNode* node, JsRuntime::TextSetter s
 }
 
 void JsRuntime::RegisterTextAlignSetters(owe::SceneNode* node, String horizontal, String vertical,
-                                         double point_size, JsRuntime::TextSetter set_horizontal,
-                                         JsRuntime::TextSetter              set_vertical,
+                                         double                             point_size,
+                                         JsRuntime::TextAlignSetter         set_horizontal,
+                                         JsRuntime::TextAlignSetter         set_vertical,
                                          Option<JsRuntime::PointSizeGetter> get_point_size,
                                          Option<JsRuntime::PointSizeSetter> set_point_size) {
     if (node == nullptr) return;

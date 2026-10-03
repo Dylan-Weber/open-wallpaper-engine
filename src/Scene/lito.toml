@@ -219,10 +219,6 @@ targets = [{ name = "qjs", pub = true }]
 workspace = true
 pub = true
 
-[external-dependencies.pkg-config.fontconfig]
-workspace = true
-pub = true
-
-[external-dependencies.pkg-config.freetype]
+[dependencies.vectext]
 workspace = true
 pub = true

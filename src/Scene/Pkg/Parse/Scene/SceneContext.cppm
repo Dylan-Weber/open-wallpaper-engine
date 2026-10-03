@@ -117,16 +117,16 @@ private:
 };
 
 struct SceneParseContext {
-    ParseSceneHandle                               scene;
-    Option<Arc<ParticleRuntime>>                   particle_runtime;
-    i32                                            ortho_w { 0 };
-    i32                                            ortho_h { 0 };
-    bool                                           orthographic_scene { false };
-    wpscene::SceneVersion                          pkg_version { wpscene::kSceneVersionUnknown };
-    fs::VFS*                                       vfs { nullptr };
-    Option<ref<rstd::json::Map>>                   user_properties;
-    Arc<ShaderCache>                               shader_cache { Arc<ShaderCache>::make() };
-    HashMap<String, text::FontCache::ResolvedBlob> font_sources;
+    ParseSceneHandle                     scene;
+    Option<Arc<ParticleRuntime>>         particle_runtime;
+    i32                                  ortho_w { 0 };
+    i32                                  ortho_h { 0 };
+    bool                                 orthographic_scene { false };
+    wpscene::SceneVersion                pkg_version { wpscene::kSceneVersionUnknown };
+    fs::VFS*                             vfs { nullptr };
+    Option<ref<rstd::json::Map>>         user_properties;
+    Arc<ShaderCache>                     shader_cache { Arc<ShaderCache>::make() };
+    HashMap<String, vectext::FontSource> font_sources;
 
     ShaderValueMap         global_base_uniforms;
     SceneShaderEnvironment shader_environment;

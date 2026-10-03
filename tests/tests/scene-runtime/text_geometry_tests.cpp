@@ -8,33 +8,45 @@ import rstd;
 import rstd.cppstd;
 import wescene.scene;
 import wescene.text;
+import wescene.script;
+import wescene.json;
+import wescene.testing.json_builder;
 import wescene.types;
 
 using namespace rstd::literals;
 using namespace rstd::prelude;
 using rstd::sync::Arc;
 
-TEST(FontFace, ImageRetainsLivePixelsAfterCacheDestruction) {
-    rstd::Option<rstd::sync::Arc<owe::Image>> image;
-    Vec<std::uint8_t>                         expected;
+namespace
+{
+auto TextResources() -> Arc<owe::text::TextResources> {
+    return Arc<owe::text::TextResources>::make();
+}
+auto TextFont() -> owe::text::TextFont { return { .family = "monospace"_Str, .size = 64 }; }
+void Rasterize(owe::text::TextResources& resources, ref<str> text) {
+    auto layout =
+        resources.Layout({ .text = text, .family = "monospace"_str, .size = 64 }).unwrap();
+    for (auto& g : layout.glyphs())
+        resources.Rasterize(layout.fonts()[usize(g.font)], g.glyph).unwrap();
+}
+} // namespace
+TEST(TextAtlas, ImageRetainsLivePixelsAfterCacheDestruction) {
+    Option<Arc<owe::Image>> image;
+    Vec<rstd::uint8_t>      expected;
     {
-        auto font = owe::text::FontCache::ResolveSystemFont("systemfont_monospace"_str);
-        ASSERT_TRUE(font.bytes.is_some());
-        owe::text::FontCache cache;
-        auto*                face = cache.GetFace(font, 64);
-        ASSERT_NE(face, nullptr);
-        face->Populate(owe::text::DecodeUtf8("A"_str.as_bytes()).as_slice());
-        image = owe::text::BuildAtlasImage(*face, "atlas"_str);
+        auto resources = TextResources();
+        Rasterize(*resources, "A"_str);
+        auto& page = *resources->Pages()[usize()];
+        image      = owe::text::BuildAtlasImage(page, "atlas"_str);
         ASSERT_TRUE(image.is_some());
-        face->Populate(owe::text::DecodeUtf8("B"_str.as_bytes()).as_slice());
-        auto pixels = face->AtlasPixels();
-        expected    = Vec<std::uint8_t>::from(pixels);
-        EXPECT_EQ((*image)->content->slots[usize(0)].mipmaps[usize(0)].data.get(),
-                  pixels.as_raw_ptr());
+        Rasterize(*resources, "B"_str);
+        expected = Vec<rstd::uint8_t>::from(page.AtlasPixels());
+        EXPECT_EQ((*image)->content->slots[usize()].mipmaps[usize()].data.get(),
+                  page.AtlasPixels().as_raw_ptr());
     }
-    const auto& mip = (*image)->content->slots[usize(0)].mipmaps[usize(0)];
-    EXPECT_EQ(Vec<std::uint8_t>::from(
-                  slice<std::uint8_t>::from_raw_parts(mip.data.get(), expected.len())),
+    auto& mip = (*image)->content->slots[usize()].mipmaps[usize()];
+    EXPECT_EQ(Vec<rstd::uint8_t>::from(
+                  slice<rstd::uint8_t>::from_raw_parts(mip.data.get(), expected.len())),
               expected);
 }
 
@@ -58,36 +70,8 @@ TEST(VideoPlayback, AdapterSharesAndRetainsControlState) {
     EXPECT_EQ(playback->Snapshot().seek_seconds, f64(3));
 }
 
-TEST(FontFace, TabHasNoLayoutOrRasterizedGlyph) {
-    auto font = owe::text::FontCache::ResolveSystemFont("systemfont_monospace"_str);
-    ASSERT_TRUE(font.bytes.is_some());
-
-    owe::text::FontCache cache;
-    auto*                face = cache.GetFace(font, 64);
-    ASSERT_NE(face, nullptr);
-
-    const rstd::array<std::uint32_t, 1> codepoints { std::uint32_t('\t') };
-    face->Populate(codepoints.as_slice());
-
-    const auto* tab = face->Lookup('\t');
-    ASSERT_NE(tab, nullptr);
-    EXPECT_EQ(tab->pixel_w, 0u);
-    EXPECT_EQ(tab->pixel_h, 0u);
-    EXPECT_EQ(tab->advance_x, 0.0f);
-}
-
 TEST(TextLayouter, TabIsIgnoredWithoutAControlQuad) {
-    auto font = owe::text::FontCache::ResolveSystemFont("systemfont_monospace"_str);
-    ASSERT_TRUE(font.bytes.is_some());
-
-    owe::text::FontCache cache;
-    auto*                face = cache.GetFace(font, 64);
-    ASSERT_NE(face, nullptr);
-    const auto tab_text   = owe::text::DecodeUtf8("hour:\n\t\t\t\tminute:"_str.as_bytes());
-    const auto plain_text = owe::text::DecodeUtf8("hour:\nminute:"_str.as_bytes());
-    face->Populate(tab_text.as_slice());
-    face->Populate(plain_text.as_slice());
-
+    auto                  resources  = TextResources();
     constexpr std::size_t peak_quads = 16;
     auto                  mesh       = Arc<owe::SceneMesh>::make();
     rstd::initializer_list<owe::SceneVertexArray::SceneVertexAttribute> attributes {
@@ -98,7 +82,7 @@ TEST(TextLayouter, TabIsIgnoredWithoutAControlQuad) {
     mesh->AddVertexArray(owe::SceneVertexArray(attributes, rstd::usize(peak_quads * 4)));
     mesh->AddIndexArray(owe::SceneIndexArray(rstd::usize(peak_quads * 6)));
 
-    owe::text::TextLayouter layouter(face, mesh.clone(), {}, peak_quads);
+    owe::text::TextLayouter layouter(resources.clone(), TextFont(), mesh.clone(), {}, peak_quads);
     layouter.SetText("hour:\n\t\t\t\tminute:"_str);
     const float tab_width = layouter.TextWidth();
     EXPECT_EQ(mesh->GetIndexArray(rstd::usize()).RenderDataCount(), rstd::usize(72));
@@ -109,13 +93,7 @@ TEST(TextLayouter, TabIsIgnoredWithoutAControlQuad) {
 }
 
 TEST(TextLayouter, LayoutOriginPreservesFontBaselineAcrossTextChanges) {
-    auto font = owe::text::FontCache::ResolveSystemFont("systemfont_monospace"_str);
-    ASSERT_TRUE(font.bytes.is_some());
-    owe::text::FontCache cache;
-    auto*                face = cache.GetFace(font, 64);
-    ASSERT_NE(face, nullptr);
-    face->Populate(owe::text::DecodeUtf8("0g"_str.as_bytes()).as_slice());
-
+    auto resources = TextResources();
     const rstd::initializer_list<owe::SceneVertexArray::SceneVertexAttribute> attributes {
         { .name = "a_Position"_Str, .type = owe::VertexType::FLOAT3 },
         { .name = "a_TexCoord"_Str, .type = owe::VertexType::FLOAT2 },
@@ -128,22 +106,25 @@ TEST(TextLayouter, LayoutOriginPreservesFontBaselineAcrossTextChanges) {
         mesh->AddIndexArray(owe::SceneIndexArray(rstd::usize(6)));
         owe::text::TextLayoutStyle style;
         style.mesh_origin = origin;
-        owe::text::TextLayouter layouter(face, mesh.clone(), rstd::move(style), 1);
+        owe::text::TextLayouter layouter(
+            resources.clone(), TextFont(), mesh.clone(), rstd::move(style), 1);
         for (const auto* text : { "0", "g" }) {
             layouter.SetText(rstd::cppstd::as_str(text).unwrap());
-            const auto* glyph = face->Lookup(static_cast<std::uint32_t>(text[0]));
-            ASSERT_NE(glyph, nullptr);
+            const auto& layout = *layouter.Layout();
+            const auto& glyph  = layout.glyphs()[usize()];
+            const auto  bitmap =
+                layout.fonts()[usize(glyph.font)].rasterize(glyph.glyph, 1).unwrap();
             const auto  metrics  = layouter.Metrics();
-            const float baseline = metrics.text_height * 0.5f - face->Metrics().ascender;
-            const float top      = baseline + glyph->bearing_y;
-            const float center   = top - static_cast<float>(glyph->pixel_h) * 0.5f;
+            const float baseline = metrics.text_height * .5f - float(layout.baseline());
+            const float top      = baseline - float(bitmap.origin.y);
+            const float center   = top - float(bitmap.height) * .5f;
             EXPECT_FLOAT_EQ(metrics.source_center_y, center);
             const auto& vertices = mesh->GetVertexArray(rstd::usize());
             const auto  stride   = vertices.OneSize().to_primitive();
             const float offset   = origin == owe::text::TextMeshOrigin::InkBounds ? center : 0.0f;
             EXPECT_FLOAT_EQ(vertices.Data()[1], top - offset);
             EXPECT_FLOAT_EQ(vertices.Data()[2 * stride + 1],
-                            top - static_cast<float>(glyph->pixel_h) - offset);
+                            top - static_cast<float>(bitmap.height) - offset);
         }
     }
 }
@@ -174,33 +155,148 @@ TEST(TextGeometry, DynamicEffectFollowsCurrentTextBounds) {
     EXPECT_FLOAT_EQ(geometry.effect_frame_height, 221.0f);
 }
 
-TEST(FontFace, RetainsFontBlobAndGlyphAddressesAcrossGrowth) {
-    owe::text::FontCache cache;
-    owe::text::FontFace* face = nullptr;
+TEST(TextLayouter, FailedUpdatesKeepAcceptedStateAndRetry) {
+    auto                    resources = TextResources();
+    auto                    mesh      = Arc<owe::SceneMesh>::make();
+    owe::text::TextLayouter layouter(resources.clone(), TextFont(), mesh.clone(), {}, 1);
+    ASSERT_TRUE(layouter.SetText("A"_str).is_ok());
+    auto id    = layouter.Layout()->id();
+    auto count = resources->LayoutCount();
+    EXPECT_TRUE(layouter.SetText("A"_str).is_ok());
+    EXPECT_EQ(resources->LayoutCount(), count);
+    EXPECT_EQ(layouter.SetText("AB"_str).unwrap_err(), vectext::TextError::Limit);
+    EXPECT_EQ(layouter.Layout()->id(), id);
+    EXPECT_EQ(layouter.SetText("AB"_str).unwrap_err(), vectext::TextError::Limit);
+    EXPECT_EQ(resources->LayoutCount(), count + 2);
+    EXPECT_EQ(layouter.SetPixelSize(-1).unwrap_err(), vectext::TextError::InvalidValue);
+    EXPECT_EQ(layouter.Layout()->id(), id);
+    EXPECT_TRUE(layouter.SetText("B"_str).is_ok());
+    EXPECT_TRUE(layouter.Layout()->id() != id);
+}
+TEST(TextAtlas, InstanceScaleAndPageIdentity) {
+    struct Raster final : vectext::FontRasterizer {
+        auto rasterize(vectext::Index, double scale) const
+            -> Result<vectext::GlyphBitmap, vectext::TextError> override {
+            Vec<unsigned char> pixels;
+            pixels.resize(usize(36), 255);
+            return Ok(vectext::GlyphBitmap { 6, 6, {}, scale, rstd::move(pixels) });
+        }
+    };
+    auto make_font = [] {
+        auto raster = Box<Raster>::make();
+        return vectext::FontInstance(
+            "test"_Str,
+            Box<vectext::FontRasterizer>::from_raw(
+                rstd::move(raster).into_raw().cast<vectext::FontRasterizer>()));
+    };
+    owe::text::TextResources resources({ .extent = 8, .max_pages = 4 });
+    auto                     a = make_font(), b = make_font();
+    auto                     first    = resources.Rasterize(a, 1).unwrap();
+    auto                     repeated = resources.Rasterize(a, 1).unwrap();
+    EXPECT_EQ(first.page, repeated.page);
+    EXPECT_EQ(resources.RasterCount(), 1u);
+    auto second = resources.Rasterize(b, 1).unwrap();
+    EXPECT_NE(first.page, second.page);
+    auto scaled = resources.Rasterize(a, 1, 2).unwrap();
+    EXPECT_NE(scaled.page, first.page);
+    EXPECT_EQ(resources.Rasterize(a, 2).unwrap_err(), vectext::TextError::Limit);
+    EXPECT_TRUE(resources.Rasterize(a, 1).is_ok());
+    EXPECT_FALSE(resources.Pages()[usize(first.page)]->DirtyRects().is_empty());
+}
+TEST(TextLayouter, ContinuousBatchesPreservePageOrder) {
+    auto resources = Arc<owe::text::TextResources>::make(
+        owe::text::AtlasOptions { .extent = 64, .max_pages = 16 });
+    auto                    mesh = Arc<owe::SceneMesh>::make();
+    owe::text::TextLayouter layouter(resources.clone(), TextFont(), mesh.clone(), {}, 32);
+    ASSERT_TRUE(layouter.SetText("WMW"_str).is_ok());
+    ASSERT_EQ(mesh->Submeshes().len(), usize(3));
+    EXPECT_EQ(mesh->Submeshes()[usize()].material_slot, mesh->Submeshes()[usize(2)].material_slot);
+    EXPECT_NE(mesh->Submeshes()[usize()].material_slot, mesh->Submeshes()[usize(1)].material_slot);
+    EXPECT_FALSE(mesh->Submeshes()[usize()].preserve_output);
+    EXPECT_TRUE(mesh->Submeshes()[usize(1)].preserve_output);
+}
+TEST(TextLayouter, ResourcesSurviveSceneExtensionDestruction) {
+    Option<Box<owe::text::TextLayouter>> layouter;
     {
-        auto font = owe::text::FontCache::ResolveSystemFont("systemfont_monospace"_str);
-        ASSERT_TRUE(font.bytes.is_some());
-        face = cache.GetFace(font, 32);
-        ASSERT_NE(face, nullptr);
+        owe::Scene scene;
+        auto       resources = owe::text::EnsureSceneTextResources(scene);
+        auto       mesh      = Arc<owe::SceneMesh>::make();
+        layouter             = Some(Box<owe::text::TextLayouter>::make(
+            resources.clone(), TextFont(), mesh.clone(), owe::text::TextLayoutStyle {}, 16));
+        ASSERT_TRUE((*layouter)->SetText("A"_str).is_ok());
     }
-    face->Populate(owe::text::DecodeUtf8("A"_str.as_bytes()).as_slice());
-    const auto* first = face->Lookup('A');
-    ASSERT_NE(first, nullptr);
-    const auto         width = first->pixel_w;
-    Vec<std::uint32_t> codepoints;
-    for (std::uint32_t cp = 32; cp < 512; ++cp) codepoints.emplace_back(cp);
-    face->Populate(codepoints.as_slice());
-    EXPECT_EQ(first, face->Lookup('A'));
-    EXPECT_EQ(first->pixel_w, width);
+    EXPECT_TRUE((*layouter)->SetText("B"_str).is_ok());
+}
+TEST(TextLayouter, WarmUpdatesKeepBufferStorageAndRasterCache) {
+    auto                    resources = TextResources();
+    auto                    mesh      = Arc<owe::SceneMesh>::make(true);
+    owe::text::TextLayouter layouter(resources.clone(), TextFont(), mesh.clone(), {}, 8);
+    ASSERT_TRUE(layouter.SetText("AB"_str).is_ok());
+    auto generation = mesh->BufferView(u32())->vertices[usize()].storage_generation;
+    auto rasters    = resources->RasterCount();
+    mesh->ConsumeDirtyFlags();
+    ASSERT_TRUE(layouter.SetText("BA"_str).is_ok());
+    EXPECT_EQ(mesh->BufferView(u32())->vertices[usize()].storage_generation, generation);
+    EXPECT_EQ(resources->RasterCount(), rasters);
+    EXPECT_EQ(mesh->DirtyFlags() & owe::SceneMeshDirtyLayout, owe::SceneMeshDirtyNone);
+    EXPECT_NE(mesh->DirtyFlags() & owe::SceneMeshDirtyData, owe::SceneMeshDirtyNone);
+}
+TEST(TextAtlas, RegistrationRetainsDirtyPixelsUntilUpload) {
+    owe::Scene scene;
+    auto       resources = owe::text::EnsureSceneTextResources(scene);
+    Rasterize(*resources, "A"_str);
+    ASSERT_TRUE(resources->RegisterPages(scene));
+    auto& page = *resources->Pages()[usize()];
+    EXPECT_FALSE(page.DirtyRects().is_empty());
+    EXPECT_TRUE(scene.Texture(page.AtlasUrl()).is_some());
+    page.ClearDirtyRects();
+    EXPECT_TRUE(page.DirtyRects().is_empty());
+    Rasterize(*resources, "B"_str);
+    EXPECT_FALSE(page.DirtyRects().is_empty());
 }
 
-TEST(TextDecode, PreservesMalformedByteReplacement) {
-    array<u8, 5> bytes { u8('A'), u8(0xff), u8(0xc2), u8('B'), u8(0xe2) };
-    auto         decoded = owe::text::DecodeUtf8(bytes.as_slice());
-    ASSERT_EQ(decoded.len(), usize(5));
-    EXPECT_EQ(decoded[usize()], uint32_t('A'));
-    EXPECT_EQ(decoded[usize(1)], uint32_t(0xfffd));
-    EXPECT_EQ(decoded[usize(2)], uint32_t(0xfffd));
-    EXPECT_EQ(decoded[usize(3)], uint32_t('B'));
-    EXPECT_EQ(decoded[usize(4)], uint32_t(0xfffd));
+TEST(TextRuntime, RejectedScriptPropertiesRemainReadableAndRetry) {
+    owe::SceneNode         node;
+    owe::script::JsRuntime runtime;
+    bool                   accept {};
+    unsigned               attempts {};
+    runtime.RegisterTextAlignSetters(
+        &node,
+        "center"_Str,
+        "center"_Str,
+        12,
+        owe::script::JsRuntime::TextAlignSetter::make([&](ref<str>) {
+            ++attempts;
+            return accept;
+        }),
+        owe::script::JsRuntime::TextAlignSetter::make([](ref<str>) {
+            return true;
+        }),
+        None(),
+        Some(owe::script::JsRuntime::PointSizeSetter::make([&](double) {
+            ++attempts;
+            return accept;
+        })));
+    auto* script = runtime.MakeFieldScript(
+        "export function update() { thisLayer.horizontalalign='left'; thisLayer.pointsize=24; return (thisLayer.horizontalalign==='left' ? 100 : 0) + thisLayer.pointsize; }"_str,
+        "text-rejected-setters"_str,
+        owe::script::FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        owe::script::ScriptBindingContext::ForLayer(&node, "visible"_str));
+    ASSERT_NE(script, nullptr);
+    runtime.SetSceneRoot(&node);
+    runtime.TickAll();
+    EXPECT_EQ(script->last_value().as_Scalar().value.v, 12.0);
+    EXPECT_EQ(attempts, 2u);
+    accept = true;
+    runtime.TickAll();
+    EXPECT_EQ(script->last_value().as_Scalar().value.v, 124.0);
+    EXPECT_EQ(attempts, 4u);
+}
+
+TEST(TextAtlas, InvalidPageExtentHasNoPixels) {
+    owe::text::AtlasPage page(0, "invalid"_Str, true);
+    EXPECT_TRUE(page.AtlasPixels().is_empty());
+    EXPECT_TRUE(owe::text::BuildAtlasImage(page, "invalid"_str).is_none());
 }
