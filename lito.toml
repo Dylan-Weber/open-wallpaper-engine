@@ -23,6 +23,7 @@ default-members = ["viewer/SceneViewer", "viewer/WebViewer"]
 version = "0.3.0"
 
 [workspace.dependencies]
+liffto = { version = "0.1.0" }
 owe-core = { path = "src/Core" }
 owe-audio = { path = "src/Audio" }
 owe-types = { path = "src/Scene/types" }

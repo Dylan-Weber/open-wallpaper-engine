@@ -1,10 +1,6 @@
-module;
-
-#include <cmath>
-
 module owe.audio_response;
 
-import owe.fft;
+import liffto;
 import rstd;
 
 namespace owe::audio
@@ -23,17 +19,26 @@ constexpr float        kWeightBase     = 0.5009999871253967f;
 constexpr float        kInputScale     = 127.0f;
 constexpr float        kOutputScale    = 0.001f * 640.0f / (2089.0f * 0.5f);
 
-const fft::DftPlan32& Plan() {
-    static const fft::DftPlan32 plan(kFftFrames);
+template<AnalysisBackend Backend>
+auto Plan() -> const liffto::FftPlan<f32>& {
+    static const auto plan = liffto::FftPlan<f32>::make(usize(kFftFrames),
+                                                        liffto::Normalization::None,
+                                                        Backend == AnalysisBackend::LifftoScalar
+                                                            ? liffto::Backend::Scalar
+                                                            : liffto::Backend::Simd)
+                                 .unwrap();
     return plan;
 }
 
+template<AnalysisBackend Backend>
 void analyze_channel(const PcmWindow& window, rstd::size_t channel,
-                     rstd::array<float, kResponseBins>& output, fft::DftWorkspace32& workspace) {
-    rstd::array<fft::Complex32, kFftFrames> input {};
-    rstd::array<fft::Complex32, kFftFrames> spectrum {};
-    constexpr float                         baseline_reciprocal = 1.0f / kInputScale;
-    for (auto& value : input) value = { .real = kInputScale, .imag = baseline_reciprocal };
+                     rstd::array<float, kResponseBins>& output,
+                     Option<liffto::Workspace<f32>>&    workspace) {
+    rstd::array<liffto::Complex<f32>, kFftFrames> input {};
+    rstd::array<liffto::Complex<f32>, kFftFrames> spectrum {};
+    constexpr float                               baseline_reciprocal = 1.0f / kInputScale;
+    for (auto& value : input)
+        value = liffto::Complex<f32> { f32(kInputScale), f32(baseline_reciprocal) };
 
     constexpr auto first_frame = kWindowFrames - kAnalysisFrames;
     bool           has_signal  = false;
@@ -44,10 +49,13 @@ void analyze_channel(const PcmWindow& window, rstd::size_t channel,
         has_signal                = has_signal || finite_sample != 0.0f;
         const float value         = finite_sample * kInputScale + kInputScale;
         const float reciprocal    = value == 0.0f ? baseline_reciprocal : 1.0f / value;
-        input[usize(frame)]       = { .real = value, .imag = reciprocal };
+        input[usize(frame)]       = liffto::Complex<f32> { f32(value), f32(reciprocal) };
     }
     if (! has_signal) return;
-    Plan().forward(input.as_slice(), spectrum.as_mut_slice(), workspace);
+    const auto& plan = Plan<Backend>();
+    if (workspace.is_none())
+        workspace = Some(liffto::Workspace<f32>::make(plan.workspace_len()).unwrap());
+    plan.forward(input.as_slice(), spectrum.as_mut_slice(), *workspace).unwrap();
 
     rstd::size_t band = 0;
     for (rstd::size_t bin = 1; bin < kSpectrumBins; ++bin) {
@@ -62,9 +70,8 @@ void analyze_channel(const PcmWindow& window, rstd::size_t channel,
             f32(kWeightBase - (1.0f - kWeightBase) * f32(angle).cos().to_primitive())
                 .sqrt()
                 .to_primitive();
-        const auto  value = spectrum[usize(bin)];
-        const float magnitude =
-            f32(value.real * value.real + value.imag * value.imag).sqrt().to_primitive();
+        const auto  value     = spectrum[usize(bin)];
+        const float magnitude = (value.re * value.re + value.im * value.im).sqrt().to_primitive();
         output[usize(band)] =
             rstd::cmp::max(output[usize(band)], magnitude * weight * kOutputScale);
     }
@@ -84,13 +91,28 @@ bool ResponseEngine::analyze(const PcmWindow& window, ResponseFrame& output) {
     response.sequence         = window.sequence;
     response.captured_at_ns   = window.captured_at_ns;
     response.end_sample_frame = window.end_sample_frame;
-    analyze_channel(window, 0, response.left, dft_workspace_);
-    analyze_channel(window, 1, response.right, dft_workspace_);
+    auto channels             = [&]<AnalysisBackend Backend>() {
+        analyze_channel<Backend>(window, 0, response.left, liffto_workspace_);
+        analyze_channel<Backend>(window, 1, response.right, liffto_workspace_);
+    };
+    switch (backend_) {
+    case AnalysisBackend::LifftoScalar:
+        channels.template operator()<AnalysisBackend::LifftoScalar>();
+        break;
+    case AnalysisBackend::LifftoSimd:
+        channels.template operator()<AnalysisBackend::LifftoSimd>();
+        break;
+    default: rstd::panic { "invalid audio analysis backend" };
+    }
     output      = response;
     generation_ = window.generation;
     sequence_   = window.sequence;
     primed_     = true;
     return true;
+}
+
+auto ResponseEngine::workspace_bytes() const noexcept -> rstd::size_t {
+    return liffto_workspace_.is_some() ? liffto_workspace_->len().to_primitive() * sizeof(f32) : 0;
 }
 
 void ResponseEngine::end() {

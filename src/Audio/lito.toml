@@ -18,10 +18,10 @@ options = [
   "-Wno-gnu-zero-variadic-macro-arguments",
 ]
 
-[dependencies.owe-core]
+[dependencies.rstd-std]
 workspace = true
 pub = true
 
-[dependencies.rstd-std]
+[dependencies.liffto]
 workspace = true
 pub = true

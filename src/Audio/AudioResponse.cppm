@@ -1,6 +1,6 @@
 export module owe.audio_response;
 
-import owe.fft;
+import liffto;
 import rstd;
 
 export namespace owe::audio
@@ -34,16 +34,27 @@ struct ResponseFrame {
     rstd::array<float, kResponseBins> right;
 };
 
+enum class AnalysisBackend
+{
+    LifftoScalar,
+    LifftoSimd
+};
+
 class ResponseEngine {
 public:
+    ResponseEngine() = default;
+    explicit ResponseEngine(AnalysisBackend backend): backend_(backend) {}
+    auto backend() const noexcept -> AnalysisBackend { return backend_; }
+    auto workspace_bytes() const noexcept -> rstd::size_t;
     bool analyze(const PcmWindow& window, ResponseFrame& output);
     void end();
 
 private:
-    fft::DftWorkspace32 dft_workspace_;
-    rstd::uint64_t      generation_ = 0;
-    rstd::uint64_t      sequence_   = 0;
-    bool                primed_     = false;
+    AnalysisBackend                backend_ = AnalysisBackend::LifftoSimd;
+    Option<liffto::Workspace<f32>> liffto_workspace_;
+    rstd::uint64_t                 generation_ = 0;
+    rstd::uint64_t                 sequence_   = 0;
+    bool                           primed_     = false;
 };
 
 } // namespace owe::audio

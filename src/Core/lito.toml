@@ -10,8 +10,6 @@ archive = "owe-core"
 sources = [
   "src/Core/Cli.cppm",
   "src/Core/Core.cppm",
-  "src/Core/Fft.cppm",
-  "src/Core/Fft.cpp",
   "src/Core/Fs.cppm",
   "src/Core/Fs/Fs.cppm",
   "src/Core/IO/Binary.cppm",

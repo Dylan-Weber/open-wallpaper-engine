@@ -79,8 +79,8 @@ rstd::size_t peak(const rstd::array<float, 64>& values) {
 
 } // namespace
 
-TEST(AudioResponse, MatchesWallpaperEngineBandsAndChannels) {
-    owe::audio::ResponseEngine engine;
+void CheckBands(owe::audio::AnalysisBackend backend = owe::audio::AnalysisBackend::LifftoSimd) {
+    owe::audio::ResponseEngine engine(backend);
     owe::audio::ResponseFrame  first {};
     auto                       input = tones(0.02f);
     ASSERT_TRUE(engine.analyze(input, first));
@@ -131,7 +131,7 @@ TEST(AudioResponse, MatchesWallpaperEngineBandsAndChannels) {
     EXPECT_NEAR(split.left[usize(4)], 1.05f, 0.2f);
     EXPECT_NEAR(split.right[usize(37)], 4.3f, 0.5f);
 
-    owe::audio::ResponseEngine aligned_engine;
+    owe::audio::ResponseEngine aligned_engine(backend);
     auto                       aligned_input = aligned_tones(false);
     owe::audio::ResponseFrame  single {};
     ASSERT_TRUE(aligned_engine.analyze(aligned_input, single));
@@ -148,12 +148,12 @@ TEST(AudioResponse, MatchesWallpaperEngineBandsAndChannels) {
         expired.samples[usize(frame * 2)]     = 0.0f;
         expired.samples[usize(frame * 2 + 1)] = 0.0f;
     }
-    owe::audio::ResponseEngine expired_engine;
+    owe::audio::ResponseEngine expired_engine(backend);
     owe::audio::ResponseFrame  expired_response {};
     ASSERT_TRUE(expired_engine.analyze(expired, expired_response));
     for (float value : expired_response.left) EXPECT_FLOAT_EQ(value, 0.0f);
 
-    owe::audio::ResponseEngine impulse_engine;
+    owe::audio::ResponseEngine impulse_engine(backend);
     owe::audio::ResponseFrame  impulse_response {};
     auto                       impulse_input = impulse();
     ASSERT_TRUE(impulse_engine.analyze(impulse_input, impulse_response));
@@ -161,4 +161,9 @@ TEST(AudioResponse, MatchesWallpaperEngineBandsAndChannels) {
     EXPECT_NEAR(impulse_response.left[usize(29)], 0.006702113f, 1.0e-5f);
     EXPECT_NEAR(impulse_response.left[usize(63)], 0.077817120f, 1.0e-5f);
     for (float value : impulse_response.right) EXPECT_FLOAT_EQ(value, 0.0f);
+}
+
+TEST(AudioResponse, MatchesWallpaperEngineBandsAndChannels) { CheckBands(); }
+TEST(AudioResponse, LifftoScalarMatchesBandsAndChannels) {
+    CheckBands(owe::audio::AnalysisBackend::LifftoScalar);
 }

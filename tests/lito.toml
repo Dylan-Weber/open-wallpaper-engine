@@ -28,7 +28,10 @@ name = "audio-tests"
 sources = [
   "tests/main.cpp",
   "tests/audio/audio_response_tests.cpp",
-  "tests/audio/fft_tests.cpp",
+  "tests/audio/comparison_input.cppm",
+  "tests/audio/liffto_comparison_tests.cpp",
+  "tests/audio/allocation_tests.cpp",
+  "tests/audio/official_comparison_tests.cpp",
   "tests/audio/scene_audio_response_tests.cpp",
 ]
 
@@ -184,3 +187,10 @@ workspace = true
 
 [dependencies.spirvto]
 workspace = true
+
+[dev-dependencies.liffto]
+workspace = true
+
+[[bench]]
+name = "audio-fft-bench"
+sources = ["benches/audio_fft.cpp", "tests/audio/comparison_input.cppm"]
