@@ -15,6 +15,15 @@ export namespace owe::text
 struct AtlasDirtyRect {
     rstd::uint32_t x {}, y {}, w {}, h {};
 };
+struct AtlasUpdateRect {
+    AtlasDirtyRect rect;
+    // Owned R8 rows, tightly packed with row pitch rect.w.
+    Vec<u8> bytes;
+};
+struct AtlasUpdateBatch {
+    rstd::uint64_t       serial {};
+    Vec<AtlasUpdateRect> rects;
+};
 struct AtlasOptions {
     rstd::uint32_t extent { 2048 }, max_pages { 16 };
 };
@@ -35,7 +44,11 @@ public:
     auto AtlasUrl() const -> ref<str>;
     auto AtlasPixels() const -> slice<rstd::uint8_t>;
     auto RetainAtlasPixels() const -> owe::ImageDataPtr;
+    auto SnapshotDirtyUpdates() const -> AtlasUpdateBatch;
+    // Confirm this page's batch only on submission success, never on NotResident or failure.
+    void AcknowledgeUpdates(rstd::uint64_t serial);
     auto DirtyRects() const -> slice<AtlasDirtyRect>;
+    // Only for synchronous callers without an outstanding snapshot.
     void ClearDirtyRects();
 };
 class TextResources {

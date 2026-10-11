@@ -21,8 +21,8 @@ import rstd.log;
 import wescene.cli;
 import wescene.fs;
 import wescene.json;
-import wescene.rgraph;
 import wescene.scene_wallpaper;
+import wescene.vulkan_render;
 import wescene.pkg.parse;
 import waywallen.bridge;
 import waywallen.bridge_audio;
@@ -118,15 +118,6 @@ PathBuf shader_cache_dir() {
     return path;
 }
 
-const char* pass_type_name(owe::rg::PassNode::Type type) {
-    switch (type) {
-    case owe::rg::PassNode::Type::CustomShader: return "custom-shader";
-    case owe::rg::PassNode::Type::Copy: return "copy";
-    case owe::rg::PassNode::Type::Virtual: return "virtual";
-    }
-    return "unknown";
-}
-
 const char* texture_request_kind_name(owe::vulkan::TextureRequestKind kind) {
     switch (kind) {
     case owe::vulkan::TextureRequestKind::Imported: return "imported";
@@ -190,12 +181,10 @@ void log_prepared_pass_diagnostics(Vec<owe::vulkan::PreparedPassDiagnostic> diag
     rstd_info("waywallen-wescene-renderer: prepared pass diagnostics: {} pass(es)",
               diagnostics.len());
     for (const auto& diagnostic : diagnostics) {
-        const String graph_node = diagnostic.graph_node.is_some()
-                                      ? rstd::format("{}", diagnostic.graph_node->index)
-                                      : "-"_Str;
-        const char*  pass_type  = diagnostic.pass_type.is_some()
-                                      ? pass_type_name(*diagnostic.pass_type)
-                                      : (diagnostic.frame_pass ? "frame" : "unknown");
+        const String graph_node =
+            diagnostic.pass_id.is_some() ? rstd::format("{}", diagnostic.pass_id->value) : "-"_Str;
+        const String pass_kind =
+            diagnostic.pass_kind ? rstd::format("{}", *diagnostic.pass_kind) : "-"_Str;
         const String pipeline_cache_key =
             diagnostic.pipeline_cache_key ? rstd::format("{}", diagnostic.pipeline_cache_key->value)
                                           : "-"_Str;
@@ -207,13 +196,13 @@ void log_prepared_pass_diagnostics(Vec<owe::vulkan::PreparedPassDiagnostic> diag
             diagnostic.framebuffer_cache_key
                 ? rstd::format("{}", diagnostic.framebuffer_cache_key->value)
                 : "-"_Str;
-        rstd_info("waywallen-wescene-renderer: pass '{}' type={} graph={} render_item={} "
+        rstd_info("waywallen-wescene-renderer: pass '{}' kind={} graph={} render_item={} "
                   "dirty={} pipeline_key={} pipeline_seen={} pipeline_count={} "
                   "render_pass_key={} render_pass_seen={} render_pass_count={} "
                   "framebuffer_key={} framebuffer_seen={} framebuffer_count={} "
                   "prepared={} releases={}",
                   diagnostic.pass_name,
-                  pass_type,
+                  pass_kind,
                   graph_node,
                   render_item_text(diagnostic.render_item),
                   diagnostic.invalidation_flags,

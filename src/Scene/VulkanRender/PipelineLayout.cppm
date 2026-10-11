@@ -1,5 +1,5 @@
 export module wescene.vulkan_render:pipeline_layout;
-export import vrento.pipeline_layout;
+export import vrento;
 import rstd;
 import wescene.resource;
 

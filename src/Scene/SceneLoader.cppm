@@ -5,6 +5,7 @@ export import wescene.scene_user_property;
 export import wescene.fs;
 export import wescene.json;
 import wavsen.audio;
+import wescene.scene;
 import wescene.load_bench;
 import rstd;
 using namespace rstd::prelude;
@@ -18,6 +19,7 @@ struct SceneLoadRequest {
     rstd::json::Map                                 user_properties;
     SceneParseCapabilities                          capabilities;
     SceneLoadBenchRecorderView                      load_bench;
+    Option<ImageReadyCallback>                      image_ready;
 };
 enum class SceneLoadStage
 {

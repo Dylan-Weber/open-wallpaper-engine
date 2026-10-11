@@ -1,5 +1,5 @@
 export module wescene.scene:id;
-export import vrento.scene_identity;
+export import vrento;
 import rstd;
 
 using namespace rstd::prelude;

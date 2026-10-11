@@ -78,12 +78,12 @@ TEST(DynamicDrawBuffer, UploadsUnconfirmedContentBeforeSkippingUnchangedGeometry
     owe::vulkan::DrawBufferRequest request { .render_item = render_item, .mesh = &mesh };
     BufferWriter                   writer;
     auto sink = rstd::dyn<owe::resource::BufferContentWriter>::from_ref(writer);
-    EXPECT_TRUE(owe::vulkan::RenderBufferResolver::updateDynamicDrawBuffers(
-        request, buffers, sink.as_mut_ref()));
+    EXPECT_TRUE(
+        owe::vulkan::RenderBufferResolver::updateDrawBuffers(request, buffers, sink.as_mut_ref()));
     EXPECT_EQ(writer.update_count, rstd::u32(2));
     EXPECT_TRUE(buffers.content_confirmed);
-    EXPECT_TRUE(owe::vulkan::RenderBufferResolver::updateDynamicDrawBuffers(
-        request, buffers, sink.as_mut_ref()));
+    EXPECT_TRUE(
+        owe::vulkan::RenderBufferResolver::updateDrawBuffers(request, buffers, sink.as_mut_ref()));
     EXPECT_EQ(writer.update_count, rstd::u32(2));
 }
 
@@ -103,16 +103,16 @@ TEST(DynamicDrawBuffer, RetriesUploadFailureWithoutInvalidatingLayout) {
     BufferWriter                   writer;
     writer.fail_on = rstd::u32(2);
     auto sink      = rstd::dyn<owe::resource::BufferContentWriter>::from_ref(writer);
-    EXPECT_FALSE(owe::vulkan::RenderBufferResolver::updateDynamicDrawBuffers(
-        request, buffers, sink.as_mut_ref()));
+    EXPECT_FALSE(
+        owe::vulkan::RenderBufferResolver::updateDrawBuffers(request, buffers, sink.as_mut_ref()));
     EXPECT_EQ(buffers.vertex_keys[rstd::usize()].data_generation, original);
     EXPECT_EQ(mesh.DirtyFlags() & owe::SceneMeshDirtyLayout, owe::SceneMeshDirtyNone);
     writer.fail_on = rstd::u32();
-    EXPECT_TRUE(owe::vulkan::RenderBufferResolver::updateDynamicDrawBuffers(
-        request, buffers, sink.as_mut_ref()));
+    EXPECT_TRUE(
+        owe::vulkan::RenderBufferResolver::updateDrawBuffers(request, buffers, sink.as_mut_ref()));
     EXPECT_EQ(writer.update_count, rstd::u32(4));
-    EXPECT_TRUE(owe::vulkan::RenderBufferResolver::updateDynamicDrawBuffers(
-        request, buffers, sink.as_mut_ref()));
+    EXPECT_TRUE(
+        owe::vulkan::RenderBufferResolver::updateDrawBuffers(request, buffers, sink.as_mut_ref()));
     EXPECT_EQ(writer.update_count, rstd::u32(4));
 }
 
@@ -129,17 +129,17 @@ TEST(DynamicDrawBuffer, DetectsSharedDataChangesWithoutInstanceDirtyFlag) {
                                              .mesh        = clone.as_ptr().as_raw_ptr() };
     BufferWriter                   writer;
     auto sink = rstd::dyn<owe::resource::BufferContentWriter>::from_ref(writer);
-    EXPECT_TRUE(owe::vulkan::RenderBufferResolver::updateDynamicDrawBuffers(
-        request, buffers, sink.as_mut_ref()));
+    EXPECT_TRUE(
+        owe::vulkan::RenderBufferResolver::updateDrawBuffers(request, buffers, sink.as_mut_ref()));
     EXPECT_EQ(writer.update_count, rstd::u32(1));
     mesh.Submeshes()[usize(0)].vertex_arrays[usize(0)] =
         owe::SceneVertexArray({ { "a_Position"_Str, owe::VertexType::FLOAT3 } }, rstd::usize(2));
-    EXPECT_FALSE(owe::vulkan::RenderBufferResolver::updateDynamicDrawBuffers(
-        request, buffers, sink.as_mut_ref()));
+    EXPECT_FALSE(
+        owe::vulkan::RenderBufferResolver::updateDrawBuffers(request, buffers, sink.as_mut_ref()));
     EXPECT_NE(clone->DirtyFlags() & owe::SceneMeshDirtyLayout, owe::SceneMeshDirtyNone);
     mesh.Submeshes().clear();
-    EXPECT_FALSE(owe::vulkan::RenderBufferResolver::updateDynamicDrawBuffers(
-        request, buffers, sink.as_mut_ref()));
+    EXPECT_FALSE(
+        owe::vulkan::RenderBufferResolver::updateDrawBuffers(request, buffers, sink.as_mut_ref()));
 }
 
 TEST(DrawBufferResourceName, UsesStableSceneDrawIdentity) {
@@ -273,12 +273,44 @@ TEST(DynamicDrawBuffer, UpdatesEveryViewBeforeDirtyDataIsConsumed) {
     BufferWriter writer;
     auto         writer_trait = rstd::dyn<owe::resource::BufferContentWriter>::from_ref(writer);
 
-    EXPECT_TRUE(owe::vulkan::RenderBufferResolver::updateDynamicDrawBuffers(
+    EXPECT_TRUE(owe::vulkan::RenderBufferResolver::updateDrawBuffers(
         request, reflection_buffers, writer_trait.as_mut_ref()));
-    EXPECT_TRUE(owe::vulkan::RenderBufferResolver::updateDynamicDrawBuffers(
+    EXPECT_TRUE(owe::vulkan::RenderBufferResolver::updateDrawBuffers(
         request, primary_buffers, writer_trait.as_mut_ref()));
     EXPECT_EQ(reflection_buffers.draw_count, rstd::u32(2));
     EXPECT_EQ(primary_buffers.draw_count, rstd::u32(2));
     EXPECT_EQ(writer.update_count, rstd::u32(4));
     EXPECT_NE(mesh.DirtyFlags() & owe::SceneMeshDirtyData, owe::SceneMeshDirtyNone);
+}
+
+TEST(DrawBuffer, RetainedContentsRetryWithoutChangingBindings) {
+    owe::SceneMesh mesh(false);
+    mesh.Submeshes().push(MakeSubmesh());
+    owe::RenderItemId id { .index = u32(1), .generation = u64(2) };
+    auto              buffers = MakeBuffers(mesh, id);
+    buffers.dynamic           = false;
+    auto use                  = buffers.vertices[usize()];
+    auto generation           = buffers.vertex_keys[usize()].data_generation;
+    mesh.Submeshes()[usize()].vertex_arrays[usize()].ResetSize();
+    owe::vulkan::DrawBufferRequest request { .render_item = id, .mesh = &mesh };
+    BufferWriter                   writer;
+    writer.fail_on = u32(1);
+    auto sink      = dyn<owe::resource::BufferContentWriter>::from_ref(writer);
+    EXPECT_FALSE(
+        owe::vulkan::RenderBufferResolver::updateDrawBuffers(request, buffers, sink.as_mut_ref()));
+    EXPECT_EQ(buffers.vertex_keys[usize()].data_generation, generation);
+    EXPECT_EQ(mesh.DirtyFlags() & owe::SceneMeshDirtyLayout, owe::SceneMeshDirtyNone);
+    writer.fail_on = u32();
+    EXPECT_TRUE(
+        owe::vulkan::RenderBufferResolver::updateDrawBuffers(request, buffers, sink.as_mut_ref()));
+    EXPECT_EQ(buffers.vertices[usize()], use);
+    EXPECT_EQ(writer.update_count, u32(2));
+    EXPECT_TRUE(
+        owe::vulkan::RenderBufferResolver::updateDrawBuffers(request, buffers, sink.as_mut_ref()));
+    EXPECT_EQ(writer.update_count, u32(2));
+    mesh.Submeshes()[usize()].vertex_arrays[usize()] =
+        owe::SceneVertexArray({ { "a_Position"_Str, owe::VertexType::FLOAT3 } }, usize(8));
+    EXPECT_FALSE(
+        owe::vulkan::RenderBufferResolver::updateDrawBuffers(request, buffers, sink.as_mut_ref()));
+    EXPECT_NE(mesh.DirtyFlags() & owe::SceneMeshDirtyLayout, owe::SceneMeshDirtyNone);
 }

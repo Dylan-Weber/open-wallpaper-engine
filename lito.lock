@@ -385,7 +385,7 @@ source = "git+https://github.com/hypengw/SPIRV-Reflect.git#355785128c1b6ba808e3a
 [[packages]]
 name = "vrento"
 version = "0.1.0"
-source = "git+https://github.com/vecren/vrento.git#a781859c940325a909c77613b5b2795cc3d65e48"
+source = "git+https://github.com/vecren/vrento.git#b35aac4b8564af5e40c8b03ad10c2c24384eb829"
 dependencies = [
   "rstd-cppstd",
   "rstd-log",

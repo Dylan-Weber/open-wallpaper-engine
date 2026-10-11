@@ -1,6 +1,6 @@
 export module wescene.resource_registry;
 export import wescene.resource;
-export import vrento.resource_registry;
+export import vrento;
 export namespace owe
 {
 namespace resource_registry = vrento::resource_registry;

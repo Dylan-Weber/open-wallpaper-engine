@@ -16,7 +16,7 @@ using namespace rstd::literals;
 namespace owe::vulkan
 {
 
-auto ProgramUniformFrameContext::TextureFrame(SceneDrawItemId draw, usize texture_index) const
+auto SceneRenderUniformFrameContext::TextureFrame(SceneDrawItemId draw, usize texture_index) const
     -> Option<SceneTextureFrameView> {
     return m_textures->TextureFrame(draw, texture_index);
 }

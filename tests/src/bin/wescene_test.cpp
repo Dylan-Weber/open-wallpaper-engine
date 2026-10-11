@@ -19,6 +19,8 @@ import wescene.json;
 import wescene.fs;
 import wescene.pkg_fs;
 import wescene.scene;
+import wescene.vulkan_render;
+import vrento;
 import wescene.spec_names;
 import wescene.types;
 import wavsen.audio;
@@ -1621,10 +1623,8 @@ struct RendergraphArgs {
 };
 
 RendergraphArgs AddRendergraphArgs(Command& command) {
-    command.about("Parse one pkg with SceneParser::Parse and print every pass "
-                  "sceneToRenderGraph would emit, in execution order: shader, output RT, "
-                  "color-write mask, blend mode, sampled textures, resolved image-effect "
-                  "chains, and the post-process chain. No Vulkan; pure structural dump."_str);
+    command.about(
+        "Build the scene program without a device and emit its public FrameGraph as Graphviz."_str);
     auto pkg = command.add_arg(Arg<String>::value("pkg"_str, string_parser())
                                    .value_name("PKG"_str)
                                    .help("path to scene.pkg, or a directory containing one"_str)
@@ -1636,213 +1636,6 @@ RendergraphArgs AddRendergraphArgs(Command& command) {
                             .default_value(""_str)
                             .help("write to FILE (default stdout; '-' forces stdout)"_str));
     return { pkg, output };
-}
-
-const char* BlendModeStr(owe::BlendMode m) {
-    switch (m) {
-    case owe::BlendMode::Disable: return "disable";
-    case owe::BlendMode::Translucent: return "translucent";
-    case owe::BlendMode::Additive: return "additive";
-    case owe::BlendMode::AlphaToCoverage: return "alpha-to-coverage";
-    case owe::BlendMode::Normal: return "normal";
-    }
-    return "?";
-}
-
-// Mirrors CustomShaderPass.cpp:294-297. Empty or "global*" cameras strip
-// the A_BIT - keep this in sync.
-const char* PredictColorMask(ref<str> camera) {
-    bool alpha = ! (camera.is_empty() || camera.starts_with("global"_str));
-    return alpha ? "RGBA" : "RGB";
-}
-
-void DumpPass(FILE* out, const std::string& tag, const owe::SceneNode& node,
-              std::string_view output_rt) {
-    auto* mesh = const_cast<owe::SceneNode&>(node).Mesh();
-    if (! mesh || ! mesh->Material()) {
-        std::fprintf(out, "  %s: <no mesh/material>\n", tag.c_str());
-        return;
-    }
-    auto* material = mesh->Material();
-    std::fprintf(
-        out,
-        "  %s shader=%-32s out=%-40s cam=%-12s mask=%s blend=%s\n",
-        tag.c_str(),
-        material->name.is_empty() ? "?" : rstd::cppstd::to_string(material->name.as_str()).c_str(),
-        std::string(output_rt).c_str(),
-        node.Camera().is_empty() ? "(empty)" : rstd::cppstd::to_string(node.Camera()).c_str(),
-        PredictColorMask(node.Camera()),
-        BlendModeStr(material->Pipeline().blend_mode));
-    if (! material->textures.is_empty()) {
-        std::fprintf(out, "      textures:");
-        for (std::size_t i = 0; i < material->textures.len().to_primitive(); ++i) {
-            const auto t = rstd::cppstd::as_string_view(material->textures[usize(i)].as_str());
-            std::fprintf(out,
-                         " [%zu]=%.*s",
-                         i,
-                         t.empty() ? 6 : static_cast<int>(t.size()),
-                         t.empty() ? "(none)" : t.data());
-        }
-        std::fprintf(out, "\n");
-    }
-}
-
-void DumpRenderTargets(FILE* out, const owe::Scene& scene) {
-    auto target_names = scene.RenderTargetNames();
-    std::fprintf(out, "Render targets (%zu):\n", target_names.len().to_primitive());
-    std::vector<std::string> names;
-    names.reserve(target_names.len().to_primitive());
-    for (usize index {}; index < target_names.len(); ++index) {
-        names.push_back(to_string(target_names[index]));
-    }
-    std::sort(names.begin(), names.end());
-    for (const auto& n : names) {
-        auto target = scene.RenderTarget(as_str(n).unwrap());
-        if (target.is_none()) continue;
-        const auto& rt = **target;
-        std::fprintf(out,
-                     "  %-48s %dx%d  bind=%s%s%s scale=%.3f%s%s\n",
-                     n.c_str(),
-                     rt.width.to_primitive(),
-                     rt.height.to_primitive(),
-                     rt.bind.enable ? "enable " : "",
-                     rt.bind.screen ? "screen " : "",
-                     rt.bind.name.is_empty()
-                         ? ""
-                         : ("name=" + rstd::cppstd::to_string(rt.bind.name.as_str()) + " ").c_str(),
-                     rt.bind.scale,
-                     rt.has_mipmap ? " mipmap" : "",
-                     rt.allowReuse ? " reuse" : "");
-    }
-}
-
-void DumpShadowTopology(FILE* out, owe::Scene& scene) {
-    auto snapshot = owe::ExtractRenderSceneSnapshot(scene);
-    auto shadows  = snapshot.ShadowDefinitions();
-    auto casters  = snapshot.ShadowCasters();
-    std::fprintf(out,
-                 "\nShadow atlases (%zu, %zu casters):\n",
-                 shadows.len().to_primitive(),
-                 casters.len().to_primitive());
-    for (usize index {}; index < shadows.len(); ++index) {
-        std::fprintf(out,
-                     "  %s views=%zu depth-only sampled\n",
-                     to_string(shadows[index].target).c_str(),
-                     shadows[index].viewports.len().to_primitive());
-    }
-}
-
-void DumpSceneGraphPasses(FILE* out, owe::Scene& scene) {
-    std::fprintf(out, "\nScene-graph passes (TraverseNode pre-order):\n");
-    auto target_name = [](const owe::SceneNodeLayer&    layer,
-                          const owe::SceneEffectTarget& target) -> std::string {
-        if (target.kind == owe::SceneEffectTargetKind::Named && ! target.key.is_empty()) {
-            return rstd::cppstd::to_string(target.key.as_str());
-        }
-        return rstd::cppstd::to_string(layer.CompositeTarget());
-    };
-    std::function<void(owe::SceneNode*, int)> walk = [&](owe::SceneNode* n, int depth) {
-        if (n == nullptr) return;
-        // Mirror SceneToRenderGraph::ToGraphPass: only nodes with mesh+material emit.
-        auto* mesh = n->Mesh();
-        if (mesh && mesh->Material()) {
-            std::string          tag = "[node id=" + std::to_string(n->ID().to_primitive()) +
-                                       " depth=" + std::to_string(depth) + "]";
-            std::string          output { rstd::cppstd::to_string(owe::SpecTex_Default) };
-            owe::SceneNodeLayer* eff_layer = nullptr;
-            if (n->HasLayer()) {
-                eff_layer = n->Layer().as_ptr().as_raw_ptr();
-                if (eff_layer->EffectCount() == usize() || eff_layer->HasRuntimeVisibleEffect()) {
-                    output = rstd::cppstd::to_string(eff_layer->CompositeTarget());
-                }
-            }
-            if (eff_layer) {
-                eff_layer->ResolveEffect(*scene.DefaultEffectMesh(), "effect"_str);
-                std::size_t ni = 0;
-                for (auto& enode : eff_layer->PrefillNodes()) {
-                    std::string tag2 = "[prefill node " + std::to_string(ni++) + "]";
-                    DumpPass(out,
-                             "    " + tag2,
-                             *enode.sceneNode.as_ptr(),
-                             target_name(*eff_layer, enode.output));
-                }
-            }
-            DumpPass(out, tag, *n, output);
-
-            if (eff_layer && eff_layer->HasRenderEffects()) {
-                const auto& resolved     = eff_layer->ResolvedEffects();
-                const auto  effect_count = resolved.len();
-                std::fprintf(
-                    out, "    image-effect chain (%zu effects):\n", effect_count.to_primitive());
-                for (usize ei {}; ei < effect_count; ++ei) {
-                    auto* eff = resolved[ei];
-                    if (eff == nullptr) continue;
-                    std::size_t ni = 0;
-                    for (const auto& command : eff->commands) {
-                        std::fprintf(out,
-                                     "      [eff %zu cmd] copy %s -> %s (afterpos=%d)\n",
-                                     ei.to_primitive(),
-                                     target_name(*eff_layer, command.src).c_str(),
-                                     target_name(*eff_layer, command.dst).c_str(),
-                                     command.afterpos.to_primitive());
-                    }
-                    for (auto& owned_node : eff->Nodes()) {
-                        auto&       enode = *owned_node;
-                        std::string tag2  = "[eff " + std::to_string(ei.to_primitive()) + " node " +
-                                            std::to_string(ni++) + "]";
-                        auto        target = eff_layer->ResolvedTarget(enode);
-                        DumpPass(out,
-                                 "    " + tag2,
-                                 *enode.sceneNode.as_ptr(),
-                                 target_name(*eff_layer, target));
-                    }
-                }
-            }
-        }
-        for (auto& child : n->GetChildren()) walk(child.as_ptr(), depth + 1);
-    };
-    walk(scene.RootMut().as_raw_ptr(), 0);
-}
-
-void DumpPostProcesses(FILE* out, const owe::Scene& scene) {
-    auto post_processes = scene.PostProcesses();
-    std::fprintf(out,
-                 "\nPost-processes (%zu chain%s):\n",
-                 post_processes.len().to_primitive(),
-                 post_processes.len() == usize(1) ? "" : "s");
-    if (post_processes.is_empty()) {
-        std::fprintf(out, "  (none)\n");
-        return;
-    }
-    for (usize ci {}; ci < post_processes.len(); ++ci) {
-        const auto& pp = *post_processes[ci];
-        std::fprintf(out,
-                     "  chain[%zu] name=\"%s\" steps=%zu\n",
-                     ci.to_primitive(),
-                     rstd::cppstd::to_string(pp.name.as_str()).c_str(),
-                     pp.steps.len().to_primitive());
-        for (usize si {}; si < pp.steps.len(); ++si) {
-            const auto& step = pp.steps[si];
-            if (step.is_Pass()) {
-                const auto& sp  = step.as_Pass().value;
-                std::string tag = "  [pp " + std::to_string(ci.to_primitive()) + ":" +
-                                  std::to_string(si.to_primitive()) + " draw]";
-                DumpPass(out,
-                         tag,
-                         *sp.node.as_ptr(),
-                         sp.output.is_empty() ? rstd::cppstd::to_string(owe::SpecTex_Default)
-                                              : rstd::cppstd::to_string(sp.output.as_str()));
-            } else {
-                const auto& cp = step.as_Copy().value;
-                std::fprintf(out,
-                             "    [pp %zu:%zu copy] %s -> %s\n",
-                             ci.to_primitive(),
-                             si.to_primitive(),
-                             rstd::cppstd::to_string(cp.src.as_str()).c_str(),
-                             rstd::cppstd::to_string(cp.dst.as_str()).c_str());
-            }
-        }
-    }
 }
 
 int CmdRendergraph(const Matches& matches, const RendergraphArgs& args) {
@@ -1924,18 +1717,19 @@ int CmdRendergraph(const Matches& matches, const RendergraphArgs& args) {
         close_out = true;
     }
 
-    std::fprintf(out, "wescene-test rendergraph\n");
-    std::fprintf(out, "  pkg     : %s\n", pkg_path.c_str());
-    std::fprintf(out, "  version : %s\n", version_stamp.c_str());
-    auto ortho = scene->Ortho();
-    std::fprintf(
-        out, "  ortho   : %dx%d\n", ortho[usize()].to_primitive(), ortho[usize(1)].to_primitive());
-    std::fprintf(out, "\n");
-
-    DumpRenderTargets(out, *scene);
-    DumpShadowTopology(out, *scene);
-    DumpSceneGraphPasses(out, *scene);
-    DumpPostProcesses(out, *scene);
+    auto built = owe::BuildSceneRenderState(*scene);
+    if (built.is_err()) {
+        std::fprintf(stderr,
+                     "wescene-test rendergraph: build failed kind=%u pass=%llu resource=%llu\n",
+                     unsigned(built.unwrap_err().kind),
+                     static_cast<unsigned long long>(built.unwrap_err().pass.value),
+                     static_cast<unsigned long long>(built.unwrap_err().resource.value));
+        if (close_out) std::fclose(out);
+        return 1;
+    }
+    auto dot        = vrento::fg::graphviz(built->graph);
+    auto graph_text = rstd::cppstd::as_string_view(dot.as_str());
+    std::fwrite(graph_text.data(), 1, graph_text.size(), out);
 
     if (close_out) std::fclose(out);
     return 0;

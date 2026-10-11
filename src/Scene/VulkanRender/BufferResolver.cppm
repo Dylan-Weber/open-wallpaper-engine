@@ -1,5 +1,5 @@
 export module wescene.vulkan_render:buffer_resolver;
-export import vrento.draw_buffer;
+export import vrento;
 import wescene.scene;
 import wescene.resource_registry;
 import rstd;
@@ -29,8 +29,8 @@ public:
     explicit RenderBufferResolver(const resource_registry::PreparedResourceTable& resources)
         : m_resolver(resources) {}
     auto        prepareDrawBuffers(const DrawBufferRequest&) -> Option<DrawBufferRefs>;
-    static bool updateDynamicDrawBuffers(const DrawBufferRequest&, DrawBufferRefs&,
-                                         mut_ref<dyn<resource::BufferContentWriter>>);
+    static bool updateDrawBuffers(const DrawBufferRequest&, DrawBufferRefs&,
+                                  mut_ref<dyn<resource::BufferContentWriter>>);
 
 private:
     vrento::RenderBufferResolver m_resolver;

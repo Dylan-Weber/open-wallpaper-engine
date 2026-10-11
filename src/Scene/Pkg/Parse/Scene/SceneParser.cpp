@@ -65,7 +65,8 @@ auto owe::SceneParser::Parse(ref<str> scene_id, ref<wpscene::SceneDocument> docu
                      },
                      options.capabilities.directional_shadow && has_directional_shadow_light &&
                          has_directional_shadow_caster,
-                     options.capabilities.geometry_shader_supported);
+                     options.capabilities.geometry_shader_supported,
+                     rstd::move(options.image_ready));
     auto runtime_input             = Arc<UniformRuntimeInput>::make(context.uniform_state.clone());
     context.hidden_link_source_ids = rstd::move(expanded.hidden_link_source_ids);
     context.linked_source_ids      = rstd::move(expanded.linked_source_ids);

@@ -65,6 +65,7 @@ sources = [
   "tests/main.cpp",
   "tests/render-resource/buffer_resolver_tests.cpp",
   "tests/render-resource/render_graph_debug_tests.cpp",
+  "tests/render-resource/render_output_tests.cpp",
   "tests/render-resource/render_resource_request_tests.cpp",
   "tests/render-resource/resource_model_tests.cpp",
   "tests/render-resource/resource_registry_tests.cpp",

@@ -31,6 +31,11 @@ struct AtlasPage::Impl {
     String                  url;
     Arc<Vec<rstd::uint8_t>> pixels { Arc<Vec<rstd::uint8_t>>::make() };
     Vec<AtlasDirtyRect>     dirty;
+    rstd::uint64_t          serial {}, acknowledged {};
+    void                    MarkDirty(AtlasDirtyRect rect) {
+        dirty.push(rstd::move(rect));
+        ++serial;
+    }
     Impl(rstd::uint32_t size, String name, bool white): extent(size), url(rstd::move(name)) {
         if (size < 8 || size > 8192) return;
         pixels->resize(usize(size) * usize(size), 0);
@@ -39,7 +44,7 @@ struct AtlasPage::Impl {
         for (unsigned y = 0; y < 4; ++y)
             for (unsigned x = 0; x < 4; ++x) (*pixels)[usize(y * size + x)] = 255;
         row = 4;
-        dirty.push(AtlasDirtyRect { 0, 0, 4, 4 });
+        MarkDirty(AtlasDirtyRect { 0, 0, 4, 4 });
     }
 };
 AtlasPage::AtlasPage(rstd::uint32_t extent, String url, bool white)
@@ -49,7 +54,40 @@ auto AtlasPage::Extent() const -> rstd::uint32_t { return m_impl->extent; }
 auto AtlasPage::AtlasUrl() const -> ref<str> { return m_impl->url.as_str(); }
 auto AtlasPage::AtlasPixels() const -> slice<rstd::uint8_t> { return m_impl->pixels->as_slice(); }
 auto AtlasPage::DirtyRects() const -> slice<AtlasDirtyRect> { return m_impl->dirty.as_slice(); }
-void AtlasPage::ClearDirtyRects() { m_impl->dirty.clear(); }
+auto AtlasPage::SnapshotDirtyUpdates() const -> AtlasUpdateBatch {
+    AtlasUpdateBatch batch { .serial = m_impl->serial };
+    auto             dirty = DirtyRects();
+    if (dirty.is_empty()) return batch;
+
+    auto first = dirty.first().unwrap();
+    auto min_x = first->x, min_y = first->y;
+    auto max_x = first->x + first->w, max_y = first->y + first->h;
+    for (auto& rect : dirty) {
+        min_x = rstd::cmp::min(min_x, rect.x);
+        min_y = rstd::cmp::min(min_y, rect.y);
+        max_x = rstd::cmp::max(max_x, rect.x + rect.w);
+        max_y = rstd::cmp::max(max_y, rect.y + rect.h);
+    }
+
+    AtlasUpdateRect update { .rect = { min_x, min_y, max_x - min_x, max_y - min_y } };
+    update.bytes.resize(usize(update.rect.w) * usize(update.rect.h), u8());
+    for (rstd::uint32_t y = 0; y < update.rect.h; ++y)
+        for (rstd::uint32_t x = 0; x < update.rect.w; ++x)
+            update.bytes[usize(y) * usize(update.rect.w) + usize(x)] =
+                u8((*m_impl->pixels)[usize(min_y + y) * usize(m_impl->extent) + usize(min_x + x)]);
+    batch.rects.push(rstd::move(update));
+    return batch;
+}
+void AtlasPage::AcknowledgeUpdates(rstd::uint64_t serial) {
+    if (serial <= m_impl->acknowledged || serial > m_impl->serial) return;
+    // Dirty rectangles are the unacknowledged suffix of consecutive write serials.
+    auto entry_serial = m_impl->acknowledged;
+    m_impl->dirty.retain([&](const AtlasDirtyRect&) {
+        return ++entry_serial > serial;
+    });
+    m_impl->acknowledged = serial;
+}
+void AtlasPage::ClearDirtyRects() { AcknowledgeUpdates(m_impl->serial); }
 auto AtlasPage::RetainAtlasPixels() const -> owe::ImageDataPtr {
     struct Owner {
         Arc<Vec<rstd::uint8_t>> pixels;
@@ -145,7 +183,7 @@ auto TextResources::Rasterize(const vectext::FontInstance& font, vectext::Index 
             p.x   = x + bitmap.width + 2;
             p.y   = y;
             p.row = rstd::cmp::max(row, bitmap.height + 2);
-            p.dirty.push(AtlasDirtyRect { entry.x, entry.y, entry.width, entry.height });
+            p.MarkDirty(AtlasDirtyRect { entry.x, entry.y, entry.width, entry.height });
             break;
         }
     }

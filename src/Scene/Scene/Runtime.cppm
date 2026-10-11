@@ -1,5 +1,5 @@
 export module wescene.scene:runtime;
-export import vrento.runtime;
+export import vrento;
 
 export namespace owe
 {

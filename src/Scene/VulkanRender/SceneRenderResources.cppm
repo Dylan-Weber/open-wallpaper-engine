@@ -1,6 +1,5 @@
-export module wescene.vulkan_render:vulkan_pass;
+export module wescene.vulkan_render:scene_render_resources;
 import rstd;
-import wescene.rgraph;
 import wescene.vulkan;
 import wescene.scene;
 
@@ -11,6 +10,7 @@ import :uniform_buffer;
 
 using namespace rstd::prelude;
 using rstd::collections::HashMap;
+using rstd::sync::Arc;
 
 export namespace owe
 {
@@ -22,6 +22,7 @@ using PassInvalidationFlags = u32;
 
 enum class PassInvalidation : rstd::uint32_t
 {
+    Content     = 1u << 3,
     Resources   = 1u << 0u,
     Pipeline    = 1u << 1u,
     Framebuffer = 1u << 2u,
@@ -130,34 +131,49 @@ private:
     ref<PassResourceUses>                         m_uses;
 };
 
-struct PassRecordContext {
-    mut_ref<vvk::CommandBuffer>                               command;
+struct DrawBindingContext {
     ref<PreparedPassResources>                                resources;
-    mut_ref<resource_registry::DescriptorBindingRecordState>  descriptor_state;
     Option<ref<resource_registry::PreparedDescriptorBinding>> global_descriptor;
+    vrento::vulkan::DeviceSession                             session;
 };
 
-struct PassUpdateContext {
+struct DrawUpdateContext {
     mut_ref<dyn<resource::BufferContentWriter>>               buffers;
     ref<PreparedPassResources>                                resources;
     mut_ref<dyn<resource_registry::GraphicsResourcePreparer>> graphics;
     ref<dyn<SceneTextureAnimationView>>                       textures;
 };
 
-struct PassPrepareContext {
+struct DrawResourceContext {
     ref<dyn<ShaderBackend>>                                   shader_backend;
     ref<resource_registry::PreparedResourceTable>             resources;
     mut_ref<dyn<resource_registry::GraphicsResourcePreparer>> graphics;
     ref<PipelineLayoutAssignments>                            pipeline_layouts;
 };
 
+struct ResourceDeclarationData {
+    u64                                                        m_next_buffer { 0 };
+    u64                                                        m_next_shader { 0 };
+    u64                                                        m_next_pipeline { 0 };
+    u64                                                        m_next_render_pass { 0 };
+    u64                                                        m_next_framebuffer { 0 };
+    u64                                                        m_next_external { 0 };
+    HashMap<String, Vec<rstd::u8>>                             m_buffers;
+    HashMap<String, resource::BufferUseHandle>                 m_shared_buffers;
+    HashMap<resource::ShaderRequest, resource::ShaderArtifact> m_shaders;
+};
+
 class ResourceDeclarationContext {
 public:
     explicit ResourceDeclarationContext(resource::ResourcePlan& plan,
-                                        ShaderReflectionCache&  shader_cache)
+                                        ShaderReflectionCache&  shader_cache,
+                                        ResourceDeclarationData data = {})
         : m_plan(plan),
           m_shader_cache(
-              mut_ref<ShaderReflectionCache>::from_raw_parts(rstd::addressof(shader_cache))) {}
+              mut_ref<ShaderReflectionCache>::from_raw_parts(rstd::addressof(shader_cache))),
+          data_(rstd::move(data)) {}
+
+    auto takeData() -> ResourceDeclarationData { return rstd::move(data_); }
 
     auto AddBuffer(resource::BufferRequest request, slice<rstd::u8> content)
         -> resource::BufferUseHandle {
@@ -172,11 +188,11 @@ public:
     }
 
     auto AddSharedBuffer(resource::BufferRequest request) -> resource::BufferUseHandle {
-        auto existing = m_shared_buffers.get(request.name);
+        auto existing = data_.m_shared_buffers.get(request.name);
         if (existing.is_some()) return **existing;
         auto name   = request.name.clone();
         auto handle = AddBuffer(rstd::move(request));
-        if (handle.Valid()) (void)m_shared_buffers.insert(rstd::move(name), handle);
+        if (handle.Valid()) (void)data_.m_shared_buffers.insert(rstd::move(name), handle);
         return handle;
     }
 
@@ -188,14 +204,15 @@ public:
     auto AddShader(resource::ShaderRequest request, const SceneShader& shader)
         -> resource::ShaderUseHandle {
         auto handle = resource::ShaderUseHandle {
-            .index      = m_next_shader++,
+            .index      = data_.m_next_shader++,
             .generation = m_plan.generation,
         };
         SceneShaderArtifactProvider provider(*m_shader_cache, shader);
         auto                        artifact = provider.LoadShader(request);
         if (artifact.is_err()) return {};
         auto artifact_key = request.clone();
-        (void)m_shaders.insert(rstd::move(artifact_key), rstd::move(artifact).unwrap_unchecked());
+        (void)data_.m_shaders.insert(rstd::move(artifact_key),
+                                     rstd::move(artifact).unwrap_unchecked());
         m_plan.shaders.push(resource::ShaderPlanEntry {
             .handle  = handle,
             .request = rstd::move(request),
@@ -205,35 +222,35 @@ public:
 
     auto ReservePipeline() -> resource::PipelineUseHandle {
         return resource::PipelineUseHandle {
-            .index      = m_next_pipeline++,
+            .index      = data_.m_next_pipeline++,
             .generation = m_plan.generation,
         };
     }
 
     auto ReserveRenderPass() -> resource::RenderPassUseHandle {
         return resource::RenderPassUseHandle {
-            .index      = m_next_render_pass++,
+            .index      = data_.m_next_render_pass++,
             .generation = m_plan.generation,
         };
     }
 
     auto ReserveFramebuffer() -> resource::FramebufferUseHandle {
         return resource::FramebufferUseHandle {
-            .index      = m_next_framebuffer++,
+            .index      = data_.m_next_framebuffer++,
             .generation = m_plan.generation,
         };
     }
 
     auto ReserveExternal() -> resource::ExternalUseHandle {
         return resource::ExternalUseHandle {
-            .index      = m_next_external++,
+            .index      = data_.m_next_external++,
             .generation = m_plan.generation,
         };
     }
 
     auto LoadBuffer(const resource::BufferRequest& request)
         -> Result<slice<rstd::u8>, resource::ResourceError> {
-        auto content = m_buffers.get(request.name);
+        auto content = data_.m_buffers.get(request.name);
         if (content.is_none()) {
             return Err(resource::ResourceError {
                 .kind    = resource::ResourceErrorKind::MissingContent,
@@ -245,7 +262,7 @@ public:
 
     auto ShaderArtifact(const resource::ShaderRequest& request) const
         -> Option<ref<resource::ShaderArtifact>> {
-        return m_shaders.get(request);
+        return data_.m_shaders.get(request);
     }
 
     auto ScopeResourceName(String local_name) const -> String {
@@ -256,89 +273,26 @@ private:
     auto AddBuffer(resource::BufferRequest request, Vec<rstd::u8> content)
         -> resource::BufferUseHandle {
         auto handle = resource::BufferUseHandle {
-            .index      = m_next_buffer++,
+            .index      = data_.m_next_buffer++,
             .generation = m_plan.generation,
         };
         auto name = request.name.clone();
-        (void)m_buffers.insert(rstd::move(name), rstd::move(content));
+        (void)data_.m_buffers.insert(rstd::move(name), rstd::move(content));
         m_plan.buffers.push(resource::BufferPlanEntry {
-            .handle  = handle,
-            .request = rstd::move(request),
+            .handle     = handle,
+            .definition = rstd::move(request),
         });
         return handle;
     }
-    resource::ResourcePlan&                                    m_plan;
-    mut_ref<ShaderReflectionCache>                             m_shader_cache;
-    u64                                                        m_next_buffer { 0 };
-    u64                                                        m_next_shader { 0 };
-    u64                                                        m_next_pipeline { 0 };
-    u64                                                        m_next_render_pass { 0 };
-    u64                                                        m_next_framebuffer { 0 };
-    u64                                                        m_next_external { 0 };
-    HashMap<String, Vec<rstd::u8>>                             m_buffers;
-    HashMap<String, resource::BufferUseHandle>                 m_shared_buffers;
-    HashMap<resource::ShaderRequest, resource::ShaderArtifact> m_shaders;
+    resource::ResourcePlan&        m_plan;
+    mut_ref<ShaderReflectionCache> m_shader_cache;
+    ResourceDeclarationData        data_;
 };
 
-class VulkanPass : public rg::Pass {
-public:
-    VulkanPass()                                                                      = default;
-    virtual ~VulkanPass()                                                             = default;
-    virtual void                  prepare(Scene&, const Device&, PassPrepareContext&) = 0;
-    virtual bool                  update(PassUpdateContext&) { return true; }
-    virtual void                  completeUpdate() {}
-    virtual void                  record(PassRecordContext&) = 0;
-    virtual void                  destory(const Device&)     = 0;
-    virtual PassInvalidationFlags finalizeResourceRequests(Scene&) { return PassInvalidationNone; }
-    virtual void                  declareResources(ResourceDeclarationContext&) {}
-    virtual PassResourceUses      resourceUses() const { return {}; }
-    virtual auto                  pipelineLayoutRequirement(const PreparedPassResources&) const
-        -> Result<Option<PipelineLayoutRequirement>, resource::ResourceError> {
-        return Ok(None());
-    }
-    virtual auto globalDescriptorBufferUses(const PreparedPassResources&) const
-        -> Result<Vec<GlobalDescriptorBufferUse>, resource::ResourceError> {
-        return Ok(Vec<GlobalDescriptorBufferUse>::make());
-    }
-    virtual auto createUniformBufferUpdates(ref<dyn<UniformBindingPrepareContext>>,
-                                            const PreparedPassResources&)
-        -> Result<Vec<Box<dyn<UniformBufferUpdate>>>, UniformBufferUpdateError> {
-        return Ok(Vec<Box<dyn<UniformBufferUpdate>>>::make());
-    }
-    virtual bool prepareResourceStates(mut_ref<dyn<resource_registry::TextureStatePreparer>>) {
-        return true;
-    }
-    virtual Option<RenderItemId>        renderItemId() const { return None(); }
-    virtual Option<PipelineCacheKey>    pipelineCacheKey() const { return None(); }
-    virtual bool                        pipelineCacheHit() const { return false; }
-    virtual u64                         pipelineCacheObservedCount() const { return u64(); }
-    virtual Option<RenderPassCacheKey>  renderPassCacheKey() const { return None(); }
-    virtual bool                        renderPassCacheHit() const { return false; }
-    virtual u64                         renderPassCacheObservedCount() const { return u64(); }
-    virtual Option<FramebufferCacheKey> framebufferCacheKey() const { return None(); }
-    virtual bool                        framebufferCacheHit() const { return false; }
-    virtual u64                         framebufferCacheObservedCount() const { return u64(); }
-    virtual Vec<PassTextureRequestDiagnostic> textureRequestDiagnostics() const { return {}; }
-    virtual MaterialTextureBindingRefresh
-    refreshMaterialTextureBindings(const RenderSceneSnapshot&) {
-        return {};
-    }
-    virtual bool setTextureBinding(u32, TextureBindingRequest) { return false; }
-    virtual bool supportsRenderScope() const { return false; }
-    virtual bool canJoinRenderScopeAfter(const VulkanPass&) const { return false; }
-    virtual void prepareRenderScopeDraw(PassRecordContext&) {}
-    virtual void beginRenderScope(PassRecordContext&) {}
-    virtual void recordRenderScopeDraw(PassRecordContext&) {}
-    virtual void endRenderScope(PassRecordContext&) {}
-
-    bool prepared() const { return m_prepared; }
-    void resetPrepared() { setPrepared(false); }
-
-protected:
-    void setPrepared(bool v = true) { m_prepared = v; }
-
-private:
-    bool m_prepared { false };
+struct PassTextureAccess {
+    resource::TextureUseHandle        use;
+    vrento::fg::Access                access;
+    Option<vrento::fg::ResourceRange> range;
 };
 
 } // namespace vulkan

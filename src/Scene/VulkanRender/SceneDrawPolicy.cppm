@@ -1,10 +1,10 @@
 module;
 
-export module wescene.vulkan_render:pass_common;
+export module wescene.vulkan_render:scene_draw_policy;
 import rstd;
 import wescene.types;
 import wescene.vulkan;
-import vrento.material;
+import vrento;
 
 using namespace rstd::prelude;
 

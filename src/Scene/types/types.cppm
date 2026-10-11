@@ -3,12 +3,7 @@ module;
 export module wescene.types;
 import wescene.core;
 import rstd;
-export import vrento.texture_types;
-export import vrento.vertex_types;
-export import vrento.shader_types;
-export import vrento.graphics_types;
-export import vrento.video_playback;
-export import vrento.image;
+export import vrento;
 
 using namespace rstd::prelude;
 using namespace rstd::literals;

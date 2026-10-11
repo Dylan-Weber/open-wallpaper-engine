@@ -97,13 +97,19 @@ auto ParseImages(ref<dyn<IImageParser>> parser, slice<String> names, usize max_w
 
 class TexImageParser {
 public:
-    TexImageParser(fs::VFS* vfs): m_vfs(vfs->Snapshot()) {}
+    TexImageParser(fs::VFS* vfs, Option<ImageReadyCallback> ready = None())
+        : m_vfs(vfs->Snapshot()), m_ready(rstd::move(ready)) {}
 
     auto Parse(ref<str> name) const -> Result<Arc<Image>, ImageParseError>;
     auto ParseMany(slice<String> names) const -> Vec<Result<Arc<Image>, ImageParseError>>;
     auto ParseHeader(ref<str> name) const -> Result<ImageHeader, ImageParseError>;
 
 private:
+    auto Decode(ref<str> name) const -> Result<Arc<Image>, ImageParseError>;
+    using ImageCell  = Mutex<Option<Arc<Image>>>;
+    using ImageCache = HashMap<String, Arc<ImageCell>>;
+    Arc<Mutex<ImageCache>>     m_images { Arc<Mutex<ImageCache>>::make(ImageCache {}) };
+    Option<ImageReadyCallback> m_ready;
     struct PreparedHeader {
         ImageHeader         header;
         rstd::io::ReadRange source;

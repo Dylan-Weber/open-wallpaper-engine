@@ -29,6 +29,21 @@ void Rasterize(owe::text::TextResources& resources, ref<str> text) {
     for (auto& g : layout.glyphs())
         resources.Rasterize(layout.fonts()[usize(g.font)], g.glyph).unwrap();
 }
+auto AtlasFont() -> vectext::FontInstance {
+    struct Raster final : vectext::FontRasterizer {
+        auto rasterize(vectext::Index glyph, double scale) const
+            -> Result<vectext::GlyphBitmap, vectext::TextError> override {
+            Vec<unsigned char> pixels;
+            pixels.resize(usize(6), static_cast<unsigned char>(glyph));
+            return Ok(vectext::GlyphBitmap { 3, 2, {}, scale, rstd::move(pixels) });
+        }
+    };
+    auto raster = Box<Raster>::make();
+    return vectext::FontInstance(
+        "atlas-test"_Str,
+        Box<vectext::FontRasterizer>::from_raw(
+            rstd::move(raster).into_raw().cast<vectext::FontRasterizer>()));
+}
 } // namespace
 TEST(TextAtlas, ImageRetainsLivePixelsAfterCacheDestruction) {
     Option<Arc<owe::Image>> image;
@@ -48,6 +63,114 @@ TEST(TextAtlas, ImageRetainsLivePixelsAfterCacheDestruction) {
     EXPECT_EQ(Vec<rstd::uint8_t>::from(
                   slice<rstd::uint8_t>::from_raw_parts(mip.data.get(), expected.len())),
               expected);
+}
+
+TEST(TextAtlas, DirtySnapshotsAreNondestructiveAndRetryable) {
+    owe::text::AtlasPage page(16, "atlas"_Str, true);
+    auto                 first = page.SnapshotDirtyUpdates();
+    ASSERT_EQ(first.serial, 1u);
+    ASSERT_EQ(first.rects.len(), usize(1));
+    EXPECT_EQ(first.rects[usize()].rect.x, 0u);
+    EXPECT_EQ(first.rects[usize()].rect.y, 0u);
+    EXPECT_EQ(first.rects[usize()].rect.w, 4u);
+    EXPECT_EQ(first.rects[usize()].rect.h, 4u);
+    auto bytes = rstd::move(first.rects[usize()].bytes);
+    EXPECT_FALSE(page.DirtyRects().is_empty());
+    {
+        auto cancelled = page.SnapshotDirtyUpdates();
+        EXPECT_EQ(cancelled.serial, first.serial);
+        EXPECT_EQ(cancelled.rects[usize()].bytes, bytes);
+    }
+    auto retry = page.SnapshotDirtyUpdates();
+    EXPECT_EQ(retry.serial, first.serial);
+    ASSERT_EQ(retry.rects.len(), usize(1));
+    EXPECT_EQ(retry.rects[usize()].bytes, bytes);
+    for (auto pixel : bytes) EXPECT_EQ(pixel, u8(255));
+    page.AcknowledgeUpdates(retry.serial);
+    EXPECT_TRUE(page.DirtyRects().is_empty());
+    EXPECT_TRUE(page.SnapshotDirtyUpdates().rects.is_empty());
+}
+
+TEST(TextAtlas, DirtySnapshotOwnsPackedPixelsAfterPageDestruction) {
+    Option<owe::text::AtlasUpdateBatch> snapshot;
+    Vec<u8>                             expected;
+    {
+        owe::text::TextResources resources({ .extent = 16 });
+        auto                     font = AtlasFont();
+        resources.Rasterize(font, 1).unwrap();
+        resources.Rasterize(font, 2).unwrap();
+        resources.Rasterize(font, 3).unwrap();
+        auto& page = *resources.Pages()[usize()];
+        snapshot   = Some(page.SnapshotDirtyUpdates());
+        ASSERT_EQ(snapshot->rects.len(), usize(1));
+        auto& update = snapshot->rects[usize()];
+        auto& rect   = update.rect;
+        EXPECT_EQ(update.bytes.len(), usize(rect.w) * usize(rect.h));
+        for (rstd::uint32_t y = 0; y < rect.h; ++y)
+            for (rstd::uint32_t x = 0; x < rect.w; ++x)
+                EXPECT_EQ(update.bytes[usize(y) * usize(rect.w) + usize(x)],
+                          u8(page.AtlasPixels()[usize(rect.y + y) * usize(page.Extent()) +
+                                                usize(rect.x + x)]));
+        expected  = update.bytes.clone();
+        auto next = resources.Rasterize(font, 4).unwrap();
+        ASSERT_GE(next.x, rect.x);
+        ASSERT_GE(next.y, rect.y);
+        ASSERT_LE(next.x + next.width, rect.x + rect.w);
+        ASSERT_LE(next.y + next.height, rect.y + rect.h);
+        EXPECT_EQ(update.bytes[usize(next.y - rect.y) * usize(rect.w) + usize(next.x - rect.x)],
+                  u8());
+        EXPECT_EQ(page.AtlasPixels()[usize(next.y) * usize(page.Extent()) + usize(next.x)], 4u);
+        EXPECT_EQ(update.bytes, expected);
+        page.AcknowledgeUpdates(snapshot->serial);
+    }
+    EXPECT_EQ(snapshot->rects[usize()].bytes, expected);
+}
+
+TEST(TextAtlas, AcknowledgeSnapshotPreservesNewDirty) {
+    owe::text::TextResources resources({ .extent = 32 });
+    auto                     font = AtlasFont();
+    resources.Rasterize(font, 1).unwrap();
+    auto& page  = *resources.Pages()[usize()];
+    auto  first = page.SnapshotDirtyUpdates();
+    auto  next  = resources.Rasterize(font, 2).unwrap();
+    EXPECT_EQ(page.SnapshotDirtyUpdates().serial, first.serial + 1);
+    page.AcknowledgeUpdates(first.serial);
+    ASSERT_EQ(page.DirtyRects().len(), usize(1));
+    auto pending = page.SnapshotDirtyUpdates();
+    ASSERT_EQ(pending.rects.len(), usize(1));
+    EXPECT_EQ(pending.rects[usize()].rect.x, next.x);
+    EXPECT_EQ(pending.rects[usize()].rect.y, next.y);
+    EXPECT_EQ(pending.rects[usize()].rect.w, next.width);
+    EXPECT_EQ(pending.rects[usize()].rect.h, next.height);
+    for (auto pixel : pending.rects[usize()].bytes) EXPECT_EQ(pixel, u8(2));
+    page.AcknowledgeUpdates(first.serial);
+    page.AcknowledgeUpdates(0);
+    page.AcknowledgeUpdates(pending.serial + 1);
+    EXPECT_EQ(page.DirtyRects().len(), usize(1));
+    page.AcknowledgeUpdates(pending.serial);
+    EXPECT_TRUE(page.DirtyRects().is_empty());
+    resources.Rasterize(font, 3).unwrap();
+    auto latest = page.SnapshotDirtyUpdates();
+    EXPECT_EQ(latest.serial, pending.serial + 1);
+    page.AcknowledgeUpdates(pending.serial);
+    EXPECT_EQ(page.DirtyRects().len(), usize(1));
+}
+
+TEST(TextAtlas, LaterSnapshotConfirmationMakesEarlierConfirmationHarmless) {
+    owe::text::TextResources resources({ .extent = 32 });
+    auto                     font  = AtlasFont();
+    auto&                    page  = *resources.Pages()[usize()];
+    auto                     first = page.SnapshotDirtyUpdates();
+    resources.Rasterize(font, 1).unwrap();
+    auto later = page.SnapshotDirtyUpdates();
+    page.AcknowledgeUpdates(later.serial);
+    EXPECT_TRUE(page.DirtyRects().is_empty());
+    resources.Rasterize(font, 2).unwrap();
+    page.AcknowledgeUpdates(first.serial);
+    page.AcknowledgeUpdates(later.serial);
+    EXPECT_EQ(page.DirtyRects().len(), usize(1));
+    page.AcknowledgeUpdates(page.SnapshotDirtyUpdates().serial);
+    EXPECT_TRUE(page.DirtyRects().is_empty());
 }
 
 TEST(VideoPlayback, AdapterSharesAndRetainsControlState) {
@@ -249,7 +372,7 @@ TEST(TextAtlas, RegistrationRetainsDirtyPixelsUntilUpload) {
     auto& page = *resources->Pages()[usize()];
     EXPECT_FALSE(page.DirtyRects().is_empty());
     EXPECT_TRUE(scene.Texture(page.AtlasUrl()).is_some());
-    page.ClearDirtyRects();
+    page.AcknowledgeUpdates(page.SnapshotDirtyUpdates().serial);
     EXPECT_TRUE(page.DirtyRects().is_empty());
     Rasterize(*resources, "B"_str);
     EXPECT_FALSE(page.DirtyRects().is_empty());
@@ -299,4 +422,9 @@ TEST(TextAtlas, InvalidPageExtentHasNoPixels) {
     owe::text::AtlasPage page(0, "invalid"_Str, true);
     EXPECT_TRUE(page.AtlasPixels().is_empty());
     EXPECT_TRUE(owe::text::BuildAtlasImage(page, "invalid"_str).is_none());
+    auto snapshot = page.SnapshotDirtyUpdates();
+    EXPECT_EQ(snapshot.serial, 0u);
+    EXPECT_TRUE(snapshot.rects.is_empty());
+    page.AcknowledgeUpdates(1);
+    EXPECT_TRUE(page.DirtyRects().is_empty());
 }

@@ -133,9 +133,11 @@ int main(int argc, char** argv) {
 
     owe::RenderInitInfo info;
     info.enable_valid_layer = args.enable_valid_layer;
-    info.width              = static_cast<rstd::uint16_t>(render_width);
-    info.height             = static_cast<rstd::uint16_t>(render_height);
-    info.msaa_samples       = args.msaa_samples.to_primitive();
+    if (args.async_pipelines)
+        info.pipeline_preparation = vrento::vulkan::PipelinePreparationMode::Deferred;
+    info.width        = static_cast<rstd::uint16_t>(render_width);
+    info.height       = static_cast<rstd::uint16_t>(render_height);
+    info.msaa_samples = args.msaa_samples.to_primitive();
 
     auto& sf_info = info.surface_info;
     {

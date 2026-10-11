@@ -8,20 +8,16 @@ import wescene.vulkan;
 import wescene.scene;
 import wescene.resource_registry;
 
-import wescene.rgraph;
-
-export import :vulkan_pass;
-export import :program;
+export import :scene_render_resources;
+export import :scene_render_state;
+export import :scene_render_state_input;
 export import :pipeline_layout;
 export import :shader_reflection_cache;
 export import :uniform_buffer;
 export import :resource;
 export import :buffer_resolver;
-export import :pass_common;
-export import :copy_pass;
-export import :custom_shader_pass;
-export import :fin_pass;
-export import :pre_pass;
+export import :scene_draw_policy;
+export import :scene_draw;
 
 using namespace rstd::prelude;
 using namespace rstd::literals;
@@ -38,6 +34,9 @@ struct VulkanSurfaceInfo {
 };
 
 struct RenderInitInfo {
+    vrento::vulkan::PipelinePreparationMode pipeline_preparation {
+        vrento::vulkan::PipelinePreparationMode::Synchronous
+    };
     bool enable_valid_layer { false };
     bool offscreen { false };
 
@@ -78,13 +77,13 @@ struct RenderInitInfo {
         ex_swapchain_factory;
 };
 
-Box<rg::RenderGraph> sceneToRenderGraph(Scene&);
-Box<rg::RenderGraph> sceneToRenderGraph(Scene&, const RenderSceneSnapshot&);
+auto BuildSceneRenderState(Scene&) -> Result<vulkan::SceneRenderStateInput, vrento::fg::Error>;
+auto BuildSceneRenderState(Scene&, const RenderSceneSnapshot&,
+                           vrento::fg::AnalysisStatistics* = nullptr)
+    -> Result<vulkan::SceneRenderStateInput, vrento::fg::Error>;
 
 namespace vulkan
 {
-
-class FinPass;
 
 enum class RenderGraphResourceRetention
 {
@@ -97,12 +96,14 @@ enum class RenderPrepareStage
     State,
     Graph,
     RebuildRequired,
-    Program,
+    SceneRenderState,
     Upload,
-    FontUpload
+    FontUpload,
+    Pending
 };
 struct RenderPrepareError {
-    RenderPrepareStage stage;
+    RenderPrepareStage        stage;
+    Option<vrento::fg::Error> graph;
 };
 struct RenderItemPreparation {
     RenderItemId          item;
@@ -114,46 +115,51 @@ struct ResourcePreparation {
     bool                         textures_only {};
 };
 
+struct RenderDiagnostics {
+    vrento::vulkan::CompileStatus                    compilation;
+    vrento::vulkan::RendererStatistics               renderer;
+    vrento::resource_registry::ResourcePrepareStatus preparation;
+    vrento::resource_registry::ResourceStatistics    resources;
+    vrento::resource_registry::PipelineCacheStats    pipelines;
+    Option<vrento::vulkan::FrameState>               frame;
+    Option<vrento::vulkan::GraphExecutionError>      frame_error;
+};
+
 class VulkanRender {
 public:
     VulkanRender();
     ~VulkanRender();
 
+    bool hasSceneRenderState() const;
+    auto tryPrepareImage(Arc<vrento::Image>) -> Result<bool, resource::ResourceError>;
     bool init(RenderInitInfo, SceneLoadBenchRecorderView load_bench = {});
     auto tryClearLastRenderGraph(RenderGraphResourceRetention) -> Result<empty, RenderPrepareError>;
-    auto tryCompileRenderGraph(Scene&, rg::RenderGraph&, const RenderSceneSnapshot&,
-                               SceneLoadBenchRecorderView = {})
+    auto tryInstallSceneRenderState(Scene&, vulkan::SceneRenderStateInput&&,
+                                    const RenderSceneSnapshot&, SceneLoadBenchRecorderView = {})
         -> Result<empty, RenderPrepareError>;
     auto tryPrepareResources(Scene&, const RenderSceneSnapshot&, const ResourcePreparation&)
         -> Result<empty, RenderPrepareError>;
     auto tryPumpFontAtlases(Scene&) -> Result<empty, RenderPrepareError>;
     auto tryPumpVideoTextures(double) -> Result<empty, RenderPrepareError>;
+    auto tryContinuePrepare(Scene&) -> Result<empty, RenderPrepareError>;
 
     void destroy();
 
     void drawFrame(Scene&);
+    bool framePending() const;
+    bool frameSubmitted() const;
 
     void clearLastRenderGraph(
         RenderGraphResourceRetention retention = RenderGraphResourceRetention::KeepSceneTextures);
     void configureRenderTargets(Scene&);
-    void compileRenderGraph(Scene&, rg::RenderGraph&);
-    void compileRenderGraph(Scene&, rg::RenderGraph&, const RenderSceneSnapshot&);
-    void compileRenderGraph(Scene&, rg::RenderGraph&, const RenderSceneSnapshot&,
-                            SceneLoadBenchRecorderView);
-    void refreshPreparedResources(Scene&);
-    void refreshPreparedResources(Scene&, const RenderSceneSnapshot&);
-    void refreshPreparedTextures(Scene&, const RenderSceneSnapshot&);
+    void installSceneRenderState(Scene&, vulkan::SceneRenderStateInput&&);
+    void installSceneRenderState(Scene&, vulkan::SceneRenderStateInput&&,
+                                 const RenderSceneSnapshot&);
+    void installSceneRenderState(Scene&, vulkan::SceneRenderStateInput&&,
+                                 const RenderSceneSnapshot&, SceneLoadBenchRecorderView);
     void invalidatePreparedRenderItems(slice<RenderItemId>, PassInvalidationFlags);
-    void refreshPreparedRenderItems(Scene&, const RenderSceneSnapshot&, slice<RenderItemId>,
-                                    PassInvalidationFlags);
-    void refreshPreparedMaterial(Scene&, const RenderSceneSnapshot&, SceneMaterialId,
-                                 PassInvalidationFlags);
-    bool refreshPreparedMaterialTextures(Scene&, const RenderSceneSnapshot&, SceneMaterialId);
-    bool refreshPreparedMaterialTextures(Scene&, const RenderSceneSnapshot&,
-                                         slice<SceneMaterialId>);
-    void refreshPreparedMesh(Scene&, const RenderSceneSnapshot&, SceneMeshId,
-                             PassInvalidationFlags);
     Vec<PreparedPassDiagnostic> preparedPassDiagnostics() const;
+    auto                        diagnostics() const -> RenderDiagnostics;
     // Free buffer generations no longer referenced by prepared work.
     void evictUnusedMeshes();
     void UpdateCameraFillMode(Scene&, owe::FillMode);
@@ -162,6 +168,8 @@ public:
 
     ExSwapchain* exSwapchain() const;
     bool         inited() const;
+    auto         deviceSession() const -> Result<vrento::vulkan::DeviceSession, RenderPrepareError>;
+    auto renderedTarget(ref<str>) -> Result<vrento::texture::TextureViewRef, RenderPrepareError>;
 
     int takeLastFrameSyncFd();
 

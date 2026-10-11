@@ -1,6 +1,5 @@
 export module wescene.scene:uniform;
-export import vrento.uniform_value;
-export import vrento.uniform_source;
+export import vrento;
 import :id;
 import :runtime;
 import eigen;

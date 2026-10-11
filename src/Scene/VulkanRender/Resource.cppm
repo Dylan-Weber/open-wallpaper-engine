@@ -47,12 +47,6 @@ inline bool SameTextureSample(const TextureSample& lhs, const TextureSample& rhs
            lhs.compare_op == rhs.compare_op && lhs.border_color == rhs.border_color;
 }
 
-inline bool SameTextureKey(const TextureKey& lhs, const TextureKey& rhs) {
-    return lhs.width == rhs.width && lhs.height == rhs.height && lhs.usage == rhs.usage &&
-           lhs.format == rhs.format && SameTextureSample(lhs.sample, rhs.sample) &&
-           lhs.mipmap_level == rhs.mipmap_level && lhs.samples == rhs.samples;
-}
-
 using resource::SameTextureBindingRequest;
 using resource::SameTextureRequest;
 
@@ -64,16 +58,6 @@ inline void WriteTextureSampleIdentity(PipelineKeyWriter& writer, const TextureS
     writer.writeBool(sample.compare_enable);
     WritePipelineScalar(writer, sample.compare_op);
     WritePipelineScalar(writer, sample.border_color);
-}
-
-inline void WriteTextureKeyIdentity(PipelineKeyWriter& writer, const TextureKey& key) {
-    writer.writeU32(static_cast<rstd::uint32_t>(key.width.to_primitive()));
-    writer.writeU32(static_cast<rstd::uint32_t>(key.height.to_primitive()));
-    WritePipelineScalar(writer, key.usage);
-    WritePipelineScalar(writer, key.format);
-    WriteTextureSampleIdentity(writer, key.sample);
-    writer.writeU32(key.mipmap_level);
-    WritePipelineScalar(writer, key.samples);
 }
 
 inline void WriteTextureDefinitionIdIdentity(PipelineKeyWriter&         writer,
@@ -355,8 +339,31 @@ private:
 
 class SnapshotImportedTextureProvider {
 public:
-    SnapshotImportedTextureProvider(const RenderSceneSnapshot& render_scene, ref<Scene> scene)
-        : m_render_scene(render_scene), m_source(scene->CaptureImageSource()) {}
+    SnapshotImportedTextureProvider(const RenderSceneSnapshot& render_scene,
+                                    Arc<SceneImageSource>      source)
+        : m_render_scene(render_scene), m_source(rstd::move(source)) {}
+
+    auto Declare(const TextureRequest& request) const
+        -> Result<vrento::texture::TextureDesc, resource::ResourceError> {
+        auto identity = ResolveTextureContent(request);
+        if (identity.is_err()) return Err(identity.unwrap_err());
+        auto image =
+            SnapshotImportedTextureLoader(m_source.clone()).LoadTexture(identity->key.as_str());
+        if (image.is_err()) return Err(image.unwrap_err());
+        auto descriptions = vrento::texture::describe_image(**image);
+        if (descriptions.is_err())
+            return Err(resource::ResourceError {
+                .kind    = resource::ResourceErrorKind::MissingDefinition,
+                .message = rstd::format("invalid texture metadata {}", request.name) });
+        auto shape = (*descriptions)[usize()];
+        for (const auto& slot : *descriptions)
+            if (slot.mip_levels != shape.mip_levels || slot.layers != shape.layers)
+                return Err(resource::ResourceError {
+                    .kind    = resource::ResourceErrorKind::MissingDefinition,
+                    .message = rstd::format("animated texture {} has incompatible subresources",
+                                            request.name) });
+        return Ok(rstd::move(shape));
+    }
 
     auto ResolveTextureContent(const TextureRequest& request) const
         -> Result<resource::ImportedTextureContentIdentity, resource::ResourceError> {
@@ -433,15 +440,15 @@ private:
 };
 
 struct RenderingResources {
-    vvk::CommandBuffer command;
-
-    vvk::Semaphore sem_swap_wait_image;
-    vvk::Semaphore sem_export;
-    vvk::Semaphore sem_upload;
-    vvk::Fence     fence_frame;
+    Arc<vrento::vulkan::GraphicsScopeCache> scopes {
+        Arc<vrento::vulkan::GraphicsScopeCache>::make()
+    };
 
     rstd::Option<rstd::mut_ref<ShaderReflectionCache>> shader_reflection_cache;
-    resource_registry::RenderResourceSystem            resources;
+    Arc<resource_registry::RenderResourceSystem>       resource_owner {
+        Arc<resource_registry::RenderResourceSystem>::make()
+    };
+    resource_registry::RenderResourceSystem& resources { *resource_owner };
 };
 
 } // namespace owe::vulkan

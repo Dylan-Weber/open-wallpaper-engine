@@ -115,16 +115,16 @@ TEST(ResourcePlan, OwnsBackendNeutralRequestsByTypedUseHandle) {
     plan.textures.push(owe::resource::TexturePlanEntry {
         .handle =
             owe::resource::TextureUseHandle { .index = rstd::u64(2), .generation = rstd::u64(1) },
-        .request = TextureRequest("frame", rstd::u32(256)),
-        .access  = owe::resource::ResourceAccess::Write,
-        .version = rstd::u32(3),
+        .definition = TextureRequest("frame", rstd::u32(256)),
+        .access     = owe::resource::ResourceAccess::Write,
+        .version    = rstd::u32(3),
     });
 
     ASSERT_EQ(plan.textures.len(), rstd::usize(1));
     EXPECT_TRUE(plan.textures[rstd::usize()].handle.Valid());
     EXPECT_EQ(plan.textures[rstd::usize()].version, rstd::u32(3));
     EXPECT_EQ(plan.textures[rstd::usize()].access, owe::resource::ResourceAccess::Write);
-    EXPECT_EQ(rstd::cppstd::as_string_view(plan.textures[rstd::usize()].request.name.as_str()),
+    EXPECT_EQ(rstd::cppstd::as_string_view(plan.textures[rstd::usize()].request().name.as_str()),
               "frame");
 }
 
@@ -133,12 +133,12 @@ TEST(ResourcePlan, VisitsTypedRequestsThroughPublicTrait) {
     plan.textures.push(owe::resource::TexturePlanEntry {
         .handle =
             owe::resource::TextureUseHandle { .index = rstd::u64(1), .generation = rstd::u64(11) },
-        .request = TextureRequest("frame", rstd::u32(64)),
+        .definition = TextureRequest("frame", rstd::u32(64)),
     });
     plan.buffers.push(owe::resource::BufferPlanEntry {
         .handle =
             owe::resource::BufferUseHandle { .index = rstd::u64(2), .generation = rstd::u64(11) },
-        .request =
+        .definition =
             owe::resource::BufferRequest {
                 .name       = rstd::string::String::make("vertices"_str),
                 .definition = { .size  = rstd::usize(128),

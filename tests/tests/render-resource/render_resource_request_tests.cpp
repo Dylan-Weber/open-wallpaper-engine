@@ -9,11 +9,71 @@ import wescene.scene;
 import wescene.types;
 import wescene.vulkan;
 import wescene.vulkan_render;
-import vrento.resource_registry;
+import vrento;
 
 using namespace rstd::prelude;
 using namespace rstd::literals;
 using rstd::sync::Arc;
+
+using namespace owe::vulkan;
+using namespace rstd;
+using namespace vrento::vulkan;
+using namespace owe::resource_registry;
+
+namespace
+{
+struct TestPassDesc {
+    using PassDescriptor = vrento::pass::PassDesc;
+    vrento::vulkan::VulkanPassIO io;
+};
+template<class T>
+auto make_test_pass(rstd::uint64_t scope, rstd::uint64_t revision,
+                    vrento::vulkan::PassExecutionInfo execution, T desc)
+    -> vrento::vulkan::PassInput {
+    auto id = execution.id;
+    if constexpr (requires { desc.resources; }) {
+        namespace vk = vrento::vulkan;
+        if (execution.graphics) {
+            auto convert = [scope](const auto& value) -> rstd::Option<vk::GraphicsAttachment> {
+                if (! value) return rstd::None();
+                return rstd::Some(
+                    vk::GraphicsAttachment { .target = vrento::pass::ContentRef::from_version(
+                                                 scope, { value->resource, value->version }),
+                                             .load    = value->load,
+                                             .store   = value->store,
+                                             .clear   = value->clear,
+                                             .stencil = value->stencil });
+            };
+            desc.resources.attachments.color   = convert(execution.graphics->color);
+            desc.resources.attachments.depth   = convert(execution.graphics->depth);
+            desc.resources.attachments.resolve = convert(execution.graphics->resolve);
+        }
+        for (const auto& use : execution.uses) {
+            if (use.access != vk::GraphAccess::Read) continue;
+            if (use.usage == vk::PassUsage::Sampled)
+                desc.resources.textures.push(
+                    { vrento::pass::ContentRef::from_version(scope, { use.resource, use.version }),
+                      use.range,
+                      use.stages });
+            else if (use.usage != vk::PassUsage::ColorAttachment &&
+                     use.usage != vk::PassUsage::DepthAttachment)
+                desc.resources.buffers.push(
+                    { vrento::pass::ContentRef::from_version(scope, { use.resource, use.version }),
+                      use.range,
+                      use.usage,
+                      use.stages });
+        }
+        if (! execution.graphics)
+            desc.resources.attachments.color = rstd::Some(vk::GraphicsAttachment {
+                .target = vrento::pass::ContentRef::from_version(scope, { { 1, scope }, 1 }) });
+    } else {
+        EXPECT_TRUE(execution.uses.is_empty());
+        desc.io.kind  = execution.kind;
+        desc.io.queue = execution.queue;
+    }
+    return vrento::vulkan::PassInput::publish(scope, revision, id, rstd::move(desc)).unwrap();
+}
+} // namespace
 
 namespace uniform_test
 {
@@ -169,7 +229,7 @@ float ReadFloat(const rstd::vec::Vec<rstd::u8>& bytes, rstd::usize offset) {
 
 } // namespace
 
-TEST(PassCommon, ConfiguresAlphaToCoverageWithoutColorBlending) {
+TEST(SceneDrawPolicy, ConfiguresAlphaToCoverageWithoutColorBlending) {
     VkPipelineColorBlendAttachmentState blend {};
     owe::vulkan::SetBlend(owe::BlendMode::AlphaToCoverage, blend);
     EXPECT_FALSE(blend.blendEnable);
@@ -188,7 +248,7 @@ TEST(PassCommon, ConfiguresAlphaToCoverageWithoutColorBlending) {
     EXPECT_TRUE(owe::vulkan::EffectiveDepthWrite(material.Pipeline()));
 }
 
-TEST(PassCommon, PreservesExplicitDepthWriteForEveryBlendMode) {
+TEST(SceneDrawPolicy, PreservesExplicitDepthWriteForEveryBlendMode) {
     for (auto mode : { owe::BlendMode::Disable,
                        owe::BlendMode::Normal,
                        owe::BlendMode::AlphaToCoverage,
@@ -548,7 +608,7 @@ TEST(UniformBufferBinding, UpdatesGenericSceneThroughBufferWriterTrait) {
     uniform_test::BufferWriter writer;
     auto writer_trait   = rstd::dyn<owe::resource::BufferContentWriter>::from_ref(writer);
     auto texture_frames = rstd::dyn<owe::SceneTextureAnimationView>::from_ref(scene);
-    owe::vulkan::ProgramUniformFrameContext frame_impl(
+    owe::vulkan::SceneRenderUniformFrameContext frame_impl(
         scene.Runtime().Frame(), { 1920.0f, 1080.0f }, texture_frames.as_ref());
     auto frame   = rstd::dyn<owe::vulkan::UniformBufferFrameContext>::from_ref(frame_impl);
     auto updated = binding.unwrap_unchecked()->Update(frame.as_ref(), writer_trait.as_mut_ref());
@@ -672,7 +732,7 @@ TEST(UniformBufferBinding, ProvidesPreparedTextureMetadataToGenericSource) {
     uniform_test::BufferWriter writer;
     auto writer_trait   = rstd::dyn<owe::resource::BufferContentWriter>::from_ref(writer);
     auto texture_frames = rstd::dyn<owe::SceneTextureAnimationView>::from_ref(scene);
-    owe::vulkan::ProgramUniformFrameContext frame_impl(
+    owe::vulkan::SceneRenderUniformFrameContext frame_impl(
         scene.Runtime().Frame(), { 1920.0f, 1080.0f }, texture_frames.as_ref());
     auto frame = rstd::dyn<owe::vulkan::UniformBufferFrameContext>::from_ref(frame_impl);
     ASSERT_TRUE(
@@ -738,7 +798,7 @@ TEST(UniformBufferBinding, OrdersSourcesAndSkipsUnchangedVersions) {
     auto writer_trait   = rstd::dyn<owe::resource::BufferContentWriter>::from_ref(writer);
     auto update         = binding.unwrap_unchecked();
     auto texture_frames = rstd::dyn<owe::SceneTextureAnimationView>::from_ref(scene);
-    owe::vulkan::ProgramUniformFrameContext frame_impl(
+    owe::vulkan::SceneRenderUniformFrameContext frame_impl(
         scene.Runtime().Frame(), { 1920.0f, 1080.0f }, texture_frames.as_ref());
     auto frame = rstd::dyn<owe::vulkan::UniformBufferFrameContext>::from_ref(frame_impl);
     ASSERT_TRUE(update->Update(frame.as_ref(), writer_trait.as_mut_ref()).is_ok());
@@ -802,7 +862,7 @@ TEST(UniformBufferBinding, UpdatesRegisteredSharedBlockOncePerVersion) {
     uniform_test::BufferWriter writer;
     auto writer_trait   = rstd::dyn<owe::resource::BufferContentWriter>::from_ref(writer);
     auto texture_frames = rstd::dyn<owe::SceneTextureAnimationView>::from_ref(scene);
-    owe::vulkan::ProgramUniformFrameContext frame_impl(
+    owe::vulkan::SceneRenderUniformFrameContext frame_impl(
         scene.Runtime().Frame(), { 1.0f, 1.0f }, texture_frames.as_ref());
     auto frame = rstd::dyn<owe::vulkan::UniformBufferFrameContext>::from_ref(frame_impl);
     auto owner = rstd::move(update).unwrap_unchecked();
@@ -909,21 +969,20 @@ TEST(ResourcePlan, UpdatesTextureRequestByStableUse) {
         owe::resource::TextureUseHandle { .index = rstd::u64(3), .generation = rstd::u64(7) };
     owe::resource::ResourcePlan plan { .generation = rstd::u64(7) };
     plan.textures.push(owe::resource::TexturePlanEntry {
-        .handle  = use,
-        .request = owe::vulkan::MakeImportedTextureRequest("texture-old"_str),
+        .handle     = use,
+        .definition = owe::vulkan::MakeImportedTextureRequest("texture-old"_str),
     });
 
     EXPECT_TRUE(
         plan.UpdateTextureRequest(use, owe::vulkan::MakeImportedTextureRequest("texture-new"_str)));
-    EXPECT_EQ(plan.textures[rstd::usize()].request.name, "texture-new"_str);
+    EXPECT_EQ(plan.textures[rstd::usize()].request().name, "texture-new"_str);
     EXPECT_FALSE(plan.UpdateTextureRequest(
         owe::resource::TextureUseHandle { .index = use.index, .generation = rstd::u64(8) },
         owe::vulkan::MakeImportedTextureRequest("texture-invalid"_str)));
-    EXPECT_EQ(plan.textures[rstd::usize()].request.name, "texture-new"_str);
+    EXPECT_EQ(plan.textures[rstd::usize()].request().name, "texture-new"_str);
 }
 
 TEST(ShaderBackend, CompilesBothLanguagesAndReusesReflection) {
-    using namespace owe::vulkan;
     auto                  backend = MakeShaderBackend();
     ShaderReflectionCache cache(backend.as_ref());
     for (auto language : { SourceLang::Glsl, SourceLang::Hlsl }) {
@@ -967,8 +1026,6 @@ TEST(ShaderBackend, CompilesBothLanguagesAndReusesReflection) {
 }
 
 TEST(ShaderBackend, PreprocessesBoundedSourceAndAllowsAliasedOutput) {
-    using namespace rstd::prelude;
-    using namespace owe::vulkan;
     auto              backend = MakeShaderBackend();
     const std::string prefix  = "#version 450\nvoid main() { gl_Position = vec4(0, 0, 0, 1); }\n";
     const auto        storage = prefix + "#error outside borrowed source\n";
@@ -985,7 +1042,6 @@ TEST(ShaderBackend, PreprocessesBoundedSourceAndAllowsAliasedOutput) {
 }
 
 TEST(ShaderBackend, ReusesPreparedReflectionAndRejectsChangedCode) {
-    using namespace owe::vulkan;
     auto           backend = MakeShaderBackend();
     ShaderCompUnit unit {
         .stage       = owe::ShaderType::VERTEX,
@@ -1023,7 +1079,6 @@ TEST(ShaderBackend, ReusesPreparedReflectionAndRejectsChangedCode) {
 }
 
 TEST(ShaderBackend, ReflectionFailureDoesNotPublishPartialOutput) {
-    using namespace owe::vulkan;
     ShaderCompUnit unit {
         .stage       = owe::ShaderType::VERTEX,
         .src         = "#version 450\nvoid main() { gl_Position = vec4(0, 0, 0, 1); }"_Str,
@@ -1049,7 +1104,6 @@ TEST(ShaderBackend, ReflectionFailureDoesNotPublishPartialOutput) {
 }
 
 TEST(ShaderBackend, RejectsUnsupportedDescriptorArrays) {
-    using namespace owe::vulkan;
     ShaderCompUnit unit {
         .stage       = owe::ShaderType::FRAGMENT,
         .src         = "#version 450\nlayout(set=0,binding=0) uniform sampler2D images[2];\n"
@@ -1068,8 +1122,6 @@ TEST(ShaderBackend, RejectsUnsupportedDescriptorArrays) {
 }
 
 TEST(ShaderBackend, CompilesOwnedSourcesWithDefaultAndExplicitEntryPoints) {
-    using namespace rstd::prelude;
-    using namespace owe::vulkan;
     auto backend = MakeShaderBackend();
     for (bool explicit_entry : { false, true }) {
         auto name = explicit_entry ? "custom_vertex"_Str : "main_vs"_Str;
@@ -1092,7 +1144,6 @@ TEST(ShaderBackend, CompilesOwnedSourcesWithDefaultAndExplicitEntryPoints) {
 }
 
 TEST(ShaderBackend, OwnsOrderedReflectionAcrossCacheAndArtifact) {
-    using namespace owe::vulkan;
     auto backend = MakeShaderBackend();
     for (int fragment_count : { 2, 3 }) {
         owe::SceneShader shader;
@@ -1160,7 +1211,6 @@ TEST(ShaderBackend, OwnsOrderedReflectionAcrossCacheAndArtifact) {
 }
 
 TEST(TextureLoader, RetainsCapturedRuntimeContentAfterSceneReplacement) {
-    using namespace rstd;
     auto original          = sync::Arc<owe::Image>::make();
     original->content->key = "original"_Str;
     Option<sync::Arc<dyn<owe::resource::TextureLoader>>> loader;
@@ -1168,9 +1218,8 @@ TEST(TextureLoader, RetainsCapturedRuntimeContentAfterSceneReplacement) {
         owe::Scene scene;
         scene.RegisterRuntimeImage(String::make("runtime"_str), original.clone());
         auto snapshot = owe::ExtractRenderSceneSnapshot(scene);
-        owe::vulkan::SnapshotImportedTextureProvider provider(
-            snapshot, ref<owe::Scene>::from_raw_parts(&scene));
-        auto opened = provider.OpenTextureLoader();
+        owe::vulkan::SnapshotImportedTextureProvider provider(snapshot, scene.CaptureImageSource());
+        auto                                         opened = provider.OpenTextureLoader();
         ASSERT_TRUE(opened.is_ok());
         loader = Some(rstd::move(opened).unwrap_unchecked());
         scene.RegisterRuntimeImage(String::make("runtime"_str), sync::Arc<owe::Image>::make());
@@ -1182,67 +1231,84 @@ TEST(TextureLoader, RetainsCapturedRuntimeContentAfterSceneReplacement) {
     EXPECT_EQ(image->key, "original"_str);
 }
 
-TEST(FramePassResources, DeclaresTargetUsesOutsideTheRenderGraphPlan) {
-    owe::SceneRenderTarget render_target {
-        .width        = i32(1920),
-        .height       = i32(1080),
-        .sample_count = 4,
-    };
-    auto target = owe::vulkan::MakeRenderTargetTextureRequest("_rt_default"_str, render_target);
-    auto msaa   = owe::vulkan::MakeMsaaTextureRequest(
-        "_rt_default::msaa4"_str, render_target, VK_SAMPLE_COUNT_4_BIT);
-    owe::resource::ResourcePlan plan { .generation = rstd::u64(7) };
-    plan.textures.push(owe::resource::TexturePlanEntry {
-        .handle =
-            owe::resource::TextureUseHandle { .index = rstd::u64(4), .generation = rstd::u64(7) },
-        .request = owe::vulkan::MakeImportedTextureRequest("graph-input"_str),
-    });
-    auto                               shader_backend = owe::vulkan::MakeShaderBackend();
-    owe::vulkan::ShaderReflectionCache shader_cache(shader_backend.as_ref());
-    owe::vulkan::PrePass               pre(owe::vulkan::PrePass::Desc {
-        .result_request      = rstd::Some(target.clone()),
-        .result_msaa_request = rstd::Some(rstd::move(msaa)),
-    });
-    owe::vulkan::FinPass               fin(owe::vulkan::FinPass::Desc {
-        .result_request = rstd::Some(target.clone()),
-    });
+TEST(SceneDraw, StaticRecipeSurvivesSceneAndDeclarationDestruction) {
+    Option<vrento::vulkan::PassInput> description;
     {
-        owe::vulkan::ResourceDeclarationContext declarations(plan, shader_cache);
-        pre.declareResources(declarations);
-        fin.declareResources(declarations);
+        auto           backend = MakeShaderBackend();
+        ShaderCompUnit unit {
+            .stage       = owe::ShaderType::VERTEX,
+            .src         = "#version 450\nvoid main() { gl_Position = vec4(0, 0, 0, 1); }"_Str,
+            .entry_point = "main"_Str
+        };
+        Vec<Uni_ShaderSpv> compiled;
+        ASSERT_TRUE(backend->CompileAndLinkShaderUnits(
+            slice<ShaderCompUnit>::from_raw_parts(&unit, usize(1)), {}, compiled));
+        auto shader = Arc<owe::SceneShader>::make();
+        shader->codes.push(compiled[usize()]->spirv.clone());
+        auto node = Arc<owe::SceneNode>::make();
+        node->AddMesh(MakeUniformMesh(shader.clone()));
+        SceneDraw draw(SceneDraw::Desc {},
+                       { .node = Some(mut_ref<owe::SceneNode>::from_raw_parts(node.as_ptr())) });
+        owe::resource::ResourcePlan plan { .generation = u64(7) };
+        ShaderReflectionCache       cache(backend.as_ref());
+        ResourceDeclarationContext  declarations(plan, cache);
+        auto                        recipe = draw.declareResources(declarations);
+        ASSERT_TRUE(recipe);
+        description =
+            Some(make_test_pass(7,
+                                1,
+                                vrento::vulkan::PassExecutionInfo {
+                                    .id = { 1 }, .kind = vrento::vulkan::graphics_draw_kind },
+                                rstd::move(*recipe)));
     }
+    auto recipe = description->get<vrento::vulkan::GraphicsDrawDesc>();
+    ASSERT_TRUE(recipe);
+    ASSERT_TRUE((**recipe).layout);
+    EXPECT_EQ((**recipe).request.shader_stages.len(), usize(1));
+    Vec<PipelineLayoutRequirement> requirements;
+    requirements.push((**recipe).layout->clone());
+    EXPECT_TRUE(PlanPipelineLayouts(requirements.as_slice(), false).is_ok());
+}
 
-    auto pre_diagnostics = pre.textureRequestDiagnostics();
-    auto fin_diagnostics = fin.textureRequestDiagnostics();
-    ASSERT_EQ(pre_diagnostics.len().to_primitive(), 2u);
-    ASSERT_EQ(fin_diagnostics.len().to_primitive(), 1u);
-    ASSERT_TRUE(pre_diagnostics[rstd::usize(0)].use.is_some());
-    ASSERT_TRUE(pre_diagnostics[rstd::usize(1)].use.is_some());
-    ASSERT_TRUE(fin_diagnostics[rstd::usize(0)].use.is_some());
-    EXPECT_EQ(pre_diagnostics[rstd::usize(0)].use->index, rstd::u64(5));
-    EXPECT_EQ(pre_diagnostics[rstd::usize(1)].use->index, rstd::u64(6));
-    EXPECT_EQ(fin_diagnostics[rstd::usize(0)].use->index, rstd::u64(7));
-    EXPECT_NE(*pre_diagnostics[rstd::usize(0)].use, *fin_diagnostics[rstd::usize(0)].use);
-    ASSERT_EQ(plan.textures.len(), rstd::usize(4));
-    EXPECT_EQ(plan.textures[rstd::usize(1)].access, owe::resource::ResourceAccess::Write);
-    EXPECT_EQ(plan.textures[rstd::usize(2)].access, owe::resource::ResourceAccess::Write);
-    EXPECT_EQ(plan.textures[rstd::usize(3)].access, owe::resource::ResourceAccess::Read);
-    EXPECT_EQ(plan.textures[rstd::usize(1)].request.name, "_rt_default"_str);
-    EXPECT_EQ(plan.textures[rstd::usize(2)].request.name, "_rt_default::msaa4"_str);
-    EXPECT_EQ(plan.textures[rstd::usize(3)].request.name, "_rt_default"_str);
-
-    plan.textures.truncate(rstd::usize(1));
-    {
-        owe::vulkan::ResourceDeclarationContext declarations(plan, shader_cache);
-        pre.declareResources(declarations);
-        fin.declareResources(declarations);
-    }
-    pre_diagnostics = pre.textureRequestDiagnostics();
-    fin_diagnostics = fin.textureRequestDiagnostics();
-    ASSERT_EQ(plan.textures.len(), rstd::usize(4));
-    EXPECT_EQ(pre_diagnostics[rstd::usize(0)].use->index, rstd::u64(5));
-    EXPECT_EQ(pre_diagnostics[rstd::usize(1)].use->index, rstd::u64(6));
-    EXPECT_EQ(fin_diagnostics[rstd::usize(0)].use->index, rstd::u64(7));
+TEST(SceneRenderState, RetainsDeclaredInputsAndPublishesOutputAssociation) {
+    namespace fg = vrento::fg;
+    fg::FrameGraphBuilder graph(7);
+    graph.add_pass({ 1 }).unwrap();
+    owe::resource::ResourcePlan plan { .generation = u64(7) };
+    auto                        source = plan.DeclareTexture(
+        MakeRenderTargetTextureRequest(
+            "output"_str, owe::SceneRenderTarget { .width = i32(64), .height = i32(32) }),
+        owe::resource::ResourceAccess::Read);
+    SceneRenderStateInput input { .graph         = rstd::move(graph).finish().unwrap(),
+                                  .textures      = SceneRenderTextures(u64(7)),
+                                  .output_pass   = { 1 },
+                                  .result_use    = Some(source),
+                                  .resource_plan = rstd::move(plan) };
+    input.descriptions.push(make_test_pass(
+        7, 9, vrento::vulkan::PassExecutionInfo { .id = { 1 }, .kind = 71 }, TestPassDesc {}));
+    SceneRenderState state;
+    state.install(rstd::move(input)).unwrap();
+    EXPECT_EQ(state.resourcePlan().textures.len(), usize(1));
+    EXPECT_EQ(state.inputDescriptions()[usize()].revision(), 9u);
+    auto                  backend = MakeShaderBackend();
+    ShaderReflectionCache cache(backend.as_ref());
+    auto                  output = state.createOutput(VK_FORMAT_R8G8B8A8_UNORM, cache);
+    EXPECT_EQ(output.source().unwrap(), source);
+    EXPECT_TRUE(output.pipeline());
+    EXPECT_TRUE(output.render_pass());
+    EXPECT_EQ(state.resourcePlan().textures.len(), usize(1));
+    EXPECT_EQ(state.inputDescriptions()[usize()].execution().kind, 71u);
+    auto moved = rstd::move(state);
+    EXPECT_EQ(moved.inputGraph().scope(), 7u);
+    moved.clear();
+    EXPECT_FALSE(moved.installed());
+    EXPECT_FALSE(moved.valid());
+    fg::FrameGraphBuilder other(8);
+    SceneRenderStateInput mismatch { .graph         = rstd::move(other).finish().unwrap(),
+                                     .textures      = SceneRenderTextures(u64(7)),
+                                     .resource_plan = { .generation = u64(7) } };
+    EXPECT_EQ(moved.install(rstd::move(mismatch)).unwrap_err().kind, fg::ErrorKind::Conflict);
+    EXPECT_FALSE(moved.installed());
 }
 
 TEST(ResourceDeclarationContext, ScopesLocalResourceNamesToThePlanGeneration) {
@@ -1256,55 +1322,7 @@ TEST(ResourceDeclarationContext, ScopesLocalResourceNamesToThePlanGeneration) {
     EXPECT_EQ(rstd::cppstd::as_string_view(name.as_str()), "plan:7:pass:25:0:vertex:0");
 }
 
-TEST(FramePassResources, ClearsStaleUsesBeforeFramePassInjection) {
-    owe::SceneRenderTarget render_target {
-        .width        = i32(1920),
-        .height       = i32(1080),
-        .sample_count = 4,
-    };
-    auto target = owe::vulkan::MakeRenderTargetTextureRequest("_rt_default"_str, render_target);
-    auto msaa   = owe::vulkan::MakeMsaaTextureRequest(
-        "_rt_default::msaa4"_str, render_target, VK_SAMPLE_COUNT_4_BIT);
-    owe::resource::ResourcePlan plan { .generation = rstd::u64(7) };
-    plan.textures.push(owe::resource::TexturePlanEntry {
-        .handle =
-            owe::resource::TextureUseHandle { .index = rstd::u64(4), .generation = rstd::u64(7) },
-        .request = owe::vulkan::MakeImportedTextureRequest("particle/fog/fog1"_str),
-    });
-
-    auto                               shader_backend = owe::vulkan::MakeShaderBackend();
-    owe::vulkan::ShaderReflectionCache shader_cache(shader_backend.as_ref());
-    owe::vulkan::PrePass               pre(owe::vulkan::PrePass::Desc {
-        .result_request      = rstd::Some(target.clone()),
-        .result_msaa_request = rstd::Some(rstd::move(msaa)),
-    });
-    owe::vulkan::FinPass               fin(owe::vulkan::FinPass::Desc {
-        .result_request = rstd::Some(target.clone()),
-    });
-    {
-        owe::vulkan::ResourceDeclarationContext declarations(plan, shader_cache);
-        pre.declareResources(declarations);
-        fin.declareResources(declarations);
-    }
-    ASSERT_TRUE(pre.textureRequestDiagnostics()[rstd::usize(0)].use.is_some());
-    ASSERT_TRUE(fin.textureRequestDiagnostics()[rstd::usize(0)].use.is_some());
-
-    owe::vulkan::RenderProgram program;
-    program.injectFramePasses(pre, fin);
-
-    auto pre_diagnostics = pre.textureRequestDiagnostics();
-    auto fin_diagnostics = fin.textureRequestDiagnostics();
-    ASSERT_EQ(pre_diagnostics.len().to_primitive(), 2u);
-    ASSERT_EQ(fin_diagnostics.len().to_primitive(), 1u);
-    EXPECT_TRUE(pre_diagnostics[rstd::usize(0)].use.is_none());
-    EXPECT_TRUE(pre_diagnostics[rstd::usize(1)].use.is_none());
-    EXPECT_TRUE(fin_diagnostics[rstd::usize(0)].use.is_none());
-    EXPECT_TRUE(pre_diagnostics[rstd::usize(0)].request.is_some());
-    EXPECT_TRUE(pre_diagnostics[rstd::usize(1)].request.is_some());
-    EXPECT_TRUE(fin_diagnostics[rstd::usize(0)].request.is_some());
-}
-
-TEST(CustomShaderPass, RefreshesImportedTextureOnStableUse) {
+TEST(SceneDraw, RefreshesImportedTextureOnStableUse) {
     owe::Scene scene;
     scene.RootMut()->ID() = rstd::i32(1);
     scene.RegisterTexture(String::make("texture-old"_str),
@@ -1332,10 +1350,11 @@ TEST(CustomShaderPass, RefreshesImportedTextureOnStableUse) {
         .use     = rstd::Some(use),
         .request = rstd::Some(owe::vulkan::MakeImportedTextureRequest("texture-old"_str, old_desc)),
     });
-    owe::vulkan::CustomShaderPass pass(owe::vulkan::CustomShaderPass::Desc {
-        .node = rstd::Some(rstd::mut_ref<owe::SceneNode>::from_raw_parts(node.as_ptr())),
-        .texture_bindings = std::move(bindings),
-    });
+    owe::vulkan::SceneDraw pass(
+        owe::vulkan::SceneDraw::Desc {
+            .texture_bindings = std::move(bindings),
+        },
+        { .node = rstd::Some(rstd::mut_ref<owe::SceneNode>::from_raw_parts(node.as_ptr())) });
 
     ASSERT_TRUE(
         scene
@@ -1356,7 +1375,7 @@ TEST(CustomShaderPass, RefreshesImportedTextureOnStableUse) {
     EXPECT_EQ(diagnostics[rstd::usize(0)].request->source->generation, new_desc->generation);
 }
 
-TEST(CustomShaderPass, RebuildsForImportedTextureMissingFromSnapshot) {
+TEST(SceneDraw, RebuildsForImportedTextureMissingFromSnapshot) {
     owe::Scene scene;
     scene.RootMut()->ID() = rstd::i32(1);
     scene.RegisterTexture(String::make("texture-old"_str),
@@ -1380,10 +1399,11 @@ TEST(CustomShaderPass, RebuildsForImportedTextureMissingFromSnapshot) {
         .use     = rstd::Some(use),
         .request = rstd::Some(owe::vulkan::MakeImportedTextureRequest("texture-old"_str, old_desc)),
     });
-    owe::vulkan::CustomShaderPass pass(owe::vulkan::CustomShaderPass::Desc {
-        .node = rstd::Some(rstd::mut_ref<owe::SceneNode>::from_raw_parts(node.as_ptr())),
-        .texture_bindings = std::move(bindings),
-    });
+    owe::vulkan::SceneDraw pass(
+        owe::vulkan::SceneDraw::Desc {
+            .texture_bindings = std::move(bindings),
+        },
+        { .node = rstd::Some(rstd::mut_ref<owe::SceneNode>::from_raw_parts(node.as_ptr())) });
 
     scene.RegisterTexture(String::make("texture-new"_str),
                           owe::SceneTexture { .url = "texture-new"_Str });
@@ -1408,14 +1428,13 @@ TEST(PreparedPassResources, ResolvesOnlyDeclaredUses) {
     auto hidden =
         owe::resource::TextureUseHandle { .index = rstd::u64(2), .generation = rstd::u64(6) };
     auto insert = [&](owe::resource::TextureUseHandle use, std::string_view name) {
-        owe::vulkan::ImageSlots slots;
-        slots.slots.push(owe::vulkan::AllocatedImageParameters {});
-        auto allocation = rstd::sync::Arc<owe::vulkan::TextureAllocation>::make(rstd::move(slots));
+        auto allocation = rstd::sync::Arc<owe::resource_registry::TextureAllocation>::make(
+            Vec<vrento::resource_registry::TextureSlot>::make(), owe::vulkan::ImageSlotsRef {});
         return table.Insert(owe::resource_registry::PreparedTexture {
             .use = use,
             .resource =
                 owe::resource::TextureHandle { .index = use.index, .generation = rstd::u64(1) },
-            .request =
+            .definition =
                 owe::resource::TextureRequest {
                     .name = rstd::string::String::make(rstd::cppstd::as_str(name).unwrap()),
                 },
@@ -1557,7 +1576,7 @@ TEST(PassTextureRequestDiagnostics, ReportsPassOwnedTextureRequests) {
 
     auto texture_use =
         owe::resource::TextureUseHandle { .index = rstd::u64(1), .generation = rstd::u64(1) };
-    owe::vulkan::CustomShaderPass custom(owe::vulkan::CustomShaderPass::Desc {
+    owe::vulkan::SceneDraw custom(owe::vulkan::SceneDraw::Desc {
         .texture_bindings =
             [texture_use](owe::vulkan::TextureRequest request) mutable {
                 Vec<owe::vulkan::TextureBindingRequest> bindings;
@@ -1572,7 +1591,7 @@ TEST(PassTextureRequestDiagnostics, ReportsPassOwnedTextureRequests) {
         .output_request = rstd::Some(output.clone()),
         .depth_request  = rstd::Some(std::move(depth)),
     });
-    auto                          custom_diag = custom.textureRequestDiagnostics();
+    auto                   custom_diag = custom.textureRequestDiagnostics();
     ASSERT_EQ(custom_diag.len().to_primitive(), 3u);
     EXPECT_EQ(custom_diag[rstd::usize(0)].role, "sampled"_str);
     EXPECT_EQ(custom_diag[rstd::usize(0)].slot, rstd::u32());
@@ -1584,43 +1603,14 @@ TEST(PassTextureRequestDiagnostics, ReportsPassOwnedTextureRequests) {
     EXPECT_EQ(custom_diag[rstd::usize(2)].role, "depth"_str);
     EXPECT_EQ(custom_diag[rstd::usize(2)].request->kind,
               owe::vulkan::TextureRequestKind::DepthAttachment);
-
-    owe::vulkan::CopyPass copy(owe::vulkan::CopyPass::Desc {
-        .src         = "_rt_a"_Str,
-        .dst         = "_rt_b"_Str,
-        .src_request = rstd::Some(output.clone()),
-        .dst_request = rstd::Some(output.clone()),
-    });
-    auto                  copy_diag = copy.textureRequestDiagnostics();
-    ASSERT_EQ(copy_diag.len().to_primitive(), 2u);
-    EXPECT_EQ(copy_diag[rstd::usize(0)].role, "copy-src"_str);
-    EXPECT_EQ(copy_diag[rstd::usize(1)].role, "copy-dst"_str);
-
-    owe::vulkan::PrePass pre(owe::vulkan::PrePass::Desc {
-        .result              = "_rt_default"_Str,
-        .result_request      = rstd::Some(output.clone()),
-        .result_msaa_request = rstd::Some(std::move(msaa)),
-    });
-    auto                 pre_diag = pre.textureRequestDiagnostics();
-    ASSERT_EQ(pre_diag.len().to_primitive(), 2u);
-    EXPECT_EQ(pre_diag[rstd::usize(0)].role, "frame-result"_str);
-    EXPECT_EQ(pre_diag[rstd::usize(1)].role, "frame-result-msaa"_str);
-
-    owe::vulkan::FinPass fin(owe::vulkan::FinPass::Desc {
-        .result         = "_rt_default"_Str,
-        .result_request = rstd::Some(std::move(output)),
-    });
-    auto                 fin_diag = fin.textureRequestDiagnostics();
-    ASSERT_EQ(fin_diag.len().to_primitive(), 1u);
-    EXPECT_EQ(fin_diag[rstd::usize(0)].role, "frame-result"_str);
 }
 
 TEST(PassTextureRequestDiagnostics, RetainsOwnedDataAfterPassDestruction) {
     Vec<owe::vulkan::PassTextureRequestDiagnostic> diagnostics;
     {
-        owe::vulkan::PrePass pass(owe::vulkan::PrePass::Desc {
-            .result         = "owned-target"_Str,
-            .result_request = Some(owe::vulkan::MakeRenderTargetTextureRequest(
+        owe::vulkan::SceneDraw pass(owe::vulkan::SceneDraw::Desc {
+            .output         = "owned-target"_Str,
+            .output_request = Some(owe::vulkan::MakeRenderTargetTextureRequest(
                 "owned-target"_str,
                 owe::SceneRenderTarget { .width = i32(64), .height = i32(32) })),
         });
@@ -1631,7 +1621,6 @@ TEST(PassTextureRequestDiagnostics, RetainsOwnedDataAfterPassDestruction) {
         auto live = pass.textureRequestDiagnostics();
         EXPECT_EQ(live[usize()].name, "owned-target"_str);
         EXPECT_EQ(live[usize()].request->name, "owned-target"_str);
-        EXPECT_TRUE(pass.setResultRequest(None()));
     }
     EXPECT_EQ(diagnostics[usize()].name, "owned-target-snapshot"_str);
     EXPECT_EQ(diagnostics[usize()].request->name, "owned-target-snapshot"_str);
@@ -1640,7 +1629,7 @@ TEST(PassTextureRequestDiagnostics, RetainsOwnedDataAfterPassDestruction) {
               "owned-target::msaa4"_str);
 }
 
-TEST(RenderProgram, PreservesPhysicalExtentAndMipLevelsOnResize) {
+TEST(RenderTargets, PreservesPhysicalExtentAndMipLevelsOnResize) {
     owe::Scene scene;
     scene.RegisterRenderTarget("bounded"_Str,
                                owe::SceneRenderTarget {
@@ -1648,8 +1637,8 @@ TEST(RenderProgram, PreservesPhysicalExtentAndMipLevelsOnResize) {
                                    .height     = i32(1000),
                                    .has_mipmap = true,
                                });
-    owe::vulkan::RenderProgram program;
-    program.finalizeRenderTargetSizes(scene, { 1920, 1080 }, { 2048, 512 }, VK_SAMPLE_COUNT_1_BIT);
+    owe::vulkan::FinalizeRenderTargetSizes(
+        scene, { 1920, 1080 }, { 2048, 512 }, VK_SAMPLE_COUNT_1_BIT);
     auto target = scene.RenderTargetMut("bounded"_str);
     ASSERT_TRUE(target.is_some());
     EXPECT_EQ((**target).width, i32(5000));
@@ -1658,7 +1647,8 @@ TEST(RenderProgram, PreservesPhysicalExtentAndMipLevelsOnResize) {
     EXPECT_EQ((**target).mipmap_level, 7u);
     (**target).width  = i32(7);
     (**target).height = i32(9);
-    program.finalizeRenderTargetSizes(scene, { 1920, 1080 }, { 2048, 512 }, VK_SAMPLE_COUNT_1_BIT);
+    owe::vulkan::FinalizeRenderTargetSizes(
+        scene, { 1920, 1080 }, { 2048, 512 }, VK_SAMPLE_COUNT_1_BIT);
     EXPECT_EQ((**target).physical_width, i32(7));
     EXPECT_EQ((**target).physical_height, i32(9));
     EXPECT_EQ((**target).mipmap_level, 1u);
@@ -2118,7 +2108,6 @@ TEST(PipelineCacheDiagnostics, RecordsStableKeys) {
 }
 
 TEST(PipelineCacheKey, SeparatesIndependentDepthClipState) {
-    using namespace owe::vulkan;
     PipelineResourceRequest request;
     const auto              implicit = MakePipelineCacheKey(request);
     request.depth_clip               = Some(true);
@@ -2133,7 +2122,6 @@ TEST(PipelineCacheKey, SeparatesIndependentDepthClipState) {
 }
 
 TEST(PipelineCacheKey, PreservesShaderEncodingAndOwnedStages) {
-    using namespace vrento::vulkan;
     PipelineResourceRequest request;
     auto                    stage = Box<ShaderSpv>::make();
     stage->stage                  = owe::ShaderType::VERTEX;
@@ -2166,7 +2154,6 @@ TEST(PipelineCacheKey, PreservesShaderEncodingAndOwnedStages) {
 }
 
 TEST(PipelineCacheKey, OwnsInputDescriptionsAndCanonicalizesOrder) {
-    using namespace vrento::vulkan;
     PipelineResourceRequest request;
     request.vertex_bindings.push(
         VkVertexInputBindingDescription { 1, 16, VK_VERTEX_INPUT_RATE_VERTEX });
@@ -2382,7 +2369,6 @@ TEST(PipelineCacheKey, PreservesCanonicalBytesAndHash) {
 }
 
 TEST(FramebufferCacheDiagnostics, OwnsKeysAndAttachmentDescriptions) {
-    using namespace vrento::vulkan;
     FramebufferResourceRequest request;
     request.render_pass_key = { .value = 17, .bytes = Bytes({ 17 }) };
     request.attachments.push(Attachment(0x101, 1, { 1 }));
@@ -2410,7 +2396,6 @@ TEST(FramebufferCacheDiagnostics, OwnsKeysAndAttachmentDescriptions) {
 }
 
 TEST(PreparedResourceTable, ClonesRenderPassKeyIndependently) {
-    using namespace owe::resource_registry;
     PreparedResourceTable table(u64(3));
     auto use      = owe::resource::RenderPassUseHandle { .index = u64(1), .generation = u64(3) };
     auto physical = rstd::sync::Arc<vvk::RenderPass>::make();

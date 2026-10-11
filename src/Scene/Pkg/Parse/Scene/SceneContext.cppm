@@ -345,7 +345,8 @@ SceneParseContext BuildContext(fs::VFS&, ref<str> scene_id, const wpscene::Scene
                                Option<rstd::path::PathBuf>  shader_cache_dir          = None(),
                                GeometryShaderLimits         geometry_limits           = {},
                                bool                         directional_shadow        = false,
-                               bool                         geometry_shader_supported = true);
+                               bool                         geometry_shader_supported = true,
+                               Option<ImageReadyCallback>   image_ready               = None());
 
 void IndexSceneDocument(SceneParseContext&, ref<wpscene::SceneDocument>, slice<SceneObjectVar>);
 void ProcessContainers(SceneParseContext&, mut_ref<SceneObjectVar[]>);

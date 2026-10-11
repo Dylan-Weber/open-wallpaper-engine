@@ -1,6 +1,5 @@
 export module wescene.vulkan_render:uniform_buffer;
-export import vrento.uniform_buffer;
-export import vrento.uniform_binding;
+export import vrento;
 import rstd;
 import wescene.resource;
 import wescene.scene;
@@ -37,10 +36,10 @@ struct UniformBufferFrameContext {
     using Funcs = TraitFuncs<&T::Frame, &T::Viewport, &T::TextureFrame>;
 };
 
-class ProgramUniformFrameContext {
+class SceneRenderUniformFrameContext {
 public:
-    ProgramUniformFrameContext(const SceneFrame& frame, rstd::array<float, 2> viewport,
-                               ref<dyn<SceneTextureAnimationView>> textures)
+    SceneRenderUniformFrameContext(const SceneFrame& frame, rstd::array<float, 2> viewport,
+                                   ref<dyn<SceneTextureAnimationView>> textures)
         : m_frame(ref<SceneFrame>::from_raw_parts(rstd::addressof(frame))),
           m_viewport(viewport),
           m_textures(textures) {}

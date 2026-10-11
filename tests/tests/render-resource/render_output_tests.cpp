@@ -1,0 +1,531 @@
+#include <rstd/macro.hpp>
+#include <rstd/test/gtest.hpp>
+#include <unistd.h>
+import rstd;
+import rstd.test;
+import rstd.log;
+import wescene.scene;
+import vrento;
+import wescene.vulkan_render;
+import wescene.scene_render_pipeline;
+import wescene.pkg.parse;
+import wescene.json;
+import wescene.fs;
+import wescene.text;
+import wavsen.audio;
+import vrento;
+
+using namespace rstd::prelude;
+using namespace rstd::literals;
+
+namespace
+{
+namespace vk  = vrento::vulkan;
+namespace tex = vrento::texture;
+struct OutputCounts {
+    unsigned acquired {}, submitted {}, aborted {};
+    bool     reject_next {};
+};
+class OutputSurface : public vrento::ExSwapchain {
+    vk::DeviceSession             session_;
+    vvk::AllocatedImage           image_;
+    vvk::ImageView                view_;
+    rstd::uint64_t                serial_ {};
+    bool                          defined_ {};
+    rstd::sync::Arc<OutputCounts> counts_;
+
+public:
+    explicit OutputSurface(vk::DeviceSession session, rstd::sync::Arc<OutputCounts> counts =
+                                                          rstd::sync::Arc<OutputCounts>::make())
+        : session_(session), counts_(rstd::move(counts)) {
+        VkImageCreateInfo info { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+        info.imageType = VK_IMAGE_TYPE_2D;
+        info.format    = VK_FORMAT_R8G8B8A8_UNORM;
+        info.extent    = { 64, 64, 1 };
+        info.mipLevels = info.arrayLayers = 1;
+        info.samples                      = VK_SAMPLE_COUNT_1_BIT;
+        info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        image_     = session.device().memory_allocator().create_image(info).unwrap();
+        VkImageViewCreateInfo view { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+        view.image            = image_.handle();
+        view.viewType         = VK_IMAGE_VIEW_TYPE_2D;
+        view.format           = info.format;
+        view.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+        rstd_assert(session.device().handle().CreateImageView(view, view_) == VK_SUCCESS);
+    }
+    unsigned width() const override { return 64; }
+    unsigned height() const override { return 64; }
+    VkFormat format() const override { return VK_FORMAT_R8G8B8A8_UNORM; }
+    bool     ready() const override { return true; }
+    void     setOnReadyChanged(Option<vrento::ExSwapchainReadyCallback>) override {}
+    auto     acquireRenderTarget() -> vrento::FrameSurfaceAcquireResult override {
+        ++counts_->acquired;
+        vrento::FrameSurfaceIdentity identity { u64(1), u32(), u64(++serial_) };
+        vrento::FrameSurfaceLease    lease;
+        lease.identity             = identity;
+        lease.image.handle         = image_.handle();
+        lease.image.view           = *view_;
+        lease.image.extent         = { 64, 64, 1 };
+        lease.format               = format();
+        lease.initial_layout       = defined_ ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_UNDEFINED;
+        lease.initial_queue_family = lease.final_queue_family =
+            session_.device().graphics_queue().family_index;
+        lease.final_layout = rstd::exchange(counts_->reject_next, false) ? VK_IMAGE_LAYOUT_UNDEFINED
+                                                                         : VK_IMAGE_LAYOUT_GENERAL;
+        return { .status     = vrento::FrameSurfaceAcquireStatus::Acquired,
+                 .lease      = lease,
+                 .completion = MakeCompletionCapability(identity) };
+    }
+
+private:
+    auto CompleteRendered(vrento::FrameSurfaceIdentity identity, int fd)
+        -> vrento::FrameSurfaceCompletionResult override {
+        if (fd >= 0) ::close(fd);
+        defined_ = true;
+        ++counts_->submitted;
+        return { .status = vrento::FrameSurfaceCompletionStatus::Submitted, .identity = identity };
+    }
+    auto AbortRenderTarget(vrento::FrameSurfaceIdentity identity)
+        -> vrento::FrameSurfaceCompletionResult override {
+        ++counts_->aborted;
+        return { .status = vrento::FrameSurfaceCompletionStatus::Aborted, .identity = identity };
+    }
+};
+auto pixels(vk::TextureContext& queue, tex::TextureViewRef view) -> Vec<u8> {
+    auto size                  = view.texture().description().extent;
+    auto range                 = view.description().range;
+    size.width                 = rstd::cmp::max(1u, size.width >> range.first_mip);
+    size.height                = rstd::cmp::max(1u, size.height >> range.first_mip);
+    auto               session = queue.session();
+    VkBufferCreateInfo info { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+    info.size     = size.width * size.height * 4;
+    info.usage    = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    auto readback = session.device()
+                        .memory_allocator()
+                        .create_buffer(info, vvk::MemoryRequest::Readback())
+                        .unwrap();
+    auto work     = queue.Begin().unwrap();
+    work.commands()
+        ->UseTexture(
+            { view, tex::Access::TransferSource, tex::Stages::Transfer, false, None(), true })
+        .unwrap();
+    auto              command = vk::native_recording(work, session).unwrap();
+    VkBufferImageCopy copy {};
+    copy.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, range.first_mip, range.first_layer, 1 };
+    copy.imageExtent      = { size.width, size.height, 1 };
+    auto& d               = session.device().handle().Dispatch();
+    d.vkCmdCopyImageToBuffer(command,
+                             vk::native_texture(view.texture()).unwrap(),
+                             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                             readback.handle(),
+                             1,
+                             &copy);
+    VkBufferMemoryBarrier host { VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER };
+    host.srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+    host.dstAccessMask       = VK_ACCESS_HOST_READ_BIT;
+    host.srcQueueFamilyIndex = host.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    host.buffer                                         = readback.handle();
+    host.size                                           = VK_WHOLE_SIZE;
+    d.vkCmdPipelineBarrier(command,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_HOST_BIT,
+                           0,
+                           0,
+                           nullptr,
+                           1,
+                           &host,
+                           0,
+                           nullptr);
+    queue.wait(queue.Submit(rstd::move(work)).unwrap()).unwrap();
+    auto memory = readback.allocation();
+    auto mapped = memory.map().unwrap();
+    memory.invalidate().unwrap();
+    Vec<u8> result;
+    for (VkDeviceSize i {}; i < info.size; ++i)
+        result.push(u8(static_cast<unsigned char*>(mapped.data())[i]));
+    return result;
+}
+TEST(RenderOutput, ClearAndResize) {
+    static rstd::log::EnvLogger logger;
+    rstd::log::set_logger(logger);
+    rstd::log::set_max_level(logger.filter());
+    owe::Scene scene;
+    scene.RegisterRenderTarget(
+        String::make("_rt_default"_str),
+        owe::SceneRenderTarget {
+            .width = i32(64), .height = i32(64), .bind = { .enable = true, .screen = true } });
+    scene.RegisterRenderTarget("_rt_copy"_Str,
+                               owe::SceneRenderTarget { .width                  = i32(64),
+                                                        .height                 = i32(64),
+                                                        .has_mipmap             = true,
+                                                        .mipmap_level           = 3,
+                                                        .initialize_transparent = true });
+    scene.RegisterRenderTarget("_rt_seen"_Str,
+                               owe::SceneRenderTarget { .width = i32(64), .height = i32(64) });
+    scene.RegisterRenderTarget("_rt_uninitialized"_Str,
+                               owe::SceneRenderTarget { .width = i32(64), .height = i32(64) });
+    scene.SetClearColor({ 1.0f, 0.0f, 0.0f });
+    owe::vulkan::VulkanRender renderer;
+    owe::RenderInitInfo       info;
+    info.offscreen            = true;
+    info.enable_valid_layer   = true;
+    info.width                = 64;
+    info.height               = 64;
+    info.msaa_samples         = 4;
+    info.pipeline_preparation = vk::PipelinePreparationMode::Deferred;
+    auto counts               = rstd::sync::Arc<OutputCounts>::make();
+    auto factory =
+        [&](const owe::RenderInitInfo::ExSwapchainHandles&) -> Option<vrento::ExSwapchainOwner> {
+        return Some(vrento::ExSwapchain::Make<OutputSurface>(renderer.deviceSession().unwrap(),
+                                                             counts.clone()));
+    };
+    info.ex_swapchain_factory =
+        Some(Box<dyn<FnOnce<Option<vrento::ExSwapchainOwner>(
+                 const owe::RenderInitInfo::ExSwapchainHandles&)>>>::make(rstd::move(factory)));
+    rstd_assert(renderer.init(rstd::move(info)));
+    auto session = renderer.deviceSession().unwrap();
+    auto queue   = vk::TextureContext::create(session).unwrap();
+    auto build   = [&](bool uninitialized = false) {
+        vrento::fg::FrameGraphBuilder    graph(81);
+        owe::vulkan::SceneRenderTextures textures(u64(81));
+        Vec<vk::PassInput>               descriptions;
+        auto copy = [&](vrento::fg::PassId pass,
+                        ref<str>
+                            from,
+                        ref<str>
+                                                            to,
+                        Option<vrento::fg::ResourceVersion> written = None()) {
+            auto source_request =
+                owe::vulkan::MakeRenderTargetTextureRequest(from, **scene.RenderTarget(from));
+            auto target_request =
+                owe::vulkan::MakeRenderTargetTextureRequest(to, **scene.RenderTarget(to));
+            auto source =
+                textures
+                    .declare(graph,
+                             { .key = String::make(from), .definition = source_request.clone() })
+                    .unwrap();
+            if (written)
+                source = *written;
+            else
+                graph.import_initial(source.resource).unwrap();
+            auto initial =
+                textures
+                    .declare(graph,
+                             { .key = String::make(to), .definition = target_request.clone() })
+                    .unwrap();
+            auto description =
+                vk::declare_texture_copy(graph, pass, source, initial, {}, {}).unwrap();
+            auto target = description.output;
+            descriptions.push(rstd::move(description.description));
+            (void)textures.handle(source).unwrap();
+            (void)textures.handle(target).unwrap();
+            return target;
+        };
+        copy({ 1 }, uninitialized ? "_rt_uninitialized"_str : "_rt_copy"_str, "_rt_seen"_str);
+        auto result =
+            textures
+                .declare(graph,
+                         { .key        = "_rt_default"_Str,
+                           .definition = owe::vulkan::MakeRenderTargetTextureRequest(
+                               "_rt_default"_str, **scene.RenderTarget("_rt_default"_str)) })
+                .unwrap();
+        auto clear_id = vrento::fg::PassId { 10 };
+        auto color    = scene.ClearColor();
+        auto clear =
+            vk::declare_graphics_clear(
+                graph, clear_id, result, { color[usize()], color[usize(1)], color[usize(2)], 1.0f })
+                .unwrap();
+        auto cleared    = result;
+        cleared.version = clear.execution().graphics->color->version;
+        (void)textures.handle(cleared).unwrap();
+        descriptions.push(rstd::move(clear));
+        auto copied = copy({ 2 }, "_rt_default"_str, "_rt_copy"_str, Some(cleared));
+        graph.depends_on({ 2 }, { 1 }).unwrap();
+        auto mip =
+            vk::declare_texture_mips(
+                graph, { 3 }, copied, scene.RenderTarget("_rt_copy"_str).unwrap()->mipmap_level, 1)
+                .unwrap();
+        (void)textures.handle(mip.output).unwrap();
+        descriptions.push(rstd::move(mip.description));
+        auto surface =
+            graph.import_resource({ .id = { 20, 81 }, .spec = 20, .storage = 20 }).unwrap();
+        auto output = vk::declare_surface_output(graph, { 11 }, { 12 }, cleared, surface).unwrap();
+        descriptions.push(rstd::move(output.transfer));
+        descriptions.push(rstd::move(output.release));
+        auto source_use = textures.handle(cleared).unwrap();
+        return owe::vulkan::SceneRenderStateInput { rstd::move(graph).finish().unwrap(),
+                                                    rstd::move(textures),
+                                                    {},
+                                                    rstd::move(descriptions),
+                                                    { 11 },
+                                                    { 12 },
+                                                    output.output,
+                                                    Some(source_use) };
+    };
+    renderer.configureRenderTargets(scene);
+    auto snapshot = owe::ExtractRenderSceneSnapshot(scene);
+    renderer.tryInstallSceneRenderState(scene, build(true), snapshot).unwrap();
+    renderer.drawFrame(scene);
+    rstd_assert(! renderer.framePending() && ! renderer.frameSubmitted());
+    auto failure = renderer.diagnostics().frame_error;
+    rstd_assert(failure && failure->stage == vk::GraphExecutionStage::Binding);
+    rstd_assert(failure->resource.valid());
+    rstd_assert(failure->texture && failure->texture->kind == tex::ErrorKind::Invalid);
+    rstd_assert(counts->acquired == 1 && counts->aborted == 1 && counts->submitted == 0);
+    renderer.tryInstallSceneRenderState(scene, build(), snapshot).unwrap();
+    rstd_assert(renderer.renderedTarget("_rt_default"_str).unwrap_err().stage ==
+                owe::vulkan::RenderPrepareStage::Pending);
+    renderer.drawFrame(scene);
+    auto old   = renderer.renderedTarget("_rt_default"_str).unwrap();
+    auto first = pixels(queue, old);
+    for (usize i {}; i < first.len(); ++i)
+        rstd_assert(first[i] ==
+                    u8(i.to_primitive() % 4 == 0 || i.to_primitive() % 4 == 3 ? 255 : 0));
+    auto initial = pixels(queue, renderer.renderedTarget("_rt_seen"_str).unwrap());
+    for (auto byte : initial) rstd_assert(byte == u8());
+    scene.SetClearColor({ 0.0f, 1.0f, 0.0f });
+    renderer.tryInstallSceneRenderState(scene, build(), snapshot).unwrap();
+    renderer.drawFrame(scene);
+    auto second = pixels(queue, renderer.renderedTarget("_rt_default"_str).unwrap());
+    for (usize i {}; i < second.len(); ++i)
+        rstd_assert(second[i] ==
+                    u8(i.to_primitive() % 4 == 1 || i.to_primitive() % 4 == 3 ? 255 : 0));
+    auto history = pixels(queue, renderer.renderedTarget("_rt_seen"_str).unwrap());
+    for (usize i {}; i < history.len(); ++i)
+        rstd_assert(history[i] ==
+                    u8(i.to_primitive() % 4 == 0 || i.to_primitive() % 4 == 3 ? 255 : 0));
+    auto copied = renderer.renderedTarget("_rt_copy"_str).unwrap();
+    auto levels = copied.texture().description().mip_levels;
+    rstd_assert(levels > 1);
+    for (unsigned mip {}; mip < levels; ++mip) {
+        auto view = queue.CreateView(copied.texture(), { .range = { .first_mip = mip } }).unwrap();
+        auto data = pixels(queue, view);
+        for (usize i {}; i < data.len(); ++i)
+            rstd_assert(data[i] ==
+                            u8(i.to_primitive() % 4 == 1 || i.to_primitive() % 4 == 3 ? 255 : 0),
+                        "mip {} byte {} = {}",
+                        mip,
+                        i,
+                        u8(data[i]));
+    }
+    rstd_assert(renderer.onSwapchainReady(96, 64));
+    rstd_assert(scene.ResizeRenderTarget("_rt_copy"_str, i32(96), i32(64)));
+    rstd_assert(scene.ResizeRenderTarget("_rt_seen"_str, i32(96), i32(64)));
+    renderer.configureRenderTargets(scene);
+    renderer.tryInstallSceneRenderState(scene, build(), snapshot).unwrap();
+    renderer.drawFrame(scene);
+    auto resized = renderer.renderedTarget("_rt_default"_str).unwrap();
+    rstd_assert(resized.texture().description().extent.width == 96);
+    auto final = pixels(queue, resized);
+    for (usize i {}; i < final.len(); ++i)
+        rstd_assert(final[i] ==
+                    u8(i.to_primitive() % 4 == 1 || i.to_primitive() % 4 == 3 ? 255 : 0));
+    rstd_assert(counts->submitted == 3 && counts->aborted == 1);
+    counts->reject_next = true;
+    renderer.drawFrame(scene);
+    rstd_assert(! renderer.frameSubmitted() && ! renderer.framePending());
+    rstd_assert(counts->aborted == 2 && counts->submitted == 3);
+    renderer.tryInstallSceneRenderState(scene, build(), snapshot).unwrap();
+    renderer.drawFrame(scene);
+    rstd_assert(renderer.frameSubmitted() && ! renderer.framePending());
+    rstd_assert(! renderer.diagnostics().frame_error);
+    rstd_assert(counts->acquired == 6 && counts->submitted == 4 && counts->aborted == 2);
+    renderer.destroy();
+    rstd_assert(counts->aborted == 2);
+    rstd_assert(! renderer.diagnostics().frame_error);
+    rstd_assert(session.validation_errors() == 0);
+}
+TEST(RenderOutput, ShaderDirtyAndTopology) {
+    auto         document = owe::wpscene::ParseSceneDocumentJson(R"({
+        "camera": {},
+        "general": {"orthogonalprojection": {"width": 64, "height": 64},
+                    "clearcolor": "0 0 1"},
+        "objects": [{"id": 1, "name": "tile", "visible": true,
+                     "image": "models/util/solidlayer.json", "size": "64 64",
+                     "origin": "32 32 0", "color": "1 0 0", "alpha": 1}]
+    })"_str,
+                                                                 owe::wpscene::kSceneVersionUnknown)
+                                .unwrap();
+    owe::fs::VFS vfs;
+    vfs.mount("/assets"_str, owe::fs::make_physical_fs(owe::fs::Path("assets"_str)).unwrap())
+        .unwrap();
+    wavsen::audio::SoundManager sound;
+    owe::SceneParser            parser;
+    auto  parsed = parser
+                       .Parse("render-output"_str,
+                              ref<owe::wpscene::SceneDocument>::from_raw_parts(&document),
+                              mut_ref<owe::fs::VFS>::from_raw_parts(&vfs),
+                              mut_ref<wavsen::audio::SoundManager>::from_raw_parts(&sound))
+                       .unwrap();
+    auto& scene  = *parsed.scene;
+    scene.RenderTargetMut("_rt_default"_str).unwrap()->withDepth = true;
+    owe::vulkan::VulkanRender renderer;
+    owe::RenderInitInfo       info;
+    info.offscreen          = true;
+    info.enable_valid_layer = true;
+    info.width = info.height  = 64;
+    info.msaa_samples         = 4;
+    info.pipeline_preparation = vk::PipelinePreparationMode::Deferred;
+    auto factory =
+        [&](const owe::RenderInitInfo::ExSwapchainHandles&) -> Option<vrento::ExSwapchainOwner> {
+        return Some(vrento::ExSwapchain::Make<OutputSurface>(renderer.deviceSession().unwrap()));
+    };
+    info.ex_swapchain_factory =
+        Some(Box<dyn<FnOnce<Option<vrento::ExSwapchainOwner>(
+                 const owe::RenderInitInfo::ExSwapchainHandles&)>>>::make(rstd::move(factory)));
+    rstd_assert(renderer.init(rstd::move(info)));
+    auto queue = vk::TextureContext::create(renderer.deviceSession().unwrap()).unwrap();
+    owe::SceneRenderPipeline pipeline(scene, *parsed.runtime_input, renderer);
+    auto                     ready = [&](Result<empty, owe::vulkan::RenderPrepareError> result) {
+        for (unsigned i {}; result.is_err() && i < 2000; ++i) {
+            rstd_assert(result.unwrap_err().stage == owe::vulkan::RenderPrepareStage::Pending);
+            ::usleep(1000);
+            result = pipeline.retryPreparation();
+        }
+        rstd_assert(result.is_ok());
+        rstd_assert(pipeline.ready());
+    };
+    auto color = [&](unsigned red, unsigned green, unsigned blue) {
+        auto data  = pixels(queue, renderer.renderedTarget("_rt_default"_str).unwrap());
+        auto index = usize((32 * 64 + 32) * 4);
+        ASSERT_EQ(data[index], u8(red));
+        ASSERT_EQ(data[index + usize(1)], u8(green));
+        ASSERT_EQ(data[index + usize(2)], u8(blue));
+    };
+    auto prepare = [&] {
+        scene.PassFrameTime(1.0 / 60.0);
+        ready(pipeline.prepare({ .frametime = 1.0f / 60.0f }));
+    };
+    ready(pipeline.rebuild());
+    prepare();
+    renderer.drawFrame(scene);
+    color(255, 0, 0);
+    auto before = pipeline.stats();
+    rstd_assert(before.graph_builds == 1);
+    auto  pipeline_creations = queue.session().graphics_resources().pipelines.stats().creations;
+    auto* node               = scene.RootMut()->FindByName("tile"_str);
+    rstd_assert(node && node->Mesh());
+    auto* material    = node->Mesh()->Material();
+    auto  diagnostics = renderer.diagnostics();
+    auto& vertices    = node->Mesh()->Submeshes()[usize()].vertex_arrays[usize()];
+    EXPECT_FALSE(node->Mesh()->Dynamic());
+    auto same_bytes =
+        Vec<float>::from(slice<float>::from_raw_parts(vertices.Data(), vertices.DataSize()));
+    EXPECT_TRUE(vertices.SetVertexs(usize(), same_bytes.as_slice()));
+    node->Mesh()->SetDirty(owe::SceneMeshDirtyData);
+    prepare();
+    renderer.drawFrame(scene);
+    color(255, 0, 0);
+    EXPECT_EQ(pipeline.stats().graph_builds, before.graph_builds);
+    EXPECT_EQ(pipeline.stats().graph_analysis.attempts, before.graph_analysis.attempts);
+    EXPECT_EQ(renderer.diagnostics().renderer.graph_compiles, diagnostics.renderer.graph_compiles);
+    EXPECT_EQ(renderer.diagnostics().pipelines.creations, diagnostics.pipelines.creations);
+    EXPECT_EQ(renderer.diagnostics().resources.buffer_allocations,
+              diagnostics.resources.buffer_allocations);
+    auto vertex_upload = static_cast<unsigned>(vk::BufferUploadClass::Vertex);
+    EXPECT_GT(renderer.diagnostics().resources.buffer_uploads.queued_copies[vertex_upload],
+              diagnostics.resources.buffer_uploads.queued_copies[vertex_upload]);
+    EXPECT_GT(renderer.diagnostics().renderer.execution.frame_preparations,
+              diagnostics.renderer.execution.frame_preparations);
+    const float green[] { 0, 1, 0 };
+    rstd_assert(
+        scene.SetMaterialShaderValue(*material, "g_Color"_str, owe::ShaderValue(green, usize(3))));
+    prepare();
+    renderer.drawFrame(scene);
+    color(0, 255, 0);
+    rstd_assert(pipeline.stats().graph_builds == before.graph_builds);
+    rstd_assert(queue.session().graphics_resources().pipelines.stats().creations ==
+                pipeline_creations);
+    rstd::io::println("owe uniform refresh: graph builds={}, pipelines={}",
+                      before.graph_builds,
+                      pipeline_creations);
+    node->SetUserAlpha(0);
+    prepare();
+    renderer.drawFrame(scene);
+    color(0, 0, 255);
+    node->SetUserAlpha(1);
+    auto changed       = material->Pipeline();
+    changed.depth_test = changed.depth_write = true;
+    rstd_assert(material->SetPipeline(changed));
+    prepare();
+    renderer.drawFrame(scene);
+    color(0, 255, 0);
+    rstd_assert(pipeline.stats().graph_builds > before.graph_builds);
+    renderer.destroy();
+    rstd_assert(queue.session().validation_errors() == 0);
+}
+TEST(RenderOutput, DynamicFontUploads) {
+    auto         document = owe::wpscene::ParseSceneDocumentJson(R"({
+        "camera": {},
+        "general": {"orthogonalprojection": {"width": 64, "height": 64}, "clearcolor": "0 0 1"},
+        "objects": [{"id": 1, "name": "label", "visible": true, "origin": "32 32 0",
+            "text": {"value": "A", "script": "export function update() { return engine.runtime < 0.02 ? 'A' : 'B'; }"},
+            "font": "systemfont_monospace", "pointsize": 16, "color": "1 1 1"}]
+    })"_str,
+                                                                 owe::wpscene::kSceneVersionUnknown)
+                                .unwrap();
+    owe::fs::VFS vfs;
+    vfs.mount("/assets"_str, owe::fs::make_physical_fs(owe::fs::Path("assets"_str)).unwrap())
+        .unwrap();
+    wavsen::audio::SoundManager sound;
+    owe::SceneParser            parser;
+    auto  parsed = parser
+                       .Parse("render-output"_str,
+                              ref<owe::wpscene::SceneDocument>::from_raw_parts(&document),
+                              mut_ref<owe::fs::VFS>::from_raw_parts(&vfs),
+                              mut_ref<wavsen::audio::SoundManager>::from_raw_parts(&sound))
+                       .unwrap();
+    auto& scene  = *parsed.scene;
+    owe::vulkan::VulkanRender renderer;
+    owe::RenderInitInfo       info;
+    info.offscreen          = true;
+    info.enable_valid_layer = true;
+    info.width = info.height  = 64;
+    info.msaa_samples         = 4;
+    info.pipeline_preparation = vk::PipelinePreparationMode::Deferred;
+    auto factory =
+        [&](const owe::RenderInitInfo::ExSwapchainHandles&) -> Option<vrento::ExSwapchainOwner> {
+        return Some(vrento::ExSwapchain::Make<OutputSurface>(renderer.deviceSession().unwrap()));
+    };
+    info.ex_swapchain_factory =
+        Some(Box<dyn<FnOnce<Option<vrento::ExSwapchainOwner>(
+                 const owe::RenderInitInfo::ExSwapchainHandles&)>>>::make(rstd::move(factory)));
+    rstd_assert(renderer.init(rstd::move(info)));
+    auto queue = vk::TextureContext::create(renderer.deviceSession().unwrap()).unwrap();
+    owe::SceneRenderPipeline pipeline(scene, *parsed.runtime_input, renderer);
+    auto                     ready = [&](Result<empty, owe::vulkan::RenderPrepareError> result) {
+        for (unsigned i {}; result.is_err() && i < 2000; ++i) {
+            rstd_assert(result.unwrap_err().stage == owe::vulkan::RenderPrepareStage::Pending);
+            ::usleep(1000);
+            result = pipeline.retryPreparation();
+        }
+        rstd_assert(result.is_ok());
+        rstd_assert(pipeline.ready());
+    };
+    auto* fonts = owe::text::SceneTextResources(scene);
+    rstd_assert(fonts);
+    auto dirty = [&] {
+        usize count;
+        for (const auto& page : fonts->Pages()) count += page->SnapshotDirtyUpdates().rects.len();
+        return count;
+    };
+    ready(pipeline.rebuild());
+    scene.PassFrameTime(1.0 / 60.0);
+    ready(pipeline.prepare({ .frametime = 1.0f / 60.0f, .runtime = 0.01f }));
+    renderer.drawFrame(scene);
+    auto first = pixels(queue, renderer.renderedTarget("_rt_default"_str).unwrap());
+    rstd_assert(dirty() == usize());
+    usize ink;
+    for (usize i {}; i < first.len(); i += usize(4))
+        if (first[i] != u8()) ++ink;
+    rstd_assert(ink > usize());
+    scene.PassFrameTime(1.0 / 60.0);
+    ready(pipeline.prepare({ .frametime = 1.0f / 60.0f, .runtime = 0.03f }));
+    rstd_assert(dirty() > usize());
+    renderer.drawFrame(scene);
+    auto second = pixels(queue, renderer.renderedTarget("_rt_default"_str).unwrap());
+    rstd_assert(first != second && dirty() == usize());
+    renderer.destroy();
+    rstd_assert(queue.session().validation_errors() == 0);
+}
+} // namespace

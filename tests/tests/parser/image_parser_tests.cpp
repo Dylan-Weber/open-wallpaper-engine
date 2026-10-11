@@ -4,6 +4,7 @@
 #include <fstream>
 
 import rstd;
+import vrento;
 import rstd.cppstd;
 import wescene.fs;
 import wescene.pkg.parse;
@@ -255,6 +256,32 @@ TEST_F(ConditionalTextureTest, AssetVersionWriterPreservesFixedRecord) {
     }
 }
 
+TEST_F(ConditionalTextureTest, HeaderPreparationHandsOffOwnedContentOnce) {
+    WriteTexture(false, 0);
+    auto [tx, rx] = rstd::sync::mpmc::channel<Arc<vrento::Image>>();
+    auto ready    = owe::ImageReadyCallback::make([tx](Arc<vrento::Image> image) {
+        tx.send(rstd::move(image)).unwrap();
+    });
+    Option<Arc<vrento::Image>> retained;
+    {
+        owe::TexImageParser parser(&vfs, Some(rstd::move(ready)));
+        ASSERT_TRUE(parser.ParseHeader("conditional"_str).is_ok());
+        auto queued = rx.try_recv();
+        ASSERT_TRUE(queued.is_ok());
+        retained = Some(queued.unwrap());
+        Vec<String> names;
+        names.push("conditional"_Str);
+        names.push("conditional"_Str);
+        auto images = parser.ParseMany(names.as_slice());
+        for (const auto& image : images) {
+            ASSERT_TRUE(image.is_ok());
+            EXPECT_TRUE(Arc<vrento::Image>::ptr_eq((*image)->content, *retained));
+        }
+        EXPECT_TRUE(rx.try_recv().is_err());
+    }
+    EXPECT_EQ((*retained)->slots[usize()].mipmaps[usize()].data.get()[0], 0x11);
+}
+
 TEST_F(ConditionalTextureTest, SpriteHeaderSkipsConditionalPatches) {
     WriteTexture(true, 1);
     owe::TexImageParser parser(&vfs);
@@ -406,7 +433,11 @@ TEST(ImageParser, CapturedSourceRetainsOldRuntimeImageAndParser) {
     ASSERT_TRUE(retained.is_ok());
     EXPECT_TRUE(Arc<owe::Image>::ptr_eq(retained.unwrap_unchecked(), original));
     EXPECT_TRUE((*source)->Parse("bad"_str).is_err());
-    EXPECT_TRUE((*source)->Parse("first"_str).is_ok());
+    auto first = (*source)->Parse("first"_str);
+    ASSERT_TRUE(first.is_ok());
+    auto reused = (*source)->Parse("first"_str);
+    ASSERT_TRUE(reused.is_ok());
+    EXPECT_TRUE(Arc<owe::Image>::ptr_eq(*first, *reused));
 }
 
 } // namespace

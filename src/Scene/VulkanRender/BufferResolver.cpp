@@ -1,7 +1,7 @@
 module wescene.vulkan_render;
 import rstd;
 import wescene.scene;
-import vrento.draw_buffer;
+import vrento;
 
 using namespace rstd::prelude;
 
@@ -35,16 +35,16 @@ auto RenderBufferResolver::prepareDrawBuffers(const DrawBufferRequest& request)
     return m_resolver.prepareDrawBuffers(AdaptRequest(request, *geometry));
 }
 
-bool RenderBufferResolver::updateDynamicDrawBuffers(
-    const DrawBufferRequest& request, DrawBufferRefs& buffers,
-    mut_ref<dyn<resource::BufferContentWriter>> writer) {
+bool RenderBufferResolver::updateDrawBuffers(const DrawBufferRequest&                    request,
+                                             DrawBufferRefs&                             buffers,
+                                             mut_ref<dyn<resource::BufferContentWriter>> writer) {
     if (! request.mesh) return false;
     auto geometry = request.mesh->BufferView(request.submesh_index);
     if (geometry.is_none()) {
         request.mesh->SetLayoutDirty();
         return false;
     }
-    auto updated = vrento::RenderBufferResolver::updateDynamicDrawBuffers(
+    auto updated = vrento::RenderBufferResolver::updateDrawBuffers(
         AdaptRequest(request, *geometry), buffers, writer);
     if (updated.is_ok()) return true;
     if (updated.unwrap_err_unchecked().kind == vrento::DrawBufferUpdateErrorKind::NeedsReprepare)

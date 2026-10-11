@@ -29,21 +29,42 @@ SceneRenderPipeline::SceneRenderPipeline(Scene& scene, UniformRuntimeInput& inpu
                                          SceneRenderPipelineOptions options)
     : m_scene(scene), m_input(input), m_render(renderer), m_options(options) {}
 
-bool SceneRenderPipeline::hasGraph() const { return m_graph.is_some(); }
+bool SceneRenderPipeline::hasGraph() const { return m_render.hasSceneRenderState(); }
 
 auto SceneRenderPipeline::pending() const -> PendingScenePreparation {
-    return { m_graph_dirty,
-             m_textures_dirty,
-             m_frame_work != FrameWork::Idle,
-             m_meshes.len(),
-             m_materials.len() };
+    return { m_graph_dirty,  m_textures_dirty,  m_frame_work != FrameWork::Idle,
+             m_meshes.len(), m_materials.len(), m_gpu_preparation.is_some() };
 }
 
 auto SceneRenderPipeline::failed(vulkan::RenderPrepareError error)
     -> Result<empty, vulkan::RenderPrepareError> {
     m_ready = false;
-    ++m_stats.preparation_failures;
+    if (error.stage != vulkan::RenderPrepareStage::Pending) ++m_stats.preparation_failures;
     return Err(rstd::move(error));
+}
+auto SceneRenderPipeline::takeGpuPreparation(bool graph) -> GpuPreparation {
+    GpuPreparation captured {
+        graph, m_textures_dirty, rstd::move(m_meshes), rstd::move(m_materials)
+    };
+    m_textures_dirty = false;
+    if (graph) {
+        m_graph_dirty  = false;
+        m_evict_meshes = false;
+        m_retention    = vulkan::RenderGraphResourceRetention::KeepSceneTextures;
+        ++m_stats.graph_builds;
+    }
+    return captured;
+}
+void SceneRenderPipeline::finishGpuPreparation(GpuPreparation captured) {
+    if (captured.graph)
+        m_render.UpdateCameraFillMode(m_scene, m_options.fill_mode);
+    else {
+        if (captured.textures) ++m_stats.texture_refreshes;
+        m_stats.mesh_refreshes += captured.meshes.len().to_primitive();
+        for (const auto& event : captured.materials)
+            if (MaterialInvalidation(event.flags) != vulkan::PassInvalidationNone)
+                ++m_stats.material_refreshes;
+    }
 }
 
 void SceneRenderPipeline::setFillMode(FillMode mode) {
@@ -61,6 +82,7 @@ void SceneRenderPipeline::captureChanges() {
     m_graph_dirty |= m_scene.ConsumeRenderGraphDirty();
     auto targets = m_scene.ConsumePreparedRenderTargetDirtyEvents();
     m_textures_dirty |= ! targets.is_empty();
+    m_graph_dirty |= ! targets.is_empty();
     for (auto event : m_scene.ConsumePreparedMeshDirtyEvents()) {
         bool merged {};
         for (auto& pending : m_meshes) {
@@ -70,7 +92,7 @@ void SceneRenderPipeline::captureChanges() {
             break;
         }
         if (! merged) m_meshes.push(SceneMeshDirtyEvent(event));
-        m_graph_dirty |= (event.flags & SceneMeshDirtyLayout) != 0;
+        m_graph_dirty |= (event.flags & ~SceneMeshDirtyData) != 0;
     }
     for (auto event : m_scene.ConsumePreparedMaterialDirtyEvents()) {
         bool merged {};
@@ -81,7 +103,9 @@ void SceneRenderPipeline::captureChanges() {
             break;
         }
         if (! merged) m_materials.push(SceneMaterialDirtyEvent(event));
-        m_graph_dirty |= (event.flags & SceneMaterialDirtyGraph) != 0;
+        m_graph_dirty |=
+            (event.flags & (SceneMaterialDirtyGraph | SceneMaterialDirtyResources |
+                            SceneMaterialDirtyPipeline | SceneMaterialDirtyTextureBindings)) != 0;
     }
 }
 
@@ -89,6 +113,21 @@ auto SceneRenderPipeline::flushChanges(SceneLoadBenchRecorderView bench)
     -> Result<empty, vulkan::RenderPrepareError> {
     if (! m_render.inited() || (! hasGraph() && ! m_graph_dirty))
         return Err(vulkan::RenderPrepareError { vulkan::RenderPrepareStage::State });
+    if (m_gpu_preparation) {
+        auto continued = m_render.tryContinuePrepare(m_scene);
+        if (continued.is_err()) {
+            if (continued.unwrap_err().stage != vulkan::RenderPrepareStage::Pending) {
+                auto previous = m_gpu_preparation.take().unwrap();
+                m_graph_dirty = true;
+                m_textures_dirty |= previous.textures;
+                for (auto event : previous.meshes) m_meshes.push(SceneMeshDirtyEvent(event));
+                for (auto event : previous.materials)
+                    m_materials.push(SceneMaterialDirtyEvent(event));
+            }
+            return continued;
+        }
+        finishGpuPreparation(m_gpu_preparation.take().unwrap());
+    }
     if (m_graph_dirty) {
         [[maybe_unused]] auto reconciliation = m_scene.AudioDemandMut()->BeginReconciliation();
         auto                  cleared        = m_render.tryClearLastRenderGraph(m_retention);
@@ -99,22 +138,31 @@ auto SceneRenderPipeline::flushChanges(SceneLoadBenchRecorderView bench)
             auto span  = SceneLoadSpan(bench, &SceneLoadProbeIds::render_snapshot);
             m_snapshot = ExtractRenderSceneSnapshot(m_scene);
         }
-        {
-            auto span = SceneLoadSpan(bench, &SceneLoadProbeIds::render_graph_build);
-            m_graph   = Some(sceneToRenderGraph(m_scene, m_snapshot));
+        auto input = [&] {
+            auto build_span = SceneLoadSpan(bench, &SceneLoadProbeIds::render_graph_build);
+            return BuildSceneRenderState(m_scene, m_snapshot, &m_stats.graph_analysis);
+        }();
+        if (input.is_err())
+            return Err(vulkan::RenderPrepareError { vulkan::RenderPrepareStage::Graph,
+                                                    Some(input.unwrap_err()) });
+        if (m_options.graphviz) {
+            auto dot = vrento::fg::graphviz(input->graph);
+            (void)rstd::fs::write(ref<rstd::path::Path>("graph.dot"_str), dot->as_bytes());
         }
-        if (m_options.graphviz) (*m_graph)->ToGraphviz("graph.dot"_str);
-        auto compiled = m_render.tryCompileRenderGraph(m_scene, **m_graph, m_snapshot, bench);
-        if (compiled.is_err()) return compiled;
-        m_render.UpdateCameraFillMode(m_scene, m_options.fill_mode);
+        auto compiled = m_render.tryInstallSceneRenderState(
+            m_scene, rstd::move(input).unwrap(), m_snapshot, bench);
+        if (compiled.is_err() && compiled.unwrap_err().stage != vulkan::RenderPrepareStage::Pending)
+            return compiled;
         (void)m_scene.ConsumePreparedMaterialDirtyEvents();
         (void)m_scene.ConsumePreparedMeshDirtyEvents();
         (void)m_scene.ConsumePreparedRenderTargetDirtyEvents();
         (void)m_scene.ConsumeRenderGraphDirty();
-        ++m_stats.graph_builds;
-        m_graph_dirty  = false;
-        m_evict_meshes = false;
-        m_retention    = vulkan::RenderGraphResourceRetention::KeepSceneTextures;
+        auto captured = takeGpuPreparation(true);
+        if (compiled.is_err()) {
+            m_gpu_preparation = Some(rstd::move(captured));
+            return compiled;
+        }
+        finishGpuPreparation(rstd::move(captured));
     } else if (m_textures_dirty || ! m_meshes.is_empty() || ! m_materials.is_empty()) {
         Vec<vulkan::RenderItemPreparation> items;
         Vec<SceneMaterialId>               textures;
@@ -132,7 +180,7 @@ auto SceneRenderPipeline::flushChanges(SceneLoadBenchRecorderView bench)
         };
         for (const auto& event : m_meshes)
             invalidate(m_snapshot.renderItemsFor(event.mesh),
-                       vulkan::ToPassInvalidationFlags(vulkan::PassInvalidation::Resources));
+                       vulkan::ToPassInvalidationFlags(vulkan::PassInvalidation::Content));
         for (const auto& event : m_materials) {
             if ((event.flags & SceneMaterialDirtyTextureBindings) != 0)
                 textures.push(SceneMaterialId(event.material));
@@ -147,16 +195,16 @@ auto SceneRenderPipeline::flushChanges(SceneLoadBenchRecorderView bench)
                                            textures.as_slice(),
                                            m_meshes.is_empty() && m_materials.is_empty() });
         if (prepared.is_err()) {
-            if (prepared.unwrap_err().stage != vulkan::RenderPrepareStage::RebuildRequired)
+            auto stage = prepared.unwrap_err().stage;
+            if (stage == vulkan::RenderPrepareStage::Pending) {
+                m_gpu_preparation = Some(takeGpuPreparation(false));
                 return prepared;
+            }
+            if (stage != vulkan::RenderPrepareStage::RebuildRequired) return prepared;
             m_graph_dirty = true;
             return flushChanges(bench);
         }
-        if (m_textures_dirty) ++m_stats.texture_refreshes;
-        m_stats.mesh_refreshes += m_meshes.len().to_primitive();
-        for (const auto& event : m_materials)
-            if (MaterialInvalidation(event.flags) != vulkan::PassInvalidationNone)
-                ++m_stats.material_refreshes;
+        finishGpuPreparation(takeGpuPreparation(false));
     }
     m_meshes.clear();
     m_materials.clear();
@@ -182,6 +230,8 @@ auto SceneRenderPipeline::rebuild(vulkan::RenderGraphResourceRetention retention
 auto SceneRenderPipeline::prepare(const script::FrameInputs& inputs,
                                   SceneLoadBenchRecorderView bench)
     -> Result<empty, vulkan::RenderPrepareError> {
+    if (m_render.framePending()) return Ok(empty {});
+    if (m_gpu_preparation) return retryPreparation(bench);
     if (! m_render.inited() || ! hasGraph() || m_frame_work != FrameWork::Idle)
         return failed(vulkan::RenderPrepareError { vulkan::RenderPrepareStage::State });
     m_ready      = false;
@@ -201,12 +251,13 @@ auto SceneRenderPipeline::prepare(const script::FrameInputs& inputs,
 
 auto SceneRenderPipeline::retryPreparation(SceneLoadBenchRecorderView bench)
     -> Result<empty, vulkan::RenderPrepareError> {
+    if (m_render.framePending()) return Ok(empty {});
     m_ready = false;
     if (! m_render.inited() || (! hasGraph() && ! m_graph_dirty))
         return failed(vulkan::RenderPrepareError { vulkan::RenderPrepareStage::State });
     captureChanges();
     if (m_frame_work == FrameWork::BeforeRuntime) {
-        if (m_graph_dirty) {
+        if (m_graph_dirty || m_gpu_preparation) {
             auto rebuilt = flushChanges(bench);
             if (rebuilt.is_err()) return failed(rebuilt.unwrap_err());
         }

@@ -29,6 +29,7 @@ struct SceneViewerArgs {
     i32         fps;
     u32         msaa_samples;
     bool        enable_valid_layer;
+    bool        async_pipelines;
     bool        graphviz;
     bool        stdin_json;
 };
@@ -89,24 +90,27 @@ auto ParseMousePosition(ref<str> input) -> Option<array<double, 2>> {
 }
 
 SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
-    auto command     = Command::make("scene-viewer"_str);
-    auto assets      = command.add_arg(Arg<String>::value("assets"_str, string_parser())
-                                           .value_name("ASSETS"_str)
-                                           .help("assets folder"_str)
-                                           .required());
-    auto scene       = command.add_arg(Arg<String>::value("scene"_str, string_parser())
-                                           .value_name("SCENE"_str)
-                                           .help("scene file"_str)
-                                           .required());
-    auto fps         = command.add_arg(Arg<i32>::value("fps"_str, from_str_parser<i32>())
-                                           .short_name(u8('f'))
-                                           .long_name("fps"_str)
-                                           .help("fps"_str)
-                                           .default_value("15"_str));
-    auto valid_layer = command.add_arg(Arg<bool>::flag("valid-layer"_str)
-                                           .short_name(u8('V'))
-                                           .long_name("valid-layer"_str)
-                                           .help("enable vulkan valid layer"_str));
+    auto command         = Command::make("scene-viewer"_str);
+    auto assets          = command.add_arg(Arg<String>::value("assets"_str, string_parser())
+                                               .value_name("ASSETS"_str)
+                                               .help("assets folder"_str)
+                                               .required());
+    auto scene           = command.add_arg(Arg<String>::value("scene"_str, string_parser())
+                                               .value_name("SCENE"_str)
+                                               .help("scene file"_str)
+                                               .required());
+    auto fps             = command.add_arg(Arg<i32>::value("fps"_str, from_str_parser<i32>())
+                                               .short_name(u8('f'))
+                                               .long_name("fps"_str)
+                                               .help("fps"_str)
+                                               .default_value("15"_str));
+    auto valid_layer     = command.add_arg(Arg<bool>::flag("valid-layer"_str)
+                                               .short_name(u8('V'))
+                                               .long_name("valid-layer"_str)
+                                               .help("enable vulkan valid layer"_str));
+    auto async_pipelines = command.add_arg(Arg<bool>::flag("async-pipelines"_str)
+                                               .long_name("async-pipelines"_str)
+                                               .help("prepare new pipelines asynchronously"_str));
     auto graphviz =
         command.add_arg(Arg<bool>::flag("graphviz"_str)
                             .short_name(u8('G'))
@@ -171,6 +175,7 @@ SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
         .fps                  = Value(matches, fps),
         .msaa_samples         = Value(matches, msaa),
         .enable_valid_layer   = Flag(matches, valid_layer),
+        .async_pipelines      = Flag(matches, async_pipelines),
         .graphviz             = Flag(matches, graphviz),
         .stdin_json           = Flag(matches, stdin_json),
     };

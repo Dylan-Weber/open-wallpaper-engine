@@ -40,6 +40,7 @@ struct SceneParseOptions {
     Option<ref<rstd::json::Map>> user_properties;
     Option<rstd::path::PathBuf>  shader_cache_dir;
     SceneParseCapabilities       capabilities;
+    Option<ImageReadyCallback>   image_ready;
 };
 
 struct ParsedScene {

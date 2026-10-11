@@ -329,6 +329,31 @@ auto ParseExternalImage(ref<str> key, const CString& path) -> Result<Arc<Image>,
 } // namespace
 
 auto TexImageParser::Parse(ref<str> name) const -> Result<Arc<Image>, ImageParseError> {
+    if (ResolveExternalImagePath(name)) return Decode(name);
+    // Package content is immutable for the lifetime of this parser snapshot.
+    auto cell = [&] {
+        auto cache = m_images->lock().unwrap_unchecked();
+        if (auto image = cache->get(name)) return (*image)->clone();
+        auto created = Arc<ImageCell>::make(None<Arc<Image>>());
+        (void)cache->insert(String::make(name), created.clone());
+        return created;
+    }();
+    bool publish {};
+    auto result = [&]() -> Result<Arc<Image>, ImageParseError> {
+        auto content = cell->lock().unwrap_unchecked();
+        if (*content) return Ok((**content).clone());
+        auto decoded = Decode(name);
+        if (decoded.is_ok()) {
+            content->insert(decoded->clone());
+            publish = true;
+        }
+        return decoded;
+    }();
+    if (publish && m_ready) (*m_ready)->operator()((*result)->content.clone());
+    return result;
+}
+
+auto TexImageParser::Decode(ref<str> name) const -> Result<Arc<Image>, ImageParseError> {
     if (auto path = ResolveExternalImagePath(name)) {
         return ParseExternalImage(name, *path);
     }
@@ -563,6 +588,10 @@ auto TexImageParser::ParseHeader(ref<str> name) const -> Result<ImageHeader, Ima
     // return an empty header without spamming a vfs miss.
     if (name.contains("_alias_"_str)) return Ok(rstd::move(header));
     auto prepared = rstd_try(PrepareHeader(name));
+    if (m_ready) {
+        auto image = Parse(name);
+        if (image.is_ok()) return Ok((*image)->header.clone());
+    }
     return Ok(prepared->header.clone());
 }
 

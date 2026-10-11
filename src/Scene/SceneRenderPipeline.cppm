@@ -5,7 +5,6 @@ export import wescene.scene;
 export import wescene.vulkan_render;
 export import wescene.script;
 export import wescene.pkg.parse;
-import wescene.rgraph;
 import wescene.types;
 import wescene.load_bench;
 
@@ -20,17 +19,19 @@ struct SceneRenderPipelineOptions {
 };
 
 struct SceneRenderPipelineStats {
-    rstd::uint64_t graph_builds {};
-    rstd::uint64_t prepared_frames {};
-    rstd::uint64_t mesh_refreshes {};
-    rstd::uint64_t material_refreshes {};
-    rstd::uint64_t texture_refreshes {};
-    rstd::uint64_t preparation_failures {};
+    vrento::fg::AnalysisStatistics graph_analysis;
+    rstd::uint64_t                 graph_builds {};
+    rstd::uint64_t                 prepared_frames {};
+    rstd::uint64_t                 mesh_refreshes {};
+    rstd::uint64_t                 material_refreshes {};
+    rstd::uint64_t                 texture_refreshes {};
+    rstd::uint64_t                 preparation_failures {};
 };
 
 struct PendingScenePreparation {
     bool  graph {}, textures {}, frame {};
     usize meshes {}, materials {};
+    bool  gpu {};
 };
 
 // The borrowed scene, input and renderer must outlive this pipeline; calls are serialized.
@@ -57,7 +58,15 @@ public:
     auto stats() const -> SceneRenderPipelineStats { return m_stats; }
 
 private:
-    void captureChanges();
+    struct GpuPreparation {
+        bool                         graph {}, textures {};
+        Vec<SceneMeshDirtyEvent>     meshes;
+        Vec<SceneMaterialDirtyEvent> materials;
+    };
+    auto                   takeGpuPreparation(bool graph) -> GpuPreparation;
+    void                   finishGpuPreparation(GpuPreparation);
+    Option<GpuPreparation> m_gpu_preparation;
+    void                   captureChanges();
     auto flushChanges(SceneLoadBenchRecorderView) -> Result<empty, vulkan::RenderPrepareError>;
     auto failed(vulkan::RenderPrepareError) -> Result<empty, vulkan::RenderPrepareError>;
     enum class FrameWork
@@ -81,7 +90,6 @@ private:
     vulkan::VulkanRender&        m_render;
     SceneRenderPipelineOptions   m_options;
     RenderSceneSnapshot          m_snapshot;
-    Option<Box<rg::RenderGraph>> m_graph;
     SceneRenderPipelineStats     m_stats;
 };
 

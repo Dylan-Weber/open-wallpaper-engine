@@ -1,5 +1,5 @@
 export module wescene.shader_compile;
-export import vrento.shader_compile;
+export import vrento;
 import wescene.types;
 import rstd;
 

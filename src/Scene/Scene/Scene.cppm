@@ -2,11 +2,7 @@ module;
 #include <rstd/enum.hpp>
 
 export module wescene.scene;
-export import vrento.geometry;
-export import vrento.node;
-export import vrento.material;
-export import vrento.camera;
-import vrento.shader_compile;
+export import vrento;
 import eigen;
 import rstd;
 import wescene.core;
@@ -2119,6 +2115,8 @@ struct ImageParseError {
     String              message;
 };
 
+using ImageReadyCallback = Arc<dyn<Fn<void(Arc<vrento::Image>)>>>;
+
 struct IImageParser {
     using Trait                  = IImageParser;
     static constexpr bool direct = false;
@@ -2147,7 +2145,20 @@ public:
     auto Parse(ref<str> name) const -> Result<Arc<Image>, ImageParseError> {
         auto runtime = m_runtime_images.get(name);
         if (runtime.is_some()) return Ok((*runtime)->clone());
-        if (m_parser.is_some()) return (*m_parser)->Parse(name);
+        auto cell = [&] {
+            auto cache = m_parsed->lock().unwrap_unchecked();
+            if (auto image = cache->get(name)) return (*image)->clone();
+            auto created = Arc<ParsedImage>::make(None<Arc<Image>>());
+            (void)cache->insert(String::make(name), created.clone());
+            return created;
+        }();
+        auto content = cell->lock().unwrap_unchecked();
+        if (*content) return Ok((**content).clone());
+        if (m_parser.is_some()) {
+            auto image = (*m_parser)->Parse(name);
+            if (image.is_ok()) content->insert(image->clone());
+            return image;
+        }
         return Err(ImageParseError {
             .kind    = ImageParseErrorKind::MissingContent,
             .message = rstd::format("image parser unavailable for {}", name),
@@ -2156,8 +2167,12 @@ public:
 
 private:
     friend class Scene;
-    Option<Arc<dyn<IImageParser>>> m_parser;
-    HashMap<String, Arc<Image>>    m_runtime_images;
+    using ParsedImage  = rstd::sync::Mutex<Option<Arc<Image>>>;
+    using ParsedImages = HashMap<String, Arc<ParsedImage>>;
+    Arc<rstd::sync::Mutex<ParsedImages>> m_parsed { Arc<rstd::sync::Mutex<ParsedImages>>::make(
+        ParsedImages {}) };
+    Option<Arc<dyn<IImageParser>>>       m_parser;
+    HashMap<String, Arc<Image>>          m_runtime_images;
 };
 
 struct SceneDrawItemRecord {

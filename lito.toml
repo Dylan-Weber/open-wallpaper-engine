@@ -47,7 +47,7 @@ licrypto = { version = "0.1.1" }
 vvk = { version = "0.1.0" }
 spirvto = { version = "0.1.0" }
 wavsen = { git = "https://github.com/hypengw/wavsen.git" }
-vrento = { git = "https://github.com/vecren/vrento.git" }
+vrento = { git = "https://github.com/vecren/vrento.git", rev = "b35aac4b8564af5e40c8b03ad10c2c24384eb829" }
 vectext = { git = "https://github.com/vecren/vectext.git" }
 
 [workspace.external-dependencies.pkg-config.glfw]
