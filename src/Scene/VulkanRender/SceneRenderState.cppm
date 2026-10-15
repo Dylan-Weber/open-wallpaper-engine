@@ -179,6 +179,12 @@ public:
     }
     auto renderInput() const -> const vrento::vulkan::GraphInput& { return *input_; }
     auto resourcePlan() const -> const resource::ResourcePlan& { return resource_plan; }
+    auto textureResource(ref<str> name) const -> Option<resource::TextureResourceRef> {
+        if (! textures) return None();
+        for (const auto& texture : textures->textures())
+            if (texture.spec.key == name) return Some(texture.spec.definition.clone());
+        return None();
+    }
     auto imageSource(Scene& scene) const -> Arc<SceneImageSource> {
         return image_source ? image_source->clone() : scene.CaptureImageSource();
     }
@@ -324,7 +330,15 @@ public:
             const auto& spec = texture.spec;
             if (! spec.definition.valid()) return false;
             if (spec.request().kind == TextureRequestKind::Imported) {
-                auto shape = provider.Declare(spec.request());
+                auto request = spec.request().clone();
+                auto id      = snapshot.textureDescId(spec.request().name.as_str());
+                if (! id) return false;
+                auto record = snapshot.textureDesc(*id);
+                if (! record || record->desc.resource.id() != spec.definition.id() ||
+                    record->desc.resource.revision() != spec.definition.revision())
+                    return false;
+                request.source = Some(resource::TextureDefinitionId { id->index, id->generation });
+                auto shape     = provider.Declare(request);
                 if (shape.is_err() || ! spec.metadata || *shape != *spec.metadata) return false;
             } else if (spec.request().kind == TextureRequestKind::RenderTarget) {
                 if (auto target = scene.RenderTarget(spec.request().name.as_str()))
@@ -336,6 +350,16 @@ public:
         }
         for (auto& draw : draws)
             if (draw.source->finalizeResourceRequests(scene) != PassInvalidationNone) return false;
+        for (auto& entry : resource_plan.textures) {
+            if (entry.request().kind != TextureRequestKind::Imported) continue;
+            auto id = snapshot.textureDescId(entry.request().name.as_str());
+            if (! id) return false;
+            auto record = snapshot.textureDesc(*id);
+            if (! record || record->desc.resource.id() != entry.definition.id() ||
+                record->desc.resource.revision() != entry.definition.revision())
+                return false;
+            entry.source = Some(resource::TextureDefinitionId { id->index, id->generation });
+        }
         image_source = Some(rstd::move(source));
         return true;
     }

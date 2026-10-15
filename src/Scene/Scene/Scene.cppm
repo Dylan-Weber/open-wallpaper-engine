@@ -273,13 +273,14 @@ struct SceneShaderVariantDesc {
 // ============================================================================
 
 struct SceneTexture {
-    String          url;
-    TextureSample   sample;
-    bool            isSprite { false };
-    bool            isVideo { false };
-    SpriteAnimation spriteAnim;
-    auto            clone() const -> SceneTexture {
-        return { url.clone(), sample, isSprite, isVideo, spriteAnim.clone() };
+    String                               url;
+    TextureSample                        sample;
+    bool                                 isSprite { false };
+    bool                                 isVideo { false };
+    SpriteAnimation                      spriteAnim;
+    vrento::resource::TextureResourceRef resource;
+    auto                                 clone() const -> SceneTexture {
+        return { url.clone(), sample, isSprite, isVideo, spriteAnim.clone(), resource.clone() };
     }
 };
 
@@ -336,6 +337,42 @@ struct SceneRenderTarget {
     // Blended draws may preserve backdrop alpha; replacement draws still initialize RGBA.
     Option<bool> blend_alpha_write;
 
+    vrento::resource::TextureResourceRef resource, msaa_resource, depth_resource;
+    auto request(ref<str>                             name,
+                 vrento::resource::TextureRequestKind type =
+                     vrento::resource::TextureRequestKind::RenderTarget,
+                 u32 samples = u32(1)) const -> vrento::resource::TextureRequest {
+        const bool depth = type == vrento::resource::TextureRequestKind::DepthAttachment ||
+                           kind == SceneRenderTargetKind::DepthSampled;
+        vrento::resource::TextureDefinition definition {
+            .width      = PhysicalWidth(),
+            .height     = PhysicalHeight(),
+            .usage      = depth ? vrento::resource::TextureUsage::DepthAttachment
+                                : vrento::resource::TextureUsage::Color,
+            .format     = depth ? TextureFormat::D32F : TextureFormat::RGBA8,
+            .sample     = sample,
+            .mip_levels = type == vrento::resource::TextureRequestKind::DepthAttachment
+                              ? u32(1)
+                              : u32(mipmap_level),
+            .samples    = samples
+        };
+        if (kind == SceneRenderTargetKind::DepthSampled &&
+            type == vrento::resource::TextureRequestKind::RenderTarget)
+            definition.usage = definition.usage | vrento::resource::TextureUsage::Sampled;
+        auto content =
+            vrento::resource::TextureContentFlag(vrento::resource::TextureContent::SourceDefined);
+        if (initialize_transparent && type == vrento::resource::TextureRequestKind::RenderTarget)
+            content |= vrento::resource::TextureContentFlag(
+                vrento::resource::TextureContent::InitializeTransparent);
+        return { .kind       = type,
+                 .name       = String::make(name),
+                 .definition = Some(definition),
+                 .lifetime   = type == vrento::resource::TextureRequestKind::RenderTargetMsaa
+                                   ? vrento::resource::TextureLifetimeClass::Dedicated
+                               : allowReuse ? vrento::resource::TextureLifetimeClass::FrameLocal
+                                            : vrento::resource::TextureLifetimeClass::Retained,
+                 .content    = content };
+    }
     auto clone() const -> SceneRenderTarget {
         return { .width                  = width,
                  .height                 = height,
@@ -354,7 +391,10 @@ struct SceneRenderTarget {
                  .clear_on_first_write   = clear_on_first_write,
                  .initialize_transparent = initialize_transparent,
                  .preserve_on_write      = preserve_on_write,
-                 .blend_alpha_write      = blend_alpha_write };
+                 .blend_alpha_write      = blend_alpha_write,
+                 .resource               = resource.clone(),
+                 .msaa_resource          = msaa_resource.clone(),
+                 .depth_resource         = depth_resource.clone() };
     }
 
     i32 PhysicalWidth() const { return physical_width > i32() ? physical_width : width; }
@@ -2631,8 +2671,18 @@ public:
     void RegisterCameraPath(Arc<SceneCameraPath>);
     void RegisterCameraPathUserBinding(String key, Arc<SceneCameraPath>);
     void RegisterTexture(String name, SceneTexture texture);
+    bool RemoveTexture(ref<str> name);
+    bool RemoveRenderTarget(ref<str> name);
     auto Texture(ref<str> name) const -> Option<ref<SceneTexture>>;
     auto TextureContentRevision(ref<str> name) const -> u64;
+    auto TextureResource(SceneTextureId id) const -> Option<vrento::resource::TextureResourceRef>;
+    auto TargetResource(SceneRenderTargetId id) const
+        -> Option<vrento::resource::TextureResourceRef>;
+    auto TargetResource(ref<str>                             name,
+                        vrento::resource::TextureRequestKind kind =
+                            vrento::resource::TextureRequestKind::RenderTarget,
+                        u32 samples = u32(1)) -> Option<vrento::resource::TextureResourceRef>;
+    void PublishResourceDefinitions();
     auto VideoControl(ref<str> name) const -> Option<Arc<VideoPlaybackState>>;
     auto TextureNames() const -> slice<String> { return m_texture_names.as_slice(); }
     void RegisterRenderTarget(String name, SceneRenderTarget target);
@@ -2717,7 +2767,9 @@ public:
     }
 
     void SetImageParser(Arc<dyn<IImageParser>> parser) {
-        m_image_parser = Some(rstd::move(parser));
+        m_image_parser  = Some(rstd::move(parser));
+        m_parsed_images = Arc<rstd::sync::Mutex<SceneImageSource::ParsedImages>>::make(
+            SceneImageSource::ParsedImages {});
     }
     auto CaptureImageSource() const -> Arc<SceneImageSource>;
     auto ParseImage(ref<str> name) const -> Result<Arc<Image>, ImageParseError>;
@@ -2928,16 +2980,20 @@ private:
     Vec<Box<dyn<Any>>>                                           m_extensions;
     HashMap<String, Arc<Image>>                                  m_runtime_images;
     HashMap<String, SceneTexture>                                m_textures;
-    HashMap<String, u64>                                         m_texture_content_revisions;
-    HashMap<String, Arc<VideoPlaybackState>>                     m_video_controls;
-    Vec<String>                                                  m_texture_names;
-    HashMap<String, SceneRenderTarget>                           m_render_targets;
-    Vec<String>                                                  m_render_target_names;
-    HashMap<String, Arc<SceneCamera>>                            m_cameras;
-    Vec<String>                                                  m_camera_names;
-    Option<String>                                               m_active_camera;
-    Vec<Arc<SceneCameraPath>>                                    m_camera_paths;
-    HashMap<String, Vec<Arc<SceneCameraPath>>>                   m_camera_path_user_index;
+    Arc<rstd::sync::Mutex<SceneImageSource::ParsedImages>>       m_parsed_images {
+        Arc<rstd::sync::Mutex<SceneImageSource::ParsedImages>>::make(
+            SceneImageSource::ParsedImages {})
+    };
+    HashMap<String, u64>                       m_texture_content_revisions;
+    HashMap<String, Arc<VideoPlaybackState>>   m_video_controls;
+    Vec<String>                                m_texture_names;
+    HashMap<String, SceneRenderTarget>         m_render_targets;
+    Vec<String>                                m_render_target_names;
+    HashMap<String, Arc<SceneCamera>>          m_cameras;
+    Vec<String>                                m_camera_names;
+    Option<String>                             m_active_camera;
+    Vec<Arc<SceneCameraPath>>                  m_camera_paths;
+    HashMap<String, Vec<Arc<SceneCameraPath>>> m_camera_path_user_index;
 
     void RebuildElidableLayerIds();
 

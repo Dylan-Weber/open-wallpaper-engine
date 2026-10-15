@@ -10,7 +10,7 @@ import rstd.log;
 using namespace rstd::prelude;
 using namespace rstd::literals;
 using rstd::mtp::is_arithmetic;
-using rstd::mtp::same;
+using rstd::mtp::same_as;
 
 namespace owe
 {
@@ -45,13 +45,13 @@ auto InitialJsonValue(const Json& json) -> const Json& {
 template<typename T>
 auto ParseNumber(ref<str> value) -> Result<T, JsonValueError> {
     auto parsed = [&] {
-        if constexpr (same<T, float>)
+        if constexpr (same_as<T, float>)
             return rstd::from_str<f32>(value);
-        else if constexpr (same<T, double>)
+        else if constexpr (same_as<T, double>)
             return rstd::from_str<f64>(value);
-        else if constexpr (same<T, rstd::int32_t>)
+        else if constexpr (same_as<T, rstd::int32_t>)
             return rstd::from_str<i32>(value);
-        else if constexpr (same<T, rstd::uint32_t>)
+        else if constexpr (same_as<T, rstd::uint32_t>)
             return rstd::from_str<u32>(value);
         else
             return rstd::from_str<T>(value);
@@ -59,7 +59,7 @@ auto ParseNumber(ref<str> value) -> Result<T, JsonValueError> {
     if (parsed.is_err()) {
         auto error = rstd::move(parsed).unwrap_err();
         bool overflow;
-        if constexpr (same<T, float> || same<T, double> || rstd::num::Float<T>) {
+        if constexpr (same_as<T, float> || same_as<T, double> || rstd::num::Float<T>) {
             using rstd::num::FloatErrorKind;
             overflow = error.kind() == FloatErrorKind::PosOverflow ||
                        error.kind() == FloatErrorKind::NegOverflow;
@@ -168,7 +168,7 @@ auto ReadJsonValue(const Json& json, T& value) -> Result<bool, JsonValueError> {
         auto string = input.as_str();
         if (string.is_none()) return Err(JsonValueError::WrongType);
         return ConvertArray(*string, value);
-    } else if constexpr (same<T, bool>) {
+    } else if constexpr (same_as<T, bool>) {
         auto boolean = input.as_bool();
         if (boolean.is_none()) return Err(JsonValueError::WrongType);
         value = *boolean;
@@ -182,7 +182,7 @@ auto ReadJsonValue(const Json& json, T& value) -> Result<bool, JsonValueError> {
         auto boolean = input.as_bool();
         value = boolean.is_some() ? static_cast<T>(*boolean) : rstd_try(ConvertNumber<T>(input));
         return Ok(true);
-    } else if constexpr (same<T, String>) {
+    } else if constexpr (same_as<T, String>) {
         auto string = input.as_str();
         if (string.is_none()) return Err(JsonValueError::WrongType);
         value = rstd::into(*string);

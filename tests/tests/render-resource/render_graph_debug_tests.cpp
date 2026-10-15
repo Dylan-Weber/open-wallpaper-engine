@@ -317,17 +317,20 @@ TEST(RenderGraphResources, CompilesBackendNeutralTexturePlan) {
     fg::FrameGraphBuilder other(2);
     EXPECT_TRUE(textures.resourcePlan(rstd::move(other).finish().unwrap()).is_err());
 }
-TEST(RenderGraphResources, UsesGraphKeyAsTextureRequestIdentity) {
+TEST(RenderGraphResources, KeepsGraphKeyOutsideTextureDefinition) {
     fg::FrameGraphBuilder builder(1);
     SceneRenderTextures   textures(u64(1));
     auto                  spec = CompositeDesc();
     spec.key                   = "snapshot"_Str;
+    auto definition            = spec.definition.clone();
     auto initial               = textures.declare(builder, rstd::move(spec)).unwrap();
     auto pass                  = builder.add_pass({ 1 }).unwrap();
     auto out                   = builder.write(pass, initial).unwrap();
     textures.handle(out).unwrap();
     auto plan = textures.resourcePlan(rstd::move(builder).finish().unwrap()).unwrap();
-    EXPECT_EQ(plan.textures[usize()].request().name, "snapshot"_str);
+    EXPECT_EQ(plan.textures[usize()].definition.id(), definition.id());
+    EXPECT_EQ(plan.textures[usize()].definition.revision(), definition.revision());
+    EXPECT_EQ(plan.textures[usize()].request().name, definition.definition().name);
 }
 TEST(RenderGraphResources, AlternatesPhysicalSlotsForLinearCompositeVersions) {
     fg::FrameGraphBuilder builder(1);
@@ -368,6 +371,7 @@ TEST(RenderGraphResources, PreservesFrameBoundaryTextureVersions) {
     SceneRenderTextures   textures(u64(1));
     auto                  spec = CompositeDesc();
     spec.allocation_family     = None();
+    auto definition            = spec.definition.clone();
     auto history               = textures.declare(builder, rstd::move(spec)).unwrap();
     builder.import_initial(history.resource).unwrap();
     auto a = builder.add_pass({ 1 }).unwrap(), b = builder.add_pass({ 2 }).unwrap();
@@ -379,13 +383,11 @@ TEST(RenderGraphResources, PreservesFrameBoundaryTextureVersions) {
     EXPECT_TRUE(graph.inspect().precedes(0, 1));
     auto plan = textures.resourcePlan(graph).unwrap();
     EXPECT_EQ(plan.textures[usize()].allocation_key, plan.textures[usize(1)].allocation_key);
-    for (auto& entry : plan.textures) {
-        EXPECT_EQ(entry.request().lifetime, resource::TextureLifetimeClass::Retained);
-        auto refreshed              = entry.request().clone();
-        refreshed.definition->width = i32(1280);
-        refreshed.lifetime          = resource::TextureLifetimeClass::FrameLocal;
-        EXPECT_TRUE(plan.UpdateTextureRequest(entry.handle, rstd::move(refreshed)));
-        EXPECT_EQ(entry.request().lifetime, resource::TextureLifetimeClass::Retained);
+    for (const auto& entry : plan.textures) {
+        EXPECT_TRUE(entry.preserve_contents);
+        EXPECT_EQ(entry.definition.id(), definition.id());
+        EXPECT_EQ(entry.definition.revision(), definition.revision());
+        EXPECT_EQ(entry.request().lifetime, definition.definition().lifetime);
     }
 }
 
@@ -577,10 +579,8 @@ TEST(SceneRenderGraph, LinkedSurfaceReadsFollowSceneOrder) {
         EXPECT_EQ(entry.allocation_key, link_allocation);
         EXPECT_LE(entry.version, rstd::u32(1));
         EXPECT_EQ(entry.request().lifetime, owe::resource::TextureLifetimeClass::Retained);
-        EXPECT_NE(entry.request().content &
-                      owe::resource::TextureContentFlag(
-                          owe::resource::TextureContent::PreserveAcrossFrames),
-                  rstd::u32());
+        EXPECT_TRUE(entry.preserve_contents);
+
         EXPECT_NE(entry.request().content &
                       owe::resource::TextureContentFlag(
                           owe::resource::TextureContent::InitializeTransparent),
@@ -679,6 +679,16 @@ TEST(SceneRenderGraph, ElidesSceneOwnedVisibilityHiddenSubtreeAndRestoresIt) {
     auto visible_order = visible_graph->graph.compile();
     ASSERT_TRUE(visible_order.is_ok());
     EXPECT_EQ(visible_graph->draws.len(), rstd::usize(1));
+    EXPECT_NE(hidden_graph->graph.scope(), visible_graph->graph.scope());
+    usize shared {};
+    for (const auto& old : hidden_graph->textures.textures())
+        for (const auto& current : visible_graph->textures.textures()) {
+            if (old.spec.key != current.spec.key) continue;
+            ++shared;
+            EXPECT_EQ(old.spec.definition.id(), current.spec.definition.id());
+            EXPECT_EQ(old.spec.definition.revision(), current.spec.definition.revision());
+        }
+    EXPECT_GT(shared, usize());
 }
 
 TEST(SceneRenderGraph, PreservesLinkedSourceBelowVisibilityHiddenParent) {

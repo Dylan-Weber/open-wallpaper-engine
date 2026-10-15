@@ -964,22 +964,33 @@ TEST(TextureBindingRequest, CarriesNameAndTypedRequest) {
     EXPECT_TRUE(empty.empty());
 }
 
-TEST(ResourcePlan, UpdatesTextureRequestByStableUse) {
-    auto use =
-        owe::resource::TextureUseHandle { .index = rstd::u64(3), .generation = rstd::u64(7) };
-    owe::resource::ResourcePlan plan { .generation = rstd::u64(7) };
-    plan.textures.push(owe::resource::TexturePlanEntry {
-        .handle     = use,
-        .definition = owe::vulkan::MakeImportedTextureRequest("texture-old"_str),
-    });
-
-    EXPECT_TRUE(
-        plan.UpdateTextureRequest(use, owe::vulkan::MakeImportedTextureRequest("texture-new"_str)));
-    EXPECT_EQ(plan.textures[rstd::usize()].request().name, "texture-new"_str);
-    EXPECT_FALSE(plan.UpdateTextureRequest(
-        owe::resource::TextureUseHandle { .index = use.index, .generation = rstd::u64(8) },
-        owe::vulkan::MakeImportedTextureRequest("texture-invalid"_str)));
-    EXPECT_EQ(plan.textures[rstd::usize()].request().name, "texture-new"_str);
+TEST(ResourcePlan, SourceBindingDoesNotChangeStableDefinition) {
+    owe::Scene scene;
+    scene.RegisterTexture("texture"_Str, owe::SceneTexture {});
+    auto                            first    = owe::ExtractRenderSceneSnapshot(scene);
+    auto                            next     = owe::ExtractRenderSceneSnapshot(scene);
+    auto                            first_id = first.textureDescId("texture"_str).unwrap();
+    auto                            next_id  = next.textureDescId("texture"_str).unwrap();
+    owe::resource::TexturePlanEntry entry {
+        .definition = first.textureDesc(first_id)->desc.resource.clone(),
+        .source = Some(owe::resource::TextureDefinitionId { first_id.index, first_id.generation })
+    };
+    owe::vulkan::SnapshotImportedTextureProvider provider(next, scene.CaptureImageSource());
+    EXPECT_TRUE(provider.ResolveTextureContent(entry.source_request()).is_err());
+    auto revision = entry.definition.revision();
+    entry.source  = Some(owe::resource::TextureDefinitionId { next_id.index, next_id.generation });
+    auto identity = provider.ResolveTextureContent(entry.source_request());
+    ASSERT_TRUE(identity.is_ok());
+    EXPECT_EQ(entry.definition.revision(), revision);
+    EXPECT_FALSE(entry.request().source);
+    owe::Scene other;
+    other.RegisterTexture("texture"_Str, owe::SceneTexture {});
+    auto other_snapshot = owe::ExtractRenderSceneSnapshot(other);
+    owe::vulkan::SnapshotImportedTextureProvider other_provider(other_snapshot,
+                                                                other.CaptureImageSource());
+    auto request        = owe::vulkan::MakeImportedTextureRequest("texture"_str);
+    auto other_identity = other_provider.ResolveTextureContent(request).unwrap();
+    EXPECT_NE(identity->scope, other_identity.scope);
 }
 
 TEST(ShaderBackend, CompilesBothLanguagesAndReusesReflection) {

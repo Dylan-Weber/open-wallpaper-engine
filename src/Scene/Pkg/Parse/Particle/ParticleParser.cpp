@@ -15,7 +15,7 @@ using namespace rstd::prelude;
 using namespace owe;
 using namespace Eigen;
 using namespace rstd::literals;
-using rstd::mtp::same;
+using rstd::mtp::same_as;
 
 namespace
 {
@@ -392,26 +392,26 @@ class ParticleSpawnInstructionValue {
 
 template<typename T>
 auto MakeParticleSpawnInstructionValue(T value) -> ParticleSpawnInstructionValue {
-    if constexpr (same<T, NoopSpawnProgram>)
+    if constexpr (same_as<T, NoopSpawnProgram>)
         return ParticleSpawnInstructionValue::Noop(rstd::move(value));
-    else if constexpr (same<T, ColorRandomProgram>)
+    else if constexpr (same_as<T, ColorRandomProgram>)
         return ParticleSpawnInstructionValue::ColorRandom(rstd::move(value));
-    else if constexpr (same<T, LifetimeRandomProgram>)
+    else if constexpr (same_as<T, LifetimeRandomProgram>)
         return ParticleSpawnInstructionValue::LifetimeRandom(rstd::move(value));
-    else if constexpr (same<T, SizeRandomProgram>)
+    else if constexpr (same_as<T, SizeRandomProgram>)
         return ParticleSpawnInstructionValue::SizeRandom(rstd::move(value));
-    else if constexpr (same<T, AlphaRandomProgram>)
+    else if constexpr (same_as<T, AlphaRandomProgram>)
         return ParticleSpawnInstructionValue::AlphaRandom(rstd::move(value));
-    else if constexpr (same<T, VectorRandomProgram>)
+    else if constexpr (same_as<T, VectorRandomProgram>)
         return ParticleSpawnInstructionValue::VectorRandom(rstd::move(value));
-    else if constexpr (same<T, TurbulentVelocityRandomProgram>)
+    else if constexpr (same_as<T, TurbulentVelocityRandomProgram>)
         return ParticleSpawnInstructionValue::TurbulentVelocityRandom(rstd::move(value));
-    else if constexpr (same<T, MapSequenceAroundControlPointProgram>)
+    else if constexpr (same_as<T, MapSequenceAroundControlPointProgram>)
         return ParticleSpawnInstructionValue::MapSequenceAroundControlPoint(rstd::move(value));
-    else if constexpr (same<T, MapSequenceBetweenControlPointsProgram>)
+    else if constexpr (same_as<T, MapSequenceBetweenControlPointsProgram>)
         return ParticleSpawnInstructionValue::MapSequenceBetweenControlPoints(rstd::move(value));
     else {
-        static_assert(same<T, OverrideSpawnProgram>);
+        static_assert(same_as<T, OverrideSpawnProgram>);
         return ParticleSpawnInstructionValue::Override(rstd::move(value));
     }
 }

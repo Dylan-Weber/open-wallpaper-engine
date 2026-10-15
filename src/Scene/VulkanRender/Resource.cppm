@@ -149,111 +149,47 @@ inline unsigned TextureSampleCountValue(VkSampleCountFlagBits sample_count) {
 }
 
 inline TextureDefinition RenderTargetTextureDefinition(const owe::SceneRenderTarget& rt) {
-    const bool depth_sampled = rt.kind == owe::SceneRenderTargetKind::DepthSampled;
-    return TextureDefinition {
-        .width      = rt.PhysicalWidth(),
-        .height     = rt.PhysicalHeight(),
-        .usage      = depth_sampled ? TextureUsage::DepthAttachment | TextureUsage::Sampled
-                                    : TextureUsage::Color,
-        .format     = depth_sampled ? owe::TextureFormat::D32F : owe::TextureFormat::RGBA8,
-        .sample     = rt.sample,
-        .mip_levels = u32(rt.mipmap_level),
-    };
+    return *rt.request(""_str).definition;
 }
-
 inline TextureDefinition RenderTargetTextureDefinitionNoMip(const owe::SceneRenderTarget& rt) {
-    const bool depth_sampled = rt.kind == owe::SceneRenderTargetKind::DepthSampled;
-    return TextureDefinition {
-        .width  = rt.PhysicalWidth(),
-        .height = rt.PhysicalHeight(),
-        .usage  = depth_sampled ? TextureUsage::DepthAttachment | TextureUsage::Sampled
-                                : TextureUsage::Color,
-        .format = depth_sampled ? owe::TextureFormat::D32F : owe::TextureFormat::RGBA8,
-        .sample = rt.sample,
-    };
-}
-
-inline TextureDefinition MsaaTextureDefinition(const owe::SceneRenderTarget& rt,
-                                               VkSampleCountFlagBits         samples) {
-    auto definition    = RenderTargetTextureDefinition(rt);
-    definition.samples = u32(TextureSampleCountValue(samples));
+    auto definition       = RenderTargetTextureDefinition(rt);
+    definition.mip_levels = u32(1);
     return definition;
 }
-
-inline TextureDefinition DepthTextureDefinition(const owe::SceneRenderTarget& rt) {
-    return TextureDefinition {
-        .width      = rt.PhysicalWidth(),
-        .height     = rt.PhysicalHeight(),
-        .usage      = TextureUsage::Depth,
-        .format     = owe::TextureFormat::D32F,
-        .sample     = rt.sample,
-        .mip_levels = u32(1),
-        .samples    = u32(rt.sample_count),
-    };
+inline TextureDefinition MsaaTextureDefinition(const owe::SceneRenderTarget& rt,
+                                               VkSampleCountFlagBits         samples) {
+    return *rt.request(""_str,
+                       TextureRequestKind::RenderTargetMsaa,
+                       u32(TextureSampleCountValue(samples)))
+                .definition;
 }
-
+inline TextureDefinition DepthTextureDefinition(const owe::SceneRenderTarget& rt) {
+    return *rt.request(""_str, TextureRequestKind::DepthAttachment, u32(rt.sample_count))
+                .definition;
+}
 inline TextureRequest MakeImportedTextureRequest(ref<str>                    name,
                                                  Option<RenderTextureDescId> texture = None()) {
-    auto source = texture.is_some()
-                      ? rstd::Some(TextureDefinitionId { .index      = texture->index,
-                                                         .generation = texture->generation })
-                      : rstd::None<TextureDefinitionId>();
-    return TextureRequest {
-        .kind   = TextureRequestKind::Imported,
-        .name   = String::make(name),
-        .source = rstd::move(source),
-    };
+    return { .kind   = TextureRequestKind::Imported,
+             .name   = String::make(name),
+             .source = texture ? Some(TextureDefinitionId { texture->index, texture->generation })
+                               : None() };
 }
-
 inline TextureRequest MakeRenderTargetTextureRequest(ref<str> name, const SceneRenderTarget& rt) {
-    auto content = TextureContentFlag(TextureContent::SourceDefined);
-    if (rt.initialize_transparent) {
-        content |= TextureContentFlag(TextureContent::InitializeTransparent);
-    }
-    return TextureRequest {
-        .kind       = TextureRequestKind::RenderTarget,
-        .name       = String::make(name),
-        .definition = rstd::Some(RenderTargetTextureDefinition(rt)),
-        .lifetime =
-            rt.allowReuse ? TextureLifetimeClass::FrameLocal : TextureLifetimeClass::Retained,
-        .content = content,
-    };
+    return rt.request(name);
 }
-
 inline TextureRequest MakeRenderTargetNoMipTextureRequest(ref<str>                 name,
                                                           const SceneRenderTarget& rt) {
-    auto content = TextureContentFlag(TextureContent::SourceDefined);
-    if (rt.initialize_transparent) {
-        content |= TextureContentFlag(TextureContent::InitializeTransparent);
-    }
-    return TextureRequest {
-        .kind       = TextureRequestKind::RenderTarget,
-        .name       = String::make(name),
-        .definition = rstd::Some(RenderTargetTextureDefinitionNoMip(rt)),
-        .lifetime =
-            rt.allowReuse ? TextureLifetimeClass::FrameLocal : TextureLifetimeClass::Retained,
-        .content = content,
-    };
+    auto request                   = rt.request(name);
+    request.definition->mip_levels = u32(1);
+    return request;
 }
-
 inline TextureRequest MakeMsaaTextureRequest(ref<str> name, const SceneRenderTarget& rt,
                                              VkSampleCountFlagBits samples) {
-    return TextureRequest {
-        .kind       = TextureRequestKind::RenderTargetMsaa,
-        .name       = String::make(name),
-        .definition = rstd::Some(MsaaTextureDefinition(rt, samples)),
-        .lifetime   = TextureLifetimeClass::Dedicated,
-    };
+    return rt.request(
+        name, TextureRequestKind::RenderTargetMsaa, u32(TextureSampleCountValue(samples)));
 }
-
 inline TextureRequest MakeDepthTextureRequest(ref<str> name, const SceneRenderTarget& rt) {
-    return TextureRequest {
-        .kind       = TextureRequestKind::DepthAttachment,
-        .name       = String::make(name),
-        .definition = rstd::Some(DepthTextureDefinition(rt)),
-        .lifetime =
-            rt.allowReuse ? TextureLifetimeClass::FrameLocal : TextureLifetimeClass::Retained,
-    };
+    return rt.request(name, TextureRequestKind::DepthAttachment, u32(rt.sample_count));
 }
 
 inline Option<String> ResolveImportedTextureName(const RenderSceneSnapshot& render_scene,
@@ -263,6 +199,7 @@ inline Option<String> ResolveImportedTextureName(const RenderSceneSnapshot& rend
     auto resolved = rstd::None<TextureRequest>();
     if (request.source.is_some()) {
         resolved = catalog->ResolveTexture(*request.source);
+        if (! resolved) return None();
     }
     if (resolved.is_none()) {
         resolved = catalog->FindTexture(request.name.as_str());
@@ -369,6 +306,10 @@ public:
         -> Result<resource::ImportedTextureContentIdentity, resource::ResourceError> {
         auto record = ResolveRecord(request);
         if (record == nullptr) {
+            if (request.source)
+                return Err(resource::ResourceError {
+                    resource::ResourceErrorKind::MissingDefinition,
+                    rstd::format("stale texture source {}", request.name) });
             return Ok(resource::ImportedTextureContentIdentity {
                 .key = request.name.clone(),
             });
@@ -378,6 +319,7 @@ public:
         return Ok(resource::ImportedTextureContentIdentity {
             .key      = rstd::move(key),
             .revision = record->content_revision,
+            .scope    = rstd::as_cast<u64>(record->scene_texture.generation),
         });
     }
 
@@ -403,7 +345,7 @@ private:
                 .index      = request.source->index,
                 .generation = request.source->generation,
             });
-            if (record != nullptr) return record;
+            return record;
         }
         auto id = m_render_scene.textureDescId(request.name.as_str());
         return id.is_some() ? m_render_scene.textureDesc(*id) : nullptr;

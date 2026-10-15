@@ -415,7 +415,9 @@ bool VulkanRender::Impl::prepareFontUploads(
     Vec<vrento::resource_registry::PreparedTextureUpdate>& uploads) {
     for (auto& update : m_pending_font_updates) {
         update.recorded = false;
-        bool resident   = true;
+        auto definition = m_scene_render_state.textureResource(update.page->AtlasUrl());
+        if (! definition) continue;
+        bool resident = true;
         for (const auto& region : update.batch.rects) {
             vrento::texture::TextureUpload upload;
             upload.x         = region.rect.x;
@@ -424,8 +426,8 @@ bool VulkanRender::Impl::prepareFontUploads(
             upload.height    = region.rect.h;
             upload.row_pitch = region.rect.w;
             upload.bytes     = region.bytes.clone();
-            auto prepared = m_rendering_resources.resources.PrepareRegion(update.page->AtlasUrl(),
-                                                                          rstd::move(upload));
+            auto prepared =
+                m_rendering_resources.resources.PrepareRegion(*definition, rstd::move(upload));
             if (prepared.is_err()) return false;
             auto packet = prepared.unwrap();
             if (! packet) {
@@ -629,7 +631,9 @@ auto VulkanRender::deviceSession() const
 }
 auto VulkanRender::renderedTarget(ref<str> name)
     -> Result<vrento::texture::TextureViewRef, RenderPrepareError> {
-    auto result = pImpl->m_rendering_resources.resources.RenderedTarget(name);
+    auto definition = pImpl->m_scene_render_state.textureResource(name);
+    if (! definition) return Err(RenderPrepareError { RenderPrepareStage::State });
+    auto result = pImpl->m_rendering_resources.resources.RenderedTarget(*definition);
     if (result.is_err())
         return Err(
             RenderPrepareError { result.unwrap_err().kind == resource::ResourceErrorKind::Pending
@@ -678,10 +682,13 @@ auto VulkanRender::tryPrepareResources(Scene& scene, const RenderSceneSnapshot& 
     if (! pImpl->m_scene_render_state.installed())
         return Err(RenderPrepareError { RenderPrepareStage::State });
     pImpl->configureRenderTargets(scene);
-    if (changes.textures_only && pImpl->sceneRenderReady() &&
-        pImpl->m_scene_render_state.acceptsTextureContent(
-            scene, snapshot, scene.CaptureImageSource()))
-        return pImpl->prepareSceneRenderState(scene, snapshot, resource::ResourcePlanTextures, {});
+    if (changes.textures_only && pImpl->sceneRenderReady()) {
+        auto current = ExtractRenderSceneSnapshot(scene);
+        if (pImpl->m_scene_render_state.acceptsTextureContent(
+                scene, current, scene.CaptureImageSource()))
+            return pImpl->prepareSceneRenderState(
+                scene, current, resource::ResourcePlanTextures, {});
+    }
     if (! changes.textures_only && changes.texture_materials.is_empty() &&
         ! changes.items.is_empty() && pImpl->sceneRenderReady()) {
         bool content_only = true;

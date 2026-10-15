@@ -59,7 +59,7 @@ auto SelectTexture(ExtraInfo& extra, const vulkan::SceneRenderTextureSpec& spec)
     if (declared.imported && declared.definition.valid()) {
         vulkan::SnapshotImportedTextureProvider provider(*extra.render_scene,
                                                          extra.image_source.clone());
-        auto                                    metadata = provider.Declare(declared.request());
+        auto metadata = provider.Declare(declared.source_request());
         if (metadata.is_err()) {
             rstd_error("declare texture failed: {}", metadata.unwrap_err().message);
             extra.error = Some(fg::Error { fg::ErrorKind::MissingResource });
@@ -124,44 +124,24 @@ auto AddTextureCopy(ExtraInfo& extra, ContentRef source, ContentRef target) -> C
 } // namespace
 namespace
 {
-static Option<vulkan::TextureRequest> ResolveTextureRequest(ExtraInfo& extra, ref<str> key) {
-    if (key.is_empty()) return None();
-    if (auto existing = extra.textures.find(key); existing)
-        return existing->spec.definition.valid() ? Some(existing->spec.request().clone())
-                                                 : None<vulkan::TextureRequest>();
-    auto name = key;
-    if (! IsSpecTex(name)) {
-        Option<RenderTextureDescId> texture;
-        if (extra.render_scene != nullptr) texture = extra.render_scene->textureDescId(name);
-        return Some(vulkan::MakeImportedTextureRequest(name, texture));
-    }
-
-    if (extra.render_scene != nullptr) {
-        if (auto desc_id = extra.render_scene->renderTargetDescId(name)) {
-            if (auto* desc = extra.render_scene->renderTargetDesc(*desc_id)) {
-                return Some(vulkan::MakeRenderTargetTextureRequest(name, desc->desc));
+static vulkan::SceneRenderTextureSpec MakeTextureDesc(ExtraInfo& extra, ref<str> key) {
+    if (auto existing = extra.textures.find(key)) return existing->spec.clone();
+    vulkan::SceneRenderTextureSpec desc { .key = String::make(key), .imported = ! IsSpecTex(key) };
+    if (desc.imported) {
+        if (auto id = extra.render_scene->textureDescId(key)) {
+            if (auto record = extra.render_scene->textureDesc(*id)) {
+                desc.definition = record->desc.resource.clone();
+                desc.source     = Some(resource::TextureDefinitionId { id->index, id->generation });
             }
         }
+    } else if (auto id = extra.render_scene->renderTargetDescId(key)) {
+        if (auto record = extra.render_scene->renderTargetDesc(*id))
+            desc.definition = record->desc.resource.clone();
+    } else if (auto definition = extra.scene->TargetResource(key)) {
+        desc.definition = definition.unwrap();
     }
-
-    if (extra.scene != nullptr) {
-        auto target = extra.scene->RenderTarget(name);
-        if (target.is_some()) {
-            return Some(vulkan::MakeRenderTargetTextureRequest(name, **target));
-        }
-    }
-
-    return None();
-}
-
-static vulkan::SceneRenderTextureSpec MakeTextureDesc(ExtraInfo& extra, ref<str> key) {
-    vulkan::SceneRenderTextureSpec desc { .key = String::make(key), .imported = ! IsSpecTex(key) };
-    auto                           request = ResolveTextureRequest(extra, key);
-    if (request) desc.definition = resource::TextureResourceRef(rstd::move(*request));
-    auto name = key;
-    if (extra.transient_texture_families.contains(name)) {
-        desc.allocation_family = Some(String::make(name));
-    }
+    if (extra.transient_texture_families.contains(key))
+        desc.allocation_family = Some(String::make(key));
     return desc;
 }
 
@@ -196,6 +176,13 @@ static ContentRef AddTextureCopy(ExtraInfo& extra, ContentRef in,
                                          in.output() ? in.output()->producer.value : 0,
                                          in.output() ? in.output()->index : 0)
                                 .as_str());
+    if (! out_desc) {
+        auto request      = target.request().clone();
+        request.name      = target.key.clone();
+        request.source    = None();
+        target.definition = resource::TextureResourceRef(rstd::move(request));
+        target.source     = None();
+    }
     auto initial = SelectTexture(extra, target);
     return AddTextureCopy(extra, in, initial);
 }
@@ -455,12 +442,19 @@ static SceneNodeLayer* ToGraphPass(SceneNode* node, ref<str> output, ExtraInfo& 
                         extra.textures.output(
                             extra.graph,
                             pass,
-                            SelectTexture(extra,
-                                          vulkan::SceneRenderTextureSpec {
-                                              .key        = twin_name.clone(),
-                                              .imported   = false,
-                                              .definition = pdesc.output_msaa_request->clone(),
-                                          })));
+                            SelectTexture(
+                                extra,
+                                vulkan::SceneRenderTextureSpec {
+                                    .key      = twin_name.clone(),
+                                    .imported = false,
+                                    .definition =
+                                        extra.scene
+                                            ->TargetResource(
+                                                pdesc.output.as_str(),
+                                                resource::TextureRequestKind::RenderTargetMsaa,
+                                                u32(static_cast<unsigned>(pdesc.samples)))
+                                            .unwrap(),
+                                })));
                     auto msaa_state = extra.textures.find(msaa_node);
                     if (msaa_state) pdesc.output_msaa_use = Some(Use(extra, msaa_node));
                     PublishTexture(extra, msaa_node);
@@ -478,17 +472,24 @@ static SceneNodeLayer* ToGraphPass(SceneNode* node, ref<str> output, ExtraInfo& 
                     auto depth_name = rstd::format("{}::depth", pass_output_s);
                     pdesc.depth_request =
                         Some(vulkan::MakeDepthTextureRequest(depth_name.as_str(), output_target));
-                    auto depth_node =
-                        Remember(extra,
-                                 extra.textures.output(
-                                     extra.graph,
-                                     pass,
-                                     SelectTexture(extra,
-                                                   vulkan::SceneRenderTextureSpec {
-                                                       .key        = depth_name.clone(),
-                                                       .imported   = false,
-                                                       .definition = pdesc.depth_request->clone(),
-                                                   })));
+                    auto depth_node = Remember(
+                        extra,
+                        extra.textures.output(
+                            extra.graph,
+                            pass,
+                            SelectTexture(
+                                extra,
+                                vulkan::SceneRenderTextureSpec {
+                                    .key      = depth_name.clone(),
+                                    .imported = false,
+                                    .definition =
+                                        extra.scene
+                                            ->TargetResource(
+                                                pass_output_s,
+                                                resource::TextureRequestKind::DepthAttachment,
+                                                u32(output_target.sample_count))
+                                            .unwrap(),
+                                })));
                     auto depth_state = extra.textures.find(depth_node);
                     if (depth_state) pdesc.depth_use = Some(Use(extra, depth_node));
                     PublishTexture(extra, depth_node);
@@ -764,7 +765,11 @@ auto owe::BuildSceneRenderState(Scene& scene, const RenderSceneSnapshot& render_
             auto initial = SelectTexture(
                 extra,
                 { .key        = name.clone(),
-                  .definition = vulkan::MakeMsaaTextureRequest(name.as_str(), **target, samples) });
+                  .definition = scene
+                                    .TargetResource(SpecTex_Default,
+                                                    resource::TextureRequestKind::RenderTargetMsaa,
+                                                    u32(static_cast<unsigned>(samples)))
+                                    .unwrap() });
             auto clear = vrento::vulkan::declare_graphics_clear(
                 extra.graph,
                 fg::PassId { extra.next_pass++ },
@@ -886,6 +891,15 @@ auto owe::BuildSceneRenderState(Scene& scene, const RenderSceneSnapshot& render_
     auto plan = extra.textures.resourcePlan(*graph);
     if (plan.is_err()) return Err(plan.unwrap_err());
     resource_plan.textures = rstd::move(plan->textures);
+    for (const auto& texture : extra.textures.textures()) {
+        const auto& definition = texture.spec.definition;
+        rstd_debug("scene texture: scope={} name={} logical={}:{} revision={}",
+                   graph->scope(),
+                   texture.spec.key,
+                   definition.id().index,
+                   definition.id().generation,
+                   definition.revision());
+    }
     vulkan::SceneRenderStateInput input { graph.unwrap(),
                                           rstd::move(extra.textures),
                                           rstd::move(extra.draws),

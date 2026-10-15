@@ -769,6 +769,7 @@ void RenderSceneSnapshot::Rebuild(Scene& scene, RenderSceneVersion version) {
 
     collect_linked_ids_from_scene(scene, m_linked_layer_ids);
     ensure_snapshot_link_render_targets(scene, m_linked_layer_ids);
+    scene.PublishResourceDefinitions();
     scene.RebuildResourceIndex();
 
     const auto& index = scene.ResourceIndex();
@@ -1528,6 +1529,20 @@ String Scene::EffectResourceKey(SceneEffectId effect, ref<str> local_name) const
 }
 
 void Scene::RegisterTexture(String name, SceneTexture texture) {
+    auto                             previous = m_textures.get(name.as_str());
+    vrento::resource::TextureRequest request {
+        .kind       = vrento::resource::TextureRequestKind::Imported,
+        .name       = name.clone(),
+        .definition = Some(vrento::resource::TextureDefinition { .sample = texture.sample })
+    };
+    texture.resource = previous ? (*previous)->resource.clone()
+                                : vrento::resource::TextureResourceRef(request.clone());
+    if (previous) {
+        if (! vrento::resource::SameTextureRequest(texture.resource.definition(), request))
+            texture.resource = texture.resource.with_definition(rstd::move(request));
+        m_parsed_images = Arc<rstd::sync::Mutex<SceneImageSource::ParsedImages>>::make(
+            SceneImageSource::ParsedImages {});
+    }
     auto revision = m_texture_content_revisions.get_mut(name.as_str());
     if (revision.is_some()) {
         ++**revision;
@@ -1542,6 +1557,38 @@ void Scene::RegisterTexture(String name, SceneTexture texture) {
     }
     if (! m_textures.contains_key(name.as_str())) m_texture_names.push(name.clone());
     (void)m_textures.insert(rstd::move(name), rstd::move(texture));
+}
+
+bool Scene::RemoveTexture(ref<str> name) {
+    auto removed = m_textures.remove(name);
+    if (! removed) return false;
+    if (removed->isVideo) {
+        auto control_key = removed->url.is_empty() ? String::make(name) : removed->url.clone();
+        bool used {};
+        for (const auto& [key, texture] : m_textures.iter())
+            if (texture->isVideo && (texture->url.is_empty() ? *key : texture->url) == control_key)
+                used = true;
+        if (! used) (void)m_video_controls.remove(control_key.as_str());
+    }
+    m_texture_names.retain([&](const String& key) {
+        return key != name;
+    });
+    // Recreated names must not match an older prepared content revision.
+    (void)m_runtime_images.remove(name);
+    m_parsed_images = Arc<rstd::sync::Mutex<SceneImageSource::ParsedImages>>::make(
+        SceneImageSource::ParsedImages {});
+    m_render_graph_dirty = true;
+    RebuildResourceIndex();
+    return true;
+}
+bool Scene::RemoveRenderTarget(ref<str> name) {
+    if (! m_render_targets.remove(name)) return false;
+    m_render_target_names.retain([&](const String& key) {
+        return key != name;
+    });
+    m_render_graph_dirty = true;
+    RebuildResourceIndex();
+    return true;
 }
 
 auto Scene::Texture(ref<str> name) const -> Option<ref<SceneTexture>> {
@@ -1564,8 +1611,55 @@ auto Scene::VideoControl(ref<str> name) const -> Option<Arc<VideoPlaybackState>>
 }
 
 void Scene::RegisterRenderTarget(String name, SceneRenderTarget target) {
+    auto previous = m_render_targets.get(name.as_str());
+    target.resource =
+        previous ? (*previous)->resource.clone() : vrento::resource::TextureResourceRef {};
+    target.msaa_resource =
+        previous ? (*previous)->msaa_resource.clone() : vrento::resource::TextureResourceRef {};
+    target.depth_resource =
+        previous ? (*previous)->depth_resource.clone() : vrento::resource::TextureResourceRef {};
+    auto request = target.request(name.as_str());
+    if (! target.resource.valid())
+        target.resource = vrento::resource::TextureResourceRef(rstd::move(request));
+    else if (! vrento::resource::SameTextureRequest(target.resource.definition(), request))
+        target.resource = target.resource.with_definition(rstd::move(request));
     if (! m_render_targets.contains_key(name.as_str())) m_render_target_names.push(name.clone());
     (void)m_render_targets.insert(rstd::move(name), rstd::move(target));
+}
+
+auto Scene::TextureResource(SceneTextureId id) const
+    -> Option<vrento::resource::TextureResourceRef> {
+    auto texture = m_resource_index.texture(id);
+    return texture && texture->resource.valid() ? Some(texture->resource.clone()) : None();
+}
+auto Scene::TargetResource(SceneRenderTargetId id) const
+    -> Option<vrento::resource::TextureResourceRef> {
+    auto target = m_resource_index.renderTarget(id);
+    return target && target->resource.valid() ? Some(target->resource.clone()) : None();
+}
+auto Scene::TargetResource(ref<str> name, vrento::resource::TextureRequestKind kind, u32 samples)
+    -> Option<vrento::resource::TextureResourceRef> {
+    auto target = m_render_targets.get_mut(name);
+    if (! target) return None();
+    auto& value = **target;
+    auto& definition =
+        kind == vrento::resource::TextureRequestKind::RenderTargetMsaa  ? value.msaa_resource
+        : kind == vrento::resource::TextureRequestKind::DepthAttachment ? value.depth_resource
+                                                                        : value.resource;
+    auto key     = kind == vrento::resource::TextureRequestKind::RenderTargetMsaa
+                       ? rstd::format("{}::msaa{}", name, samples)
+                   : kind == vrento::resource::TextureRequestKind::DepthAttachment
+                       ? rstd::format("{}::depth", name)
+                       : String::make(name);
+    auto request = value.request(key.as_str(), kind, samples);
+    if (! definition.valid())
+        definition = vrento::resource::TextureResourceRef(rstd::move(request));
+    else if (! vrento::resource::SameTextureRequest(definition.definition(), request))
+        definition = definition.with_definition(rstd::move(request));
+    return Some(definition.clone());
+}
+void Scene::PublishResourceDefinitions() {
+    for (const auto& key : m_render_target_names) (void)TargetResource(key.as_str());
 }
 
 auto Scene::RenderTarget(ref<str> name) const -> Option<ref<SceneRenderTarget>> {
@@ -2056,7 +2150,8 @@ bool Scene::EnsureTextureDescriptor(ref<str> key) {
 }
 
 auto Scene::CaptureImageSource() const -> Arc<SceneImageSource> {
-    auto source = Arc<SceneImageSource>::make();
+    auto source      = Arc<SceneImageSource>::make();
+    source->m_parsed = m_parsed_images.clone();
     if (m_image_parser.is_some()) source->m_parser = Some(m_image_parser->clone());
     for (const auto& [key, image] : m_runtime_images.iter()) {
         (void)source->m_runtime_images.insert(key->clone(), image->clone());

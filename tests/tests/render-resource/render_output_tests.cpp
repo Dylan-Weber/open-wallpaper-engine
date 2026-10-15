@@ -195,24 +195,20 @@ TEST(RenderOutput, ClearAndResize) {
                         ref<str>
                                                             to,
                         Option<vrento::fg::ResourceVersion> written = None()) {
-            auto source_request =
-                owe::vulkan::MakeRenderTargetTextureRequest(from, **scene.RenderTarget(from));
-            auto target_request =
-                owe::vulkan::MakeRenderTargetTextureRequest(to, **scene.RenderTarget(to));
-            auto source =
-                textures
-                    .declare(graph,
-                             { .key = String::make(from), .definition = source_request.clone() })
-                    .unwrap();
+            auto source = textures
+                              .declare(graph,
+                                       { .key        = String::make(from),
+                                         .definition = scene.TargetResource(from).unwrap() })
+                              .unwrap();
             if (written)
                 source = *written;
             else
                 graph.import_initial(source.resource).unwrap();
-            auto initial =
-                textures
-                    .declare(graph,
-                             { .key = String::make(to), .definition = target_request.clone() })
-                    .unwrap();
+            auto initial = textures
+                               .declare(graph,
+                                        { .key        = String::make(to),
+                                          .definition = scene.TargetResource(to).unwrap() })
+                               .unwrap();
             auto description =
                 vk::declare_texture_copy(graph, pass, source, initial, {}, {}).unwrap();
             auto target = description.output;
@@ -226,8 +222,7 @@ TEST(RenderOutput, ClearAndResize) {
             textures
                 .declare(graph,
                          { .key        = "_rt_default"_Str,
-                           .definition = owe::vulkan::MakeRenderTargetTextureRequest(
-                               "_rt_default"_str, **scene.RenderTarget("_rt_default"_str)) })
+                           .definition = scene.TargetResource("_rt_default"_str).unwrap() })
                 .unwrap();
         auto clear_id = vrento::fg::PassId { 10 };
         auto color    = scene.ClearColor();

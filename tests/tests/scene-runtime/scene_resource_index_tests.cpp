@@ -30,7 +30,9 @@ Arc<owe::SceneMesh> MakeSingleSubmesh(std::string name) {
 
 class FakeImageParser {
 public:
+    bool content {};
     auto Parse(ref<str>) const -> Result<Arc<owe::Image>, owe::ImageParseError> {
+        if (content) return Ok(Arc<owe::Image>::make());
         return Err(owe::ImageParseError {
             .kind    = owe::ImageParseErrorKind::MissingContent,
             .message = String::make("missing fake image"_str),
@@ -2060,4 +2062,60 @@ TEST(SceneImageEffect, RetainsNodeAddressesAcrossGrowth) {
     for (int i = 0; i < 128; ++i) effect.AddNode({ .sceneNode = Arc<owe::SceneNode>::make() });
     EXPECT_EQ(first, effect.Nodes()[usize()].get());
     EXPECT_EQ(effect.Nodes().len(), usize(129));
+}
+
+TEST(SceneTextures, LogicalReferencesSurviveSnapshotsAndDefinitionChanges) {
+    owe::Scene scene;
+    scene.RegisterTexture("asset"_Str, { .url = "source"_Str });
+    scene.RegisterRenderTarget("target"_Str, { .width = i32(16), .height = i32(8) });
+    auto        first  = owe::ExtractRenderSceneSnapshot(scene);
+    auto        second = owe::ExtractRenderSceneSnapshot(scene);
+    const auto& a      = first.TextureDescs()[usize()].desc.resource;
+    const auto& b      = second.TextureDescs()[usize()].desc.resource;
+    EXPECT_EQ(a.id(), b.id());
+    EXPECT_EQ(a.revision(), b.revision());
+    EXPECT_FALSE(a.definition().source);
+    auto id = scene.ResourceIndex().textureId("asset"_str).unwrap();
+    EXPECT_EQ(scene.TextureResource(id)->id(), a.id());
+    auto target_id = first.renderTargetDescId("target"_str).unwrap();
+    auto old       = first.renderTargetDesc(target_id)->desc.resource.clone();
+    scene.RenderTargetMut("target"_str).unwrap()->width = i32(32);
+    auto third                                          = owe::ExtractRenderSceneSnapshot(scene);
+    auto updated = third.renderTargetDesc(third.renderTargetDescId("target"_str).unwrap())
+                       ->desc.resource.clone();
+    EXPECT_EQ(old.id(), updated.id());
+    EXPECT_EQ(updated.revision(), old.revision() + u64(1));
+    EXPECT_EQ(old.definition().definition->width, i32(16));
+    EXPECT_EQ(updated.definition().definition->width, i32(32));
+    scene.RegisterTexture("asset"_Str, { .url = "replacement"_Str });
+    auto fourth = owe::ExtractRenderSceneSnapshot(scene);
+    EXPECT_EQ(fourth.TextureDescs()[usize()].desc.resource.id(), a.id());
+    EXPECT_EQ(fourth.TextureDescs()[usize()].content_revision, u64(2));
+    EXPECT_TRUE(scene.RemoveTexture("asset"_str));
+    scene.RegisterTexture("asset"_Str, { .url = "source"_Str });
+    auto recreated = owe::ExtractRenderSceneSnapshot(scene);
+    EXPECT_NE(recreated.TextureDescs()[usize()].desc.resource.id(), a.id());
+    EXPECT_GT(recreated.TextureDescs()[usize()].content_revision,
+              fourth.TextureDescs()[usize()].content_revision);
+    EXPECT_FALSE(scene.TextureResource(id));
+    owe::Scene other;
+    other.RegisterTexture("asset"_Str, { .url = "source"_Str });
+    auto independent = owe::ExtractRenderSceneSnapshot(other);
+    EXPECT_NE(independent.TextureDescs()[usize()].desc.resource.id(), a.id());
+}
+
+TEST(SceneTextures, CapturedImageSourcesReuseParsedContentAndPreserveOldRuntimeImage) {
+    owe::Scene scene;
+    scene.SetImageParser(Arc<dyn<owe::IImageParser>>::make(FakeImageParser { true }));
+    scene.RegisterTexture("asset"_Str, { .url = "asset"_Str });
+    auto before = scene.CaptureImageSource();
+    auto parsed = before->Parse("asset"_str).unwrap();
+    auto next   = scene.CaptureImageSource();
+    EXPECT_TRUE(Arc<owe::Image>::ptr_eq(parsed, next->Parse("asset"_str).unwrap()));
+    auto image          = Arc<owe::Image>::make();
+    image->header.width = 128;
+    scene.RegisterRuntimeImage("asset"_Str, image.clone());
+    auto replaced = scene.CaptureImageSource();
+    EXPECT_TRUE(Arc<owe::Image>::ptr_eq(image, replaced->Parse("asset"_str).unwrap()));
+    EXPECT_TRUE(Arc<owe::Image>::ptr_eq(parsed, before->Parse("asset"_str).unwrap()));
 }
