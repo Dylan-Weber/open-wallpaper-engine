@@ -197,24 +197,16 @@ enum class SceneRenderPreparationProgress
 {
     BatchReady,
     Complete,
-    Failed,
     Pending
 };
 
 auto SceneCompileProgress(Result<empty, vrento::vulkan::GraphExecutionError> result)
-    -> SceneRenderPreparationProgress {
-    if (result.is_ok()) return SceneRenderPreparationProgress::Complete;
-    const auto error = result.unwrap_err();
+    -> Result<SceneRenderPreparationProgress, RenderPrepareError> {
+    if (result.is_ok()) return Ok(SceneRenderPreparationProgress::Complete);
+    auto error = rstd::move(result).unwrap_err();
     if (error.stage == vrento::vulkan::GraphExecutionStage::Pending)
-        return SceneRenderPreparationProgress::Pending;
-    rstd_error("scene compile failed: stage={} pass={} resource={} native={}",
-               static_cast<unsigned>(error.stage),
-               error.pass.value,
-               error.resource.value,
-               error.native);
-    if (error.graph)
-        rstd_error("scene graph failure: kind={}", static_cast<unsigned>(error.graph->kind));
-    return SceneRenderPreparationProgress::Failed;
+        return Ok(SceneRenderPreparationProgress::Pending);
+    return Err(RenderPrepareError::Compile(rstd::move(error)));
 }
 
 struct VulkanRender::Impl {
@@ -225,7 +217,7 @@ struct VulkanRender::Impl {
     void destroy();
 
     void drawFrame(Scene&);
-    auto preparationReady() -> Result<empty, RenderPrepareError>;
+    auto preparationReady() -> Result<PrepareOutcome, RenderPrepareError>;
 
     bool CreateRenderingResource(RenderingResources&);
     void DestroyRenderingResource(RenderingResources&);
@@ -234,7 +226,7 @@ struct VulkanRender::Impl {
     void configureRenderTargets(Scene&);
     auto installSceneRenderState(Scene&, vulkan::SceneRenderStateInput&&,
                                  const RenderSceneSnapshot&, SceneLoadBenchRecorderView)
-        -> Result<empty, RenderPrepareError>;
+        -> Result<PrepareOutcome, RenderPrepareError>;
     void invalidatePreparedRenderItems(slice<owe::RenderItemId>, PassInvalidationFlags);
     Vec<PreparedPassDiagnostic> preparedPassDiagnostics() const;
     void                        UpdateCameraFillMode(Scene&, owe::FillMode);
@@ -242,24 +234,26 @@ struct VulkanRender::Impl {
     bool initRes();
     auto prepareSceneRenderState(Scene&, const RenderSceneSnapshot&, resource::ResourcePlanSections,
                                  SceneLoadBenchRecorderView = {})
-        -> Result<empty, RenderPrepareError>;
-    auto finishSceneRenderPreparation(Scene&, SceneRenderPreparationProgress,
+        -> Result<PrepareOutcome, RenderPrepareError>;
+    auto finishSceneRenderPreparation(Scene&,
+                                      Result<SceneRenderPreparationProgress, RenderPrepareError>,
                                       SceneLoadBenchRecorderView = {})
-        -> Result<empty, RenderPrepareError>;
+        -> Result<PrepareOutcome, RenderPrepareError>;
     bool sceneRenderReady() const;
     void abortSceneRenderPreparation();
     auto continueSceneRenderPreparation(Scene&, SceneLoadBenchRecorderView = {})
-        -> SceneRenderPreparationProgress;
+        -> Result<SceneRenderPreparationProgress, RenderPrepareError>;
     Option<Arc<vrento::vulkan::PreparedGraphicsResources>> m_graphics;
     vrento::vulkan::TextureOutput                          m_texture_output;
     VkFormat                                               m_present_format { VK_FORMAT_UNDEFINED };
-    bool                                        waitForPreparedUploads(RenderingResources&);
+    auto waitForPreparedUploads(RenderingResources&) -> Result<empty, vrento::texture::Error>;
     Option<vrento::vulkan::GraphFrame>          m_frame;
     Option<vrento::vulkan::GraphExecutionError> m_last_frame_error;
     Option<HostOutputFrame>                     m_output;
     bool                                        m_frame_submitted {};
-    bool prepareFontUploads(vrento::texture::Submission&,
-                            Vec<vrento::resource_registry::PreparedTextureUpdate>&);
+    auto prepareFontUploads(vrento::texture::Submission&,
+                            Vec<vrento::resource_registry::PreparedTextureUpdate>&)
+        -> Result<empty, resource::ResourceError>;
     bool beginFrame(vrento::texture::Submission);
     bool executeFrame();
     void reportFrameError(vrento::vulkan::GraphExecutionError);
@@ -376,30 +370,29 @@ void VulkanRender::deviceUuid(rstd::uint8_t out[16]) const {
     memcpy(out, id.deviceUUID, rstd::usize(16));
 }
 
-void VulkanRender::pumpVideoTextures(double dt_seconds) { (void)tryPumpVideoTextures(dt_seconds); }
-
-auto VulkanRender::tryPumpVideoTextures(double dt_seconds) -> Result<empty, RenderPrepareError> {
+auto VulkanRender::tryPumpVideoTextures(double dt_seconds)
+    -> Result<PrepareOutcome, RenderPrepareError> {
     auto ready = pImpl->preparationReady();
-    if (ready.is_err()) return ready;
-    if (! pImpl->m_rendering_resources.resources.PumpVideoTextures(dt_seconds))
-        return Err(RenderPrepareError { RenderPrepareStage::Upload });
-    return Ok(empty {});
+    if (ready.is_err() || *ready != PrepareOutcome::Ready) return ready;
+    auto pumped = pImpl->m_rendering_resources.resources.TryPumpVideoTextures(dt_seconds);
+    if (pumped.is_err())
+        return Err(RenderPrepareError::Resources(ResourcePrepareOperation::Video,
+                                                 rstd::move(pumped).unwrap_err()));
+    return Ok(PrepareOutcome::Ready);
 }
 
-void VulkanRender::pumpFontAtlases(Scene& scene) { (void)tryPumpFontAtlases(scene); }
-
-auto VulkanRender::tryPumpFontAtlases(Scene& scene) -> Result<empty, RenderPrepareError> {
+auto VulkanRender::tryPumpFontAtlases(Scene& scene) -> Result<PrepareOutcome, RenderPrepareError> {
     auto ready = pImpl->preparationReady();
-    if (ready.is_err()) return ready;
+    if (ready.is_err() || *ready != PrepareOutcome::Ready) return ready;
     pImpl->m_pending_font_updates.clear();
     auto* fonts = owe::text::SceneTextResources(scene);
-    if (fonts == nullptr) return Ok(empty {});
+    if (fonts == nullptr) return Ok(PrepareOutcome::Ready);
     for (auto& page : fonts->Pages()) {
         auto batch = page->SnapshotDirtyUpdates();
         if (batch.rects.is_empty()) continue;
         pImpl->m_pending_font_updates.push(Impl::FontUpdate { page.clone(), rstd::move(batch) });
     }
-    return Ok(empty {});
+    return Ok(PrepareOutcome::Ready);
 }
 
 void VulkanRender::Impl::ackFontUploads() {
@@ -410,9 +403,10 @@ void VulkanRender::Impl::ackFontUploads() {
     });
 }
 
-bool VulkanRender::Impl::prepareFontUploads(
+auto VulkanRender::Impl::prepareFontUploads(
     vrento::texture::Submission&                           work,
-    Vec<vrento::resource_registry::PreparedTextureUpdate>& uploads) {
+    Vec<vrento::resource_registry::PreparedTextureUpdate>& uploads)
+    -> Result<empty, resource::ResourceError> {
     for (auto& update : m_pending_font_updates) {
         update.recorded = false;
         auto definition = m_scene_render_state.textureResource(update.page->AtlasUrl());
@@ -428,7 +422,14 @@ bool VulkanRender::Impl::prepareFontUploads(
             upload.bytes     = region.bytes.clone();
             auto prepared =
                 m_rendering_resources.resources.PrepareRegion(*definition, rstd::move(upload));
-            if (prepared.is_err()) return false;
+            if (prepared.is_err()) {
+                auto error = rstd::move(prepared).unwrap_err();
+                error.textures.push({ definition->id(),
+                                      definition->revision(),
+                                      {},
+                                      definition->definition().name.clone() });
+                return Err(rstd::move(error));
+            }
             auto packet = prepared.unwrap();
             if (! packet) {
                 resident = false;
@@ -439,7 +440,7 @@ bool VulkanRender::Impl::prepareFontUploads(
         update.recorded = resident;
         if (resident) work.retain(update.page.clone());
     }
-    return true;
+    return Ok(empty {});
 }
 
 auto VulkanRender::Impl::createFrameSynchronization(bool external)
@@ -460,7 +461,13 @@ auto VulkanRender::Impl::createFrameSynchronization(bool external)
 }
 bool VulkanRender::Impl::beginFrame(vrento::texture::Submission work) {
     Vec<vrento::resource_registry::PreparedTextureUpdate> uploads;
-    if (! prepareFontUploads(work, uploads)) return false;
+    auto                                                  fonts = prepareFontUploads(work, uploads);
+    if (fonts.is_err()) {
+        vrento::vulkan::GraphExecutionError error { vrento::vulkan::GraphExecutionStage::Prepare };
+        error.preparation = resource::ResourceErrorSnapshot(rstd::move(fonts).unwrap_err());
+        reportFrameError(rstd::move(error));
+        return false;
+    }
     auto request = m_scene_render_state.captureFrame(m_rendering_resources,
                                                      m_renderer->compiled().unwrap(),
                                                      m_texture_output,
@@ -491,7 +498,7 @@ bool VulkanRender::Impl::beginFrame(vrento::texture::Submission work) {
     return true;
 }
 void VulkanRender::Impl::reportFrameError(vrento::vulkan::GraphExecutionError error) {
-    m_last_frame_error = Some(error);
+    m_last_frame_error = Some(vrento::vulkan::GraphExecutionError(error));
     rstd_error("frame failed: stage={} pass={} resource={} native={}",
                static_cast<unsigned>(error.stage),
                error.pass.value,
@@ -603,55 +610,50 @@ bool VulkanRender::framePending() const {
     return (pImpl->m_frame.is_some() || pImpl->m_output.is_some());
 }
 bool VulkanRender::frameSubmitted() const { return pImpl->m_frame_submitted; }
-void VulkanRender::clearLastRenderGraph(RenderGraphResourceRetention retention) {
-    (void)tryClearLastRenderGraph(retention);
-}
 
-auto VulkanRender::Impl::preparationReady() -> Result<empty, RenderPrepareError> {
-    if (! m_inited) return Err(RenderPrepareError { RenderPrepareStage::State });
-    if (m_frame || m_output || m_renderer->pending())
-        return Err(RenderPrepareError { RenderPrepareStage::Pending });
-    if (! waitForPreparedUploads(m_rendering_resources))
-        return Err(RenderPrepareError { RenderPrepareStage::Upload });
-    return Ok(empty {});
+auto VulkanRender::Impl::preparationReady() -> Result<PrepareOutcome, RenderPrepareError> {
+    if (! m_inited) return Err(RenderPrepareError::State(PrepareStateError::NotInitialized));
+    if (m_frame || m_output || m_renderer->pending()) return Ok(PrepareOutcome::Pending);
+    auto waited = waitForPreparedUploads(m_rendering_resources);
+    if (waited.is_err()) return Err(RenderPrepareError::Upload(waited.unwrap_err()));
+    return Ok(PrepareOutcome::Ready);
 }
-auto VulkanRender::tryContinuePrepare(Scene& scene) -> Result<empty, RenderPrepareError> {
-    if (! pImpl->m_inited) return Err(RenderPrepareError { RenderPrepareStage::State });
+auto VulkanRender::tryContinuePrepare(Scene& scene) -> Result<PrepareOutcome, RenderPrepareError> {
+    if (! pImpl->m_inited) return Err(RenderPrepareError::State(PrepareStateError::NotInitialized));
     if (! pImpl->m_renderer->pending()) {
-        if (pImpl->sceneRenderReady()) return Ok(empty {});
-        return Err(RenderPrepareError { RenderPrepareStage::State });
+        if (pImpl->sceneRenderReady()) return Ok(PrepareOutcome::Ready);
+        return Err(RenderPrepareError::State(PrepareStateError::NoTransaction));
     }
     auto status = pImpl->continueSceneRenderPreparation(scene);
-    return pImpl->finishSceneRenderPreparation(scene, status);
+    return pImpl->finishSceneRenderPreparation(scene, rstd::move(status));
 }
 auto VulkanRender::deviceSession() const
     -> Result<vrento::vulkan::DeviceSession, RenderPrepareError> {
-    if (! pImpl->m_session) return Err(RenderPrepareError { RenderPrepareStage::State });
+    if (! pImpl->m_session)
+        return Err(RenderPrepareError::State(PrepareStateError::MissingSession));
     return Ok(vrento::vulkan::DeviceSession(*pImpl->m_session));
 }
 auto VulkanRender::renderedTarget(ref<str> name)
     -> Result<vrento::texture::TextureViewRef, RenderPrepareError> {
     auto definition = pImpl->m_scene_render_state.textureResource(name);
-    if (! definition) return Err(RenderPrepareError { RenderPrepareStage::State });
+    if (! definition) return Err(RenderPrepareError::State(PrepareStateError::NoTarget));
     auto result = pImpl->m_rendering_resources.resources.RenderedTarget(*definition);
     if (result.is_err())
-        return Err(
-            RenderPrepareError { result.unwrap_err().kind == resource::ResourceErrorKind::Pending
-                                     ? RenderPrepareStage::Pending
-                                     : RenderPrepareStage::State });
+        return Err(RenderPrepareError::Resources(ResourcePrepareOperation::Target,
+                                                 rstd::move(result).unwrap_err()));
     return Ok(result.unwrap());
 }
 
 auto VulkanRender::tryClearLastRenderGraph(RenderGraphResourceRetention retention)
-    -> Result<empty, RenderPrepareError> {
-    if (! pImpl->m_inited) return Err(RenderPrepareError { RenderPrepareStage::State });
-    if (pImpl->m_frame) return Err(RenderPrepareError { RenderPrepareStage::Pending });
-    if (pImpl->m_output) return Err(RenderPrepareError { RenderPrepareStage::State });
+    -> Result<PrepareOutcome, RenderPrepareError> {
+    if (! pImpl->m_inited) return Err(RenderPrepareError::State(PrepareStateError::NotInitialized));
+    if (pImpl->m_frame) return Ok(PrepareOutcome::Pending);
+    if (pImpl->m_output) return Ok(PrepareOutcome::Pending);
     pImpl->abortSceneRenderPreparation();
-    if (! pImpl->waitForPreparedUploads(pImpl->m_rendering_resources))
-        return Err(RenderPrepareError { RenderPrepareStage::Upload });
+    auto waited = pImpl->waitForPreparedUploads(pImpl->m_rendering_resources);
+    if (waited.is_err()) return Err(RenderPrepareError::Upload(waited.unwrap_err()));
     pImpl->clearLastRenderGraph(retention);
-    return Ok(empty {});
+    return Ok(PrepareOutcome::Ready);
 }
 
 auto VulkanRender::tryPrepareImage(Arc<vrento::Image> image)
@@ -664,23 +666,23 @@ bool VulkanRender::hasSceneRenderState() const { return pImpl->m_scene_render_st
 auto VulkanRender::tryInstallSceneRenderState(Scene& scene, vulkan::SceneRenderStateInput&& graph,
                                               const RenderSceneSnapshot& snapshot,
                                               SceneLoadBenchRecorderView bench)
-    -> Result<empty, RenderPrepareError> {
-    if (! pImpl->m_inited) return Err(RenderPrepareError { RenderPrepareStage::State });
-    if (pImpl->m_frame) return Err(RenderPrepareError { RenderPrepareStage::Pending });
-    if (pImpl->m_output) return Err(RenderPrepareError { RenderPrepareStage::State });
+    -> Result<PrepareOutcome, RenderPrepareError> {
+    if (! pImpl->m_inited) return Err(RenderPrepareError::State(PrepareStateError::NotInitialized));
+    if (pImpl->m_frame) return Ok(PrepareOutcome::Pending);
+    if (pImpl->m_output) return Ok(PrepareOutcome::Pending);
     pImpl->abortSceneRenderPreparation();
-    if (! pImpl->waitForPreparedUploads(pImpl->m_rendering_resources))
-        return Err(RenderPrepareError { RenderPrepareStage::Upload });
+    auto waited = pImpl->waitForPreparedUploads(pImpl->m_rendering_resources);
+    if (waited.is_err()) return Err(RenderPrepareError::Upload(waited.unwrap_err()));
     return pImpl->installSceneRenderState(scene, rstd::move(graph), snapshot, bench);
 }
 
 auto VulkanRender::tryPrepareResources(Scene& scene, const RenderSceneSnapshot& snapshot,
                                        const ResourcePreparation& changes)
-    -> Result<empty, RenderPrepareError> {
+    -> Result<PrepareOutcome, RenderPrepareError> {
     auto ready = pImpl->preparationReady();
-    if (ready.is_err()) return ready;
+    if (ready.is_err() || *ready != PrepareOutcome::Ready) return ready;
     if (! pImpl->m_scene_render_state.installed())
-        return Err(RenderPrepareError { RenderPrepareStage::State });
+        return Err(RenderPrepareError::State(PrepareStateError::NoSceneState));
     pImpl->configureRenderTargets(scene);
     if (changes.textures_only && pImpl->sceneRenderReady()) {
         auto current = ExtractRenderSceneSnapshot(scene);
@@ -697,27 +699,15 @@ auto VulkanRender::tryPrepareResources(Scene& scene, const RenderSceneSnapshot& 
                 (item.flags & ~ToPassInvalidationFlags(PassInvalidation::Content)) == u32();
             content_only &= pImpl->m_scene_render_state.containsRenderItem(item.item);
         }
-        if (content_only) return Ok(empty {});
+        if (content_only) return Ok(PrepareOutcome::Ready);
     }
-    return Err(RenderPrepareError { RenderPrepareStage::RebuildRequired });
+    return Ok(PrepareOutcome::RebuildRequired);
 }
 void VulkanRender::configureRenderTargets(Scene& scene) { pImpl->configureRenderTargets(scene); }
-void VulkanRender::installSceneRenderState(Scene& scene, vulkan::SceneRenderStateInput&& rg) {
-    auto snapshot = ExtractRenderSceneSnapshot(scene);
-    (void)tryInstallSceneRenderState(scene, rstd::move(rg), snapshot);
-}
-void VulkanRender::installSceneRenderState(Scene& scene, vulkan::SceneRenderStateInput&& rg,
-                                           const RenderSceneSnapshot& snapshot) {
-    (void)tryInstallSceneRenderState(scene, rstd::move(rg), snapshot);
-}
-void VulkanRender::installSceneRenderState(Scene& scene, vulkan::SceneRenderStateInput&& rg,
-                                           const RenderSceneSnapshot& snapshot,
-                                           SceneLoadBenchRecorderView bench) {
-    (void)tryInstallSceneRenderState(scene, rstd::move(rg), snapshot, bench);
-}
 void VulkanRender::invalidatePreparedRenderItems(slice<owe::RenderItemId> items,
                                                  PassInvalidationFlags    flags) {
-    if (pImpl->preparationReady().is_err()) return;
+    auto ready = pImpl->preparationReady();
+    if (ready.is_err() || *ready != PrepareOutcome::Ready) return;
     pImpl->invalidatePreparedRenderItems(items, flags);
 }
 auto VulkanRender::diagnostics() const -> RenderDiagnostics {
@@ -729,7 +719,7 @@ auto VulkanRender::diagnostics() const -> RenderDiagnostics {
     }
     value.preparation = pImpl->m_rendering_resources.resources.PrepareStatus().clone();
     value.resources   = pImpl->m_rendering_resources.resources.Statistics();
-    value.frame_error = pImpl->m_last_frame_error;
+    value.frame_error = pImpl->m_last_frame_error.clone();
     if (pImpl->m_frame) {
         value.frame       = Some(pImpl->m_frame->state());
         value.frame_error = pImpl->m_frame->error();
@@ -977,12 +967,14 @@ void VulkanRender::Impl::DestroyRenderingResource(RenderingResources& rr) {
     rr.shader_reflection_cache = None();
 }
 
-bool VulkanRender::Impl::waitForPreparedUploads(RenderingResources& rr) {
+auto VulkanRender::Impl::waitForPreparedUploads(RenderingResources& rr)
+    -> Result<empty, vrento::texture::Error> {
     auto wait_span =
         SceneLoadSpan(m_pending_load_bench, &SceneLoadProbeIds::render_texture_upload_wait);
-    if (! rr.resources.WaitForUploads(vk_wait_time)) return false;
+    auto waited = rr.resources.TryWaitForUploads(vk_wait_time);
+    if (waited.is_err()) return waited;
     m_pending_load_bench = {};
-    return true;
+    return Ok(empty {});
 }
 
 void VulkanRender::Impl::drawFrame(Scene& scene) {
@@ -994,11 +986,6 @@ void VulkanRender::Impl::drawFrame(Scene& scene) {
             drawFrameOffscreen(scene);
         if (m_redraw_cb) (*m_redraw_cb)->operator()();
         return;
-    }
-    if (m_inited && m_renderer->pending()) {
-        auto status  = continueSceneRenderPreparation(scene);
-        auto resumed = finishSceneRenderPreparation(scene, status);
-        if (resumed.is_err()) return;
     }
     if (! (m_inited && sceneRenderReady())) return;
 
@@ -1014,7 +1001,7 @@ void VulkanRender::Impl::drawFrame(Scene& scene) {
 void VulkanRender::Impl::drawFrameSwapchain(Scene& scene) {
     auto& rr = m_rendering_resources;
     if (! m_output) {
-        if (! waitForPreparedUploads(rr)) return;
+        if (waitForPreparedUploads(rr).is_err()) return;
         auto textures = dyn<SceneTextureAnimationView>::from_ref(scene);
         if (! m_scene_render_state.update(scene.Runtime().Frame(), m_extent, textures.as_ref(), rr))
             return;
@@ -1076,7 +1063,7 @@ void VulkanRender::Impl::drawFrameOffscreen(Scene& scene) {
     if (! m_output) {
         (*m_ex_swapchain)->AsSwapchain().poll();
         if (! (*m_ex_swapchain)->AsSwapchain().ready() || ! sceneRenderReady()) return;
-        if (! waitForPreparedUploads(rr)) return;
+        if (waitForPreparedUploads(rr).is_err()) return;
         auto textures = dyn<SceneTextureAnimationView>::from_ref(scene);
         if (! m_scene_render_state.update(scene.Runtime().Frame(), m_extent, textures.as_ref(), rr))
             return;
@@ -1130,7 +1117,7 @@ bool VulkanRender::Impl::onSwapchainReady(unsigned width, unsigned height) {
         // are handled by drawFrameOffscreen's head check.
         return false;
     }
-    if (! m_output && ! waitForPreparedUploads(m_rendering_resources)) return false;
+    if (! m_output && waitForPreparedUploads(m_rendering_resources).is_err()) return false;
     m_extent = VkExtent2D { width, height };
     return true;
 }
@@ -1223,15 +1210,15 @@ auto VulkanRender::Impl::prepareSceneRenderState(Scene&                         
                                                  const RenderSceneSnapshot&     render_scene,
                                                  resource::ResourcePlanSections sections,
                                                  SceneLoadBenchRecorderView     load_bench)
-    -> Result<empty, RenderPrepareError> {
+    -> Result<PrepareOutcome, RenderPrepareError> {
     // Prepared refresh replaces binding owners before recreating equivalent bindings.
     [[maybe_unused]] auto audio_demand_reconciliation =
         scene.AudioDemandMut()->BeginReconciliation();
     if (sections == resource::ResourcePlanTextures && ! m_graphics)
-        return Err(RenderPrepareError { RenderPrepareStage::State });
+        return Err(RenderPrepareError::State(PrepareStateError::MissingGraphics));
     if (resource::ResourcePlanIncludes(sections, resource::ResourcePlanBuffers) !=
         resource::ResourcePlanIncludes(sections, resource::ResourcePlanShaders))
-        return Err(RenderPrepareError { RenderPrepareStage::State });
+        return Err(RenderPrepareError::State(PrepareStateError::InvalidSections));
     auto declarations = m_scene_render_state.declarations(m_shader_reflection_cache);
     SnapshotImportedTextureProvider imported(render_scene, m_scene_render_state.imageSource(scene));
     SnapshotTexturePrepareObserver  observer(load_bench);
@@ -1249,10 +1236,13 @@ auto VulkanRender::Impl::prepareSceneRenderState(Scene&                         
         Some(observed.as_mut_ref()));
     m_scene_render_state.retainDeclarations(declarations.takeData());
     if (started.is_err()) {
-        rstd_error("prepare resource plan failed: {}", started.unwrap_err().message);
         return finishSceneRenderPreparation(
-            scene, SceneRenderPreparationProgress::Failed, load_bench);
+            scene,
+            Err(RenderPrepareError::Resources(ResourcePrepareOperation::Begin,
+                                              rstd::move(started).unwrap_err())),
+            load_bench);
     }
+
     return finishSceneRenderPreparation(
         scene, continueSceneRenderPreparation(scene, load_bench), load_bench);
 }
@@ -1272,7 +1262,7 @@ void VulkanRender::Impl::abortSceneRenderPreparation() {
 }
 auto VulkanRender::Impl::continueSceneRenderPreparation(Scene&                     scene,
                                                         SceneLoadBenchRecorderView bench)
-    -> SceneRenderPreparationProgress {
+    -> Result<SceneRenderPreparationProgress, RenderPrepareError> {
     using Progress = SceneRenderPreparationProgress;
     if (m_renderer->pending()) {
         return SceneCompileProgress(m_renderer->continue_compile(m_renderer->status().id));
@@ -1280,20 +1270,21 @@ auto VulkanRender::Impl::continueSceneRenderPreparation(Scene&                  
     auto&       resources   = m_rendering_resources.resources;
     const auto& transaction = resources.PrepareStatus();
     if (transaction.state != resource_registry::ResourcePrepareState::Preparing)
-        return Progress::Failed;
+        return Err(RenderPrepareError::State(PrepareStateError::NoTransaction));
     SnapshotTexturePrepareObserver observer(bench);
     auto observed = dyn<resource::TexturePrepareObserver>::from_ref(observer);
     auto progress = resources.ContinuePreparePlan(transaction.id, Some(observed.as_mut_ref()));
-    if (progress.is_err()) {
-        rstd_error("prepare resource plan failed: {}", progress.unwrap_err().message);
-        return Progress::Failed;
-    }
+    if (progress.is_err())
+        return Err(RenderPrepareError::Resources(ResourcePrepareOperation::Continue,
+                                                 rstd::move(progress).unwrap_err()));
     if (*progress == resource_registry::ResourcePrepareProgress::BatchReady)
-        return Progress::BatchReady;
-    if (transaction.sections == resource::ResourcePlanTextures) return Progress::Complete;
+        return Ok(Progress::BatchReady);
+    if (transaction.sections == resource::ResourcePlanTextures) return Ok(Progress::Complete);
     {
         auto shared = m_scene_render_state.sharedBuffers(resources.Prepared());
-        if (shared.is_err()) return Progress::Failed;
+        if (shared.is_err())
+            return Err(RenderPrepareError::Resources(ResourcePrepareOperation::SharedBuffers,
+                                                     rstd::move(shared).unwrap_err()));
         Vec<vrento::vulkan::PipelineLayoutRequirement> additional;
         if (auto output = m_texture_output.layout_requirement()) additional.push(output.unwrap());
         auto prepared = vrento::vulkan::PreparedGraphicsResources::prepare(
@@ -1302,10 +1293,9 @@ auto VulkanRender::Impl::continueSceneRenderPreparation(Scene&                  
             shared->as_slice(),
             rstd::move(additional),
             { .shared_set = Some(u32()) });
-        if (prepared.is_err()) {
-            rstd_error("prepare graphics resources failed: {}", prepared.unwrap_err().message);
-            return Progress::Failed;
-        }
+        if (prepared.is_err())
+            return Err(RenderPrepareError::Resources(ResourcePrepareOperation::Graphics,
+                                                     rstd::move(prepared).unwrap_err()));
         m_graphics = Some(prepared.unwrap());
         for (const auto& conflict : (*m_graphics)->conflicts())
             rstd_debug("pipeline {} did not join layout family {}: {}",
@@ -1313,59 +1303,57 @@ auto VulkanRender::Impl::continueSceneRenderPreparation(Scene&                  
                        conflict.family,
                        conflict.message);
     }
-    if (! m_graphics ||
-        ! m_scene_render_state.bindResources(scene, m_rendering_resources, **m_graphics))
-        return Progress::Failed;
-    if (m_texture_output
-            .prepare(m_rendering_resources.resource_owner.clone(),
-                     m_shader_backend.as_ref(),
-                     (*m_graphics)->layouts())
-            .is_err())
-        return Progress::Failed;
+    auto bound = m_scene_render_state.bindResources(scene, m_rendering_resources, **m_graphics);
+    if (bound.is_err()) return Err(rstd::move(bound).unwrap_err());
+    auto output = m_texture_output.prepare(m_rendering_resources.resource_owner.clone(),
+                                           m_shader_backend.as_ref(),
+                                           (*m_graphics)->layouts());
+    if (output.is_err())
+        return Err(RenderPrepareError::OutputResources(rstd::move(output).unwrap_err()));
     Vec<vrento::vulkan::PassInput> descriptions;
     for (const auto& desc : m_scene_render_state.inputDescriptions()) {
         if (m_scene_render_state.isOutputPass(desc.execution().id)) {
             auto published = m_texture_output.description(desc, desc.revision());
-            if (published.is_err()) return Progress::Failed;
+            if (published.is_err())
+                return Err(RenderPrepareError::OutputDescription(published.unwrap_err()));
             descriptions.push(published.unwrap());
         } else
             descriptions.push(desc.clone());
     }
     auto input = m_scene_render_state.renderInput().with_descriptions(rstd::move(descriptions));
-    if (input.is_err()) return Progress::Failed;
+    if (input.is_err()) return Err(RenderPrepareError::Graph(input.unwrap_err()));
     return SceneCompileProgress(
         m_renderer->compile(input.unwrap(), Some((*m_graphics)->compilation())));
 }
 
-auto VulkanRender::Impl::finishSceneRenderPreparation(Scene&                         scene,
-                                                      SceneRenderPreparationProgress status,
-                                                      SceneLoadBenchRecorderView     load_bench)
-    -> Result<empty, RenderPrepareError> {
-    while (status == SceneRenderPreparationProgress::BatchReady) {
-        status = continueSceneRenderPreparation(scene, load_bench);
-    }
-    if (status == SceneRenderPreparationProgress::Pending)
-        return Err(RenderPrepareError { RenderPrepareStage::Pending });
-    if (status == SceneRenderPreparationProgress::Failed) {
+auto VulkanRender::Impl::finishSceneRenderPreparation(
+    Scene& scene, Result<SceneRenderPreparationProgress, RenderPrepareError> status,
+    SceneLoadBenchRecorderView load_bench) -> Result<PrepareOutcome, RenderPrepareError> {
+    auto fail = [&](RenderPrepareError error) -> Result<PrepareOutcome, RenderPrepareError> {
+        error.context.resource_transaction = m_rendering_resources.resources.PrepareStatus().id;
+        if (error.is_Compile()) error.context.compilation = m_renderer->status().id;
+        error.context.scope = m_scene_render_state.inputGraph().scope();
         abortSceneRenderPreparation();
-        return Err(RenderPrepareError { RenderPrepareStage::SceneRenderState });
-    }
-
+        return Err(rstd::move(error));
+    };
+    while (status.is_ok() && *status == SceneRenderPreparationProgress::BatchReady)
+        status = continueSceneRenderPreparation(scene, load_bench);
+    if (status.is_err()) return fail(rstd::move(status).unwrap_err());
+    if (*status == SceneRenderPreparationProgress::Pending) return Ok(PrepareOutcome::Pending);
     auto  upload_span = SceneLoadSpan(load_bench, &SceneLoadProbeIds::render_upload_submit);
     auto& resources   = m_rendering_resources.resources;
     auto  committed   = resources.CommitPreparePlan(resources.PrepareStatus().id);
-    if (committed.is_err()) {
-        abortSceneRenderPreparation();
-        return Err(RenderPrepareError { RenderPrepareStage::Upload });
-    }
-    return Ok(empty {});
+    if (committed.is_err())
+        return fail(RenderPrepareError::Resources(ResourcePrepareOperation::Commit,
+                                                  rstd::move(committed).unwrap_err()));
+    return Ok(PrepareOutcome::Ready);
 }
 
 auto VulkanRender::Impl::installSceneRenderState(Scene& scene, vulkan::SceneRenderStateInput&& rg,
                                                  const RenderSceneSnapshot& render_scene,
                                                  SceneLoadBenchRecorderView load_bench)
-    -> Result<empty, RenderPrepareError> {
-    if (! m_inited) return Err(RenderPrepareError { RenderPrepareStage::State });
+    -> Result<PrepareOutcome, RenderPrepareError> {
+    if (! m_inited) return Err(RenderPrepareError::State(PrepareStateError::NotInitialized));
     m_pending_load_bench = load_bench;
     auto compile_span    = SceneLoadSpan(load_bench, &SceneLoadProbeIds::render_graph_compile);
     m_renderer->clear();
@@ -1376,11 +1364,7 @@ auto VulkanRender::Impl::installSceneRenderState(Scene& scene, vulkan::SceneRend
         auto             installed = next.install(rstd::move(rg));
         if (installed.is_err()) {
             auto error = installed.unwrap_err();
-            rstd_error("scene render state build failed: kind={}, pass={}, resource={}",
-                       unsigned(error.kind),
-                       error.pass.value,
-                       error.resource.value);
-            return Err(RenderPrepareError { RenderPrepareStage::Graph, Some(error) });
+            return Err(RenderPrepareError::Graph(error));
         }
         abortSceneRenderPreparation();
         m_scene_render_state.clearBindings();

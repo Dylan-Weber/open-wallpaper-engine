@@ -271,7 +271,8 @@ public:
         for (auto& entry : draws) entry.source->clearResources();
     }
     auto bindResources(Scene& scene, RenderingResources& rr,
-                       const vrento::vulkan::PreparedGraphicsResources& prepared) -> bool {
+                       const vrento::vulkan::PreparedGraphicsResources& prepared)
+        -> Result<empty, RenderPrepareError> {
         auto graphics = dyn<resource_registry::GraphicsResourcePreparer>::from_ref(rr.resources);
         DrawResourceContext context {
             .shader_backend = (*rr.shader_reflection_cache)->Backend(),
@@ -285,9 +286,12 @@ public:
             for (auto descriptor : uses.descriptors)
                 rr.resources.RemovePreparedDescriptor(descriptor);
             entry.source->clearResources();
-            if (! entry.source->resolveResources(rr.resources.TextureContext().session().device(),
-                                                 context))
-                return false;
+            auto resolved = entry.source->resolveResources(
+                rr.resources.TextureContext().session().device(), context);
+            if (resolved.is_err())
+                return Err(RenderPrepareError::Draw(entry.id,
+                                                    entry.source->parameters().render_item,
+                                                    rstd::move(resolved).unwrap_err()));
         }
         uniform_update_owners.clear();
         SceneUniformBindingPrepareContext uniform_prepare_impl(scene);
@@ -300,10 +304,9 @@ public:
                 entry.source->createUniformBufferUpdates(uniform_prepare.as_ref(), resources);
             if (created.is_err()) {
                 auto error = rstd::move(created).unwrap_err_unchecked();
-                rstd_error("prepare uniform binding failed for {}: {}",
-                           entry.id.value,
-                           error.message.as_str());
-                return false;
+                return Err(RenderPrepareError::Draw(entry.id,
+                                                    entry.source->parameters().render_item,
+                                                    DrawPrepareError::Uniform(rstd::move(error))));
             }
             auto bindings = rstd::move(created).unwrap_unchecked();
             for (auto& binding : bindings) {
@@ -320,7 +323,7 @@ public:
             }
         }
         for (auto& entry : draws) entry.invalidation = PassInvalidationNone;
-        return true;
+        return Ok(empty {});
     }
     bool acceptsTextureContent(Scene& scene, const RenderSceneSnapshot& snapshot,
                                Arc<SceneImageSource> source) {

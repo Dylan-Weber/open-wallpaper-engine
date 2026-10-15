@@ -8,6 +8,15 @@ namespace owe
 {
 namespace
 {
+auto ScenePreparation(Result<PrepareOutcome, vulkan::RenderPrepareError> result)
+    -> Result<PrepareOutcome, ScenePrepareError> {
+    if (result.is_err()) return Err(ScenePrepareError::Renderer(rstd::move(result).unwrap_err()));
+    return Ok(*result);
+}
+auto InvalidPreparation(vulkan::PrepareStateError reason = vulkan::PrepareStateError::NoSceneState)
+    -> ScenePrepareError {
+    return ScenePrepareError::Renderer(vulkan::RenderPrepareError::State(reason));
+}
 template<class Id>
 bool SameId(Id lhs, Id rhs) {
     return lhs.index == rhs.index && lhs.generation == rhs.generation;
@@ -36,11 +45,20 @@ auto SceneRenderPipeline::pending() const -> PendingScenePreparation {
              m_meshes.len(), m_materials.len(), m_gpu_preparation.is_some() };
 }
 
-auto SceneRenderPipeline::failed(vulkan::RenderPrepareError error)
-    -> Result<empty, vulkan::RenderPrepareError> {
-    m_ready = false;
-    if (error.stage != vulkan::RenderPrepareStage::Pending) ++m_stats.preparation_failures;
+auto SceneRenderPipeline::failed(ScenePrepareError error)
+    -> Result<PrepareOutcome, ScenePrepareError> {
+    m_ready          = false;
+    m_attempt_active = false;
+    ++m_stats.preparation_failures;
+    m_last_failure = Some(rstd::sync::Arc<ScenePrepareFailure>::make(m_attempt, error.clone()));
     return Err(rstd::move(error));
+}
+auto SceneRenderPipeline::finishAttempt(Result<PrepareOutcome, ScenePrepareError> result)
+    -> Result<PrepareOutcome, ScenePrepareError> {
+    if (result.is_err()) return failed(rstd::move(result).unwrap_err());
+    if (*result == PrepareOutcome::Ready) m_attempt_active = false;
+    m_ready = *result == PrepareOutcome::Ready && m_frame_work == FrameWork::Idle;
+    return result;
 }
 auto SceneRenderPipeline::takeGpuPreparation(bool graph) -> GpuPreparation {
     GpuPreparation captured {
@@ -74,7 +92,10 @@ void SceneRenderPipeline::setFillMode(FillMode mode) {
 
 bool SceneRenderPipeline::resize(unsigned width, unsigned height) {
     if (! m_render.onSwapchainReady(width, height)) return false;
-    if (hasGraph()) return rebuild().is_ok();
+    if (hasGraph()) {
+        auto result = rebuild();
+        return result.is_ok() && *result == PrepareOutcome::Ready;
+    }
     return true;
 }
 
@@ -110,28 +131,27 @@ void SceneRenderPipeline::captureChanges() {
 }
 
 auto SceneRenderPipeline::flushChanges(SceneLoadBenchRecorderView bench)
-    -> Result<empty, vulkan::RenderPrepareError> {
-    if (! m_render.inited() || (! hasGraph() && ! m_graph_dirty))
-        return Err(vulkan::RenderPrepareError { vulkan::RenderPrepareStage::State });
+    -> Result<PrepareOutcome, ScenePrepareError> {
+    if (! m_render.inited())
+        return Err(InvalidPreparation(vulkan::PrepareStateError::NotInitialized));
+    if (! hasGraph() && ! m_graph_dirty) return Err(InvalidPreparation());
     if (m_gpu_preparation) {
-        auto continued = m_render.tryContinuePrepare(m_scene);
+        auto continued = ScenePreparation(m_render.tryContinuePrepare(m_scene));
         if (continued.is_err()) {
-            if (continued.unwrap_err().stage != vulkan::RenderPrepareStage::Pending) {
-                auto previous = m_gpu_preparation.take().unwrap();
-                m_graph_dirty = true;
-                m_textures_dirty |= previous.textures;
-                for (auto event : previous.meshes) m_meshes.push(SceneMeshDirtyEvent(event));
-                for (auto event : previous.materials)
-                    m_materials.push(SceneMaterialDirtyEvent(event));
-            }
+            auto previous = m_gpu_preparation.take().unwrap();
+            m_graph_dirty = true;
+            m_textures_dirty |= previous.textures;
+            for (auto event : previous.meshes) m_meshes.push(SceneMeshDirtyEvent(event));
+            for (auto event : previous.materials) m_materials.push(SceneMaterialDirtyEvent(event));
             return continued;
         }
+        if (*continued == PrepareOutcome::Pending) return continued;
         finishGpuPreparation(m_gpu_preparation.take().unwrap());
     }
     if (m_graph_dirty) {
         [[maybe_unused]] auto reconciliation = m_scene.AudioDemandMut()->BeginReconciliation();
-        auto                  cleared        = m_render.tryClearLastRenderGraph(m_retention);
-        if (cleared.is_err()) return cleared;
+        auto cleared = ScenePreparation(m_render.tryClearLastRenderGraph(m_retention));
+        if (cleared.is_err() || *cleared != PrepareOutcome::Ready) return cleared;
         if (m_evict_meshes) m_render.evictUnusedMeshes();
         m_render.configureRenderTargets(m_scene);
         {
@@ -142,23 +162,20 @@ auto SceneRenderPipeline::flushChanges(SceneLoadBenchRecorderView bench)
             auto build_span = SceneLoadSpan(bench, &SceneLoadProbeIds::render_graph_build);
             return BuildSceneRenderState(m_scene, m_snapshot, &m_stats.graph_analysis);
         }();
-        if (input.is_err())
-            return Err(vulkan::RenderPrepareError { vulkan::RenderPrepareStage::Graph,
-                                                    Some(input.unwrap_err()) });
+        if (input.is_err()) return Err(ScenePrepareError::GraphBuild(input.unwrap_err()));
         if (m_options.graphviz) {
             auto dot = vrento::fg::graphviz(input->graph);
             (void)rstd::fs::write(ref<rstd::path::Path>("graph.dot"_str), dot->as_bytes());
         }
-        auto compiled = m_render.tryInstallSceneRenderState(
-            m_scene, rstd::move(input).unwrap(), m_snapshot, bench);
-        if (compiled.is_err() && compiled.unwrap_err().stage != vulkan::RenderPrepareStage::Pending)
-            return compiled;
+        auto compiled = ScenePreparation(m_render.tryInstallSceneRenderState(
+            m_scene, rstd::move(input).unwrap(), m_snapshot, bench));
+        if (compiled.is_err()) return compiled;
         (void)m_scene.ConsumePreparedMaterialDirtyEvents();
         (void)m_scene.ConsumePreparedMeshDirtyEvents();
         (void)m_scene.ConsumePreparedRenderTargetDirtyEvents();
         (void)m_scene.ConsumeRenderGraphDirty();
         auto captured = takeGpuPreparation(true);
-        if (compiled.is_err()) {
+        if (*compiled == PrepareOutcome::Pending) {
             m_gpu_preparation = Some(rstd::move(captured));
             return compiled;
         }
@@ -188,19 +205,18 @@ auto SceneRenderPipeline::flushChanges(SceneLoadBenchRecorderView bench)
             if (flags != vulkan::PassInvalidationNone)
                 invalidate(m_snapshot.renderItemsFor(event.material), flags);
         }
-        auto prepared =
+        auto prepared = ScenePreparation(
             m_render.tryPrepareResources(m_scene,
                                          m_snapshot,
                                          { items.as_slice(),
                                            textures.as_slice(),
-                                           m_meshes.is_empty() && m_materials.is_empty() });
-        if (prepared.is_err()) {
-            auto stage = prepared.unwrap_err().stage;
-            if (stage == vulkan::RenderPrepareStage::Pending) {
-                m_gpu_preparation = Some(takeGpuPreparation(false));
-                return prepared;
-            }
-            if (stage != vulkan::RenderPrepareStage::RebuildRequired) return prepared;
+                                           m_meshes.is_empty() && m_materials.is_empty() }));
+        if (prepared.is_err()) return prepared;
+        if (*prepared == PrepareOutcome::Pending) {
+            m_gpu_preparation = Some(takeGpuPreparation(false));
+            return prepared;
+        }
+        if (*prepared == PrepareOutcome::RebuildRequired) {
             m_graph_dirty = true;
             return flushChanges(bench);
         }
@@ -209,12 +225,13 @@ auto SceneRenderPipeline::flushChanges(SceneLoadBenchRecorderView bench)
     m_meshes.clear();
     m_materials.clear();
     m_textures_dirty = false;
-    return Ok(empty {});
+    return Ok(PrepareOutcome::Ready);
 }
 
 auto SceneRenderPipeline::rebuild(vulkan::RenderGraphResourceRetention retention, bool evict_meshes,
                                   SceneLoadBenchRecorderView bench)
-    -> Result<empty, vulkan::RenderPrepareError> {
+    -> Result<PrepareOutcome, ScenePrepareError> {
+    beginAttempt();
     m_ready       = false;
     m_graph_dirty = true;
     m_evict_meshes |= evict_meshes;
@@ -222,18 +239,20 @@ auto SceneRenderPipeline::rebuild(vulkan::RenderGraphResourceRetention retention
         m_retention = retention;
     captureChanges();
     auto result = flushChanges(bench);
-    if (result.is_err()) return failed(result.unwrap_err());
-    m_ready = m_frame_work == FrameWork::Idle;
-    return result;
+    return finishAttempt(rstd::move(result));
 }
 
 auto SceneRenderPipeline::prepare(const script::FrameInputs& inputs,
                                   SceneLoadBenchRecorderView bench)
-    -> Result<empty, vulkan::RenderPrepareError> {
-    if (m_render.framePending()) return Ok(empty {});
+    -> Result<PrepareOutcome, ScenePrepareError> {
+    if (m_render.framePending()) return Ok(PrepareOutcome::Pending);
     if (m_gpu_preparation) return retryPreparation(bench);
-    if (! m_render.inited() || ! hasGraph() || m_frame_work != FrameWork::Idle)
-        return failed(vulkan::RenderPrepareError { vulkan::RenderPrepareStage::State });
+    beginAttempt();
+    if (! m_render.inited())
+        return failed(InvalidPreparation(vulkan::PrepareStateError::NotInitialized));
+    if (! hasGraph()) return failed(InvalidPreparation());
+    if (m_frame_work != FrameWork::Idle)
+        return failed(InvalidPreparation(vulkan::PrepareStateError::FrameUpdateActive));
     m_ready      = false;
     m_frame_time = inputs.frametime;
     m_scene.SetPointerPosition({ inputs.cursor_x, inputs.cursor_y });
@@ -250,16 +269,19 @@ auto SceneRenderPipeline::prepare(const script::FrameInputs& inputs,
 }
 
 auto SceneRenderPipeline::retryPreparation(SceneLoadBenchRecorderView bench)
-    -> Result<empty, vulkan::RenderPrepareError> {
-    if (m_render.framePending()) return Ok(empty {});
+    -> Result<PrepareOutcome, ScenePrepareError> {
+    if (m_render.framePending()) return Ok(PrepareOutcome::Pending);
+    beginAttempt();
     m_ready = false;
-    if (! m_render.inited() || (! hasGraph() && ! m_graph_dirty))
-        return failed(vulkan::RenderPrepareError { vulkan::RenderPrepareStage::State });
+    if (! m_render.inited())
+        return failed(InvalidPreparation(vulkan::PrepareStateError::NotInitialized));
+    if (! hasGraph() && ! m_graph_dirty) return failed(InvalidPreparation());
     captureChanges();
     if (m_frame_work == FrameWork::BeforeRuntime) {
         if (m_graph_dirty || m_gpu_preparation) {
             auto rebuilt = flushChanges(bench);
-            if (rebuilt.is_err()) return failed(rebuilt.unwrap_err());
+            if (rebuilt.is_err() || *rebuilt != PrepareOutcome::Ready)
+                return finishAttempt(rstd::move(rebuilt));
         }
         m_scene.Runtime().BeforeRender();
         m_frame_work = FrameWork::Resources;
@@ -267,28 +289,29 @@ auto SceneRenderPipeline::retryPreparation(SceneLoadBenchRecorderView bench)
     }
     // New mutations during a failed frame are merged without repeating scripts or runtime work.
     auto flushed = flushChanges(bench);
-    if (flushed.is_err()) return failed(flushed.unwrap_err());
+    if (flushed.is_err() || *flushed != PrepareOutcome::Ready)
+        return finishAttempt(rstd::move(flushed));
     if (m_frame_work == FrameWork::Resources) m_frame_work = FrameWork::Video;
     if (m_frame_work == FrameWork::Video) {
-        auto video = m_render.tryPumpVideoTextures(m_frame_time);
-        if (video.is_err()) return failed(video.unwrap_err());
+        auto video = ScenePreparation(m_render.tryPumpVideoTextures(m_frame_time));
+        if (video.is_err() || *video != PrepareOutcome::Ready)
+            return finishAttempt(rstd::move(video));
         m_frame_work = FrameWork::Fonts;
     }
-    auto fonts = m_render.tryPumpFontAtlases(m_scene);
-    if (fonts.is_err()) return failed(fonts.unwrap_err());
+    auto fonts = ScenePreparation(m_render.tryPumpFontAtlases(m_scene));
+    if (fonts.is_err() || *fonts != PrepareOutcome::Ready) return finishAttempt(rstd::move(fonts));
     if (m_frame_work != FrameWork::Idle) ++m_stats.prepared_frames;
     m_frame_work = FrameWork::Idle;
     m_ready      = true;
-    return Ok(empty {});
+    return finishAttempt(Ok(PrepareOutcome::Ready));
 }
 
-auto SceneRenderPipeline::refreshMaterials() -> Result<empty, vulkan::RenderPrepareError> {
+auto SceneRenderPipeline::refreshMaterials() -> Result<PrepareOutcome, ScenePrepareError> {
+    beginAttempt();
     m_ready = false;
     captureChanges();
     auto result = flushChanges({});
-    if (result.is_err()) return failed(result.unwrap_err());
-    m_ready = m_frame_work == FrameWork::Idle;
-    return result;
+    return finishAttempt(rstd::move(result));
 }
 
 } // namespace owe

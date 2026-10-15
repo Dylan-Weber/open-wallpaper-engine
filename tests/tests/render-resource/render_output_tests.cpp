@@ -268,8 +268,9 @@ TEST(RenderOutput, ClearAndResize) {
     rstd_assert(failure->texture && failure->texture->kind == tex::ErrorKind::Invalid);
     rstd_assert(counts->acquired == 1 && counts->aborted == 1 && counts->submitted == 0);
     renderer.tryInstallSceneRenderState(scene, build(), snapshot).unwrap();
-    rstd_assert(renderer.renderedTarget("_rt_default"_str).unwrap_err().stage ==
-                owe::vulkan::RenderPrepareStage::Pending);
+    rstd_assert(
+        renderer.renderedTarget("_rt_default"_str).unwrap_err().as_Resources().source.kind ==
+        vrento::resource::ResourceErrorKind::Pending);
     renderer.drawFrame(scene);
     auto old   = renderer.renderedTarget("_rt_default"_str).unwrap();
     auto first = pixels(queue, old);
@@ -368,17 +369,24 @@ TEST(RenderOutput, ShaderDirtyAndTopology) {
     info.ex_swapchain_factory =
         Some(Box<dyn<FnOnce<Option<vrento::ExSwapchainOwner>(
                  const owe::RenderInitInfo::ExSwapchainHandles&)>>>::make(rstd::move(factory)));
+    owe::SceneRenderPipeline pipeline(scene, *parsed.runtime_input, renderer);
+    EXPECT_TRUE(pipeline.rebuild().is_err());
+    auto initial_failure = pipeline.diagnostics().last_failure;
+    ASSERT_TRUE(initial_failure);
     rstd_assert(renderer.init(rstd::move(info)));
     auto queue = vk::TextureContext::create(renderer.deviceSession().unwrap()).unwrap();
-    owe::SceneRenderPipeline pipeline(scene, *parsed.runtime_input, renderer);
-    auto                     ready = [&](Result<empty, owe::vulkan::RenderPrepareError> result) {
-        for (unsigned i {}; result.is_err() && i < 2000; ++i) {
-            rstd_assert(result.unwrap_err().stage == owe::vulkan::RenderPrepareStage::Pending);
+
+    auto ready = [&](Result<owe::PrepareOutcome, owe::ScenePrepareError> result) {
+        for (unsigned i {}; result.is_ok() && *result == owe::PrepareOutcome::Pending && i < 2000;
+             ++i) {
             ::usleep(1000);
             result = pipeline.retryPreparation();
         }
         rstd_assert(result.is_ok());
         rstd_assert(pipeline.ready());
+        EXPECT_EQ(pipeline.stats().preparation_failures, 1u);
+        auto retained = pipeline.diagnostics().last_failure;
+        EXPECT_EQ((*retained)->attempt(), (*initial_failure)->attempt());
     };
     auto color = [&](unsigned red, unsigned green, unsigned blue) {
         auto data  = pixels(queue, renderer.renderedTarget("_rt_default"_str).unwrap());
@@ -488,9 +496,9 @@ TEST(RenderOutput, DynamicFontUploads) {
     rstd_assert(renderer.init(rstd::move(info)));
     auto queue = vk::TextureContext::create(renderer.deviceSession().unwrap()).unwrap();
     owe::SceneRenderPipeline pipeline(scene, *parsed.runtime_input, renderer);
-    auto                     ready = [&](Result<empty, owe::vulkan::RenderPrepareError> result) {
-        for (unsigned i {}; result.is_err() && i < 2000; ++i) {
-            rstd_assert(result.unwrap_err().stage == owe::vulkan::RenderPrepareStage::Pending);
+    auto ready = [&](Result<owe::PrepareOutcome, owe::ScenePrepareError> result) {
+        for (unsigned i {}; result.is_ok() && *result == owe::PrepareOutcome::Pending && i < 2000;
+             ++i) {
             ::usleep(1000);
             result = pipeline.retryPreparation();
         }

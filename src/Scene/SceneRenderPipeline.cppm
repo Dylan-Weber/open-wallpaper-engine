@@ -3,6 +3,7 @@ import rstd;
 import wescene.core;
 export import wescene.scene;
 export import wescene.vulkan_render;
+export import wescene.scene_prepare_error;
 export import wescene.script;
 export import wescene.pkg.parse;
 import wescene.types;
@@ -34,6 +35,12 @@ struct PendingScenePreparation {
     bool  gpu {};
 };
 
+struct ScenePreparationDiagnostics {
+    u64                                          attempt {};
+    Option<rstd::sync::Arc<ScenePrepareFailure>> last_failure;
+    vulkan::RenderDiagnostics                    renderer;
+};
+
 // The borrowed scene, input and renderer must outlive this pipeline; calls are serialized.
 class SceneRenderPipeline : NoCopy, NoMove {
 public:
@@ -42,13 +49,13 @@ public:
     auto rebuild(vulkan::RenderGraphResourceRetention =
                      vulkan::RenderGraphResourceRetention::KeepSceneTextures,
                  bool evict_meshes = false, SceneLoadBenchRecorderView = {})
-        -> Result<empty, vulkan::RenderPrepareError>;
+        -> Result<PrepareOutcome, ScenePrepareError>;
     // Updates scene state and GPU preparation; the host owns drawing and time advancement.
     auto prepare(const script::FrameInputs&, SceneLoadBenchRecorderView = {})
-        -> Result<empty, vulkan::RenderPrepareError>;
+        -> Result<PrepareOutcome, ScenePrepareError>;
     auto retryPreparation(SceneLoadBenchRecorderView = {})
-        -> Result<empty, vulkan::RenderPrepareError>;
-    auto refreshMaterials() -> Result<empty, vulkan::RenderPrepareError>;
+        -> Result<PrepareOutcome, ScenePrepareError>;
+    auto refreshMaterials() -> Result<PrepareOutcome, ScenePrepareError>;
     void setFillMode(FillMode);
     bool resize(unsigned width, unsigned height);
     bool hasGraph() const;
@@ -56,8 +63,22 @@ public:
     auto pending() const -> PendingScenePreparation;
     auto snapshot() const -> const RenderSceneSnapshot& { return m_snapshot; }
     auto stats() const -> SceneRenderPipelineStats { return m_stats; }
+    auto diagnostics() const -> ScenePreparationDiagnostics {
+        return { m_attempt, m_last_failure.clone(), m_render.diagnostics() };
+    }
 
 private:
+    u64                                          m_attempt {};
+    bool                                         m_attempt_active {};
+    Option<rstd::sync::Arc<ScenePrepareFailure>> m_last_failure;
+    void                                         beginAttempt() {
+        if (! m_attempt_active) {
+            ++m_attempt;
+            m_attempt_active = true;
+        }
+    }
+    auto finishAttempt(Result<PrepareOutcome, ScenePrepareError>)
+        -> Result<PrepareOutcome, ScenePrepareError>;
     struct GpuPreparation {
         bool                         graph {}, textures {};
         Vec<SceneMeshDirtyEvent>     meshes;
@@ -67,8 +88,8 @@ private:
     void                   finishGpuPreparation(GpuPreparation);
     Option<GpuPreparation> m_gpu_preparation;
     void                   captureChanges();
-    auto flushChanges(SceneLoadBenchRecorderView) -> Result<empty, vulkan::RenderPrepareError>;
-    auto failed(vulkan::RenderPrepareError) -> Result<empty, vulkan::RenderPrepareError>;
+    auto flushChanges(SceneLoadBenchRecorderView) -> Result<PrepareOutcome, ScenePrepareError>;
+    auto failed(ScenePrepareError) -> Result<PrepareOutcome, ScenePrepareError>;
     enum class FrameWork
     {
         Idle,

@@ -10,6 +10,7 @@ import vrento;
 import :scene_render_resources;
 import :scene_render_textures;
 import :resource;
+import :prepare_error;
 import :buffer_resolver;
 import :uniform_buffer;
 
@@ -117,7 +118,7 @@ public:
     auto describePass(vrento::fg::FrameGraphBuilder&, const SceneRenderTextures&,
                       vrento::fg::PassId) const
         -> Result<vrento::vulkan::GraphicsPassResources, vrento::fg::Error>;
-    bool resolveResources(const Device&, DrawResourceContext&);
+    auto resolveResources(const Device&, DrawResourceContext&) -> Result<empty, DrawPrepareError>;
     bool update(DrawUpdateContext&);
     void acknowledgeGeometry();
     auto frameData(const DrawBindingContext&) const -> Option<Arc<ShaderDrawInput>>;

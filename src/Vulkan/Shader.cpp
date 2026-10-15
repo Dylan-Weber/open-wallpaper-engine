@@ -44,9 +44,10 @@ struct Impl<vrento::vulkan::ShaderBackend, owe::vulkan::GlslangBackend>
     bool Preprocess(ref<str> source, ShaderType stage, SourceLang lang, String& output) const {
         return owe::vulkan::Preprocess(source, stage, lang, output);
     }
-    bool CompileAndLinkShaderUnits(slice<ShaderCompUnit> units, const ShaderCompOpt& options,
-                                   Vec<Uni_ShaderSpv>& output) const {
-        return owe::vulkan::CompileAndLinkShaderUnits(units, options, output);
+    auto CompileAndLinkShaderUnits(slice<ShaderCompUnit> units, const ShaderCompOpt& options,
+                                   Vec<Uni_ShaderSpv>& output) const
+        -> Result<empty, vrento::resource::ResourceError> {
+        return owe::vulkan::TryCompileAndLinkShaderUnits(units, options, output);
     }
     bool GenReflect(slice<ShaderCode> codes, Vec<Uni_ShaderSpv>& stages,
                     ShaderReflected& output) const {
@@ -487,8 +488,14 @@ bool owe::vulkan::Preprocess(ref<str> src, ShaderType stage, SourceLang lang, St
     return true;
 }
 
-bool owe::vulkan::CompileAndLinkShaderUnits(slice<ShaderCompUnit> compUnits,
-                                            const ShaderCompOpt& opt, Vec<Uni_ShaderSpv>& spvs) {
+auto owe::vulkan::TryCompileAndLinkShaderUnits(slice<ShaderCompUnit> compUnits,
+                                               const ShaderCompOpt& opt, Vec<Uni_ShaderSpv>& spvs)
+    -> Result<empty, vrento::resource::ResourceError> {
+    auto failed = [](ShaderType stage, ref<str> operation, String diagnostic) {
+        return Err(vrento::resource::ResourceError {
+            vrento::resource::ResourceErrorKind::MissingContent,
+            rstd::format("glslang {} stage={}: {}", operation, int(stage), diagnostic) });
+    };
     EnsureGlslangProcess();
     spvs.clear();
     spvs.reserve(compUnits.len());
@@ -499,13 +506,15 @@ bool owe::vulkan::CompileAndLinkShaderUnits(slice<ShaderCompUnit> compUnits,
                 ? CStr::from_ptr(DefaultEntryName(unit.lang, unit.stage)).to_str().unwrap()
                 : unit.entry_point.as_str();
         auto encoded_entry = CString::make(String::make(entry_name));
-        if (encoded_entry.is_err()) return false;
+        if (encoded_entry.is_err())
+            return failed(unit.stage, "entry point"_str, "entry point contains a null byte"_Str);
         auto        entry_c = rstd::move(encoded_entry).unwrap();
         const char* entry   = entry_c.as_ptr();
 
         glslang::TShader shader(ToEShLanguage(unit.stage));
         const auto       source = unit.src.as_str();
-        if (source.len() > usize(i32::MAX.to_primitive())) return false;
+        if (source.len() > usize(i32::MAX.to_primitive()))
+            return failed(unit.stage, "source"_str, "source exceeds compiler length limit"_Str);
         const char* data = reinterpret_cast<const char*>(source.data());
         const int   len  = static_cast<int>(source.len().to_primitive());
         const char* name = "ww";
@@ -524,44 +533,34 @@ bool owe::vulkan::CompileAndLinkShaderUnits(slice<ShaderCompUnit> compUnits,
                            forward_compat,
                            kCompileMessages,
                            includer)) {
-            auto tmp = logToTmpfileWithSha1(source);
-            // Strip WARNING lines; EShMsgSuppressWarnings doesn't actually
-            // omit them from the info log on this glslang build.
-            auto   log       = CStr::from_ptr(shader.getInfoLog()).to_str();
-            auto   remaining = log.unwrap_or(""_str);
-            String filtered;
-            while (! remaining.is_empty()) {
-                auto split = remaining.split_once("\n"_str);
-                auto line  = split ? split->template get<0>() : remaining;
-                if (! line.contains("WARNING"_str)) {
-                    filtered.push_str(line);
-                    filtered.push_str("\n"_str);
-                }
-                remaining = split ? split->template get<1>() : ""_str;
-            }
-            if (log.is_ok())
-                rstd_error("glslang(parse): {}", filtered);
-            else
-                rstd_error("glslang(parse): {}", shader.getInfoLog());
-            if (const char* d = shader.getInfoDebugLog(); d && d[0])
-                rstd_error("glslang(parse debug): {}", d);
-            rstd_error("shader source is at {}", tmp.as_path().to_string_lossy());
-            return false;
+            return failed(unit.stage,
+                          "parse"_str,
+                          rstd::format("{}\n{}",
+                                       CStr::from_ptr(shader.getInfoLog())
+                                           .to_str()
+                                           .unwrap_or("invalid UTF-8 compiler diagnostic"_str),
+                                       CStr::from_ptr(shader.getInfoDebugLog())
+                                           .to_str()
+                                           .unwrap_or("invalid UTF-8 compiler diagnostic"_str)));
         }
 
         glslang::TProgram program;
         program.addShader(&shader);
         if (! program.link(kCompileMessages)) {
-            auto tmp = logToTmpfileWithSha1(source);
-            rstd_error("glslang(link): {}", program.getInfoLog());
-            rstd_error("shader source is at {}", tmp.as_path().to_string_lossy());
-            return false;
+            return failed(unit.stage,
+                          "link"_str,
+                          rstd::format("{}\n{}",
+                                       CStr::from_ptr(program.getInfoLog())
+                                           .to_str()
+                                           .unwrap_or("invalid UTF-8 compiler diagnostic"_str),
+                                       CStr::from_ptr(program.getInfoDebugLog())
+                                           .to_str()
+                                           .unwrap_or("invalid UTF-8 compiler diagnostic"_str)));
         }
 
         glslang::TIntermediate* intermediate = program.getIntermediate(ToEShLanguage(unit.stage));
         if (! intermediate) {
-            rstd_error("glslang(intermediate): no intermediate for stage");
-            return false;
+            return failed(unit.stage, "intermediate"_str, "no intermediate for stage"_Str);
         }
 
         glslang::SpvOptions spv_opts;
@@ -582,8 +581,11 @@ bool owe::vulkan::CompileAndLinkShaderUnits(slice<ShaderCompUnit> compUnits,
             rstd_warn("glslang(spv): {}", msgs);
         }
         if (spv->spirv.is_empty()) {
-            rstd_error("glslang(spv): no SPIR-V output produced");
-            return false;
+            return failed(unit.stage,
+                          "SPIR-V"_str,
+                          rstd::format("no SPIR-V output produced: {}",
+                                       as_str(logger.getAllMessages())
+                                           .unwrap_or("invalid UTF-8 SPIR-V diagnostic"_str)));
         }
 
         if (rstd::env::var_os("WP_DUMP_SPIRV"_str).is_some()) {
@@ -602,5 +604,13 @@ bool owe::vulkan::CompileAndLinkShaderUnits(slice<ShaderCompUnit> compUnits,
         spvs.push(rstd::move(spv));
     }
 
-    return true;
+    return Ok(empty {});
+}
+
+bool owe::vulkan::CompileAndLinkShaderUnits(slice<ShaderCompUnit> units,
+                                            const ShaderCompOpt&  options,
+                                            Vec<Uni_ShaderSpv>&   output) {
+    auto result = TryCompileAndLinkShaderUnits(units, options, output);
+    if (result.is_err()) rstd_error("{}", result.unwrap_err());
+    return result.is_ok();
 }

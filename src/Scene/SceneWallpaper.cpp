@@ -78,7 +78,8 @@ class RenderMsg final {
               (SetAudioResponseEnabled, (bool enabled;)),
               (SetAudioPcmWindow, (audio::PcmWindow window;)), (EndAudioResponse),
               (Stop, (bool stop;)), (Draw), (SwapchainReady, (bool ready; u32 width; u32 height;)),
-              (RequestPreparedPassDiagnostics, (RenderPassDiagnosticCallback cb;)), (Shutdown))
+              (RequestPreparedPassDiagnostics, (RenderPassDiagnosticCallback cb;)),
+              (RequestPreparationDiagnostics, (ScenePreparationDiagnosticCallback cb;)), (Shutdown))
 };
 
 class MainMsg final {
@@ -94,6 +95,8 @@ class MainMsg final {
               (SetUserPropertyDiagnosticCallback, (UserPropertyDiagnosticCallback cb;)),
               (UserPropertyDiagnostics, (Vec<SceneUserPropertyDiagnostic> diagnostics;)),
               (SceneClearColorChanged, (f32 r; f32 g; f32 b;)),
+              (PreparationDiagnostics, (ScenePreparationDiagnosticCallback  cb;
+                                        Option<ScenePreparationDiagnostics> diagnostics;)),
               (PreparedPassDiagnostics,
                (RenderPassDiagnosticCallback cb; Vec<vulkan::PreparedPassDiagnostic> diagnostics;)),
               (Stop, (bool stop; u32 fade_ms { 0 }; bool scale_audio { false };)),
@@ -120,6 +123,15 @@ auto CloneAudioResponseDemandCallback(const Option<AudioResponseDemandCallback>&
     -> Option<AudioResponseDemandCallback> {
     if (callback.is_none()) return None();
     return Some(callback->clone());
+}
+
+void ReportScenePreparationError(const ScenePrepareError& error) {
+    rstd_error("{}", error);
+    auto source = as<rstd::error::Error>(error).source();
+    for (int depth = 0; source && depth < 32; ++depth) {
+        rstd_error("  caused by: {}", *source);
+        source = (*source)->source();
+    }
 }
 
 auto CloneUserPropertyDiagnostics(slice<SceneUserPropertyDiagnostic> diagnostics)
@@ -201,6 +213,7 @@ public:
     void on(MainMsg::UserPropertyDiagnostics_payload&&);
     void on(MainMsg::SceneClearColorChanged_payload&&);
     void on(MainMsg::PreparedPassDiagnostics_payload&&);
+    void on(MainMsg::PreparationDiagnostics_payload&&);
     void on(MainMsg::Stop_payload&&);
     void on(MainMsg::LoadBenchBatch_payload&&);
     void on(MainMsg::LoadBenchFinish_payload&&);
@@ -284,6 +297,7 @@ public:
     void onDraw();
     void on(RenderMsg::SwapchainReady_payload&&);
     void on(RenderMsg::RequestPreparedPassDiagnostics_payload&&);
+    void on(RenderMsg::RequestPreparationDiagnostics_payload&&);
 
     ExSwapchain* exSwapchain() const { return m_render->exSwapchain(); }
     int          takeLastFrameSyncFd() { return m_render->takeLastFrameSyncFd(); }
@@ -427,6 +441,7 @@ void SceneRenderController::start() {
                 RSTD_CASE(Draw) { onDraw(); }
                 RSTD_CASE_PAYLOAD(SwapchainReady, value) { on(rstd::move(value)); }
                 RSTD_CASE_PAYLOAD(RequestPreparedPassDiagnostics, value) { on(rstd::move(value)); }
+                RSTD_CASE_PAYLOAD(RequestPreparationDiagnostics, value) { on(rstd::move(value)); }
                 RSTD_CASE(Shutdown) {
                     if (m_image_load) (*m_image_load)->active.store(false);
                     frame_timer.Stop();
@@ -485,12 +500,13 @@ void SceneRenderController::onDraw() {
         auto first_frame_prepare_span =
             first_draw ? SceneLoadSpan(load_bench, &SceneLoadProbeIds::render_first_frame_prepare)
                        : rstd::bench::probe::SpanGuard {};
-        auto prepared = [&]() -> Result<empty, vulkan::RenderPrepareError> {
-            if (m_render->framePending()) return Ok(empty {});
+        auto prepared = [&]() -> Result<PrepareOutcome, ScenePrepareError> {
+            // Existing frames still need execution while new preparation is blocked.
+            if (m_render->framePending()) return Ok(PrepareOutcome::Ready);
             if ((*m_pipeline)->pending().frame) return (*m_pipeline)->retryPreparation(load_bench);
             if (! (*m_pipeline)->ready()) {
                 auto retried = (*m_pipeline)->retryPreparation(load_bench);
-                if (retried.is_err()) return retried;
+                if (retried.is_err() || *retried != PrepareOutcome::Ready) return retried;
             }
             m_frame_delta = frame_timer.TargetFrameTime() * m_speed.to_primitive();
             owe::script::FrameInputs fi;
@@ -514,10 +530,8 @@ void SceneRenderController::onDraw() {
             (void)m_scene_audio_response.advance(fi.frametime, fi.audio);
             return (*m_pipeline)->prepare(fi, load_bench);
         }();
-        if (prepared.is_err()) {
-            if (prepared.unwrap_err().stage != vulkan::RenderPrepareStage::Pending)
-                rstd_error("scene preparation failed at {}",
-                           static_cast<unsigned>(prepared.unwrap_err().stage));
+        if (prepared.is_err() || *prepared != PrepareOutcome::Ready) {
+            if (prepared.is_err()) ReportScenePreparationError(prepared.unwrap_err());
             frame_timer.FrameEnd();
             return;
         }
@@ -569,9 +583,7 @@ void SceneRenderController::rebuildRenderGraph(vulkan::RenderGraphResourceRetent
                                                SceneLoadBenchRecorderView           load_bench) {
     if (m_pipeline) {
         auto result = (*m_pipeline)->rebuild(retention, evict_meshes, load_bench);
-        if (result.is_err() && result.unwrap_err().stage != vulkan::RenderPrepareStage::Pending)
-            rstd_error("scene rebuild failed at {}",
-                       static_cast<unsigned>(result.unwrap_err().stage));
+        if (result.is_err()) ReportScenePreparationError(result.unwrap_err());
     }
 }
 
@@ -668,9 +680,7 @@ void SceneRenderController::on(RenderMsg::SetUserProperty_payload&& m) {
         auto refresh_span =
             SceneLoadSpan(load_bench, &SceneLoadProbeIds::render_user_property_refresh);
         auto result = (*m_pipeline)->refreshMaterials();
-        if (result.is_err())
-            rstd_error("scene material preparation failed at {}",
-                       static_cast<unsigned>(result.unwrap_err().stage));
+        if (result.is_err()) ReportScenePreparationError(result.unwrap_err());
     }
 }
 
@@ -687,9 +697,7 @@ void SceneRenderController::on(RenderMsg::SetMediaStatus_payload&& m) {
         RuntimeTextureProperty(m.status.previous_art_url.as_str()));
     if (renderInited() && (m_pipeline.is_some() && (*m_pipeline)->hasGraph())) {
         auto result = (*m_pipeline)->refreshMaterials();
-        if (result.is_err())
-            rstd_error("scene media preparation failed at {}",
-                       static_cast<unsigned>(result.unwrap_err().stage));
+        if (result.is_err()) ReportScenePreparationError(result.unwrap_err());
     }
 }
 
@@ -787,6 +795,14 @@ void SceneRenderController::on(RenderMsg::SwapchainReady_payload&& m) {
         frame_timer.Stop();
     else
         frame_timer.Run();
+}
+
+void SceneRenderController::on(RenderMsg::RequestPreparationDiagnostics_payload&& m) {
+    if (! m_main_tx) return;
+    auto diagnostics =
+        m_pipeline ? Some((*m_pipeline)->diagnostics()) : None<ScenePreparationDiagnostics>();
+    (void)m_main_tx->send(
+        MainMsg::PreparationDiagnostics(rstd::move(m.cb), rstd::move(diagnostics)));
 }
 
 void SceneRenderController::on(RenderMsg::RequestPreparedPassDiagnostics_payload&& m) {
@@ -945,6 +961,7 @@ void SceneRuntimeController::startMainLoop() {
                 RSTD_CASE_PAYLOAD(UserPropertyDiagnostics, value) { on(rstd::move(value)); }
                 RSTD_CASE_PAYLOAD(SceneClearColorChanged, value) { on(rstd::move(value)); }
                 RSTD_CASE_PAYLOAD(PreparedPassDiagnostics, value) { on(rstd::move(value)); }
+                RSTD_CASE_PAYLOAD(PreparationDiagnostics, value) { on(rstd::move(value)); }
                 RSTD_CASE_PAYLOAD(Stop, value) { on(rstd::move(value)); }
                 RSTD_CASE_PAYLOAD(LoadBenchBatch, value) { on(rstd::move(value)); }
                 RSTD_CASE_PAYLOAD(LoadBenchFinish, value) { on(rstd::move(value)); }
@@ -1105,6 +1122,10 @@ void SceneRuntimeController::on(MainMsg::SceneClearColorChanged_payload&& m) {
     if (schemeColor().is_none() && m_clear_color_cb) {
         (*m_clear_color_cb)->operator()(m.r.to_primitive(), m.g.to_primitive(), m.b.to_primitive());
     }
+}
+
+void SceneRuntimeController::on(MainMsg::PreparationDiagnostics_payload&& m) {
+    m.cb->call_once(rstd::move(m.diagnostics));
 }
 
 void SceneRuntimeController::on(MainMsg::PreparedPassDiagnostics_payload&& m) {
@@ -1393,6 +1414,9 @@ void SceneWallpaper::setOnUserPropertyDiagnostics(UserPropertyDiagnosticCallback
     m_runtime->post(MainMsg::SetUserPropertyDiagnosticCallback(rstd::move(cb)));
 }
 
+void SceneWallpaper::requestPreparationDiagnostics(ScenePreparationDiagnosticCallback cb) {
+    m_runtime->post(RenderMsg::RequestPreparationDiagnostics(rstd::move(cb)));
+}
 void SceneWallpaper::requestPreparedPassDiagnostics(RenderPassDiagnosticCallback cb) {
     m_runtime->post(RenderMsg::RequestPreparedPassDiagnostics(rstd::move(cb)));
 }

@@ -812,28 +812,34 @@ auto SceneDraw::describeGraphics(const resource::ShaderArtifact& artifact)
     }
 }
 
-bool SceneDraw::resolveResources(const Device& device, DrawResourceContext& context) {
+auto SceneDraw::resolveResources(const Device& device, DrawResourceContext& context)
+    -> Result<empty, DrawPrepareError> {
+    auto missing = [&](DrawResourceKind kind) {
+        return Err(DrawPrepareError::Missing(kind, m_desc.render_item));
+    };
     const bool out_force_clear = force_clear_;
     auto       output_use      = m_desc.depth_only ? m_desc.depth_use : m_desc.output_use;
-    if (! output_use) return false;
+    if (! output_use) return missing(DrawResourceKind::Output);
     auto target = context.resources->Resolve(*output_use);
-    if (! target) return false;
+    if (! target) return Err(DrawPrepareError::Texture(*output_use));
     auto extent          = (**target).image.getActive().extent;
     m_desc.output_extent = { extent.width, extent.height };
-    if (! geometry_) return false;
+    if (! geometry_) return missing(DrawResourceKind::Geometry);
     vrento::RenderBufferResolver buffer_resolver(*context.resources);
     vrento::DrawBufferRequest    buffer_request { .render_item   = m_desc.render_item,
                                                   .geometry      = geometry_->view(),
                                                   .submesh_index = m_desc.submesh_index,
                                                   .buffer_uses   = m_desc.buffer_uses.as_slice() };
-    auto                         draw_buffers = buffer_resolver.prepareDrawBuffers(buffer_request);
-    if (! draw_buffers) return false;
+    auto draw_buffers = buffer_resolver.tryPrepareDrawBuffers(buffer_request);
+    if (draw_buffers.is_err())
+        return Err(DrawPrepareError::Buffers(rstd::move(draw_buffers).unwrap_err()));
     m_desc.draw_buffers = rstd::move(*draw_buffers);
 
     {
-        if (m_desc.shader_use.is_none() || m_desc.pipeline_use.is_none()) return false;
+        if (! m_desc.shader_use) return missing(DrawResourceKind::Shader);
+        if (! m_desc.pipeline_use) return missing(DrawResourceKind::Pipeline);
         auto prepared_shader = context.resources->Resolve(*m_desc.shader_use);
-        if (prepared_shader.is_none()) return false;
+        if (prepared_shader.is_none()) return Err(DrawPrepareError::Shader(*m_desc.shader_use));
         const auto& artifact = (**prepared_shader).shader.physical->artifact;
         m_desc.descriptor_bindings.clear();
         m_desc.descriptor_image_slots.clear();
@@ -845,7 +851,7 @@ bool SceneDraw::resolveResources(const Device& device, DrawResourceContext& cont
                 const auto& source  = m_desc.texture_bindings[index];
                 const auto  binding = m_desc.vk_tex_binding[index];
                 if (source.empty() || binding < 0 || m_desc.vk_tex_set[index] != set.set) continue;
-                if (! source.use) return false;
+                if (! source.use) return missing(DrawResourceKind::Texture);
                 textures.push({ static_cast<rstd::uint32_t>(binding), *source.use, usize() });
             }
             auto buffers = Vec<resource_registry::DescriptorBufferBinding>::make();
@@ -854,7 +860,7 @@ bool SceneDraw::resolveResources(const Device& device, DrawResourceContext& cont
                 const auto& block = artifact.uniform_blocks[use.block_index];
                 if (block.set != set.set) continue;
                 auto prepared = context.resources->Resolve(use.use);
-                if (prepared.is_none()) return false;
+                if (prepared.is_none()) return Err(DrawPrepareError::Buffer(use.use));
                 auto& allocation = (**prepared).buffer.physical->buffer;
                 buffers.push(resource_registry::DescriptorBufferBinding {
                     .binding = block.binding.to_primitive(),
@@ -865,13 +871,13 @@ bool SceneDraw::resolveResources(const Device& device, DrawResourceContext& cont
             }
             if (textures.is_empty() && buffers.is_empty()) continue;
             auto pipeline_layout = context.pipeline_layouts->Resolve(*m_desc.pipeline_use);
-            if (pipeline_layout.is_none()) return false;
+            if (pipeline_layout.is_none())
+                return Err(DrawPrepareError::Layout(*m_desc.pipeline_use));
             auto descriptor = context.graphics->PrepareTextureDescriptor(
                 device, *pipeline_layout, set.set, textures.as_slice(), buffers.as_slice());
             if (descriptor.is_err()) {
                 auto error = rstd::move(descriptor).unwrap_err_unchecked();
-                rstd_error("prepare descriptor binding failed: {}", error.message);
-                return false;
+                return Err(DrawPrepareError::Descriptor(set.set, rstd::move(error)));
             }
             m_desc.descriptor_bindings.push(DescriptorSetUse {
                 .set     = set.set,
@@ -896,7 +902,7 @@ bool SceneDraw::resolveResources(const Device& device, DrawResourceContext& cont
         }
     }
     bindings_ready_ = true;
-    return true;
+    return Ok(empty {});
 }
 
 bool SceneDraw::update(DrawUpdateContext& context) {

@@ -93,3 +93,17 @@ TEST(HostCallbacks, OwnsSurfaceCallbackAndDeviceIdentity) {
     }
     EXPECT_EQ(released, 1);
 }
+
+TEST(HostCallbacks, PreparationDiagnosticsReturnOwnedResultThroughMailboxes) {
+    auto                observed = Arc<rstd::sync::atomic::Atomic<rstd::u32>>::make(rstd::u32());
+    owe::SceneWallpaper wallpaper;
+    ASSERT_TRUE(wallpaper.init());
+    wallpaper.requestPreparationDiagnostics(owe::ScenePreparationDiagnosticCallback::make(
+        [observed = observed.clone()](Option<owe::ScenePreparationDiagnostics> diagnostics) {
+            observed->store(diagnostics.is_none() ? rstd::u32(1) : rstd::u32(2));
+        }));
+    auto started = rstd::time::Instant::now();
+    while (observed->load() == rstd::u32() && started.elapsed().as_secs() < rstd::u64(5))
+        rstd::thread::sleep(rstd::time::Duration::from_millis(rstd::u64(1)));
+    EXPECT_EQ(observed->load(), rstd::u32(1));
+}

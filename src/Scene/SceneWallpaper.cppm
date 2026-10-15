@@ -27,6 +27,8 @@ using FirstFrameCallback          = Option<Box<dyn<FnMut<void()>>>>;
 using AudioResponseDemandCallback = Arc<dyn<rstd::Fn<void(bool)>>>;
 using UserPropertyDiagnosticCallback =
     Option<Box<dyn<FnMut<void(Vec<SceneUserPropertyDiagnostic>)>>>>;
+using ScenePreparationDiagnosticCallback =
+    Box<dyn<rstd::FnOnce<void(Option<ScenePreparationDiagnostics>)>>>;
 using RenderPassDiagnosticCallback =
     Box<dyn<rstd::FnOnce<void(Vec<vulkan::PreparedPassDiagnostic>)>>>;
 
@@ -131,6 +133,7 @@ public:
             Some(Box<dyn<FnMut<void(Vec<SceneUserPropertyDiagnostic>)>>>::make(rstd::move(cb))));
     }
     void requestPreparedPassDiagnostics(RenderPassDiagnosticCallback);
+    void requestPreparationDiagnostics(ScenePreparationDiagnosticCallback);
 
     // Install a callback for the effective wallpaper background color.
     // Set once before initVulkan.

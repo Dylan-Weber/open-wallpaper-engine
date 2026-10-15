@@ -18,6 +18,7 @@ export import :resource;
 export import :buffer_resolver;
 export import :scene_draw_policy;
 export import :scene_draw;
+export import :prepare_error;
 
 using namespace rstd::prelude;
 using namespace rstd::literals;
@@ -91,20 +92,6 @@ enum class RenderGraphResourceRetention
     ReleaseSceneTextures,
 };
 
-enum class RenderPrepareStage
-{
-    State,
-    Graph,
-    RebuildRequired,
-    SceneRenderState,
-    Upload,
-    FontUpload,
-    Pending
-};
-struct RenderPrepareError {
-    RenderPrepareStage        stage;
-    Option<vrento::fg::Error> graph;
-};
 struct RenderItemPreparation {
     RenderItemId          item;
     PassInvalidationFlags flags { PassInvalidationNone };
@@ -133,15 +120,16 @@ public:
     bool hasSceneRenderState() const;
     auto tryPrepareImage(Arc<vrento::Image>) -> Result<bool, resource::ResourceError>;
     bool init(RenderInitInfo, SceneLoadBenchRecorderView load_bench = {});
-    auto tryClearLastRenderGraph(RenderGraphResourceRetention) -> Result<empty, RenderPrepareError>;
+    auto tryClearLastRenderGraph(RenderGraphResourceRetention)
+        -> Result<PrepareOutcome, RenderPrepareError>;
     auto tryInstallSceneRenderState(Scene&, vulkan::SceneRenderStateInput&&,
                                     const RenderSceneSnapshot&, SceneLoadBenchRecorderView = {})
-        -> Result<empty, RenderPrepareError>;
+        -> Result<PrepareOutcome, RenderPrepareError>;
     auto tryPrepareResources(Scene&, const RenderSceneSnapshot&, const ResourcePreparation&)
-        -> Result<empty, RenderPrepareError>;
-    auto tryPumpFontAtlases(Scene&) -> Result<empty, RenderPrepareError>;
-    auto tryPumpVideoTextures(double) -> Result<empty, RenderPrepareError>;
-    auto tryContinuePrepare(Scene&) -> Result<empty, RenderPrepareError>;
+        -> Result<PrepareOutcome, RenderPrepareError>;
+    auto tryPumpFontAtlases(Scene&) -> Result<PrepareOutcome, RenderPrepareError>;
+    auto tryPumpVideoTextures(double) -> Result<PrepareOutcome, RenderPrepareError>;
+    auto tryContinuePrepare(Scene&) -> Result<PrepareOutcome, RenderPrepareError>;
 
     void destroy();
 
@@ -149,14 +137,7 @@ public:
     bool framePending() const;
     bool frameSubmitted() const;
 
-    void clearLastRenderGraph(
-        RenderGraphResourceRetention retention = RenderGraphResourceRetention::KeepSceneTextures);
     void configureRenderTargets(Scene&);
-    void installSceneRenderState(Scene&, vulkan::SceneRenderStateInput&&);
-    void installSceneRenderState(Scene&, vulkan::SceneRenderStateInput&&,
-                                 const RenderSceneSnapshot&);
-    void installSceneRenderState(Scene&, vulkan::SceneRenderStateInput&&,
-                                 const RenderSceneSnapshot&, SceneLoadBenchRecorderView);
     void invalidatePreparedRenderItems(slice<RenderItemId>, PassInvalidationFlags);
     Vec<PreparedPassDiagnostic> preparedPassDiagnostics() const;
     auto                        diagnostics() const -> RenderDiagnostics;
@@ -175,14 +156,6 @@ public:
 
     bool               getDrmRenderNode(rstd::uint32_t& out_major, rstd::uint32_t& out_minor) const;
     DeviceCapabilities deviceCapabilities() const;
-
-    /* Tick all registered video-tex decoders. No-op when no scene
-     * texture has been recognised as a VIDEO container. Invoked from
-     * SceneWallpaper's per-frame RenderDraw handler. */
-    void pumpVideoTextures(double dt_seconds);
-
-    // Uploads dirty atlas regions; retains them until the upload succeeds.
-    void pumpFontAtlases(Scene& scene);
 
     VkInstance       vkInstance() const;
     VkPhysicalDevice vkPhysicalDevice() const;

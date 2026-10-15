@@ -16,6 +16,8 @@ using vrento::vulkan::SourceLang;
 using vrento::vulkan::Uni_ShaderSpv;
 using vrento::vulkan::VulkanTarget;
 bool GenReflect(slice<ShaderCode>, Vec<Uni_ShaderSpv>&, ShaderReflected&);
+auto TryCompileAndLinkShaderUnits(slice<ShaderCompUnit>, const ShaderCompOpt&, Vec<Uni_ShaderSpv>&)
+    -> Result<empty, vrento::resource::ResourceError>;
 bool CompileAndLinkShaderUnits(slice<ShaderCompUnit>, const ShaderCompOpt&, Vec<Uni_ShaderSpv>&);
 bool Preprocess(ref<str>, ShaderType, SourceLang, String&);
 rstd::boxed::Box<rstd::dyn<ShaderBackend>> MakeShaderBackend();

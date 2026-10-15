@@ -96,6 +96,8 @@ sources = [
   "src/Scene/SceneUserProperty.cpp",
   "src/Scene/SceneLoader.cppm",
   "src/Scene/SceneLoader.cpp",
+  "src/Scene/ScenePrepareError.cppm",
+  "src/Scene/VulkanRender/PrepareError.cppm",
   "src/Scene/SceneRenderPipeline.cppm",
   "src/Scene/SceneRenderPipeline.cpp",
   "src/Scene/SceneWallpaper.cppm",
