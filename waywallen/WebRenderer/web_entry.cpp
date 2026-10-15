@@ -151,6 +151,12 @@ PathBuf derive_cache_dir(ref<str> workshop_id) {
     }
     auto dir = base.join("waywallen-weweb-renderer"_str);
     if (! workshop_id.is_empty()) dir.push(workshop_id);
+
+    // CEF enforces a process singleton per root_cache_path. Multiple
+    // renderer processes for the same wallpaper therefore need separate
+    // root cache directories.
+    dir.push(rstd::format("process-{}", rstd::process::id()).as_str());
+
     (void)rstd::fs::create_dir_all(dir.as_path());
     return dir;
 }
