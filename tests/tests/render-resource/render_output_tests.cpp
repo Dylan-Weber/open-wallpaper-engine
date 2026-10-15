@@ -5,6 +5,8 @@ import rstd;
 import rstd.test;
 import rstd.log;
 import wescene.scene;
+import wescene.types;
+import wescene.vulkan;
 import vrento;
 import wescene.vulkan_render;
 import wescene.scene_render_pipeline;
@@ -456,6 +458,116 @@ TEST(RenderOutput, ShaderDirtyAndTopology) {
     renderer.destroy();
     rstd_assert(queue.session().validation_errors() == 0);
 }
+TEST(RenderOutput, IgnoresInactiveSamplerContentsAndFeedback) {
+    auto         document = owe::wpscene::ParseSceneDocumentJson(R"({
+        "camera": {},
+        "general": {"orthogonalprojection": {"width": 64, "height": 64},
+                    "clearcolor": "0 0 1"},
+        "objects": [{"id": 1, "name": "tile", "visible": true,
+                     "image": "models/util/solidlayer.json", "size": "64 64",
+                     "origin": "32 32 0", "color": "1 0 0", "alpha": 1}]
+    })"_str,
+                                                                 owe::wpscene::kSceneVersionUnknown)
+                                .unwrap();
+    owe::fs::VFS vfs;
+    vfs.mount("/assets"_str, owe::fs::make_physical_fs(owe::fs::Path("assets"_str)).unwrap())
+        .unwrap();
+    wavsen::audio::SoundManager sound;
+    auto  parsed = owe::SceneParser()
+                       .Parse("inactive-sampler"_str,
+                              ref<owe::wpscene::SceneDocument>::from_raw_parts(&document),
+                              mut_ref<owe::fs::VFS>::from_raw_parts(&vfs),
+                              mut_ref<wavsen::audio::SoundManager>::from_raw_parts(&sound))
+                       .unwrap();
+    auto& scene  = *parsed.scene;
+    scene.RegisterRenderTarget("_rt_undefined"_Str,
+                               owe::SceneRenderTarget { .width = i32(64), .height = i32(64) });
+    auto* tile = scene.RootMut()->FindByName("tile"_str);
+    ASSERT_TRUE(tile && tile->Mesh());
+    auto* material = tile->Mesh()->Material();
+    ASSERT_TRUE(material && material->customShader.shader);
+    ASSERT_TRUE((**material->customShader.shader).SamplerMember(0).is_empty());
+    auto                        backend = owe::vulkan::MakeShaderBackend();
+    owe::vulkan::ShaderCompUnit fragment {
+        .stage       = owe::ShaderType::FRAGMENT,
+        .src         = R"(#version 450
+            layout(set=2,binding=0,std140) uniform TextureSize { vec4 g_Texture0Resolution; };
+            layout(location=0) out vec4 color;
+            void main() { color = vec4(dot(g_Texture0Resolution, vec4(1)) / 256.0, 0, 0, 1); }
+        )"_Str,
+        .entry_point = "main"_Str,
+    };
+    Vec<owe::vulkan::Uni_ShaderSpv> compiled;
+    ASSERT_TRUE(backend->CompileAndLinkShaderUnits(
+        slice<owe::vulkan::ShaderCompUnit>::from_raw_parts(&fragment, usize(1)), {}, compiled));
+    auto                            shader   = rstd::sync::Arc<owe::SceneShader>::make();
+    const auto&                     original = **material->customShader.shader;
+    Vec<owe::vulkan::Uni_ShaderSpv> stages;
+    owe::vulkan::ShaderReflected    reflected;
+    ASSERT_TRUE(backend->GenReflect(original.codes.as_slice(), stages, reflected));
+    for (const auto& stage : stages)
+        if (stage->stage != owe::ShaderType::FRAGMENT) shader->codes.push(stage->spirv.clone());
+    shader->codes.push(rstd::move(compiled[usize()]->spirv));
+    shader->attrs                 = original.attrs.clone();
+    shader->uniform_blocks        = original.uniform_blocks.clone();
+    shader->matrix_convention     = original.matrix_convention;
+    shader->matrix_abi            = original.matrix_abi;
+    material->customShader.shader = Some(rstd::move(shader));
+    material->textures.clear();
+    material->textures.push("_rt_undefined"_Str);
+    material->textures.push("_rt_default"_Str);
+    material->SetBlendMode(owe::BlendMode::Translucent);
+    auto graph = owe::BuildSceneRenderState(scene).unwrap();
+    for (const auto& desc : graph.descriptions) {
+        EXPECT_NE(desc.execution().kind, vk::texture_copy_kind);
+        if (auto draw = desc.get<vk::GraphicsDrawDesc>())
+            EXPECT_TRUE((*draw)->resources.textures.is_empty());
+    }
+    EXPECT_EQ(graph.textures.find("_rt_undefined"_str), nullptr);
+    ASSERT_EQ(graph.draws.len(), usize(1));
+    const auto& slots = graph.draws[usize()].source->parameters().texture_bindings;
+    ASSERT_EQ(slots.len(), usize(2));
+    EXPECT_EQ(slots[usize()].name, "_rt_undefined"_str);
+    EXPECT_FALSE(slots[usize()].use);
+    ASSERT_TRUE(slots[usize()].request && slots[usize()].request->definition);
+    EXPECT_EQ(slots[usize()].request->definition->width, i32(64));
+
+    owe::vulkan::VulkanRender renderer;
+    owe::RenderInitInfo       info;
+    info.offscreen = info.enable_valid_layer = true;
+    info.width = info.height = 64;
+    auto counts              = rstd::sync::Arc<OutputCounts>::make();
+    auto factory =
+        [&](const owe::RenderInitInfo::ExSwapchainHandles&) -> Option<vrento::ExSwapchainOwner> {
+        return Some(vrento::ExSwapchain::Make<OutputSurface>(renderer.deviceSession().unwrap(),
+                                                             counts.clone()));
+    };
+    info.ex_swapchain_factory =
+        Some(Box<dyn<FnOnce<Option<vrento::ExSwapchainOwner>(
+                 const owe::RenderInitInfo::ExSwapchainHandles&)>>>::make(rstd::move(factory)));
+    ASSERT_TRUE(renderer.init(rstd::move(info)));
+    auto queue = vk::TextureContext::create(renderer.deviceSession().unwrap()).unwrap();
+    owe::SceneRenderPipeline pipeline(scene, *parsed.runtime_input, renderer);
+    ASSERT_TRUE(pipeline.rebuild().is_ok());
+    for (unsigned frame {}; frame < 3; ++frame) {
+        ASSERT_TRUE(pipeline.prepare({ .frametime = 1.0f / 60.0f }).is_ok());
+        ASSERT_TRUE(pipeline.ready());
+        renderer.drawFrame(scene);
+        ASSERT_FALSE(renderer.diagnostics().frame_error);
+        ASSERT_TRUE(renderer.frameSubmitted());
+        scene.PassFrameTime(1.0 / 60.0);
+        auto data = pixels(queue, renderer.renderedTarget("_rt_default"_str).unwrap().take_ready());
+        auto center = usize((32 * 64 + 32) * 4);
+        EXPECT_EQ(data[center], u8(255));
+        EXPECT_EQ(data[center + usize(1)], u8());
+        EXPECT_EQ(data[center + usize(2)], u8());
+    }
+    EXPECT_EQ(counts->submitted, 3u);
+    EXPECT_EQ(counts->aborted, 0u);
+    renderer.destroy();
+    EXPECT_EQ(queue.session().validation_errors(), 0u);
+}
+
 TEST(RenderOutput, DynamicFontUploads) {
     auto         document = owe::wpscene::ParseSceneDocumentJson(R"({
         "camera": {},

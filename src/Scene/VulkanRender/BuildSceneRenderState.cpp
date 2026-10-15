@@ -217,7 +217,9 @@ static void AddMaterialTextureReads(SceneMaterial& material, ref<str> pass_outpu
             extra.error = Some(fg::Error { fg::ErrorKind::MissingResource, pass });
             return;
         }
-        const auto&        source = material.texture_sources[usize(index)];
+        const auto& source  = material.texture_sources[usize(index)];
+        const bool  sampled = material.customShader.shader &&
+                              ! (**material.customShader.shader).SamplerMember(index).is_empty();
         Option<ContentRef> input;
         ref<str>           binding_key = ""_str;
         if (source.kind == SceneMaterialTextureSourceKind::Empty) {
@@ -246,13 +248,25 @@ static void AddMaterialTextureReads(SceneMaterial& material, ref<str> pass_outpu
                 continue;
             }
             binding_key = link->render_target_key.as_str();
-            input       = Some(SelectTexture(extra, MakeTextureDesc(extra, binding_key)));
+        } else {
+            binding_key = source.key.as_str();
+        }
+        if (! sampled) {
+            auto metadata = MakeTextureDesc(extra, binding_key);
+            pdesc.texture_bindings.push(vulkan::TextureBindingRequest {
+                .name    = String::make(binding_key),
+                .request = metadata.definition.valid() ? Some(metadata.request().clone())
+                                                       : None<vulkan::TextureRequest>(),
+            });
+            continue;
+        }
+        if (source.kind == SceneMaterialTextureSourceKind::LayerOutput) {
+            input = Some(SelectTexture(extra, MakeTextureDesc(extra, binding_key)));
             // Forward links sample the previous frame; rebinding to the final producer
             // would cycle when that producer also samples the consumer's framebuffer.
             ImportHistory(extra, *input);
         } else {
-            binding_key = source.key.as_str();
-            auto name   = binding_key;
+            auto name = binding_key;
             if (source.kind == SceneMaterialTextureSourceKind::MipMappedFramebuffer) {
                 input = Some(AddMipFramebufferHistory(extra));
             } else {

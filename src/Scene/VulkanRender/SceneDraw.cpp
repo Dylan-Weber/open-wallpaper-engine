@@ -259,10 +259,19 @@ auto SceneDraw::declareResources(ResourceDeclarationContext& context)
     return artifact ? describeGraphics(**artifact) : None();
 }
 
+bool SceneDraw::samplesTexture(usize index) const {
+    return index < m_desc.vk_tex_binding.len() && m_desc.vk_tex_binding[index] >= 0 &&
+           index < m_desc.texture_stages.len() &&
+           m_desc.texture_stages[index] != vrento::texture::Stages::None;
+}
+
 auto SceneDraw::textureAccesses() const -> Vec<PassTextureAccess> {
     Vec<PassTextureAccess> uses;
-    for (const auto& binding : m_desc.texture_bindings)
-        if (binding.use) uses.push({ *binding.use, vrento::fg::Access::Read });
+    for (usize index {}; index < m_desc.texture_bindings.len(); ++index) {
+        const auto& binding = m_desc.texture_bindings[index];
+        if (binding.use && samplesTexture(index))
+            uses.push({ *binding.use, vrento::fg::Access::Read });
+    }
     if (! m_desc.depth_only) {
         if (m_desc.output_use) uses.push({ *m_desc.output_use, vrento::fg::Access::Write });
         if (m_desc.output_msaa_use)
@@ -274,6 +283,7 @@ auto SceneDraw::textureAccesses() const -> Vec<PassTextureAccess> {
 
 PassResourceUses SceneDraw::resourceUses() const {
     PassResourceUses uses;
+    // Texture metadata can supply uniforms even when the sampler is inactive.
     for (const auto& binding : m_desc.texture_bindings) {
         if (binding.use.is_some()) {
             uses.textures.push(resource::TextureUseHandle(*binding.use));
@@ -596,6 +606,15 @@ auto SceneDraw::createUniformBufferUpdates(ref<dyn<UniformBindingPrepareContext>
             metadata.mipmap_level = static_cast<float>(image.mipmap_level);
             metadata.revision     = (**prepared).physical_generation ^ image.generation;
             if (metadata.revision == u64()) metadata.revision = u64(1);
+        } else if (binding.request && binding.request->definition) {
+            const auto& definition = *binding.request->definition;
+            metadata.available     = true;
+            metadata.source_extent = { static_cast<float>(definition.width.to_primitive()),
+                                       static_cast<float>(definition.height.to_primitive()) };
+            metadata.sample_extent = metadata.source_extent;
+            metadata.has_mipmap    = binding.request->kind == TextureRequestKind::RenderTarget;
+            metadata.mipmap_level  = static_cast<float>(definition.mip_levels.to_primitive());
+            metadata.revision      = u64(1);
         }
         if (index < draw->material->texture_metadata.len().to_primitive()) {
             const auto& authored = draw->material->texture_metadata[usize(index)];
@@ -850,7 +869,9 @@ auto SceneDraw::resolveResources(const Device& device, DrawResourceContext& cont
             for (usize index {}; index < m_desc.texture_bindings.len(); ++index) {
                 const auto& source  = m_desc.texture_bindings[index];
                 const auto  binding = m_desc.vk_tex_binding[index];
-                if (source.empty() || binding < 0 || m_desc.vk_tex_set[index] != set.set) continue;
+                if (source.empty() || ! samplesTexture(index) ||
+                    m_desc.vk_tex_set[index] != set.set)
+                    continue;
                 if (! source.use) return missing(DrawResourceKind::Texture);
                 textures.push({ static_cast<rstd::uint32_t>(binding), *source.use, usize() });
             }
@@ -938,7 +959,7 @@ bool SceneDraw::update(DrawUpdateContext& context) {
         Vec<u32> changed_sets;
         for (usize index {}; index < m_desc.texture_bindings.len(); ++index) {
             const auto& binding = m_desc.texture_bindings[index];
-            if (binding.empty() || ! binding.use || m_desc.vk_tex_binding[index] < 0) continue;
+            if (binding.empty() || ! binding.use || ! samplesTexture(index)) continue;
             auto prepared = context.resources->Resolve(*binding.use);
             if (! prepared || (*prepared)->image.slots.is_empty()) return false;
             rstd::ptrdiff_t slot {};
@@ -959,7 +980,7 @@ bool SceneDraw::update(DrawUpdateContext& context) {
             for (usize index {}; index < m_desc.texture_bindings.len(); ++index) {
                 const auto& binding = m_desc.texture_bindings[index];
                 if (binding.empty() || ! binding.use ||
-                    m_desc.vk_tex_set[index] != descriptor.set || m_desc.vk_tex_binding[index] < 0)
+                    m_desc.vk_tex_set[index] != descriptor.set || ! samplesTexture(index))
                     continue;
                 textures.push({ static_cast<rstd::uint32_t>(m_desc.vk_tex_binding[index]),
                                 *binding.use,
@@ -1047,7 +1068,7 @@ auto SceneDraw::frameData(const DrawBindingContext& context) const -> Option<Arc
     }
     for (usize index {}; index < m_desc.texture_bindings.len(); ++index) {
         const auto& binding = m_desc.texture_bindings[index];
-        if (binding.use.is_none() || m_desc.vk_tex_binding[index] < 0) continue;
+        if (binding.use.is_none() || ! samplesTexture(index)) continue;
         auto prepared = context.resources->Resolve(*binding.use);
         if (prepared.is_none()) return None();
         auto sampled =
@@ -1136,18 +1157,24 @@ auto SceneDraw::describePass(vrento::fg::FrameGraphBuilder& graph,
     }
     if (m_desc.has_depth_attachment && ! attachment(m_desc.depth_use, true, false))
         return Err(vrento::fg::Error { vrento::fg::ErrorKind::MissingResource, id });
-    for (const auto& binding : m_desc.texture_bindings) {
-        if (! binding.use) continue;
+    for (usize index {}; index < m_desc.texture_bindings.len(); ++index) {
+        const auto& binding = m_desc.texture_bindings[index];
+        if (! binding.use || ! samplesTexture(index)) continue;
         auto content = textures.content(graph, *binding.use);
         if (content.is_err())
             return Err(vrento::fg::Error { vrento::fg::ErrorKind::MissingResource, id });
         auto description = textures.shape(graph, *content);
         if (! description)
             return Err(vrento::fg::Error { vrento::fg::ErrorKind::MissingResource, id });
-        resources.textures.push(
-            { content.unwrap(),
-              vrento::fg::full_range(*description),
-              vk::PassStages::Vertex | vk::PassStages::Fragment | vk::PassStages::Geometry });
+        auto       stages  = vk::PassStages {};
+        const auto sampled = vrento::texture::Count(m_desc.texture_stages[index]);
+        if (sampled & vrento::texture::Count(vrento::texture::Stages::Vertex))
+            stages = stages | vk::PassStages::Vertex;
+        if (sampled & vrento::texture::Count(vrento::texture::Stages::Fragment))
+            stages = stages | vk::PassStages::Fragment;
+        if (sampled & vrento::texture::Count(vrento::texture::Stages::Geometry))
+            stages = stages | vk::PassStages::Geometry;
+        resources.textures.push({ content.unwrap(), vrento::fg::full_range(*description), stages });
     }
     return Ok(rstd::move(resources));
 }

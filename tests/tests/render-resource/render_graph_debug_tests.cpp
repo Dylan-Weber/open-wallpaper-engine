@@ -74,23 +74,30 @@ auto make_test_pass(rstd::uint64_t scope, rstd::uint64_t revision,
 } // namespace
 
 namespace fg = vrento::fg;
-auto GraphMaterial() -> owe::SceneMaterial {
-    static auto shader = [] {
-        auto           backend = MakeShaderBackend();
-        ShaderCompUnit unit {
-            .stage       = owe::ShaderType::VERTEX,
-            .src         = "#version 450\nvoid main() { gl_Position = vec4(0, 0, 0, 1); }"_Str,
-            .entry_point = "main"_Str
-        };
-        Vec<Uni_ShaderSpv> compiled;
-        rstd_assert(backend->CompileAndLinkShaderUnits(
-            slice<ShaderCompUnit>::from_raw_parts(&unit, usize(1)), {}, compiled));
-        auto value = Arc<owe::SceneShader>::make();
-        value->codes.push(compiled[usize()]->spirv.clone());
-        return value;
-    }();
+auto GraphMaterial(usize texture_count = usize()) -> owe::SceneMaterial {
+    auto   backend = MakeShaderBackend();
+    String source  = "#version 450\n"_Str;
+    for (usize index {}; index < texture_count; ++index)
+        source.push_str(
+            rstd::format("layout(set=1,binding={}) uniform sampler2D g_Texture{};\n", index, index)
+                .as_str());
+    source.push_str("void main() { gl_Position = vec4(0, 0, 0, 1);"_str);
+    for (usize index {}; index < texture_count; ++index)
+        source.push_str(
+            rstd::format("gl_Position += textureLod(g_Texture{}, vec2(0), 0);", index).as_str());
+    source.push_str("}"_str);
+    ShaderCompUnit     unit { .stage       = owe::ShaderType::VERTEX,
+                              .src         = rstd::move(source),
+                              .entry_point = "main"_Str };
+    Vec<Uni_ShaderSpv> compiled;
+    rstd_assert(backend->CompileAndLinkShaderUnits(
+        slice<ShaderCompUnit>::from_raw_parts(&unit, usize(1)), {}, compiled));
+    auto shader = Arc<owe::SceneShader>::make();
+    shader->codes.push(compiled[usize()]->spirv.clone());
+    for (usize index {}; index < texture_count; ++index)
+        shader->sampler_bindings.push({ index.to_primitive(), rstd::format("g_Texture{}", index) });
     owe::SceneMaterial material;
-    material.customShader.shader = Some(shader.clone());
+    material.customShader.shader = Some(rstd::move(shader));
     return material;
 }
 auto CompositeDesc() -> SceneRenderTextureSpec {
@@ -425,7 +432,7 @@ TEST(SceneRenderGraph, OrdersShadowAtlasWriterBeforeReceiver) {
 
     auto receiver          = Arc<owe::SceneNode>::make();
     auto receiver_mesh     = Arc<owe::SceneMesh>::make();
-    auto receiver_material = GraphMaterial();
+    auto receiver_material = GraphMaterial(usize(1));
     receiver_material.name = "receiver"_Str;
     receiver_material.textures.clear();
     receiver_material.textures.push("_rt_shadowAtlas"_Str);
@@ -490,7 +497,7 @@ TEST(SceneRenderGraph, SharesOneLinkTargetForMultipleConsumers) {
     auto consumer          = rstd::sync::Arc<owe::SceneNode>::make();
     consumer->ID()         = rstd::i32(42);
     auto consumer_mesh     = Arc<owe::SceneMesh>::make();
-    auto consumer_material = GraphMaterial();
+    auto consumer_material = GraphMaterial(usize(2));
     consumer_material.name = "consumer"_Str;
     consumer_material.textures.clear();
     consumer_material.textures.push("_rt_link_7"_Str);
@@ -535,7 +542,7 @@ TEST(SceneRenderGraph, LinkedSurfaceReadsFollowSceneOrder) {
     auto make_consumer = [](std::string name) {
         auto node     = Arc<owe::SceneNode>::make();
         auto mesh     = Arc<owe::SceneMesh>::make();
-        auto material = GraphMaterial();
+        auto material = GraphMaterial(usize(1));
         material.name = rstd::into(rstd::cppstd::as_str(name).unwrap());
         material.textures.clear();
         material.textures.push("_rt_link_7"_Str);
@@ -617,8 +624,9 @@ TEST(SceneRenderGraph, LinkedSurfaceReadsFollowSceneOrder) {
 
     // A later composite source copies the framebuffer after the first consumer.
     source->Mesh()->Material()->textures.push("_rt_default"_Str);
-    auto feedback_snapshot = owe::ExtractRenderSceneSnapshot(scene);
-    auto feedback_graph    = owe::BuildSceneRenderState(scene, feedback_snapshot);
+    source->Mesh()->Material()->customShader.shader = GraphMaterial(usize(1)).customShader.shader;
+    auto feedback_snapshot                          = owe::ExtractRenderSceneSnapshot(scene);
+    auto feedback_graph = owe::BuildSceneRenderState(scene, feedback_snapshot);
     ASSERT_TRUE(feedback_graph.is_ok());
     auto feedback_order = feedback_graph->graph.compile();
     ASSERT_TRUE(feedback_order.is_ok());
@@ -716,7 +724,7 @@ TEST(SceneRenderGraph, PreservesLinkedSourceBelowVisibilityHiddenParent) {
     auto consumer          = Arc<owe::SceneNode>::make();
     consumer->ID()         = rstd::i32(42);
     auto consumer_mesh     = Arc<owe::SceneMesh>::make();
-    auto consumer_material = GraphMaterial();
+    auto consumer_material = GraphMaterial(usize(1));
     consumer_material.name = "consumer"_Str;
     consumer_material.textures.clear();
     consumer_material.textures.push("_rt_link_8"_Str);

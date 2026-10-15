@@ -128,6 +128,7 @@ public:
 
 private:
     bool bindings_ready_ {};
+    bool samplesTexture(usize) const;
     auto describeGraphics(const resource::ShaderArtifact&)
         -> Option<vrento::vulkan::GraphicsDrawDesc>;
     Vec<vrento::vulkan::GraphicsDrawRange>         draws_;

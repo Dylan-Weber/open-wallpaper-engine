@@ -1242,6 +1242,110 @@ TEST(TextureLoader, RetainsCapturedRuntimeContentAfterSceneReplacement) {
     EXPECT_EQ(image->key, "original"_str);
 }
 
+TEST(SceneDraw, TextureReadsFollowSamplerReflection) {
+    namespace vk                     = vrento::vulkan;
+    namespace fg                     = vrento::fg;
+    auto                     backend = MakeShaderBackend();
+    array<ShaderCompUnit, 3> units {
+        ShaderCompUnit { .stage       = owe::ShaderType::VERTEX,
+                         .src         = R"(#version 450
+                layout(set=1, binding=5) uniform sampler2D vertexTexture;
+                layout(set=1, binding=9) uniform sampler2D sharedTexture;
+                void main() {
+                    gl_Position = textureLod(vertexTexture, vec2(0), 0) +
+                                  textureLod(sharedTexture, vec2(0), 0);
+                })"_Str,
+                         .entry_point = "main"_Str },
+        ShaderCompUnit { .stage       = owe::ShaderType::GEOMETRY,
+                         .src         = R"(#version 450
+                layout(points) in;
+                layout(points, max_vertices=1) out;
+                layout(set=2, binding=4) uniform sampler2D geometryTexture;
+                void main() {
+                    gl_Position = gl_in[0].gl_Position +
+                                  textureLod(geometryTexture, vec2(0), 0);
+                    EmitVertex();
+                    EndPrimitive();
+                })"_Str,
+                         .entry_point = "main"_Str },
+        ShaderCompUnit { .stage       = owe::ShaderType::FRAGMENT,
+                         .src         = R"(#version 450
+                layout(set=1, binding=9) uniform sampler2D sharedTexture;
+                layout(location=0) out vec4 color;
+                void main() { color = texture(sharedTexture, vec2(0)); })"_Str,
+                         .entry_point = "main"_Str },
+    };
+    Vec<Uni_ShaderSpv> compiled;
+    ASSERT_TRUE(backend->CompileAndLinkShaderUnits(units.as_slice(), {}, compiled));
+    auto shader = Arc<owe::SceneShader>::make();
+    for (auto& stage : compiled) shader->codes.push(rstd::move(stage->spirv));
+    shader->sampler_bindings.push({ 1, "vertexTexture"_Str });
+    shader->sampler_bindings.push({ 2, "geometryTexture"_Str });
+    shader->sampler_bindings.push({ 3, "sharedTexture"_Str });
+    auto node = Arc<owe::SceneNode>::make();
+    node->AddMesh(MakeUniformMesh(shader.clone()));
+
+    fg::FrameGraphBuilder builder(7);
+    SceneRenderTextures   textures(u64(7));
+    SceneDraw::Desc       desc;
+    for (unsigned index {}; index < 5; ++index) {
+        auto name = rstd::format("texture-{}", index);
+        auto source =
+            textures
+                .declare(builder,
+                         {
+                             .key        = name.clone(),
+                             .imported   = true,
+                             .definition = MakeRenderTargetTextureRequest(
+                                 name.as_str(),
+                                 owe::SceneRenderTarget { .width = i32(64), .height = i32(64) }),
+                         })
+                .unwrap();
+        desc.texture_bindings.push(
+            { .name = rstd::move(name), .use = Some(textures.handle(source).unwrap()) });
+    }
+    auto pass = builder.add_pass({ 1 }).unwrap();
+    auto initial =
+        textures
+            .declare(builder,
+                     {
+                         .key        = "output"_Str,
+                         .definition = MakeRenderTargetTextureRequest(
+                             "output"_str,
+                             owe::SceneRenderTarget { .width = i32(64), .height = i32(64) }),
+                     })
+            .unwrap();
+    auto output     = builder.reserve_write(pass, initial).unwrap();
+    desc.output_use = Some(textures.handle(output).unwrap());
+    SceneDraw draw(rstd::move(desc),
+                   { .node = Some(mut_ref<owe::SceneNode>::from_raw_parts(node.as_ptr())) });
+    owe::resource::ResourcePlan plan { .generation = u64(7) };
+    ShaderReflectionCache       cache(backend.as_ref());
+    ResourceDeclarationContext  declarations(plan, cache);
+    ASSERT_TRUE(draw.declareResources(declarations));
+    auto resources = draw.describePass(builder, textures, pass).unwrap();
+    ASSERT_EQ(resources.textures.len(), usize(3));
+    const array<vk::PassStages, 3> stages {
+        vk::PassStages::Vertex,
+        vk::PassStages::Geometry,
+        vk::PassStages::Vertex | vk::PassStages::Fragment,
+    };
+    for (usize index {}; index < stages.len(); ++index) {
+        EXPECT_EQ(resources.textures[index].stages, stages[index]);
+        auto version = resources.textures[index].content.resolve(7).unwrap();
+        EXPECT_EQ(textures.handle(version).unwrap(),
+                  *draw.parameters().texture_bindings[index + usize(1)].use);
+    }
+    auto accesses = draw.textureAccesses();
+    ASSERT_EQ(accesses.len(), usize(4));
+    for (usize index {}; index < usize(3); ++index)
+        EXPECT_EQ(accesses[index].use, *draw.parameters().texture_bindings[index + usize(1)].use);
+    EXPECT_EQ(draw.parameters().texture_bindings.len(), usize(5));
+    EXPECT_EQ(draw.parameters().vk_tex_binding[usize()], -1);
+    EXPECT_EQ(draw.parameters().vk_tex_binding[usize(4)], -1);
+    EXPECT_EQ(draw.resourceUses().textures.len(), usize(6));
+}
+
 TEST(SceneDraw, StaticRecipeSurvivesSceneAndDeclarationDestruction) {
     Option<vrento::vulkan::PassInput> description;
     {
