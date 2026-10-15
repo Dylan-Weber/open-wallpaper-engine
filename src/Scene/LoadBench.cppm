@@ -47,6 +47,9 @@ struct SceneLoadProbeIds {
     rstd::bench::probe::ProbeId render_program_build;
     rstd::bench::probe::ProbeId render_requests;
     rstd::bench::probe::ProbeId render_resources_prepare;
+    rstd::bench::probe::ProbeId render_graphics_prepare;
+    rstd::bench::probe::ProbeId render_bindings_prepare;
+    rstd::bench::probe::ProbeId render_renderer_compile;
     rstd::bench::probe::ProbeId render_texture_plan;
     rstd::bench::probe::ProbeId render_texture_decode;
     rstd::bench::probe::ProbeId render_texture_upload_prepare;
@@ -183,6 +186,9 @@ auto CreateSceneLoadBench(ref<str> output_path) -> Option<SceneLoadBenchHandle> 
         .render_program_build     = RegisterProbe(registry, "render.program.build"_str),
         .render_requests          = RegisterProbe(registry, "render.requests"_str),
         .render_resources_prepare = RegisterProbe(registry, "render.resources.prepare"_str),
+        .render_graphics_prepare  = RegisterProbe(registry, "render.graphics.prepare"_str),
+        .render_bindings_prepare  = RegisterProbe(registry, "render.bindings.prepare"_str),
+        .render_renderer_compile  = RegisterProbe(registry, "render.renderer.compile"_str),
         .render_texture_plan      = RegisterProbe(registry, "render.resources.texture.plan"_str),
         .render_texture_decode    = RegisterProbe(registry, "render.resources.texture.decode"_str),
         .render_texture_upload_prepare =

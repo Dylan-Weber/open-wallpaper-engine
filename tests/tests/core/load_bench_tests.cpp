@@ -24,7 +24,7 @@ TEST(SceneLoadBench, RegistersStableCatalog) {
     auto& bench = **context;
 
     auto schema = bench.schema_owner();
-    EXPECT_EQ(schema->len().to_primitive(), 47u);
+    EXPECT_EQ(schema->len().to_primitive(), 50u);
     EXPECT_EQ(ProbeLabel(bench, bench.ids().preload_scene_document), "preload.scene_document"_str);
     EXPECT_EQ(ProbeLabel(bench, bench.ids().parse_object_particle), "parse.object.particle"_str);
     EXPECT_EQ(ProbeLabel(bench, bench.ids().load_initial_properties),
@@ -34,6 +34,12 @@ TEST(SceneLoadBench, RegistersStableCatalog) {
     EXPECT_EQ(ProbeLabel(bench, bench.ids().render_first_frame_prepare),
               "render.first_frame.prepare"_str);
     EXPECT_EQ(ProbeLabel(bench, bench.ids().render_first_draw), "render.first_draw"_str);
+    EXPECT_EQ(ProbeLabel(bench, bench.ids().render_graphics_prepare),
+              "render.graphics.prepare"_str);
+    EXPECT_EQ(ProbeLabel(bench, bench.ids().render_bindings_prepare),
+              "render.bindings.prepare"_str);
+    EXPECT_EQ(ProbeLabel(bench, bench.ids().render_renderer_compile),
+              "render.renderer.compile"_str);
 }
 
 TEST(SceneLoadBench, AssignsIncreasingRunIds) {

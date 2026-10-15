@@ -1236,13 +1236,16 @@ auto VulkanRender::Impl::prepareSceneRenderState(Scene&                         
     auto buffers  = dyn<resource::BufferContentProvider>::from_ref(declarations);
     DeclaredShaderArtifactProvider shaders(declarations);
     auto artifacts = dyn<resource::ShaderArtifactProvider>::from_ref(shaders);
-    auto started   = m_rendering_resources.resources.BeginPreparePlan(
-        m_scene_render_state.resourcePlan(),
-        resource_registry::ResourceContentProviders { .texture = Some(content),
-                                                      .buffer  = Some(buffers.as_mut_ref()),
-                                                      .shader  = Some(artifacts.as_mut_ref()) },
-        sections,
-        Some(observed.as_mut_ref()));
+    auto started   = [&] {
+        auto span = SceneLoadSpan(load_bench, &SceneLoadProbeIds::render_resources_prepare);
+        return m_rendering_resources.resources.BeginPreparePlan(
+            m_scene_render_state.resourcePlan(),
+            resource_registry::ResourceContentProviders { .texture = Some(content),
+                                                          .buffer  = Some(buffers.as_mut_ref()),
+                                                          .shader  = Some(artifacts.as_mut_ref()) },
+            sections,
+            Some(observed.as_mut_ref()));
+    }();
     m_scene_render_state.retainDeclarations(declarations.takeData());
     if (started.is_err()) {
         return finishSceneRenderPreparation(
@@ -1274,6 +1277,7 @@ auto VulkanRender::Impl::continueSceneRenderPreparation(Scene&                  
     -> Result<SceneRenderPreparationProgress, RenderPrepareError> {
     using Progress = SceneRenderPreparationProgress;
     if (m_renderer->pending()) {
+        auto span = SceneLoadSpan(bench, &SceneLoadProbeIds::render_renderer_compile);
         return SceneCompileProgress(m_renderer->continue_compile(m_renderer->status().id));
     }
     auto&       resources   = m_rendering_resources.resources;
@@ -1282,7 +1286,10 @@ auto VulkanRender::Impl::continueSceneRenderPreparation(Scene&                  
         return Err(RenderPrepareError::State(PrepareStateError::NoTransaction));
     SnapshotTexturePrepareObserver observer(bench);
     auto observed = dyn<resource::TexturePrepareObserver>::from_ref(observer);
-    auto progress = resources.ContinuePreparePlan(transaction.id, Some(observed.as_mut_ref()));
+    auto progress = [&] {
+        auto span = SceneLoadSpan(bench, &SceneLoadProbeIds::render_resources_prepare);
+        return resources.ContinuePreparePlan(transaction.id, Some(observed.as_mut_ref()));
+    }();
     if (progress.is_err())
         return Err(RenderPrepareError::Resources(ResourcePrepareOperation::Continue,
                                                  rstd::move(progress).unwrap_err()));
@@ -1290,6 +1297,7 @@ auto VulkanRender::Impl::continueSceneRenderPreparation(Scene&                  
         return Ok(Progress::BatchReady);
     if (transaction.sections == resource::ResourcePlanTextures) return Ok(Progress::Complete);
     {
+        auto span   = SceneLoadSpan(bench, &SceneLoadProbeIds::render_graphics_prepare);
         auto shared = m_scene_render_state.sharedBuffers(resources.Prepared());
         if (shared.is_err())
             return Err(RenderPrepareError::Resources(ResourcePrepareOperation::SharedBuffers,
@@ -1312,7 +1320,10 @@ auto VulkanRender::Impl::continueSceneRenderPreparation(Scene&                  
                        conflict.family,
                        conflict.message);
     }
-    auto bound = m_scene_render_state.bindResources(scene, m_rendering_resources, **m_graphics);
+    auto bound = [&] {
+        auto span = SceneLoadSpan(bench, &SceneLoadProbeIds::render_bindings_prepare);
+        return m_scene_render_state.bindResources(scene, m_rendering_resources, **m_graphics);
+    }();
     if (bound.is_err()) return Err(rstd::move(bound).unwrap_err());
     auto output = m_texture_output.prepare(m_rendering_resources.resource_owner.clone(),
                                            m_shader_backend.as_ref(),
@@ -1331,6 +1342,7 @@ auto VulkanRender::Impl::continueSceneRenderPreparation(Scene&                  
     }
     auto input = m_scene_render_state.renderInput().with_descriptions(rstd::move(descriptions));
     if (input.is_err()) return Err(RenderPrepareError::Graph(input.unwrap_err()));
+    auto span = SceneLoadSpan(bench, &SceneLoadProbeIds::render_renderer_compile);
     return SceneCompileProgress(
         m_renderer->compile(input.unwrap(), Some((*m_graphics)->compilation())));
 }
