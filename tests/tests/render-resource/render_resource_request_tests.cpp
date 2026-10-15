@@ -1221,16 +1221,75 @@ TEST(ShaderBackend, OwnsOrderedReflectionAcrossCacheAndArtifact) {
     }
 }
 
+TEST(TextureLoader, DeclarationUsesMetadataWithoutLoadingContent) {
+    struct MetadataParser {
+        Arc<rstd::sync::atomic::Atomic<u32>> parses;
+        auto Describe(ref<str>) const -> Result<owe::ImageDescription, owe::ImageParseError> {
+            owe::ImageDescription result;
+            result.header.format = owe::TextureFormat::BC3;
+            result.slots.push({ 64, 32, usize(3) });
+            result.slots.push({ 32, 16, usize(3) });
+            return Ok(rstd::move(result));
+        }
+        auto ParseHeader(ref<str>) const -> Result<owe::ImageHeader, owe::ImageParseError> {
+            return Ok(owe::ImageHeader {});
+        }
+        auto Parse(ref<str>) const -> Result<Arc<owe::Image>, owe::ImageParseError> {
+            parses->fetch_add(u32(1));
+            return Err(owe::ImageParseError { .kind = owe::ImageParseErrorKind::DecodeFailed });
+        }
+        auto ParseMany(slice<String> names) const
+            -> Vec<Result<Arc<owe::Image>, owe::ImageParseError>> {
+            Vec<Result<Arc<owe::Image>, owe::ImageParseError>> result;
+            for (const auto& name : names) result.push(Parse(name.as_str()));
+            return result;
+        }
+    };
+    auto       parses = Arc<rstd::sync::atomic::Atomic<u32>>::make(u32());
+    owe::Scene scene;
+    scene.SetImageParser(Arc<dyn<owe::IImageParser>>::make(MetadataParser { parses.clone() }));
+    auto                            snapshot = owe::ExtractRenderSceneSnapshot(scene);
+    SnapshotImportedTextureProvider provider(snapshot, scene.CaptureImageSource());
+    auto declared = provider.Declare(MakeImportedTextureRequest("metadata"_str));
+    ASSERT_TRUE(declared.is_ok());
+    EXPECT_EQ(declared->extent.width, 64u);
+    EXPECT_EQ(declared->extent.height, 32u);
+    EXPECT_EQ(declared->mip_levels, 3u);
+    EXPECT_EQ(declared->format, owe::TextureFormat::BC3);
+    EXPECT_EQ(parses->load(), u32());
+    auto loader = provider.OpenTextureLoader().unwrap();
+    EXPECT_TRUE(loader->LoadTexture("metadata"_str).is_err());
+    EXPECT_EQ(parses->load(), u32(1));
+}
+
+TEST(TextureLoader, DeclarationAndMissingPlaceholderHaveMatchingDescriptions) {
+    owe::Scene                      scene;
+    auto                            snapshot = owe::ExtractRenderSceneSnapshot(scene);
+    SnapshotImportedTextureProvider provider(snapshot, scene.CaptureImageSource());
+    auto declared     = provider.Declare(MakeImportedTextureRequest("missing"_str)).unwrap();
+    auto loaded       = provider.OpenTextureLoader().unwrap()->LoadTexture("missing"_str).unwrap();
+    auto descriptions = vrento::texture::describe_image(*loaded).unwrap();
+    EXPECT_EQ(declared, descriptions[usize()]);
+}
+
 TEST(TextureLoader, RetainsCapturedRuntimeContentAfterSceneReplacement) {
     auto original          = sync::Arc<owe::Image>::make();
     original->content->key = "original"_Str;
+    vrento::Image::Slot slot;
+    slot.width  = 32;
+    slot.height = 16;
+    slot.mipmaps.push(owe::ImageData { .width = 32, .height = 16 });
+    original->content->slots.push(rstd::move(slot));
     Option<sync::Arc<dyn<owe::resource::TextureLoader>>> loader;
     {
         owe::Scene scene;
         scene.RegisterRuntimeImage(String::make("runtime"_str), original.clone());
         auto snapshot = owe::ExtractRenderSceneSnapshot(scene);
         owe::vulkan::SnapshotImportedTextureProvider provider(snapshot, scene.CaptureImageSource());
-        auto                                         opened = provider.OpenTextureLoader();
+        auto shape = provider.Declare(MakeImportedTextureRequest("runtime"_str)).unwrap();
+        EXPECT_EQ(shape.extent.width, 32u);
+        EXPECT_EQ(shape.extent.height, 16u);
+        auto opened = provider.OpenTextureLoader();
         ASSERT_TRUE(opened.is_ok());
         loader = Some(rstd::move(opened).unwrap_unchecked());
         scene.RegisterRuntimeImage(String::make("runtime"_str), sync::Arc<owe::Image>::make());

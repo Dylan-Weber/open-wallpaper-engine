@@ -41,17 +41,6 @@ using TexFlags = BitFlags<TexFlagEnum>;
 
 namespace
 {
-char* Lz4Decompress(const char* src, int size, int decompressed_size) {
-    char* dst       = new char[static_cast<rstd::size_t>(decompressed_size)];
-    int   load_size = LZ4_decompress_safe(src, dst, size, decompressed_size);
-    if (load_size < decompressed_size) {
-        rstd_error("lz4 decompress failed");
-        delete[] dst;
-        return nullptr;
-    }
-    return dst;
-}
-
 // Magic-bytes sniffer used as a fallback when the .tex header's
 // `image_type` slot says UNKNOWN but the body is actually an embedded
 // image container. Some PKGV0022+ assets ship this way (the texture's
@@ -109,6 +98,87 @@ struct TexBodyHeader {
 auto InvalidTextureData(ref<str> name, ref<str> section) -> ImageParseError {
     return { .kind    = ImageParseErrorKind::InvalidData,
              .message = rstd::format("texture {} has invalid {}", name, section) };
+}
+
+auto ReadMipBytes(rstd::io::ReadRange source, bool compressed, int decoded_size, ref<str> name)
+    -> Result<Vec<u8>, ImageParseError> {
+    fs::BinaryReader reader(rstd::move(source));
+    auto             input = reader.read_all_bytes();
+    if (input.is_err()) return Err(InvalidTextureData(name, "mip payload"_str));
+    if (! compressed) return Ok(rstd::move(input).unwrap());
+    auto output = Vec<u8>::with_capacity(usize(decoded_size));
+    output.resize(usize(decoded_size), u8());
+    auto size = LZ4_decompress_safe(reinterpret_cast<const char*>(input->data()),
+                                    reinterpret_cast<char*>(output.data()),
+                                    static_cast<int>(input->len().to_primitive()),
+                                    decoded_size);
+    if (size != decoded_size) return Err(InvalidTextureData(name, "LZ4 payload"_str));
+    return Ok(rstd::move(output));
+}
+
+constexpr stbi_io_callbacks ImageCallbacks {
+    [](void* user, char* data, int size) -> int {
+        return static_cast<int>(static_cast<fs::BinaryReader*>(user)->Read(data, size));
+    },
+    [](void* user, int count) {
+        (void)static_cast<fs::BinaryReader*>(user)->SeekCur(count);
+    },
+    [](void* user) -> int {
+        return static_cast<fs::BinaryReader*>(user)->remaining() == u64();
+    },
+};
+
+auto DescribeMip(rstd::io::ReadRange source, bool compressed, int decoded_size, ImageType declared,
+                 int width, int height, ref<str> name) -> Result<ImageType, ImageParseError> {
+    fs::BinaryReader reader(source.clone());
+    Vec<u8>          stored, prefix;
+    if (compressed) {
+        auto bytes = reader.read_all_bytes();
+        if (bytes.is_err()) return Err(InvalidTextureData(name, "mip payload"_str));
+        stored = rstd::move(bytes).unwrap();
+    }
+    int limit = compressed ? rstd::min(decoded_size, 128) : 16;
+    for (;;) {
+        prefix.resize(usize(limit), u8());
+        int size;
+        if (compressed) {
+            size = LZ4_decompress_safe_partial(reinterpret_cast<const char*>(stored.data()),
+                                               reinterpret_cast<char*>(prefix.data()),
+                                               static_cast<int>(stored.len().to_primitive()),
+                                               limit,
+                                               limit);
+            if (size < 0) return Err(InvalidTextureData(name, "LZ4 header"_str));
+        } else {
+            size = static_cast<int>(reader.Read(prefix.data(), limit));
+            reader.Rewind();
+        }
+        auto type = declared == ImageType::UNKNOWN
+                        ? DetectEmbeddedImageType(
+                              reinterpret_cast<const unsigned char*>(prefix.data()), size)
+                        : declared;
+        if (type == ImageType::UNKNOWN) return Ok(type);
+        if (type == ImageType::VIDEO) {
+            if (compressed) return Err(InvalidTextureData(name, "compressed video"_str));
+            return Ok(type);
+        }
+        int  w {}, h {}, channels {};
+        bool valid =
+            compressed
+                ? stbi_info_from_memory(reinterpret_cast<const unsigned char*>(prefix.data()),
+                                        size,
+                                        &w,
+                                        &h,
+                                        &channels)
+                : stbi_info_from_callbacks(&ImageCallbacks, &reader, &w, &h, &channels);
+        if (valid) {
+            if (w != width || h != height || i64(w) * i64(h) > i64(i32::MAX.to_primitive() / 4))
+                return Err(InvalidTextureData(name, "container extent"_str));
+            return Ok(type);
+        }
+        if (! compressed || limit == decoded_size || size < limit)
+            return Err(InvalidTextureData(name, "container header"_str));
+        limit = limit > decoded_size / 2 ? decoded_size : limit * 2;
+    }
 }
 
 bool SkipTextureBytes(fs::BinaryReader& file, rstd::uint32_t size) {
@@ -354,171 +424,66 @@ auto TexImageParser::Parse(ref<str> name) const -> Result<Arc<Image>, ImageParse
 }
 
 auto TexImageParser::Decode(ref<str> name) const -> Result<Arc<Image>, ImageParseError> {
-    if (auto path = ResolveExternalImagePath(name)) {
-        return ParseExternalImage(name, *path);
-    }
-
-    auto  prepared   = rstd_try(PrepareHeader(name));
-    auto  img_ptr    = Arc<Image>::make();
-    auto& img        = *img_ptr;
-    img.content->key = rstd::into(name);
-    img.header       = prepared->header.clone();
-    auto tex_source  = prepared->source.clone();
-    auto file        = fs::BinaryReader(tex_source.clone());
-    if (! file.SeekSet(prepared->body_offset))
-        return Err(InvalidTextureData(name, "body offset"_str));
-    TexBodyHeader body { .version         = prepared->version,
-                         .condition_count = prepared->condition_count };
-    auto          ver = body.version;
-    if (body.condition_count > 0)
+    if (auto path = ResolveExternalImagePath(name)) return ParseExternalImage(name, *path);
+    auto prepared       = rstd_try(Prepare(name));
+    auto image          = Arc<Image>::make();
+    image->content->key = String::make(name);
+    image->header       = prepared->description.header.clone();
+    if (prepared->condition_count > 0)
         rstd_warn("texture {}: conditional patches are not applied; using base mipmaps", name);
-
-    // image
-    rstd::int32_t _image_count = img.header.count;
-    if (_image_count < 0) {
-        return Err(ImageParseError {
-            .kind    = ImageParseErrorKind::InvalidData,
-            .message = rstd::format("texture {} has a negative image count", name),
-        });
-    }
-    rstd::size_t image_count = static_cast<rstd::size_t>(_image_count);
-
-    img.content->slots.reserve(usize(image_count));
-    for (rstd::size_t i_image = 0; i_image < image_count; i_image++) {
-        img.content->slots.push(vrento::Image::Slot {});
-        auto& img_slot = img.content->slots[usize(i_image)];
-        auto& mipmaps  = img_slot.mipmaps;
-
-        rstd::size_t mipmap_count =
-            static_cast<rstd::size_t>(rstd::cmp::max<rstd::int32_t>(0, file.ReadInt32()));
-        mipmaps.reserve(usize(mipmap_count));
-        // load image
-        for (rstd::size_t i_mipmap = 0; i_mipmap < mipmap_count; i_mipmap++) {
-            mipmaps.push(ImageData {});
-            auto& mipmap  = mipmaps[usize(i_mipmap)];
-            mipmap.width  = file.ReadInt32();
-            mipmap.height = file.ReadInt32();
-            if (i_mipmap == 0) {
-                img_slot.width  = mipmap.width;
-                img_slot.height = mipmap.height;
-                SetHeaderPow2(img.header, mipmap.width, mipmap.height);
-            }
-
-            bool          LZ4_compressed    = false;
-            rstd::int32_t decompressed_size = 0;
-            // check compress
-            if (ver.body_has_lz4_prelude()) {
-                LZ4_compressed    = file.ReadInt32() == 1;
-                decompressed_size = file.ReadInt32();
-            }
-
-            rstd::int32_t src_size = file.ReadInt32();
-            if (src_size <= 0 || mipmap.width <= 0 || mipmap.height <= 0 || decompressed_size < 0) {
-                return Err(ImageParseError {
-                    .kind    = ImageParseErrorKind::InvalidData,
-                    .message = rstd::format("texture {} has an invalid mipmap", name),
-                });
-            }
-
-            // Peek the first 16 bytes of the body so we can route MP4 /
-            // WebM containers into the video-tex path without ever
-            // pulling the (possibly hundreds of MiB) payload into RAM.
-            // The range reader is seekable, so sniff without loading the
-            // complete video payload.
-            if (ver.body_has_image_type() &&
-                (img.header.type == ImageType::UNKNOWN || img.header.type == ImageType::VIDEO) &&
-                ! LZ4_compressed && src_size >= 16) {
-                rstd::ptrdiff_t body_off = file.Tell();
-                unsigned char   sniff[16] {};
-                file.Read(sniff, sizeof(sniff));
-                ImageType maybe_video = img.header.type == ImageType::VIDEO
-                                            ? ImageType::VIDEO
-                                            : DetectEmbeddedImageType(sniff, sizeof(sniff));
-                if (maybe_video == ImageType::VIDEO) {
-                    img.header.type   = ImageType::VIDEO;
-                    img.header.format = TextureFormat::RGBA8;
-                    auto video_source =
-                        tex_source.subrange(u64(static_cast<rstd::uint64_t>(body_off)),
-                                            u64(static_cast<rstd::uint64_t>(src_size)));
-                    if (video_source.is_err()) {
-                        return Err(ImageParseError {
-                            .kind    = ImageParseErrorKind::InvalidData,
-                            .message = rstd::format("texture {} has an invalid video range", name),
-                        });
-                    }
-                    mipmap.video_source = rstd::Some(rstd::move(video_source).unwrap_unchecked());
-                    mipmap.size         = isize();
-                    file.SeekSet(body_off + src_size);
-                    rstd_try(SkipConditionalPatches(file, body, name));
-                    continue;
-                }
-                file.SeekSet(body_off);
-            }
-
-            char* result;
-            result = new char[static_cast<rstd::size_t>(src_size)];
-            file.Read(result, static_cast<rstd::size_t>(src_size));
-
-            // is LZ4 compress
-            if (LZ4_compressed) {
-                char* decompressed_char = Lz4Decompress(result, src_size, decompressed_size);
-                src_size                = decompressed_size;
-                if (decompressed_char != nullptr) {
-                    delete[] result;
-                    result = decompressed_char;
-                } else {
-                    rstd_error("lz4 decompress failed");
-                    delete[] result;
-                    return Err(ImageParseError {
-                        .kind    = ImageParseErrorKind::DecodeFailed,
-                        .message = rstd::format("decompress texture {} failed", name),
-                    });
-                }
-            }
-            // is image container — declared image_type takes precedence; if
-            // it's UNKNOWN, sniff the magic bytes so PKGV0022+ assets that
-            // ship containerised PNG/JPEG with image_type=-1 still decode.
-            ImageType embedded = img.header.type;
-            if (ver.body_has_image_type() && embedded == ImageType::UNKNOWN) {
-                embedded = DetectEmbeddedImageType(reinterpret_cast<const unsigned char*>(result),
-                                                   static_cast<rstd::size_t>(src_size));
-            }
-            if (ver.body_has_image_type() && embedded != ImageType::UNKNOWN) {
-                rstd::int32_t w, h, n;
-                auto*         data =
-                    stbi_load_from_memory((const unsigned char*)result, src_size, &w, &h, &n, 4);
-                if (data == nullptr) {
-                    rstd_error("stbi failed to decode embedded image (type={})", (int)embedded);
-                    delete[] result;
-                    return Err(ImageParseError {
-                        .kind    = ImageParseErrorKind::DecodeFailed,
-                        .message = rstd::format("decode embedded image {} failed", name),
-                    });
-                }
-                img.header.type   = embedded;
-                img.header.format = TextureFormat::RGBA8;
-                mipmap.data =
-                    ImageDataPtr(reinterpret_cast<rstd::uint8_t*>(data), [](rstd::uint8_t* data) {
-                        stbi_image_free(reinterpret_cast<unsigned char*>(data));
-                    });
-                src_size = w * h * 4;
+    image->content->slots.reserve(prepared->slots.len());
+    for (const auto& source_slot : prepared->slots) {
+        vrento::Image::Slot slot;
+        slot.mipmaps.reserve(source_slot.len());
+        for (const auto& source : source_slot) {
+            ImageData mip { .width = source.width, .height = source.height };
+            if (source.type == ImageType::VIDEO) {
+                mip.video_source = Some(source.source.clone());
             } else {
-                mipmap.data = ImageDataPtr(new rstd::uint8_t[static_cast<rstd::size_t>(src_size)],
-                                           [](rstd::uint8_t* data) {
-                                               delete[] data;
-                                           });
-                copy_nonoverlapping(ptr<rstd::uint8_t>::from_raw_parts(
-                                        reinterpret_cast<const rstd::uint8_t*>(result)),
-                                    mut_ptr<rstd::uint8_t>::from_raw_parts(mipmap.data.get()),
-                                    usize(static_cast<rstd::size_t>(src_size)));
+                auto bytes = rstd_try(ReadMipBytes(
+                    source.source.clone(), source.compressed, source.decoded_size, name));
+                if (source.type != ImageType::UNKNOWN) {
+                    int   width {}, height {}, channels {};
+                    auto* pixels =
+                        stbi_load_from_memory(reinterpret_cast<const unsigned char*>(bytes.data()),
+                                              static_cast<int>(bytes.len().to_primitive()),
+                                              &width,
+                                              &height,
+                                              &channels,
+                                              4);
+                    if (! pixels)
+                        return Err(ImageParseError {
+                            .kind    = ImageParseErrorKind::DecodeFailed,
+                            .message = rstd::format("decode embedded image {} failed", name),
+                        });
+                    mip.data = ImageDataPtr(pixels, [](rstd::uint8_t* data) {
+                        stbi_image_free(data);
+                    });
+                    if (width != source.width || height != source.height)
+                        return Err(InvalidTextureData(name, "decoded extent"_str));
+                    mip.size = isize(rstd::ptrdiff_t(width) * height * 4);
+                } else {
+                    auto size = bytes.len().to_primitive();
+                    mip.data  = ImageDataPtr(new rstd::uint8_t[size], [](rstd::uint8_t* data) {
+                        delete[] data;
+                    });
+                    copy_nonoverlapping(ptr<rstd::uint8_t>::from_raw_parts(
+                                            reinterpret_cast<const rstd::uint8_t*>(bytes.data())),
+                                        mut_ptr<rstd::uint8_t>::from_raw_parts(mip.data.get()),
+                                        bytes.len());
+                    mip.size = isize(size);
+                }
             }
-            mipmap.size = isize(static_cast<rstd::ptrdiff_t>(src_size * sizeof(rstd::uint8_t)));
-            delete[] result;
-            rstd_try(SkipConditionalPatches(file, body, name));
+            slot.mipmaps.push(rstd::move(mip));
         }
+        if (! source_slot.is_empty()) {
+            slot.width  = source_slot[usize()].width;
+            slot.height = source_slot[usize()].height;
+        }
+        image->content->slots.push(rstd::move(slot));
     }
-    img_ptr->FinalizeContent();
-    return Ok(rstd::move(img_ptr));
+    image->FinalizeContent();
+    return Ok(rstd::move(image));
 }
 
 auto owe::ParseImages(ref<dyn<IImageParser>> parser, slice<String> names, usize max_workers)
@@ -572,9 +537,8 @@ auto TexImageParser::ParseMany(slice<String> names) const
 }
 
 auto TexImageParser::ParseHeader(ref<str> name) const -> Result<ImageHeader, ImageParseError> {
-    ImageHeader header;
     if (auto path = ResolveExternalImagePath(name)) {
-        int width = 0, height = 0, channels = 0;
+        int width {}, height {}, channels {};
         if (stbi_info(path->as_ref().as_ptr(), &width, &height, &channels) && width > 0 &&
             height > 0)
             return Ok(MakeExternalImageHeader(width, height));
@@ -583,85 +547,105 @@ auto TexImageParser::ParseHeader(ref<str> name) const -> Result<ImageHeader, Ima
             .message = rstd::format("read external image header {} failed", name),
         });
     }
-    // WE "_alias_*" textures are runtime aliases the engine resolves
-    // internally (light cookies, etc.). We don't model that, so just
-    // return an empty header without spamming a vfs miss.
-    if (name.contains("_alias_"_str)) return Ok(rstd::move(header));
-    auto prepared = rstd_try(PrepareHeader(name));
-    if (m_ready) {
-        auto image = Parse(name);
-        if (image.is_ok()) return Ok((*image)->header.clone());
-    }
-    return Ok(prepared->header.clone());
+    if (name.contains("_alias_"_str)) return Ok(ImageHeader {});
+    auto prepared = rstd_try(Prepare(name));
+    return Ok(prepared->description.header.clone());
 }
 
-auto TexImageParser::PrepareHeader(ref<str> name) const
-    -> Result<Arc<PreparedHeader>, ImageParseError> {
+auto TexImageParser::Describe(ref<str> name) const -> Result<ImageDescription, ImageParseError> {
+    if (ResolveExternalImagePath(name)) {
+        auto             header = rstd_try(ParseHeader(name));
+        ImageDescription result { .header = rstd::move(header) };
+        result.slots.push({ result.header.width, result.header.height, usize(1) });
+        return Ok(rstd::move(result));
+    }
+    auto prepared = rstd_try(Prepare(name));
+    return Ok(prepared->description.clone());
+}
+
+auto TexImageParser::Prepare(ref<str> name) const -> Result<Arc<PreparedImage>, ImageParseError> {
     auto cache = m_headers->lock().unwrap_unchecked();
-    if (auto cached = cache->get(name); cached.is_some()) return Ok((*cached)->clone());
-    ImageHeader header;
-    auto        path   = rstd::format("/assets/materials/{}.tex", name);
-    auto        source = m_vfs->open_read(fs::Path(path.as_str()));
-    if (source.is_err()) {
+    if (auto cached = cache->get(name)) return Ok((*cached)->clone());
+    auto path   = rstd::format("/assets/materials/{}.tex", name);
+    auto source = m_vfs->open_read(fs::Path(path.as_str()));
+    if (source.is_err())
         return Err(ImageParseError {
             .kind    = ImageParseErrorKind::MissingContent,
-            .message = rstd::format("open texture header {} failed", name),
+            .message = rstd::format("open texture {} failed", name),
         });
-    }
-    auto input = rstd::move(source).unwrap_unchecked();
-    auto file  = fs::BinaryReader(input.clone());
-
-    auto       body        = rstd_try(LoadHeader(file, header, name));
-    const auto body_offset = file.Tell();
-    auto       ver         = body.version;
-    if (header.count < 0) {
-        return Err(ImageParseError {
-            .kind    = ImageParseErrorKind::InvalidData,
-            .message = rstd::format("texture {} has a negative image count", name),
-        });
-    }
-
-    rstd::size_t image_count = static_cast<rstd::size_t>(header.count);
-
-    // load sprite info
-    if (header.isSprite) {
-        // bypass image data, store width and height
-        Vec<Option<array<float, 2>>> imageDatas;
-        imageDatas.resize(usize(image_count), None());
-        for (rstd::size_t i_image = 0; i_image < image_count; i_image++) {
-            int mipmap_count = file.ReadInt32();
-            if (mipmap_count < 0) {
-                return Err(ImageParseError {
-                    .kind    = ImageParseErrorKind::InvalidData,
-                    .message = rstd::format("texture {} has a negative sprite mip count", name),
-                });
+    auto             input = rstd::move(source).unwrap();
+    fs::BinaryReader file(input.clone());
+    auto             prepared = Arc<PreparedImage>::make();
+    auto&            header   = prepared->description.header;
+    auto             body     = rstd_try(LoadHeader(file, header, name));
+    prepared->condition_count = body.condition_count;
+    auto ver                  = body.version;
+    if (header.count < 0 || u64(header.count) > file.remaining() / u64(4))
+        return Err(InvalidTextureData(name, "image count"_str));
+    auto                         declared = header.type;
+    Vec<Option<array<float, 2>>> imageDatas;
+    imageDatas.resize(usize(header.count), None());
+    prepared->slots.reserve(usize(header.count));
+    for (int index {}; index < header.count; ++index) {
+        if (file.remaining() < u64(4)) return Err(InvalidTextureData(name, "mip count"_str));
+        auto count = file.ReadInt32();
+        if (count < 0 || count > 32) return Err(InvalidTextureData(name, "mip count"_str));
+        Vec<PreparedMip> mips;
+        mips.reserve(usize(count));
+        for (int mip_index {}; mip_index < count; ++mip_index) {
+            auto fields = ver.body_has_lz4_prelude() ? u64(20) : u64(12);
+            if (file.remaining() < fields) return Err(InvalidTextureData(name, "mip header"_str));
+            auto width  = file.ReadInt32();
+            auto height = file.ReadInt32();
+            bool compressed {};
+            int  decoded_size {};
+            if (ver.body_has_lz4_prelude()) {
+                compressed   = file.ReadInt32() == 1;
+                decoded_size = file.ReadInt32();
             }
-            for (rstd::int32_t i_mipmap = 0; i_mipmap < mipmap_count; i_mipmap++) {
-                rstd::int32_t width  = file.ReadInt32();
-                rstd::int32_t height = file.ReadInt32();
-                if (i_mipmap == 0) {
-                    imageDatas[usize(i_image)] =
-                        Some(array<float, 2> { (float)width, (float)height });
-                    header.mipmap_pow2 =
-                        algorism::IsPowOfTwo(u32(static_cast<rstd::uint32_t>(width * height)));
+            auto stored_size = file.ReadInt32();
+            if (width <= 0 || height <= 0 || stored_size <= 0 || decoded_size < 0 ||
+                (compressed && decoded_size == 0) || u64(stored_size) > file.remaining())
+                return Err(InvalidTextureData(name, "mip payload"_str));
+            auto range = input.subrange(file.position(), u64(stored_size));
+            if (range.is_err()) return Err(InvalidTextureData(name, "mip range"_str));
+            PreparedMip mip { .width        = width,
+                              .height       = height,
+                              .source       = rstd::move(range).unwrap(),
+                              .compressed   = compressed,
+                              .decoded_size = decoded_size };
+            if (ver.body_has_image_type()) {
+                mip.type = rstd_try(DescribeMip(mip.source.clone(),
+                                                mip.compressed,
+                                                mip.decoded_size,
+                                                declared,
+                                                mip.width,
+                                                mip.height,
+                                                name));
+                if (mip.type != ImageType::UNKNOWN) {
+                    header.type   = mip.type;
+                    header.format = TextureFormat::RGBA8;
                 }
-                if (ver.body_has_lz4_prelude()) {
-                    rstd::int32_t LZ4_compressed    = file.ReadInt32();
-                    rstd::int32_t decompressed_size = file.ReadInt32();
-                    (void)LZ4_compressed;
-                    (void)decompressed_size;
-                }
-                rstd::int32_t src_size = file.ReadInt32();
-                if (src_size < 0 ||
-                    ! SkipTextureBytes(file, static_cast<rstd::uint32_t>(src_size))) {
-                    return Err(ImageParseError {
-                        .kind    = ImageParseErrorKind::InvalidData,
-                        .message = rstd::format("texture {} has an invalid sprite mip body", name),
-                    });
-                }
-                rstd_try(SkipConditionalPatches(file, body, name));
             }
+            if (mip_index == 0) {
+                imageDatas[usize(index)] =
+                    Some(array<float, 2> { float(mip.width), float(mip.height) });
+                SetHeaderPow2(header, mip.width, mip.height);
+            }
+            if (! SkipTextureBytes(file, stored_size))
+                return Err(InvalidTextureData(name, "mip payload"_str));
+            rstd_try(SkipConditionalPatches(file, body, name));
+            mips.push(rstd::move(mip));
         }
+        ImageSlotDescription slot { .mip_count = mips.len() };
+        if (! mips.is_empty()) {
+            slot.width  = mips[usize()].width;
+            slot.height = mips[usize()].height;
+        }
+        prepared->description.slots.push(rstd::move(slot));
+        prepared->slots.push(rstd::move(mips));
+    }
+    if (header.isSprite) {
         // sprite pos
         ver.texs = ReadTexVersion(file);
         (void)header.extraHeader.insert("texs"_Str, ImageExtra { .val = ver.texs });
@@ -754,44 +738,7 @@ auto TexImageParser::PrepareHeader(ref<str> name) const
                 .message = rstd::format("texture {} has no valid sprite frames", name),
             });
         }
-    } else {
-        rstd::int32_t mipmap_count = file.ReadInt32();
-        (void)mipmap_count;
-        rstd::int32_t width  = file.ReadInt32();
-        rstd::int32_t height = file.ReadInt32();
-        SetHeaderPow2(header, width, height);
-        /* Sniff the body for a video container so the validator can
-         * report "video tex" without needing a full Parse(). Mirrors
-         * the peek in Parse() (line ~210). Cheap: 16 bytes + a
-         * SeekSet. */
-        if (ver.body_has_image_type() && header.type == ImageType::UNKNOWN) {
-            bool          lz4               = false;
-            rstd::int32_t decompressed_size = 0;
-            if (ver.body_has_lz4_prelude()) {
-                lz4               = file.ReadInt32() == 1;
-                decompressed_size = file.ReadInt32();
-            }
-            (void)decompressed_size;
-            rstd::int32_t src_size = file.ReadInt32();
-            if (! lz4 && src_size >= 16) {
-                rstd::ptrdiff_t body_off = file.Tell();
-                unsigned char   sniff[16] {};
-                file.Read(sniff, sizeof(sniff));
-                if (DetectEmbeddedImageType(sniff, sizeof(sniff)) == ImageType::VIDEO) {
-                    header.type   = ImageType::VIDEO;
-                    header.format = TextureFormat::RGBA8;
-                }
-                file.SeekSet(body_off);
-            }
-        }
     }
-    auto prepared = Arc<PreparedHeader>::make(PreparedHeader {
-        .header          = rstd::move(header),
-        .source          = rstd::move(input),
-        .version         = body.version,
-        .condition_count = body.condition_count,
-        .body_offset     = body_offset,
-    });
     (void)cache->insert(String::make(name), prepared.clone());
     return Ok(rstd::move(prepared));
 }

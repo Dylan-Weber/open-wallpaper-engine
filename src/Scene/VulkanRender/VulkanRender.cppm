@@ -118,7 +118,6 @@ public:
     ~VulkanRender();
 
     bool hasSceneRenderState() const;
-    auto tryPrepareImage(Arc<vrento::Image>) -> Result<bool, resource::ResourceError>;
     bool init(RenderInitInfo, SceneLoadBenchRecorderView load_bench = {});
     auto tryClearLastRenderGraph(RenderGraphResourceRetention)
         -> Result<PrepareOutcome, RenderPrepareError>;

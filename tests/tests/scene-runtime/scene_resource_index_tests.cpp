@@ -30,6 +30,12 @@ Arc<owe::SceneMesh> MakeSingleSubmesh(std::string name) {
 
 class FakeImageParser {
 public:
+    auto Describe(ref<str> name) const -> Result<owe::ImageDescription, owe::ImageParseError> {
+        auto                  header = ParseHeader(name).unwrap();
+        owe::ImageDescription result { .header = rstd::move(header) };
+        result.slots.push({ 64, 32, usize(1) });
+        return Ok(rstd::move(result));
+    }
     bool content {};
     auto Parse(ref<str>) const -> Result<Arc<owe::Image>, owe::ImageParseError> {
         if (content) return Ok(Arc<owe::Image>::make());
@@ -2108,14 +2114,27 @@ TEST(SceneTextures, CapturedImageSourcesReuseParsedContentAndPreserveOldRuntimeI
     owe::Scene scene;
     scene.SetImageParser(Arc<dyn<owe::IImageParser>>::make(FakeImageParser { true }));
     scene.RegisterTexture("asset"_Str, { .url = "asset"_Str });
-    auto before = scene.CaptureImageSource();
-    auto parsed = before->Parse("asset"_str).unwrap();
-    auto next   = scene.CaptureImageSource();
+    auto before          = scene.CaptureImageSource();
+    auto parsed          = before->Parse("asset"_str).unwrap();
+    parsed->header.width = 32;
+    vrento::Image::Slot parsed_slot;
+    parsed_slot.width  = 32;
+    parsed_slot.height = 16;
+    parsed_slot.mipmaps.push(owe::ImageData { .width = 32, .height = 16 });
+    parsed->content->slots.push(rstd::move(parsed_slot));
+    auto next = scene.CaptureImageSource();
     EXPECT_TRUE(Arc<owe::Image>::ptr_eq(parsed, next->Parse("asset"_str).unwrap()));
+    auto description = next->Describe("asset"_str).unwrap();
+    EXPECT_EQ(description.header.width, 32);
+    ASSERT_EQ(description.slots.len(), usize(1));
+    EXPECT_EQ(description.slots[usize()].width, 32);
+    EXPECT_EQ(description.slots[usize()].height, 16);
     auto image          = Arc<owe::Image>::make();
     image->header.width = 128;
     scene.RegisterRuntimeImage("asset"_Str, image.clone());
     auto replaced = scene.CaptureImageSource();
     EXPECT_TRUE(Arc<owe::Image>::ptr_eq(image, replaced->Parse("asset"_str).unwrap()));
+    EXPECT_EQ(replaced->Describe("asset"_str).unwrap().header.width, 128);
+    EXPECT_EQ(before->Describe("asset"_str).unwrap().header.width, 32);
     EXPECT_TRUE(Arc<owe::Image>::ptr_eq(parsed, before->Parse("asset"_str).unwrap()));
 }

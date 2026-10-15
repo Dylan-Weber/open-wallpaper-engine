@@ -284,10 +284,26 @@ public:
         -> Result<vrento::texture::TextureDesc, resource::ResourceError> {
         auto identity = ResolveTextureContent(request);
         if (identity.is_err()) return Err(identity.unwrap_err());
-        auto image =
-            SnapshotImportedTextureLoader(m_source.clone()).LoadTexture(identity->key.as_str());
-        if (image.is_err()) return Err(image.unwrap_err());
-        auto descriptions = vrento::texture::describe_image(**image);
+        auto described = m_source->Describe(identity->key.as_str());
+        if (described.is_err()) {
+            auto error = rstd::move(described).unwrap_err();
+            if (error.kind == ImageParseErrorKind::MissingContent) {
+                auto fallback     = MakeMissingTexturePlaceholder(identity->key.as_str());
+                auto descriptions = vrento::texture::describe_image(*fallback).unwrap();
+                return Ok(descriptions[usize()]);
+            }
+            return Err(
+                resource::ResourceError { .kind    = resource::ResourceErrorKind::BackendFailure,
+                                          .message = rstd::move(error.message) });
+        }
+        const auto& description  = *described;
+        auto        descriptions = vrento::texture::describe_image(
+            vrento::ImageHeader { .kind   = description.header.type == ImageType::VIDEO
+                                                ? vrento::ImageKind::Video
+                                                : vrento::ImageKind::Pixels,
+                                  .format = description.header.format,
+                                  .sample = description.header.sample },
+            description.slots.as_slice());
         if (descriptions.is_err())
             return Err(resource::ResourceError {
                 .kind    = resource::ResourceErrorKind::MissingDefinition,

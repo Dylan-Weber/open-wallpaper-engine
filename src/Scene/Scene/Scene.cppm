@@ -2174,14 +2174,38 @@ struct IImageParser {
         auto ParseHeader(ref<str> name) const -> Result<ImageHeader, ImageParseError> {
             return rstd::trait_call<2>(this, name);
         }
+        auto Describe(ref<str> name) const -> Result<ImageDescription, ImageParseError> {
+            return rstd::trait_call<3>(this, name);
+        }
     };
 
     template<typename T>
-    using Funcs = TraitFuncs<&T::Parse, &T::ParseMany, &T::ParseHeader>;
+    using Funcs = TraitFuncs<&T::Parse, &T::ParseMany, &T::ParseHeader, &T::Describe>;
 };
 
 class SceneImageSource {
 public:
+    auto Describe(ref<str> name) const -> Result<ImageDescription, ImageParseError> {
+        if (auto runtime = m_runtime_images.get(name)) return Ok((**runtime)->Describe());
+        auto cached = [&]() -> Option<Arc<ParsedImage>> {
+            auto images = m_parsed->lock().unwrap_unchecked();
+            auto found  = images->get(name);
+            return found ? Some((*found)->clone()) : None<Arc<ParsedImage>>();
+        }();
+        if (cached) {
+            auto content = (*cached)->try_lock();
+            if (content.is_ok()) {
+                auto image = rstd::move(content).unwrap();
+                if (*image) return Ok((**image)->Describe());
+            }
+        }
+        if (m_parser) return (*m_parser)->Describe(name);
+        return Err(ImageParseError {
+            .kind    = ImageParseErrorKind::MissingContent,
+            .message = rstd::format("image parser unavailable for {}", name),
+        });
+    }
+
     auto Parse(ref<str> name) const -> Result<Arc<Image>, ImageParseError> {
         auto runtime = m_runtime_images.get(name);
         if (runtime.is_some()) return Ok((*runtime)->clone());

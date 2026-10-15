@@ -659,11 +659,6 @@ auto VulkanRender::tryClearLastRenderGraph(RenderGraphResourceRetention retentio
     return Ok(PrepareOutcome::Ready);
 }
 
-auto VulkanRender::tryPrepareImage(Arc<vrento::Image> image)
-    -> Result<bool, resource::ResourceError> {
-    return pImpl->m_rendering_resources.resources.TryPrepareImage(rstd::move(image));
-}
-
 bool VulkanRender::hasSceneRenderState() const { return pImpl->m_scene_render_state.installed(); }
 
 auto VulkanRender::tryInstallSceneRenderState(Scene& scene, vulkan::SceneRenderStateInput&& graph,

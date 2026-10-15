@@ -327,9 +327,27 @@ struct ImageHeader {
     }
 };
 
+using vrento::ImageSlotDescription;
+
+struct ImageDescription {
+    ImageHeader               header;
+    Vec<ImageSlotDescription> slots;
+
+    auto clone() const -> ImageDescription {
+        return { .header = header.clone(), .slots = slots.clone() };
+    }
+};
+
 struct Image : NoCopy, NoMove {
     ImageHeader        header;
     Arc<vrento::Image> content { Arc<vrento::Image>::make() };
+
+    auto Describe() const -> ImageDescription {
+        ImageDescription result { .header = header.clone() };
+        for (const auto& slot : content->slots)
+            result.slots.push({ slot.width, slot.height, slot.mipmaps.len() });
+        return result;
+    }
 
     void FinalizeContent() {
         content->header = vrento::ImageHeader {

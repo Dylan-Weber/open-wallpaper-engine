@@ -103,6 +103,7 @@ public:
     auto Parse(ref<str> name) const -> Result<Arc<Image>, ImageParseError>;
     auto ParseMany(slice<String> names) const -> Vec<Result<Arc<Image>, ImageParseError>>;
     auto ParseHeader(ref<str> name) const -> Result<ImageHeader, ImageParseError>;
+    auto Describe(ref<str> name) const -> Result<ImageDescription, ImageParseError>;
 
 private:
     auto Decode(ref<str> name) const -> Result<Arc<Image>, ImageParseError>;
@@ -110,15 +111,20 @@ private:
     using ImageCache = HashMap<String, Arc<ImageCell>>;
     Arc<Mutex<ImageCache>>     m_images { Arc<Mutex<ImageCache>>::make(ImageCache {}) };
     Option<ImageReadyCallback> m_ready;
-    struct PreparedHeader {
-        ImageHeader         header;
+    struct PreparedMip {
+        rstd::int32_t       width {}, height {};
         rstd::io::ReadRange source;
-        TexFormatVersion    version;
-        rstd::uint32_t      condition_count {};
-        rstd::ptrdiff_t     body_offset {};
+        bool                compressed {};
+        rstd::int32_t       decoded_size {};
+        ImageType           type { ImageType::UNKNOWN };
     };
-    using HeaderCache = HashMap<String, Arc<PreparedHeader>>;
-    auto PrepareHeader(ref<str> name) const -> Result<Arc<PreparedHeader>, ImageParseError>;
+    struct PreparedImage {
+        ImageDescription      description;
+        Vec<Vec<PreparedMip>> slots;
+        rstd::uint32_t        condition_count {};
+    };
+    using HeaderCache = HashMap<String, Arc<PreparedImage>>;
+    auto Prepare(ref<str> name) const -> Result<Arc<PreparedImage>, ImageParseError>;
 
     Arc<fs::VFS>            m_vfs;
     Arc<Mutex<HeaderCache>> m_headers { Arc<Mutex<HeaderCache>>::make(HeaderCache {}) };

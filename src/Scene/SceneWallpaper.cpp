@@ -42,35 +42,17 @@ using rstd::time::Instant;
 namespace owe
 {
 
-struct ImagePreparationLoad {
-    struct Budget {
-        usize count {}, bytes {};
-    };
-    rstd::sync::Mutex<Budget> budget { Budget {} };
-    Atomic<bool>              active { true };
-};
-
-struct ImagePreparationRequest {
-    Arc<ImagePreparationLoad> load;
-    Arc<vrento::Image>        image;
-    usize                     bytes;
-    ImagePreparationRequest(Arc<ImagePreparationLoad> owner, Arc<vrento::Image> content, usize size)
-        : load(rstd::move(owner)), image(rstd::move(content)), bytes(size) {}
-    ~ImagePreparationRequest() {
-        auto budget = load->budget.lock().unwrap_unchecked();
-        --budget->count;
-        budget->bytes -= bytes;
-    }
+struct SceneLoadState {
+    Atomic<bool> active { true };
 };
 
 class RenderMsg final {
     RSTD_ENUM(RenderMsg,
               (Init, (Box<RenderInitInfo> info; Option<SceneLoadBenchHandle> load_bench;)),
-              (BeginImageLoad, (Arc<ImagePreparationLoad> load;)),
-              (PrepareImage, (Box<ImagePreparationRequest> request;)),
-              (SetScene, (Arc<ImagePreparationLoad> load; Box<Scene> scene;
-                          Arc<UniformRuntimeInput>                   uniform_input;
-                          Option<SceneLoadBenchHandle> load_bench; Option<u64> random_seed;)),
+              (BeginSceneLoad, (Arc<SceneLoadState> load;)),
+              (SetScene,
+               (Arc<SceneLoadState> load; Box<Scene> scene; Arc<UniformRuntimeInput> uniform_input;
+                Option<SceneLoadBenchHandle> load_bench; Option<u64> random_seed;)),
               (SetFillMode, (FillMode mode;)), (SetSpeed, (f32 speed;)),
               (SetMouseParallax, (bool enabled;)), (SetUserProperty, (String key; Json property;)),
               (SetMediaStatus, (MediaStatus status;)),
@@ -255,7 +237,7 @@ private:
     Option<rstd::bench::probe::SpanGuard>      m_load_total_span;
     u64                                        m_latest_load_bench_run_id { 0 };
 
-    Option<Arc<ImagePreparationLoad>>      m_loading_images;
+    Option<Arc<SceneLoadState>>            m_loading_scene;
     Option<MainSender>                     m_main_tx;
     Option<MainReceiver>                   m_main_rx;
     Option<rstd::thread::JoinHandle<void>> m_main_thread;
@@ -284,7 +266,6 @@ public:
 
     void on(RenderMsg::Init_payload&&);
     void on(RenderMsg::SetScene_payload&&);
-    void on(RenderMsg::PrepareImage_payload&&);
     void on(RenderMsg::SetFillMode_payload&&);
     void on(RenderMsg::SetSpeed_payload&&);
     void on(RenderMsg::SetMouseParallax_payload&&);
@@ -344,8 +325,8 @@ private:
                             SceneLoadBenchRecorderView load_bench = {});
     void detachSceneAudioResponseDemandCallback();
 
-    SceneRuntimeController&           m_main;
-    Option<Arc<ImagePreparationLoad>> m_image_load;
+    SceneRuntimeController&     m_main;
+    Option<Arc<SceneLoadState>> m_scene_load;
 
     Box<vulkan::VulkanRender>           m_render;
     Option<Box<Scene>>                  m_scene_owner;
@@ -419,11 +400,10 @@ void SceneRenderController::start() {
             bool shutdown = false;
             RSTD_MATCH(rstd::move(message)) {
                 RSTD_CASE_PAYLOAD(Init, value) { on(rstd::move(value)); }
-                RSTD_CASE_PAYLOAD(BeginImageLoad, value) {
-                    if (m_image_load) (*m_image_load)->active.store(false);
-                    m_image_load = Some(rstd::move(value.load));
+                RSTD_CASE_PAYLOAD(BeginSceneLoad, value) {
+                    if (m_scene_load) (*m_scene_load)->active.store(false);
+                    m_scene_load = Some(rstd::move(value.load));
                 }
-                RSTD_CASE_PAYLOAD(PrepareImage, value) { on(rstd::move(value)); }
                 RSTD_CASE_PAYLOAD(SetScene, value) { on(rstd::move(value)); }
                 RSTD_CASE_PAYLOAD(SetFillMode, value) { on(rstd::move(value)); }
                 RSTD_CASE_PAYLOAD(SetSpeed, value) { on(rstd::move(value)); }
@@ -443,7 +423,7 @@ void SceneRenderController::start() {
                 RSTD_CASE_PAYLOAD(RequestPreparedPassDiagnostics, value) { on(rstd::move(value)); }
                 RSTD_CASE_PAYLOAD(RequestPreparationDiagnostics, value) { on(rstd::move(value)); }
                 RSTD_CASE(Shutdown) {
-                    if (m_image_load) (*m_image_load)->active.store(false);
+                    if (m_scene_load) (*m_scene_load)->active.store(false);
                     frame_timer.Stop();
                     frame_timer.SetCallback(None());
                     m_swapchain_tx = None();
@@ -587,18 +567,9 @@ void SceneRenderController::rebuildRenderGraph(vulkan::RenderGraphResourceRetent
     }
 }
 
-void SceneRenderController::on(RenderMsg::PrepareImage_payload&& m) {
-    if (! m_image_load || ! m.request->load->active.load() ||
-        ! Arc<ImagePreparationLoad>::ptr_eq(*m_image_load, m.request->load))
-        return;
-    auto result = m_render->tryPrepareImage(m.request->image.clone());
-    if (result.is_err())
-        rstd_warn("early image preparation failed: {}", result.unwrap_err().message);
-}
-
 void SceneRenderController::on(RenderMsg::SetScene_payload&& m) {
-    if (! m_image_load || ! m.load->active.load() ||
-        ! Arc<ImagePreparationLoad>::ptr_eq(*m_image_load, m.load))
+    if (! m_scene_load || ! m.load->active.load() ||
+        ! Arc<SceneLoadState>::ptr_eq(*m_scene_load, m.load))
         return;
     if (m_render->framePending()) {
         m_pending_scene = Some(rstd::move(m));
@@ -1181,39 +1152,18 @@ void SceneRuntimeController::loadScene() {
         m_load_bench_recorder  = Some(BenchContext(m_load_bench).session().recorder(config));
         m_load_total_span = Some(SceneLoadSpan(loadBenchView(), &SceneLoadProbeIds::load_total));
     }
-    if (m_loading_images) (*m_loading_images)->active.store(false);
-    auto image_load  = Arc<ImagePreparationLoad>::make();
-    m_loading_images = Some(image_load.clone());
-    auto image_tx    = m_render_controller->sender();
-    if (image_tx.send(RenderMsg::BeginImageLoad(image_load.clone())).is_err()) {
-        image_load->active.store(false);
+    if (m_loading_scene) (*m_loading_scene)->active.store(false);
+    auto scene_load = Arc<SceneLoadState>::make();
+    m_loading_scene = Some(scene_load.clone());
+    if (m_render_controller->sender()
+            .send(RenderMsg::BeginSceneLoad(scene_load.clone()))
+            .is_err()) {
+        scene_load->active.store(false);
         finishLoadBench();
         return;
     }
-    auto ready      = ImageReadyCallback::make([load = image_load.clone(),
-                                                tx   = image_tx](Arc<vrento::Image> image) {
-        if (! load->active.load() || image->header.kind != vrento::ImageKind::Pixels) return;
-        usize bytes {};
-        for (const auto& slot : image->slots)
-            for (const auto& mip : slot.mipmaps) {
-                if (mip.size <= isize()) return;
-                auto size = usize(static_cast<rstd::size_t>(mip.size.to_primitive()));
-                if (size > usize(64 * 1024 * 1024) - bytes) return;
-                bytes += size;
-            }
-        {
-            auto budget = load->budget.lock().unwrap_unchecked();
-            if (budget->count >= usize(4) || bytes > usize(64 * 1024 * 1024) - budget->bytes)
-                return;
-            ++budget->count;
-            budget->bytes += bytes;
-        }
-        auto request = Box<ImagePreparationRequest>::make(load.clone(), rstd::move(image), bytes);
-        if (tx.send(RenderMsg::PrepareImage(rstd::move(request))).is_err())
-            load->active.store(false);
-    });
-    auto abort_load = [this, image_load = image_load.clone()] {
-        image_load->active.store(false);
+    auto abort_load = [this, scene_load = scene_load.clone()] {
+        scene_load->active.store(false);
         finishLoadBench();
     };
 
@@ -1242,7 +1192,6 @@ void SceneRuntimeController::loadScene() {
             .max_geometry_total_output_components = u32(m_render_capabilities->max_geometry_total_output_components),
         },
         .load_bench = loadBenchView(),
-        .image_ready = Some(rstd::move(ready)),
     }, mut_ref<wavsen::audio::SoundManager>::from_raw_parts(m_sound_manager.get()));
     if (loaded.is_err()) {
         rstd_error("scene load failed: {}", loaded.unwrap_err().message);
@@ -1258,7 +1207,7 @@ void SceneRuntimeController::loadScene() {
     publishClearColor(result.parsed.scene->ClearColor());
     auto parsed = rstd::move(result.parsed);
     auto rtx    = m_render_controller->sender();
-    if (rtx.send(RenderMsg::SetScene(image_load.clone(),
+    if (rtx.send(RenderMsg::SetScene(scene_load.clone(),
                                      rstd::move(parsed.scene),
                                      rstd::move(parsed.runtime_input),
                                      m_config.load_bench.clone(),

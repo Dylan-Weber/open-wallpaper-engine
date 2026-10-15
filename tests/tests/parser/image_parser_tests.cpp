@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <lz4.h>
 
 import rstd;
 import vrento;
@@ -89,6 +90,9 @@ namespace
 
 class TrackingImageParser {
 public:
+    auto Describe(ref<str>) const -> Result<owe::ImageDescription, owe::ImageParseError> {
+        return Ok(owe::ImageDescription {});
+    }
     auto Parse(ref<str> name) const -> Result<Arc<owe::Image>, owe::ImageParseError> {
         auto current  = m_active.fetch_add(1) + 1;
         auto observed = m_peak.load();
@@ -121,6 +125,9 @@ private:
 
 class MixedImageParser {
 public:
+    auto Describe(ref<str>) const -> Result<owe::ImageDescription, owe::ImageParseError> {
+        return Ok(owe::ImageDescription {});
+    }
     auto Parse(ref<str> name) const -> Result<Arc<owe::Image>, owe::ImageParseError> {
         if (rstd::cppstd::as_string_view(name) == "bad") {
             return Err(owe::ImageParseError {
@@ -199,7 +206,161 @@ protected:
         const float frame[] { 0.1f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 2.0f };
         output.write(reinterpret_cast<const char*>(frame), sizeof(frame));
     }
+
+    void WritePayload(owe::ImageType type, bool compressed, slice<u8> payload, int width = 1,
+                      int height = 1, unsigned format = 4) {
+        Vec<u8> stored;
+        if (compressed) {
+            stored.resize(usize(LZ4_compressBound(int(payload.len().to_primitive()))), u8());
+            auto size = LZ4_compress_default(reinterpret_cast<const char*>(payload.as_raw_ptr()),
+                                             reinterpret_cast<char*>(stored.data()),
+                                             int(payload.len().to_primitive()),
+                                             int(stored.len().to_primitive()));
+            ASSERT_GT(size, 0);
+            stored.truncate(usize(size));
+        } else {
+            stored = Vec<u8>::from(payload);
+        }
+        std::ofstream output(root / "materials" / "payload.tex", std::ios::binary);
+        output.write("TEXV0005", 9);
+        output.write("TEXI0001", 9);
+        for (auto value : array<unsigned, 7> { format,
+                                               0u,
+                                               unsigned(width),
+                                               unsigned(height),
+                                               unsigned(width),
+                                               unsigned(height),
+                                               0u })
+            WriteU32(output, value);
+        output.write("TEXB0003", 9);
+        WriteU32(output, 1);
+        WriteU32(output, unsigned(type));
+        WriteU32(output, 1);
+        WriteU32(output, width);
+        WriteU32(output, height);
+        WriteU32(output, compressed ? 1 : 0);
+        WriteU32(output, payload.len().to_primitive());
+        WriteU32(output, stored.len().to_primitive());
+        output.write(reinterpret_cast<const char*>(stored.data()), stored.len().to_primitive());
+    }
 };
+
+constexpr unsigned char RedPng[] {
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48,
+    0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
+    0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x08,
+    0xd7, 0x63, 0xf8, 0xcf, 0xc0, 0xf0, 0x1f, 0x00, 0x05, 0x00, 0x01, 0xff, 0x89, 0x99,
+    0x3d, 0x1d, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+};
+
+TEST_F(ConditionalTextureTest, EmbeddedDescriptionMatchesDecodeWithoutPublishingPixels) {
+    for (auto compressed : array<bool, 2> { false, true }) {
+        for (auto type :
+             array<owe::ImageType, 2> { owe::ImageType::UNKNOWN, owe::ImageType::PNG }) {
+            WritePayload(type,
+                         compressed,
+                         slice<u8>::from_raw_parts(reinterpret_cast<const byte*>(RedPng),
+                                                   usize(sizeof(RedPng))));
+            auto [tx, rx] = rstd::sync::mpmc::channel<Arc<vrento::Image>>();
+            owe::TexImageParser parser(
+                &vfs, Some(owe::ImageReadyCallback::make([tx](Arc<vrento::Image> image) {
+                    tx.send(rstd::move(image)).unwrap();
+                })));
+            auto description = parser.Describe("payload"_str);
+            ASSERT_TRUE(description.is_ok());
+            EXPECT_EQ(description->header.type, owe::ImageType::PNG);
+            EXPECT_EQ(description->header.format, owe::TextureFormat::RGBA8);
+            ASSERT_EQ(description->slots.len(), usize(1));
+            EXPECT_EQ(description->slots[usize()].mip_count, usize(1));
+            EXPECT_TRUE(parser.ParseHeader("payload"_str).is_ok());
+            EXPECT_TRUE(rx.try_recv().is_err());
+            auto image = parser.Parse("payload"_str);
+            ASSERT_TRUE(image.is_ok());
+            auto& mip = (*image)->content->slots[usize()].mipmaps[usize()];
+            EXPECT_EQ(mip.width, description->slots[usize()].width);
+            EXPECT_EQ(mip.height, description->slots[usize()].height);
+            EXPECT_EQ(mip.size, isize(4));
+            EXPECT_EQ(mip.data.get()[0], 255);
+            EXPECT_EQ(mip.data.get()[1], 0);
+            EXPECT_EQ(mip.data.get()[2], 0);
+            EXPECT_EQ(mip.data.get()[3], 255);
+            EXPECT_TRUE(rx.try_recv().is_ok());
+        }
+    }
+}
+
+TEST_F(ConditionalTextureTest, ContainerDescriptionDoesNotDecodeImageData) {
+    auto bytes = Vec<u8>::from(
+        slice<u8>::from_raw_parts(reinterpret_cast<const byte*>(RedPng), usize(sizeof(RedPng))));
+    for (usize i(41); i < usize(54); ++i) bytes[i] = u8();
+    WritePayload(owe::ImageType::UNKNOWN, false, bytes.as_slice());
+    owe::TexImageParser parser(&vfs);
+    EXPECT_TRUE(parser.Describe("payload"_str).is_ok());
+    auto decoded = parser.Parse("payload"_str);
+    ASSERT_TRUE(decoded.is_err());
+    EXPECT_EQ(decoded.unwrap_err().kind, owe::ImageParseErrorKind::DecodeFailed);
+}
+
+TEST_F(ConditionalTextureTest, RawBcDescriptionAndVideoRangeMatchContent) {
+    for (auto compressed : array<bool, 2> { false, true }) {
+        Vec<u8> bytes;
+        bytes.resize(usize(16), u8(17));
+        WritePayload(owe::ImageType::UNKNOWN, compressed, bytes.as_slice(), 4, 4);
+        owe::TexImageParser parser(&vfs);
+        auto                description = parser.Describe("payload"_str).unwrap();
+        auto                image       = parser.Parse("payload"_str).unwrap();
+        EXPECT_EQ(description.header.format, owe::TextureFormat::BC3);
+        EXPECT_EQ(image->header.format, description.header.format);
+        EXPECT_EQ(image->content->slots[usize()].mipmaps[usize()].size, isize(16));
+    }
+    auto bytes = Vec<u8>::from("\0\0\0\x10"
+                               "ftypisom00000000"_str.as_bytes());
+    WritePayload(owe::ImageType::UNKNOWN, false, bytes.as_slice(), 16, 8);
+    owe::TexImageParser parser(&vfs);
+    auto                description = parser.Describe("payload"_str).unwrap();
+    EXPECT_EQ(description.header.type, owe::ImageType::VIDEO);
+    EXPECT_EQ(description.header.format, owe::TextureFormat::RGBA8);
+    auto  image = parser.Parse("payload"_str).unwrap();
+    auto& mip   = image->content->slots[usize()].mipmaps[usize()];
+    EXPECT_FALSE(bool(mip.data));
+    ASSERT_TRUE(mip.video_source.is_some());
+    EXPECT_EQ(mip.video_source->len(), rstd::as_cast<u64>(bytes.len()));
+    owe::fs::BinaryReader reader(mip.video_source->clone());
+    EXPECT_EQ(reader.read_all_bytes().unwrap().as_slice(), bytes.as_slice());
+}
+
+TEST_F(ConditionalTextureTest, DescriptionPreservesEverySlotAndMip) {
+    {
+        std::ofstream output(root / "materials" / "slots.tex", std::ios::binary);
+        output.write("TEXV0005", 9);
+        output.write("TEXI0001", 9);
+        for (auto value : array<unsigned, 7> { 4u, 0u, 8u, 8u, 8u, 8u, 0u })
+            WriteU32(output, value);
+        output.write("TEXB0002", 9);
+        WriteU32(output, 2);
+        for (unsigned slot {}; slot < 2; ++slot) {
+            WriteU32(output, 2);
+            for (unsigned mip {}; mip < 2; ++mip) {
+                auto extent = 8u >> (slot + mip);
+                auto size   = ((extent + 3) / 4) * ((extent + 3) / 4) * 16;
+                for (auto value : array<unsigned, 5> { extent, extent, 0u, 0u, size })
+                    WriteU32(output, value);
+                for (unsigned index {}; index < size / 4; ++index) WriteU32(output, index);
+            }
+        }
+    }
+    owe::TexImageParser parser(&vfs);
+    auto                described = parser.Describe("slots"_str).unwrap();
+    auto                image     = parser.Parse("slots"_str).unwrap();
+    ASSERT_EQ(described.slots.len(), usize(2));
+    for (usize index {}; index < described.slots.len(); ++index) {
+        const auto& slot = image->content->slots[index];
+        EXPECT_EQ(described.slots[index].width, slot.width);
+        EXPECT_EQ(described.slots[index].height, slot.height);
+        EXPECT_EQ(described.slots[index].mip_count, slot.mipmaps.len());
+        EXPECT_EQ(slot.mipmaps.len(), usize(2));
+    }
+}
 
 TEST_F(ConditionalTextureTest, BaseMipmapsRemainAlignedWithMultipleConditions) {
     for (auto conditions : { 0u, 1u, 2u }) {
@@ -256,7 +417,7 @@ TEST_F(ConditionalTextureTest, AssetVersionWriterPreservesFixedRecord) {
     }
 }
 
-TEST_F(ConditionalTextureTest, HeaderPreparationHandsOffOwnedContentOnce) {
+TEST_F(ConditionalTextureTest, MetadataDoesNotDecodeAndParsePublishesOwnedContentOnce) {
     WriteTexture(false, 0);
     auto [tx, rx] = rstd::sync::mpmc::channel<Arc<vrento::Image>>();
     auto ready    = owe::ImageReadyCallback::make([tx](Arc<vrento::Image> image) {
@@ -266,6 +427,12 @@ TEST_F(ConditionalTextureTest, HeaderPreparationHandsOffOwnedContentOnce) {
     {
         owe::TexImageParser parser(&vfs, Some(rstd::move(ready)));
         ASSERT_TRUE(parser.ParseHeader("conditional"_str).is_ok());
+        auto description = parser.Describe("conditional"_str);
+        ASSERT_TRUE(description.is_ok());
+        ASSERT_EQ(description->slots.len(), usize(1));
+        EXPECT_EQ(description->slots[usize()].mip_count, usize(2));
+        EXPECT_TRUE(rx.try_recv().is_err());
+        ASSERT_TRUE(parser.Parse("conditional"_str).is_ok());
         auto queued = rx.try_recv();
         ASSERT_TRUE(queued.is_ok());
         retained = Some(queued.unwrap());
@@ -364,16 +531,12 @@ TEST(ImageParser, TextureHeaderExposesFourthPackedComponent) {
         output.write("TEXI0001", 9);
         WriteU32(output, 4);
         WriteU32(output, 1u << 23);
-        WriteU32(output, 1);
-        WriteU32(output, 1);
-        WriteU32(output, 1);
-        WriteU32(output, 1);
+        for (int i {}; i < 4; ++i) WriteU32(output, 1);
         WriteU32(output, 0);
         output.write("TEXB0001", 9);
-        WriteU32(output, 1);
-        WriteU32(output, 1);
-        WriteU32(output, 1);
-        WriteU32(output, 1);
+        for (int i {}; i < 4; ++i) WriteU32(output, 1);
+        WriteU32(output, 16);
+        for (int i {}; i < 4; ++i) WriteU32(output, 0);
     }
 
     auto physical =
@@ -467,6 +630,11 @@ TEST_F(ConditionalTextureTest, ExternalPathsPreserveDecodedBytesAndMalformedEsca
             ASSERT_TRUE(header.is_ok()) << key;
             EXPECT_EQ(header->width, 1);
             EXPECT_EQ(header->height, 1);
+            auto description = parser.Describe(rstd::cppstd::as_str(key).unwrap());
+            ASSERT_TRUE(description.is_ok());
+            ASSERT_EQ(description->slots.len(), usize(1));
+            EXPECT_EQ(description->slots[usize()].width, 1);
+            EXPECT_EQ(description->slots[usize()].height, 1);
             auto image = parser.Parse(rstd::cppstd::as_str(key).unwrap());
             ASSERT_TRUE(image.is_ok()) << key;
             auto& mip = (*image)->content->slots[usize()].mipmaps[usize()];
