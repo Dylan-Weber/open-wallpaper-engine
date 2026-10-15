@@ -265,32 +265,31 @@ TEST(RenderOutput, ClearAndResize) {
     auto failure = renderer.diagnostics().frame_error;
     rstd_assert(failure && failure->stage == vk::GraphExecutionStage::Binding);
     rstd_assert(failure->resource.valid());
-    rstd_assert(failure->texture && failure->texture->kind == tex::ErrorKind::Invalid);
+    rstd_assert(failure->texture_error() &&
+                failure->texture_error()->kind == tex::ErrorKind::Invalid);
     rstd_assert(counts->acquired == 1 && counts->aborted == 1 && counts->submitted == 0);
     renderer.tryInstallSceneRenderState(scene, build(), snapshot).unwrap();
-    rstd_assert(
-        renderer.renderedTarget("_rt_default"_str).unwrap_err().as_Resources().source.kind ==
-        vrento::resource::ResourceErrorKind::Pending);
+    rstd_assert(! renderer.renderedTarget("_rt_default"_str).unwrap().ready());
     renderer.drawFrame(scene);
-    auto old   = renderer.renderedTarget("_rt_default"_str).unwrap();
+    auto old   = renderer.renderedTarget("_rt_default"_str).unwrap().take_ready();
     auto first = pixels(queue, old);
     for (usize i {}; i < first.len(); ++i)
         rstd_assert(first[i] ==
                     u8(i.to_primitive() % 4 == 0 || i.to_primitive() % 4 == 3 ? 255 : 0));
-    auto initial = pixels(queue, renderer.renderedTarget("_rt_seen"_str).unwrap());
+    auto initial = pixels(queue, renderer.renderedTarget("_rt_seen"_str).unwrap().take_ready());
     for (auto byte : initial) rstd_assert(byte == u8());
     scene.SetClearColor({ 0.0f, 1.0f, 0.0f });
     renderer.tryInstallSceneRenderState(scene, build(), snapshot).unwrap();
     renderer.drawFrame(scene);
-    auto second = pixels(queue, renderer.renderedTarget("_rt_default"_str).unwrap());
+    auto second = pixels(queue, renderer.renderedTarget("_rt_default"_str).unwrap().take_ready());
     for (usize i {}; i < second.len(); ++i)
         rstd_assert(second[i] ==
                     u8(i.to_primitive() % 4 == 1 || i.to_primitive() % 4 == 3 ? 255 : 0));
-    auto history = pixels(queue, renderer.renderedTarget("_rt_seen"_str).unwrap());
+    auto history = pixels(queue, renderer.renderedTarget("_rt_seen"_str).unwrap().take_ready());
     for (usize i {}; i < history.len(); ++i)
         rstd_assert(history[i] ==
                     u8(i.to_primitive() % 4 == 0 || i.to_primitive() % 4 == 3 ? 255 : 0));
-    auto copied = renderer.renderedTarget("_rt_copy"_str).unwrap();
+    auto copied = renderer.renderedTarget("_rt_copy"_str).unwrap().take_ready();
     auto levels = copied.texture().description().mip_levels;
     rstd_assert(levels > 1);
     for (unsigned mip {}; mip < levels; ++mip) {
@@ -310,7 +309,7 @@ TEST(RenderOutput, ClearAndResize) {
     renderer.configureRenderTargets(scene);
     renderer.tryInstallSceneRenderState(scene, build(), snapshot).unwrap();
     renderer.drawFrame(scene);
-    auto resized = renderer.renderedTarget("_rt_default"_str).unwrap();
+    auto resized = renderer.renderedTarget("_rt_default"_str).unwrap().take_ready();
     rstd_assert(resized.texture().description().extent.width == 96);
     auto final = pixels(queue, resized);
     for (usize i {}; i < final.len(); ++i)
@@ -389,7 +388,7 @@ TEST(RenderOutput, ShaderDirtyAndTopology) {
         EXPECT_EQ((*retained)->attempt(), (*initial_failure)->attempt());
     };
     auto color = [&](unsigned red, unsigned green, unsigned blue) {
-        auto data  = pixels(queue, renderer.renderedTarget("_rt_default"_str).unwrap());
+        auto data = pixels(queue, renderer.renderedTarget("_rt_default"_str).unwrap().take_ready());
         auto index = usize((32 * 64 + 32) * 4);
         ASSERT_EQ(data[index], u8(red));
         ASSERT_EQ(data[index + usize(1)], u8(green));
@@ -516,7 +515,7 @@ TEST(RenderOutput, DynamicFontUploads) {
     scene.PassFrameTime(1.0 / 60.0);
     ready(pipeline.prepare({ .frametime = 1.0f / 60.0f, .runtime = 0.01f }));
     renderer.drawFrame(scene);
-    auto first = pixels(queue, renderer.renderedTarget("_rt_default"_str).unwrap());
+    auto first = pixels(queue, renderer.renderedTarget("_rt_default"_str).unwrap().take_ready());
     rstd_assert(dirty() == usize());
     usize ink;
     for (usize i {}; i < first.len(); i += usize(4))
@@ -526,7 +525,7 @@ TEST(RenderOutput, DynamicFontUploads) {
     ready(pipeline.prepare({ .frametime = 1.0f / 60.0f, .runtime = 0.03f }));
     rstd_assert(dirty() > usize());
     renderer.drawFrame(scene);
-    auto second = pixels(queue, renderer.renderedTarget("_rt_default"_str).unwrap());
+    auto second = pixels(queue, renderer.renderedTarget("_rt_default"_str).unwrap().take_ready());
     rstd_assert(first != second && dirty() == usize());
     renderer.destroy();
     rstd_assert(queue.session().validation_errors() == 0);

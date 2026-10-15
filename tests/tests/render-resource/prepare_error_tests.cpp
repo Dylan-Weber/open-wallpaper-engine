@@ -34,19 +34,21 @@ TEST(PrepareError, OwnsNestedResourceCauseAfterContextRelease) {
         ++depth;
         source = (*source)->source();
     }
-    EXPECT_EQ(depth, 3u);
+    EXPECT_EQ(depth, 4u);
 }
 
 TEST(PrepareError, NativeCompileCauseSurvivesStatusCopies) {
     vrento::vulkan::GraphExecutionError error { vrento::vulkan::GraphExecutionStage::Prepare,
                                                 { 7 } };
-    error.preparation = vrento::resource::ResourceErrorSnapshot(vrento::resource::ResourceError {
-        .message = "create pipeline failed"_Str,
-        .source  = Some(vrento::resource::ResourceErrorSource::Native(-3)) });
-    auto cloned       = error;
-    error.preparation = {};
+    error.cause = vrento::vulkan::GraphExecutionCause::Resource(
+        vrento::resource::ResourceErrorSnapshot(vrento::resource::ResourceError {
+            .message = "create pipeline failed"_Str,
+            .source  = Some(vrento::resource::ResourceErrorSource::Native(-3)) }));
+    auto cloned = error;
+    error.cause =
+        vrento::vulkan::GraphExecutionCause::Reason(vrento::vulkan::GraphFailure::InvalidState);
     EXPECT_EQ(cloned.pass.value, 7u);
-    EXPECT_EQ(cloned.preparation.error().source->as_Native().code, -3);
+    EXPECT_EQ(cloned.cause.as_Resource().error.error().source->as_Native().code, -3);
     auto source = as<rstd::error::Error>(cloned).source();
     ASSERT_TRUE(source.is_some());
     EXPECT_TRUE((*source)->source().is_some());

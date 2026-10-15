@@ -46,9 +46,9 @@ bool RenderBufferResolver::updateDrawBuffers(const DrawBufferRequest&           
     }
     auto updated = vrento::RenderBufferResolver::updateDrawBuffers(
         AdaptRequest(request, *geometry), buffers, writer);
-    if (updated.is_ok()) return true;
-    if (updated.unwrap_err_unchecked().kind == vrento::DrawBufferUpdateErrorKind::NeedsReprepare)
-        request.mesh->SetLayoutDirty();
+    if (updated.is_err()) return false;
+    if (updated.unwrap() == vrento::DrawUpdateOutcome::Updated) return true;
+    request.mesh->SetLayoutDirty();
     return false;
 }
 } // namespace owe::vulkan

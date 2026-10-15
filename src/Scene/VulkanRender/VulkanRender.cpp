@@ -18,11 +18,9 @@ import wescene.utils;
 import wescene.scene;
 import wescene.text;
 
-using rstd::time::Duration;
-
 using rstd::mem::memcpy;
 using rstd::mem::memset;
-
+using rstd::time::Duration;
 using namespace owe::vulkan;
 using namespace rstd::prelude;
 using namespace rstd::literals;
@@ -30,6 +28,19 @@ using rstd::ffi::CStr;
 using rstd::sync::Arc;
 using rstd::sync::atomic::Atomic;
 using rstd::sync::atomic::Ordering;
+using namespace owe;
+using vrento::vulkan::FrameState;
+
+template<typename E>
+static auto DescribeNativeFailure(const E& error) -> String {
+    auto message = rstd::format("{}", error);
+    auto source  = as<rstd::error::Error>(error).source();
+    while (source) {
+        message.push_str(rstd::format(": {}", *source).as_str());
+        source = (*source)->source();
+    }
+    return message;
+}
 
 constexpr rstd::uint64_t vk_wait_time { static_cast<rstd::uint64_t>(
     Duration::from_secs(u64(10)).as_nanos().to_primitive()) };
@@ -63,8 +74,6 @@ struct ViewerSurfaceFactory {
         });
     }
 };
-
-using namespace owe;
 
 namespace rstd
 {
@@ -200,12 +209,14 @@ enum class SceneRenderPreparationProgress
     Pending
 };
 
-auto SceneCompileProgress(Result<empty, vrento::vulkan::GraphExecutionError> result)
+auto SceneCompileProgress(
+    Result<vrento::vulkan::CompileProgress, vrento::vulkan::GraphExecutionError> result)
     -> Result<SceneRenderPreparationProgress, RenderPrepareError> {
-    if (result.is_ok()) return Ok(SceneRenderPreparationProgress::Complete);
+    if (result.is_ok())
+        return Ok(*result == vrento::vulkan::CompileProgress::Ready
+                      ? SceneRenderPreparationProgress::Complete
+                      : SceneRenderPreparationProgress::Pending);
     auto error = rstd::move(result).unwrap_err();
-    if (error.stage == vrento::vulkan::GraphExecutionStage::Pending)
-        return Ok(SceneRenderPreparationProgress::Pending);
     return Err(RenderPrepareError::Compile(rstd::move(error)));
 }
 
@@ -464,7 +475,8 @@ bool VulkanRender::Impl::beginFrame(vrento::texture::Submission work) {
     auto                                                  fonts = prepareFontUploads(work, uploads);
     if (fonts.is_err()) {
         vrento::vulkan::GraphExecutionError error { vrento::vulkan::GraphExecutionStage::Prepare };
-        error.preparation = resource::ResourceErrorSnapshot(rstd::move(fonts).unwrap_err());
+        error.cause = vrento::vulkan::GraphExecutionCause::Resource(
+            vrento::resource::ResourceErrorSnapshot(rstd::move(fonts).unwrap_err()));
         reportFrameError(rstd::move(error));
         return false;
     }
@@ -499,15 +511,7 @@ bool VulkanRender::Impl::beginFrame(vrento::texture::Submission work) {
 }
 void VulkanRender::Impl::reportFrameError(vrento::vulkan::GraphExecutionError error) {
     m_last_frame_error = Some(vrento::vulkan::GraphExecutionError(error));
-    rstd_error("frame failed: stage={} pass={} resource={} native={}",
-               static_cast<unsigned>(error.stage),
-               error.pass.value,
-               error.resource.value,
-               error.native);
-    if (error.texture)
-        rstd_error("texture failure: kind={} native={}",
-                   static_cast<unsigned>(error.texture->kind),
-                   error.texture->native);
+    rstd_error("frame failed: {}", DescribeNativeFailure(error));
     if (m_scene_render_state.installed())
         if (auto resource = m_scene_render_state.inputGraph().find_resource(error.resource))
             rstd_error("frame resource: {}", resource->name);
@@ -523,15 +527,14 @@ void VulkanRender::Impl::failOutput(bool uncertain) {
     m_renderer->clear();
 }
 bool VulkanRender::Impl::executeFrame() {
-    using vrento::vulkan::FrameState;
     if (! m_frame || ! m_output || m_output->blocked) return false;
     if (m_frame->state() == FrameState::Pending) {
         auto prepared = m_frame->advance();
         if (prepared.is_err()) {
-            if (prepared.unwrap_err().stage != vrento::vulkan::GraphExecutionStage::Pending)
-                failOutput();
+            failOutput();
             return false;
         }
+        if (*prepared == vrento::vulkan::FrameProgress::Pending) return false;
     }
     if (m_frame->state() == FrameState::Ready && m_frame->record().is_err()) {
         failOutput();
@@ -634,7 +637,7 @@ auto VulkanRender::deviceSession() const
     return Ok(vrento::vulkan::DeviceSession(*pImpl->m_session));
 }
 auto VulkanRender::renderedTarget(ref<str> name)
-    -> Result<vrento::texture::TextureViewRef, RenderPrepareError> {
+    -> Result<vrento::Preparation<vrento::texture::TextureViewRef>, RenderPrepareError> {
     auto definition = pImpl->m_scene_render_state.textureResource(name);
     if (! definition) return Err(RenderPrepareError::State(PrepareStateError::NoTarget));
     auto result = pImpl->m_rendering_resources.resources.RenderedTarget(*definition);
@@ -820,9 +823,7 @@ bool VulkanRender::Impl::init(RenderInitInfo info, SceneLoadBenchRecorderView lo
             factory);
         if (created.is_err()) {
             const auto error = created.unwrap_err();
-            rstd_error("init vulkan session failed: stage={}, result={}",
-                       static_cast<int>(error.stage),
-                       static_cast<int>(error.result));
+            rstd_error("init vulkan session failed: {}", DescribeNativeFailure(error));
             return false;
         }
         m_session  = Some(rstd::move(created).unwrap());
@@ -837,8 +838,10 @@ bool VulkanRender::Impl::init(RenderInitInfo info, SceneLoadBenchRecorderView lo
     {
         auto device_span = SceneLoadSpan(load_bench, &SceneLoadProbeIds::vulkan_device);
         m_extent         = m_device->out_extent();
-        if (! m_rendering_resources.resources.Initialize(*m_session)) {
-            rstd_error("resource registry init failed");
+        auto initialized = m_rendering_resources.resources.TryInitialize(*m_session);
+        if (initialized.is_err()) {
+            rstd_error("resource registry init failed: {}",
+                       DescribeNativeFailure(initialized.as_ref().unwrap_err()));
             return false;
         }
         if (info.pipeline_preparation == vrento::vulkan::PipelinePreparationMode::Deferred &&
@@ -897,12 +900,18 @@ bool VulkanRender::Impl::init(RenderInitInfo info, SceneLoadBenchRecorderView lo
                 return false;
             }
         } else {
-            m_ex_swapchain = m_rendering_resources.resources.CreateLocalSwapchain(
+            auto output = m_rendering_resources.resources.TryCreateLocalSwapchain(
                 *m_device,
                 extent.width,
                 extent.height,
                 (info.offscreen_tiling == TexTiling::OPTIMAL ? VK_IMAGE_TILING_OPTIMAL
                                                              : VK_IMAGE_TILING_LINEAR));
+            if (output.is_err()) {
+                rstd_error("local output creation failed: {}",
+                           DescribeNativeFailure(output.as_ref().unwrap_err()));
+                return false;
+            }
+            m_ex_swapchain = Some(output.unwrap());
         }
         m_with_surface = false;
     }

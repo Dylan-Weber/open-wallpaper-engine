@@ -12,10 +12,12 @@ import wescene.types;
 import wescene.vulkan;
 
 using namespace rstd::literals;
+
 namespace tex = vrento::texture;
 
 struct TextureRuntimeProbe {
-    auto Pump(vrento::vulkan::TextureContext&, double) -> rstd::Result<rstd::empty, tex::Error> {
+    auto Pump(vrento::vulkan::TextureContext&, double)
+        -> rstd::Result<rstd::empty, vrento::resource::ResourceError> {
         return rstd::Ok(rstd::empty {});
     }
 };
@@ -27,7 +29,7 @@ template<>
 struct Impl<owe::resource_registry::TextureProducer, TextureRuntimeProbe>
     : ImplBase<TextureRuntimeProbe> {
     auto Pump(vrento::vulkan::TextureContext& context, double seconds)
-        -> Result<empty, tex::Error> {
+        -> Result<empty, vrento::resource::ResourceError> {
         return this->self().Pump(context, seconds);
     }
 };
@@ -73,18 +75,22 @@ struct BufferBackend {
     owe::vulkan::BufferAllocationRequest last_request;
 
     auto AllocateBuffer(const owe::vulkan::BufferAllocationRequest& request)
-        -> rstd::Option<owe::vulkan::BufferAllocation> {
+        -> rstd::Result<owe::vulkan::BufferAllocation, vrento::vulkan::BackendError> {
         ++allocations;
         last_request = request;
-        if (request.size == 0) return rstd::None();
-        return rstd::Some(owe::vulkan::BufferAllocation {});
+        if (request.size == 0)
+            return rstd::Err(vrento::vulkan::BackendError {
+                rstd::string::String {},
+                vrento::vulkan::BackendCause::Invalid(rstd::string::String {}) });
+        return rstd::Ok(owe::vulkan::BufferAllocation {});
     }
 
     auto QueueBufferWrite(rstd::mut_ref<owe::vulkan::BufferAllocation>, rstd::slice<rstd::u8>,
-                          VkDeviceSize) -> rstd::Option<owe::vulkan::BufferUploadTicket> {
+                          VkDeviceSize)
+        -> rstd::Result<owe::vulkan::BufferUploadTicket, vrento::vulkan::BackendError> {
         ++writes;
         ++next_ticket;
-        return rstd::Some(owe::vulkan::BufferUploadTicket { .value = next_ticket });
+        return rstd::Ok(owe::vulkan::BufferUploadTicket { .value = next_ticket });
     }
 };
 

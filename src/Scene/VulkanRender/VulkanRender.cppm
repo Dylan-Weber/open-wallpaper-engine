@@ -150,7 +150,8 @@ public:
     ExSwapchain* exSwapchain() const;
     bool         inited() const;
     auto         deviceSession() const -> Result<vrento::vulkan::DeviceSession, RenderPrepareError>;
-    auto renderedTarget(ref<str>) -> Result<vrento::texture::TextureViewRef, RenderPrepareError>;
+    auto         renderedTarget(ref<str>)
+        -> Result<vrento::Preparation<vrento::texture::TextureViewRef>, RenderPrepareError>;
 
     int takeLastFrameSyncFd();
 
