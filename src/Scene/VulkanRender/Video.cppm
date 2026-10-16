@@ -1161,13 +1161,11 @@ auto MediaRegistry::Prepare(TextureContext& context, const Image& image,
     upload.target = target;
     upload.width  = desc.extent.width;
     upload.height = desc.extent.height;
-    upload.bytes.reserve(usize(pixels * 4u));
-    for (usize pixel {}; pixel < usize(pixels); ++pixel) {
-        upload.bytes.push(u8());
-        upload.bytes.push(u8());
-        upload.bytes.push(u8());
-        upload.bytes.push(u8(255));
-    }
+    Vec<u8> bytes;
+    bytes.resize(usize(pixels * 4u), u8());
+    for (usize pixel {}; pixel < usize(pixels); ++pixel)
+        bytes[pixel * usize(4) + usize(3)] = u8(255);
+    upload.bytes = rstd::move(bytes);
     Vec<tex::TextureUpload> uploads;
     uploads.push(rstd::move(upload));
     return Ok(PreparedMediaTexture {

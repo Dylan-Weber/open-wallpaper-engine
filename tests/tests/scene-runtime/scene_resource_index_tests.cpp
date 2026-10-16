@@ -30,6 +30,7 @@ Arc<owe::SceneMesh> MakeSingleSubmesh(std::string name) {
 
 class FakeImageParser {
 public:
+    auto Retention(ref<str>) const -> owe::ImageRetention { return owe::ImageRetention::Source; }
     auto Describe(ref<str> name) const -> Result<owe::ImageDescription, owe::ImageParseError> {
         auto                  header = ParseHeader(name).unwrap();
         owe::ImageDescription result { .header = rstd::move(header) };

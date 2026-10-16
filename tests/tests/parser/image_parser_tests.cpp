@@ -90,6 +90,7 @@ namespace
 
 class TrackingImageParser {
 public:
+    auto Retention(ref<str>) const -> owe::ImageRetention { return owe::ImageRetention::Source; }
     auto Describe(ref<str>) const -> Result<owe::ImageDescription, owe::ImageParseError> {
         return Ok(owe::ImageDescription {});
     }
@@ -125,6 +126,7 @@ private:
 
 class MixedImageParser {
 public:
+    auto Retention(ref<str>) const -> owe::ImageRetention { return owe::ImageRetention::Source; }
     auto Describe(ref<str>) const -> Result<owe::ImageDescription, owe::ImageParseError> {
         return Ok(owe::ImageDescription {});
     }
@@ -253,6 +255,308 @@ constexpr unsigned char RedPng[] {
     0x3d, 0x1d, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
 };
 
+struct TextureReadGate {
+    struct Fields {
+        bool  armed {}, entered {}, released {}, fail {};
+        usize reads {}, fail_on_read {};
+    };
+    Vec<u8>                   bytes;
+    rstd::sync::Mutex<Fields> fields { Fields {} };
+    rstd::sync::Condvar       changed;
+
+    explicit TextureReadGate(Vec<u8> data): bytes(rstd::move(data)) {}
+
+    void Arm(usize fail_on_read = usize()) {
+        auto state = fields.lock().unwrap();
+        *state     = Fields { .armed = true, .fail_on_read = fail_on_read };
+    }
+    bool WaitUntilEntered() {
+        auto state = fields.lock().unwrap();
+        return ! changed
+                     .wait_timeout_while(state,
+                                         rstd::time::Duration::from_secs(u64(3)),
+                                         [](const Fields& value) {
+                                             return ! value.entered;
+                                         })
+                     .timed_out();
+    }
+    void Release(bool fail = false) {
+        auto state      = fields.lock().unwrap();
+        state->fail     = fail;
+        state->released = true;
+        changed.notify_all();
+    }
+};
+
+struct ControlledTextureSource {
+    Arc<TextureReadGate> gate;
+
+    auto read_at(mut_ref<u8[]> buffer, u64 offset) const -> rstd::io::Result<usize> {
+        {
+            auto state = gate->fields.lock().unwrap();
+            if (state->armed) {
+                ++state->reads;
+                state->entered = true;
+                gate->changed.notify_all();
+                gate->changed.wait_while(state, [](const auto& value) {
+                    return ! value.released;
+                });
+                if (state->fail || state->reads == state->fail_on_read)
+                    return Err(rstd::io::error::Error::from_kind(
+                        rstd::io::error::ErrorKind { rstd::io::error::ErrorKind::Other }));
+            }
+        }
+        if (offset >= u64(gate->bytes.len().to_primitive())) return Ok(usize());
+        auto position = usize(offset.to_primitive());
+        auto count    = rstd::cmp::min(buffer.len(), gate->bytes.len() - position);
+        rstd::mem::memcpy(buffer.as_raw_ptr(), gate->bytes.data() + position.to_primitive(), count);
+        return Ok(count);
+    }
+};
+
+struct ControlledTextureMount {
+    rstd::io::ReadRange source;
+
+    auto open_read(owe::fs::Path) const -> rstd::io::Result<rstd::io::ReadRange> {
+        return Ok(source.clone());
+    }
+    auto open_write(owe::fs::Path, owe::fs::WriteOptions) const
+        -> rstd::io::Result<owe::fs::WriteSeekHandle> {
+        return Err(rstd::io::error::Error::from_kind(
+            rstd::io::error::ErrorKind { rstd::io::error::ErrorKind::Unsupported }));
+    }
+    auto metadata(owe::fs::Path) const -> rstd::io::Result<owe::fs::FileMetadata> {
+        return Ok(owe::fs::FileMetadata { .len = source.len(), .is_file = true, .readonly = true });
+    }
+};
+
+} // namespace
+
+template<>
+struct rstd::Impl<rstd::io::ReadAt, ControlledTextureSource>
+    : rstd::ImplBase<ControlledTextureSource> {
+    auto read_at(mut_ref<u8[]> buffer, u64 offset) const -> rstd::io::Result<usize> {
+        return this->self().read_at(buffer, offset);
+    }
+};
+
+template<>
+struct rstd::Impl<owe::fs::MountFs, ControlledTextureMount>
+    : rstd::ImplBase<ControlledTextureMount> {
+    auto open_read(owe::fs::Path path) const -> rstd::io::Result<rstd::io::ReadRange> {
+        return this->self().open_read(path);
+    }
+    auto open_write(owe::fs::Path path, owe::fs::WriteOptions options) const
+        -> rstd::io::Result<owe::fs::WriteSeekHandle> {
+        return this->self().open_write(path, options);
+    }
+    auto metadata(owe::fs::Path path) const -> rstd::io::Result<owe::fs::FileMetadata> {
+        return this->self().metadata(path);
+    }
+};
+
+namespace
+{
+
+auto MountControlledTexture(owe::fs::VFS& vfs, const std::filesystem::path& path)
+    -> Arc<TextureReadGate> {
+    auto filepath = rstd::path::PathBuf::from(rstd::cppstd::as_str(path.string()).unwrap());
+    auto bytes    = rstd::fs::read(filepath.as_path()).unwrap();
+    auto gate     = Arc<TextureReadGate>::make(rstd::move(bytes));
+    auto source   = rstd::io::ReadRange::make(
+                        rstd::io::SharedReadAt::make(ControlledTextureSource { gate.clone() }),
+                        u64(),
+                        u64(gate->bytes.len().to_primitive()))
+                        .unwrap();
+    vfs.mount("/assets"_str,
+              owe::fs::MountHandle::make(ControlledTextureMount { rstd::move(source) }))
+        .unwrap();
+    return gate;
+}
+
+bool WaitForRegisteredReads(const owe::TexImageParser& parser, u64 count) {
+    auto start = rstd::time::Instant::now();
+    while (parser.Statistics().in_flight_reuses < count) {
+        if (start.elapsed() >= rstd::time::Duration::from_secs(u64(3))) return false;
+        rstd::thread::yield_now();
+    }
+    return true;
+}
+
+TEST_F(ConditionalTextureTest, PixelStatisticsFollowStorageNotImageWrappersOrArcClones) {
+    WriteTexture(false, 0);
+    auto [tx, rx] = rstd::sync::mpmc::channel<rstd::sync::Weak<vrento::Image>>();
+    owe::TexImageParser parser(&vfs,
+                               Some(owe::ImageReadyCallback::make([tx](Arc<vrento::Image> image) {
+                                   tx.send(image.downgrade()).unwrap();
+                               })));
+    ASSERT_TRUE(parser.Describe("conditional"_str).is_ok());
+    EXPECT_EQ(parser.Statistics().decode_attempts, u64());
+    auto image   = parser.Parse("conditional"_str).unwrap();
+    auto old     = image.downgrade();
+    auto content = image->content.clone();
+    EXPECT_TRUE(rx.try_recv().is_ok());
+    EXPECT_TRUE(Arc<owe::Image>::ptr_eq(image, parser.Parse("conditional"_str).unwrap()));
+    auto stats = parser.Statistics();
+    EXPECT_EQ(stats.current_count, u64(1));
+    EXPECT_EQ(stats.current_bytes, u64(20));
+    EXPECT_EQ(stats.total_bytes, u64(20));
+    image.reset();
+    EXPECT_TRUE(old.expired());
+    auto reused = parser.Parse("conditional"_str).unwrap();
+    EXPECT_TRUE(Arc<vrento::Image>::ptr_eq(content, reused->content));
+    reused.reset();
+    EXPECT_EQ(parser.Statistics().current_count, u64(1));
+    EXPECT_TRUE(rx.try_recv().is_err());
+    content.reset();
+    stats = parser.Statistics();
+    EXPECT_EQ(stats.current_count, u64());
+    EXPECT_EQ(stats.current_bytes, u64());
+    EXPECT_EQ(stats.peak_count, u64(1));
+    EXPECT_EQ(stats.peak_bytes, u64(20));
+    EXPECT_EQ(stats.decode_total, u64(1));
+    EXPECT_EQ(stats.reuse_total, u64(2));
+    EXPECT_TRUE(parser.Describe("conditional"_str).is_ok());
+    EXPECT_TRUE(parser.Parse("conditional"_str).is_ok());
+    EXPECT_EQ(parser.Statistics().decode_total, u64(2));
+    EXPECT_EQ(parser.Statistics().total_bytes, u64(40));
+    EXPECT_EQ(parser.Statistics().current_bytes, u64());
+    EXPECT_TRUE(rx.try_recv().is_ok());
+}
+
+TEST_F(ConditionalTextureTest, RegisteredReadsShareResultWhenConsumersImmediatelyReleaseIt) {
+    WritePayload(owe::ImageType::UNKNOWN, false, "0123456789abcdef"_str.as_bytes(), 4, 4);
+    auto                gate = MountControlledTexture(vfs, root / "materials" / "payload.tex");
+    owe::TexImageParser parser(&vfs);
+    ASSERT_TRUE(parser.Describe("payload"_str).is_ok());
+    gate->Arm();
+    auto read = [&] {
+        auto image = parser.Parse("payload"_str).unwrap();
+        return image->content.downgrade();
+    };
+    auto producer = rstd::thread::spawn(read).unwrap();
+    auto entered  = gate->WaitUntilEntered();
+    Vec<rstd::thread::JoinHandle<rstd::sync::Weak<vrento::Image>>> consumers;
+    for (usize index {}; index < usize(8); ++index)
+        consumers.push(rstd::thread::spawn(read).unwrap());
+    auto registered = WaitForRegisteredReads(parser, u64(8));
+    gate->Release();
+    auto                                 first = rstd::move(producer).join().unwrap();
+    Vec<rstd::sync::Weak<vrento::Image>> results;
+    for (auto& consumer : consumers) {
+        auto result = rstd::move(consumer).join().unwrap();
+        EXPECT_TRUE(result.as_ptr() == first.as_ptr());
+        results.push(rstd::move(result));
+    }
+    for (const auto& result : results) EXPECT_TRUE(result.expired());
+    EXPECT_TRUE(entered);
+    EXPECT_TRUE(registered);
+    auto stats = parser.Statistics();
+    EXPECT_EQ(stats.decode_attempts, u64(1));
+    EXPECT_EQ(stats.decode_total, u64(1));
+    EXPECT_EQ(stats.in_flight_reuses, u64(8));
+    EXPECT_EQ(stats.current_count, u64());
+    EXPECT_EQ(stats.current_bytes, u64());
+    EXPECT_EQ(gate->fields.lock().unwrap()->reads, usize(1));
+}
+
+TEST_F(ConditionalTextureTest, FailedFlightDeliversSameErrorAndNextReadRetries) {
+    WritePayload(owe::ImageType::UNKNOWN, false, "0123456789abcdef"_str.as_bytes(), 4, 4);
+    auto                gate = MountControlledTexture(vfs, root / "materials" / "payload.tex");
+    owe::TexImageParser parser(&vfs);
+    ASSERT_TRUE(parser.Describe("payload"_str).is_ok());
+    gate->Arm();
+    auto read = [&] {
+        return parser.Parse("payload"_str);
+    };
+    auto producer   = rstd::thread::spawn(read).unwrap();
+    auto entered    = gate->WaitUntilEntered();
+    auto consumer   = rstd::thread::spawn(read).unwrap();
+    auto registered = WaitForRegisteredReads(parser, u64(1));
+    gate->Release(true);
+    auto first  = rstd::move(producer).join().unwrap();
+    auto second = rstd::move(consumer).join().unwrap();
+    EXPECT_TRUE(entered);
+    EXPECT_TRUE(registered);
+    ASSERT_TRUE(first.is_err());
+    ASSERT_TRUE(second.is_err());
+    const auto& error = first.as_ref().unwrap_err();
+    EXPECT_EQ(error.kind, owe::ImageParseErrorKind::InvalidData);
+    EXPECT_EQ(second.as_ref().unwrap_err().message, error.message);
+    EXPECT_EQ(parser.Statistics().decode_attempts, u64(1));
+    EXPECT_EQ(parser.Statistics().decode_total, u64());
+    EXPECT_EQ(parser.Statistics().current_bytes, u64());
+    gate->Release();
+    EXPECT_TRUE(parser.Parse("payload"_str).is_ok());
+    EXPECT_EQ(parser.Statistics().decode_attempts, u64(2));
+    EXPECT_EQ(parser.Statistics().decode_total, u64(1));
+    EXPECT_EQ(parser.Statistics().current_count, u64());
+}
+
+TEST_F(ConditionalTextureTest, PartialDecodeFailureReleasesStorageAndReusesPreparedSourceOnRetry) {
+    WriteTexture(false, 0);
+    auto                gate = MountControlledTexture(vfs, root / "materials" / "conditional.tex");
+    owe::TexImageParser parser(&vfs);
+    ASSERT_TRUE(parser.Describe("conditional"_str).is_ok());
+    gate->Arm(usize(2));
+    gate->Release();
+    auto failed = parser.Parse("conditional"_str);
+    ASSERT_TRUE(failed.is_err());
+    EXPECT_EQ(failed.unwrap_err().kind, owe::ImageParseErrorKind::InvalidData);
+    auto stats = parser.Statistics();
+    EXPECT_EQ(stats.current_count, u64());
+    EXPECT_EQ(stats.current_bytes, u64());
+    EXPECT_EQ(stats.peak_count, u64(1));
+    EXPECT_EQ(stats.peak_bytes, u64(16));
+    EXPECT_EQ(stats.decode_total, u64());
+    EXPECT_TRUE(parser.Parse("conditional"_str).is_ok());
+    stats = parser.Statistics();
+    EXPECT_EQ(stats.decode_attempts, u64(2));
+    EXPECT_EQ(stats.decode_total, u64(1));
+    EXPECT_EQ(stats.total_bytes, u64(36));
+    EXPECT_EQ(stats.current_bytes, u64());
+}
+
+TEST_F(ConditionalTextureTest, CancelledQueuedReadDoesNotPoisonParserOrRetainCompletedPixels) {
+    WritePayload(owe::ImageType::UNKNOWN, false, "0123456789abcdef"_str.as_bytes(), 4, 4);
+    auto                gate = MountControlledTexture(vfs, root / "materials" / "payload.tex");
+    owe::TexImageParser parser(&vfs);
+    ASSERT_TRUE(parser.Describe("payload"_str).is_ok());
+    gate->Arm();
+    auto pool  = rstd::thread::ThreadPoolBuilder::make().worker_count(usize(1)).build().unwrap();
+    auto tasks = rstd::thread::BlockingTaskSet<bool>::make(pool.handle(), usize(2)).unwrap();
+    auto read  = [&] {
+        return parser.Parse("payload"_str).is_ok();
+    };
+    ASSERT_TRUE(tasks.try_submit(read).is_ok());
+    auto entered = gate->WaitUntilEntered();
+    EXPECT_TRUE(tasks.try_submit(read).is_ok());
+    tasks.cancel_pending();
+    gate->Release();
+    auto first  = tasks.recv().unwrap();
+    auto second = tasks.recv().unwrap();
+    rstd::move(pool).join();
+    EXPECT_TRUE(entered);
+    EXPECT_TRUE(first.is_completed());
+    EXPECT_TRUE(second.is_cancelled());
+    EXPECT_EQ(parser.Statistics().decode_total, u64(1));
+    EXPECT_EQ(parser.Statistics().current_bytes, u64());
+    EXPECT_TRUE(parser.Parse("payload"_str).is_ok());
+    EXPECT_EQ(parser.Statistics().decode_total, u64(2));
+}
+
+TEST_F(ConditionalTextureTest, MissingContentCanBeRetriedAfterItBecomesAvailable) {
+    owe::TexImageParser parser(&vfs);
+    auto                missing = parser.Parse("conditional"_str);
+    ASSERT_TRUE(missing.is_err());
+    EXPECT_EQ(missing.unwrap_err().kind, owe::ImageParseErrorKind::MissingContent);
+    WriteTexture(false, 0);
+    EXPECT_TRUE(parser.Parse("conditional"_str).is_ok());
+    EXPECT_EQ(parser.Statistics().decode_attempts, u64(2));
+    EXPECT_EQ(parser.Statistics().decode_total, u64(1));
+    EXPECT_EQ(parser.Statistics().current_bytes, u64());
+}
+
 TEST_F(ConditionalTextureTest, EmbeddedDescriptionMatchesDecodeWithoutPublishingPixels) {
     for (auto compressed : array<bool, 2> { false, true }) {
         for (auto type :
@@ -284,6 +588,8 @@ TEST_F(ConditionalTextureTest, EmbeddedDescriptionMatchesDecodeWithoutPublishing
             EXPECT_EQ(mip.data.get()[1], 0);
             EXPECT_EQ(mip.data.get()[2], 0);
             EXPECT_EQ(mip.data.get()[3], 255);
+            EXPECT_EQ(parser.Statistics().current_count, u64(1));
+            EXPECT_EQ(parser.Statistics().current_bytes, u64(4));
             EXPECT_TRUE(rx.try_recv().is_ok());
         }
     }
@@ -312,6 +618,8 @@ TEST_F(ConditionalTextureTest, RawBcDescriptionAndVideoRangeMatchContent) {
         EXPECT_EQ(description.header.format, owe::TextureFormat::BC3);
         EXPECT_EQ(image->header.format, description.header.format);
         EXPECT_EQ(image->content->slots[usize()].mipmaps[usize()].size, isize(16));
+        EXPECT_EQ(parser.Statistics().current_count, u64(1));
+        EXPECT_EQ(parser.Statistics().current_bytes, u64(16));
     }
     auto bytes = Vec<u8>::from("\0\0\0\x10"
                                "ftypisom00000000"_str.as_bytes());
@@ -327,6 +635,13 @@ TEST_F(ConditionalTextureTest, RawBcDescriptionAndVideoRangeMatchContent) {
     EXPECT_EQ(mip.video_source->len(), rstd::as_cast<u64>(bytes.len()));
     owe::fs::BinaryReader reader(mip.video_source->clone());
     EXPECT_EQ(reader.read_all_bytes().unwrap().as_slice(), bytes.as_slice());
+    auto retained = image.downgrade();
+    image.reset();
+    EXPECT_FALSE(retained.expired());
+    EXPECT_TRUE(Arc<owe::Image>::ptr_eq(retained.upgrade(), parser.Parse("payload"_str).unwrap()));
+    EXPECT_EQ(parser.Statistics().decode_total, u64(1));
+    EXPECT_EQ(parser.Statistics().current_count, u64());
+    EXPECT_EQ(parser.Statistics().current_bytes, u64());
 }
 
 TEST_F(ConditionalTextureTest, DescriptionPreservesEverySlotAndMip) {
@@ -473,6 +788,13 @@ TEST_F(ConditionalTextureTest, FullLoadReusesPreparedHeaderAndOpenSource) {
     auto image = rstd::move(parsed).unwrap_unchecked();
     EXPECT_EQ(image->header.spriteAnim.numFrames(), usize(1));
     EXPECT_EQ(image->content->slots[usize(0)].mipmaps.len(), usize(2));
+    image.reset();
+    EXPECT_EQ(parser.Statistics().current_bytes, u64());
+    EXPECT_TRUE(parser.Describe("conditional"_str).is_ok());
+    auto reloaded = parser.Parse("conditional"_str).unwrap();
+    EXPECT_EQ(reloaded->header.spriteAnim.numFrames(), usize(1));
+    EXPECT_EQ(reloaded->content->slots[usize()].mipmaps.len(), usize(2));
+    EXPECT_EQ(parser.Statistics().decode_total, u64(2));
 }
 
 TEST_F(ConditionalTextureTest, ParserRetainsMountedSourcesAfterVfsDestruction) {
@@ -601,6 +923,89 @@ TEST(ImageParser, CapturedSourceRetainsOldRuntimeImageAndParser) {
     auto reused = (*source)->Parse("first"_str);
     ASSERT_TRUE(reused.is_ok());
     EXPECT_TRUE(Arc<owe::Image>::ptr_eq(*first, *reused));
+}
+
+TEST_F(ConditionalTextureTest, CapturedPackageSourceSharesSceneParserWithoutPinningPixels) {
+    WriteTexture(false, 0);
+    auto [tx, rx] = rstd::sync::mpmc::channel<rstd::sync::Weak<vrento::Image>>();
+    owe::Scene scene;
+    scene.SetImageParser(Arc<dyn<owe::IImageParser>>::make(owe::TexImageParser(
+        &vfs, Some(owe::ImageReadyCallback::make([tx](Arc<vrento::Image> image) {
+            tx.send(image.downgrade()).unwrap();
+        })))));
+    auto source  = scene.CaptureImageSource();
+    auto image   = scene.ParseImage("conditional"_str).unwrap();
+    auto content = image->content.downgrade();
+    EXPECT_TRUE(Arc<owe::Image>::ptr_eq(image, source->Parse("conditional"_str).unwrap()));
+    {
+        Vec<String> names;
+        names.push("conditional"_Str);
+        names.push("conditional"_Str);
+        auto batch = scene.ParseImages(names.as_slice());
+        for (const auto& parsed : batch) {
+            ASSERT_TRUE(parsed.is_ok());
+            EXPECT_TRUE(Arc<owe::Image>::ptr_eq(image, *parsed));
+        }
+    }
+    EXPECT_TRUE(rx.try_recv().is_ok());
+    EXPECT_TRUE(rx.try_recv().is_err());
+    image.reset();
+    EXPECT_TRUE(content.expired());
+    EXPECT_TRUE(source->Describe("conditional"_str).is_ok());
+    EXPECT_TRUE(rx.try_recv().is_err());
+    EXPECT_TRUE(source->Parse("conditional"_str).is_ok());
+    EXPECT_TRUE(rx.try_recv().is_ok());
+    EXPECT_TRUE(content.expired());
+}
+
+TEST_F(ConditionalTextureTest, CapturedPackageSourcePreservesParserSnapshotAfterReplacement) {
+    WritePayload(owe::ImageType::UNKNOWN, false, "old0123456789abc"_str.as_bytes(), 4, 4);
+    owe::Scene scene;
+    scene.SetImageParser(Arc<dyn<owe::IImageParser>>::make(owe::TexImageParser(&vfs)));
+    auto before = scene.CaptureImageSource();
+    ASSERT_TRUE(before->Describe("payload"_str).is_ok());
+    std::filesystem::rename(root / "materials" / "payload.tex", root / "original.tex");
+    WritePayload(owe::ImageType::UNKNOWN, false, "new0123456789abc"_str.as_bytes(), 4, 4);
+    scene.SetImageParser(Arc<dyn<owe::IImageParser>>::make(owe::TexImageParser(&vfs)));
+    auto after       = scene.CaptureImageSource();
+    auto original    = before->Parse("payload"_str).unwrap();
+    auto replacement = after->Parse("payload"_str).unwrap();
+    EXPECT_EQ(original->content->slots[usize()].mipmaps[usize()].data.get()[0], 'o');
+    EXPECT_EQ(replacement->content->slots[usize()].mipmaps[usize()].data.get()[0], 'n');
+    EXPECT_FALSE(Arc<vrento::Image>::ptr_eq(original->content, replacement->content));
+}
+
+TEST_F(ConditionalTextureTest, CapturedExternalSourcePinsItsRevisionUntilTextureReplacement) {
+    auto write = [&](unsigned char value) {
+        std::ofstream output(root / "external.ppm", std::ios::binary);
+        output << "P6\n1 1\n255\n";
+        const unsigned char pixel[] { value, 34, 51 };
+        output.write(reinterpret_cast<const char*>(pixel), sizeof(pixel));
+    };
+    auto key = String::make(rstd::cppstd::as_str((root / "external.ppm").string()).unwrap());
+    write(17);
+    owe::Scene scene;
+    scene.SetImageParser(Arc<dyn<owe::IImageParser>>::make(owe::TexImageParser(&vfs)));
+    scene.RegisterTexture("external"_Str, { .url = key.clone() });
+    auto before   = scene.CaptureImageSource();
+    auto original = before->Parse(key.as_str()).unwrap();
+    auto content  = original->content.downgrade();
+    write(99);
+    original.reset();
+    EXPECT_FALSE(content.expired());
+    auto retained = before->Parse(key.as_str()).unwrap();
+    EXPECT_EQ(retained->content->slots[usize()].mipmaps[usize()].data.get()[0], 17);
+    scene.RegisterTexture("external"_Str, { .url = key.clone() });
+    auto after       = scene.CaptureImageSource();
+    auto replacement = after->Parse(key.as_str()).unwrap();
+    EXPECT_EQ(replacement->content->slots[usize()].mipmaps[usize()].data.get()[0], 99);
+    EXPECT_FALSE(Arc<vrento::Image>::ptr_eq(retained->content, replacement->content));
+    EXPECT_TRUE(Arc<owe::Image>::ptr_eq(retained, before->Parse(key.as_str()).unwrap()));
+    std::filesystem::remove(root / "external.ppm");
+    EXPECT_TRUE(Arc<owe::Image>::ptr_eq(retained, before->Parse(key.as_str()).unwrap()));
+    EXPECT_TRUE(Arc<owe::Image>::ptr_eq(replacement, after->Parse(key.as_str()).unwrap()));
+    EXPECT_EQ(before->Describe(key.as_str()).unwrap().header.width, 1);
+    EXPECT_EQ(after->Describe(key.as_str()).unwrap().header.width, 1);
 }
 
 } // namespace

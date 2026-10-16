@@ -1224,6 +1224,9 @@ TEST(ShaderBackend, OwnsOrderedReflectionAcrossCacheAndArtifact) {
 TEST(TextureLoader, DeclarationUsesMetadataWithoutLoadingContent) {
     struct MetadataParser {
         Arc<rstd::sync::atomic::Atomic<u32>> parses;
+        auto                                 Retention(ref<str>) const -> owe::ImageRetention {
+            return owe::ImageRetention::Parser;
+        }
         auto Describe(ref<str>) const -> Result<owe::ImageDescription, owe::ImageParseError> {
             owe::ImageDescription result;
             result.header.format = owe::TextureFormat::BC3;

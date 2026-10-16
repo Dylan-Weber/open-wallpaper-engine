@@ -70,11 +70,16 @@ auto AtlasPage::SnapshotDirtyUpdates() const -> AtlasUpdateBatch {
     }
 
     AtlasUpdateRect update { .rect = { min_x, min_y, max_x - min_x, max_y - min_y } };
-    update.bytes.resize(usize(update.rect.w) * usize(update.rect.h), u8());
-    for (rstd::uint32_t y = 0; y < update.rect.h; ++y)
-        for (rstd::uint32_t x = 0; x < update.rect.w; ++x)
-            update.bytes[usize(y) * usize(update.rect.w) + usize(x)] =
-                u8((*m_impl->pixels)[usize(min_y + y) * usize(m_impl->extent) + usize(min_x + x)]);
+    Vec<u8>         bytes;
+    bytes.reserve(usize(update.rect.w) * usize(update.rect.h));
+    for (rstd::uint32_t y = 0; y < update.rect.h; ++y) {
+        const auto offset = usize(min_y + y) * usize(m_impl->extent) + usize(min_x);
+        bytes.extend_from_slice(slice<u8>::from_raw_parts(
+            reinterpret_cast<const byte*>(m_impl->pixels->as_slice().as_raw_ptr() +
+                                          offset.to_primitive()),
+            usize(update.rect.w)));
+    }
+    update.bytes = rstd::move(bytes);
     batch.rects.push(rstd::move(update));
     return batch;
 }

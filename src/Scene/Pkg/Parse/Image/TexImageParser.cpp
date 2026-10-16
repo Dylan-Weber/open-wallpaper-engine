@@ -41,6 +41,54 @@ using TexFlags = BitFlags<TexFlagEnum>;
 
 namespace
 {
+class DecodedImageLease {
+public:
+    explicit DecodedImageLease(Arc<Mutex<ImageDecodeStatistics>> statistics)
+        : m_statistics(rstd::move(statistics)) {
+        auto stats = m_statistics->lock().unwrap_unchecked();
+        ++stats->current_count;
+        stats->peak_count = rstd::cmp::max(stats->peak_count, stats->current_count);
+    }
+    ~DecodedImageLease() {
+        auto stats = m_statistics->lock().unwrap_unchecked();
+        --stats->current_count;
+    }
+    void Acquire(u64 bytes) {
+        auto stats = m_statistics->lock().unwrap_unchecked();
+        stats->current_bytes += bytes;
+        stats->total_bytes += bytes;
+        stats->peak_bytes = rstd::cmp::max(stats->peak_bytes, stats->current_bytes);
+    }
+    void Release(u64 bytes) {
+        auto stats = m_statistics->lock().unwrap_unchecked();
+        stats->current_bytes -= bytes;
+    }
+
+private:
+    Arc<Mutex<ImageDecodeStatistics>> m_statistics;
+};
+
+template<typename Release>
+auto OwnDecodedPixels(rstd::uint8_t* pixels, u64 bytes, Release release,
+                      Option<Arc<DecodedImageLease>>&          lease,
+                      const Arc<Mutex<ImageDecodeStatistics>>& statistics) -> ImageDataPtr {
+    if (! lease) lease = Some(Arc<DecodedImageLease>::make(statistics.clone()));
+    auto owner =
+        ImageDataPtr(pixels, [hold = lease->clone(), bytes, release](rstd::uint8_t* data) mutable {
+            release(data);
+            hold->Release(bytes);
+        });
+    (*lease)->Acquire(bytes);
+    return owner;
+}
+
+auto CloneImageResult(const Result<Arc<Image>, ImageParseError>& result)
+    -> Result<Arc<Image>, ImageParseError> {
+    if (result.is_ok()) return Ok(result->clone());
+    const auto& error = result.as_ref().unwrap_err_unchecked();
+    return Err(ImageParseError { .kind = error.kind, .message = error.message.clone() });
+}
+
 // Magic-bytes sniffer used as a fallback when the .tex header's
 // `image_type` slot says UNKNOWN but the body is actually an embedded
 // image container. Some PKGV0022+ assets ship this way (the texture's
@@ -324,7 +372,7 @@ Option<Vec<u8>> PercentDecode(ref<str> raw) {
     return Some(rstd::move(out));
 }
 
-Option<CString> ResolveExternalImagePath(ref<str> name) {
+Option<CString> ExternalImagePath(ref<str> name) {
     ref<str> path;
     if (name.starts_with("file://localhost/"_str)) {
         path = *name.get(usize(16), name.len());
@@ -344,9 +392,15 @@ Option<CString> ResolveExternalImagePath(ref<str> name) {
             break;
         }
     }
-    auto metadata = rstd::fs::metadata(fs::Path(OsStrExt::from_bytes(bytes.as_slice())));
-    if (metadata.is_err() || ! metadata->is_file()) return None();
     return Some(CString::make(rstd::move(bytes)).unwrap());
+}
+
+Option<CString> ResolveExternalImagePath(ref<str> name) {
+    auto path = ExternalImagePath(name);
+    if (! path) return None();
+    auto metadata = rstd::fs::metadata(fs::Path(OsStrExt::from_bytes(path->as_ref().to_bytes())));
+    if (metadata.is_err() || ! metadata->is_file()) return None();
+    return path;
 }
 
 ImageHeader MakeExternalImageHeader(int width, int height) {
@@ -366,7 +420,9 @@ ImageHeader MakeExternalImageHeader(int width, int height) {
     return header;
 }
 
-auto ParseExternalImage(ref<str> key, const CString& path) -> Result<Arc<Image>, ImageParseError> {
+auto ParseExternalImage(ref<str> key, const CString& path,
+                        const Arc<Mutex<ImageDecodeStatistics>>& statistics)
+    -> Result<Arc<Image>, ImageParseError> {
     int   width = 0, height = 0, channels = 0;
     auto* pixels = stbi_load(path.as_ref().as_ptr(), &width, &height, &channels, 4);
     if (! pixels || width <= 0 || height <= 0) {
@@ -389,44 +445,118 @@ auto ParseExternalImage(ref<str> key, const CString& path) -> Result<Arc<Image>,
     mipmap.width  = width;
     mipmap.height = height;
     mipmap.size   = isize(static_cast<rstd::ptrdiff_t>(width * height * 4));
-    mipmap.data   = ImageDataPtr(reinterpret_cast<rstd::uint8_t*>(pixels), [](rstd::uint8_t* data) {
-        stbi_image_free(data);
-    });
+    Option<Arc<DecodedImageLease>> lease;
+    mipmap.data = OwnDecodedPixels(
+        reinterpret_cast<rstd::uint8_t*>(pixels),
+        u64(rstd::uint64_t(width) * height * 4),
+        [](rstd::uint8_t* data) {
+            stbi_image_free(data);
+        },
+        lease,
+        statistics);
     img_ptr->FinalizeContent();
     return Ok(rstd::move(img_ptr));
 }
 
 } // namespace
 
+auto TexImageParser::Retention(ref<str> name) const -> ImageRetention {
+    return ExternalImagePath(name) ? ImageRetention::Source : ImageRetention::Parser;
+}
+
 auto TexImageParser::Parse(ref<str> name) const -> Result<Arc<Image>, ImageParseError> {
-    if (ResolveExternalImagePath(name)) return Decode(name);
+    auto decode = [&] {
+        {
+            auto stats = m_statistics->lock().unwrap_unchecked();
+            ++stats->decode_attempts;
+        }
+        auto result = Decode(name);
+        if (result.is_ok()) {
+            auto stats = m_statistics->lock().unwrap_unchecked();
+            ++stats->decode_total;
+        }
+        return result;
+    };
+    if (ResolveExternalImagePath(name)) return decode();
     // Package content is immutable for the lifetime of this parser snapshot.
     auto cell = [&] {
         auto cache = m_images->lock().unwrap_unchecked();
         if (auto image = cache->get(name)) return (*image)->clone();
-        auto created = Arc<ImageCell>::make(None<Arc<Image>>());
+        auto created = Arc<ImageCell>::make(CachedImage {});
         (void)cache->insert(String::make(name), created.clone());
         return created;
     }();
-    bool publish {};
-    auto result = [&]() -> Result<Arc<Image>, ImageParseError> {
-        auto content = cell->lock().unwrap_unchecked();
-        if (*content) return Ok((**content).clone());
-        auto decoded = Decode(name);
-        if (decoded.is_ok()) {
-            content->insert(decoded->clone());
-            publish = true;
+    Option<Arc<InFlightImage>> pending;
+    bool                       producer {};
+    {
+        auto cached = cell->lock().unwrap_unchecked();
+        auto image  = cached->image.upgrade();
+        if (! image) {
+            if (auto content = cached->content.upgrade()) {
+                auto prepared  = rstd_try(Prepare(name));
+                image          = Arc<Image>::make();
+                image->header  = prepared->description.header.clone();
+                image->content = rstd::move(content);
+                cached->image  = image.downgrade();
+            }
         }
-        return decoded;
-    }();
-    if (publish && m_ready) (*m_ready)->operator()((*result)->content.clone());
-    return result;
+        if (image) {
+            auto stats = m_statistics->lock().unwrap_unchecked();
+            ++stats->reuse_total;
+            return Ok(rstd::move(image));
+        }
+        if (cached->in_flight) {
+            pending    = Some(cached->in_flight->clone());
+            auto stats = m_statistics->lock().unwrap_unchecked();
+            ++stats->reuse_total;
+            ++stats->in_flight_reuses;
+        } else {
+            pending           = Some(Arc<InFlightImage>::make());
+            cached->in_flight = Some(pending->clone());
+            producer          = true;
+        }
+    }
+    auto flight = pending.take().unwrap_unchecked();
+    if (! producer) return CloneImageResult(*flight->result.wait());
+
+    struct Completion {
+        const Arc<ImageCell>&     cell;
+        const Arc<InFlightImage>& flight;
+        bool                      finished {};
+        ~Completion() {
+            if (finished) return;
+            auto cached = cell->lock().unwrap_unchecked();
+            (void)flight->result.set(Err(ImageParseError {
+                .kind    = ImageParseErrorKind::DecodeFailed,
+                .message = "texture decode interrupted"_Str,
+            }));
+            cached->in_flight = None();
+        }
+    } completion { cell, flight };
+
+    auto result = decode();
+    {
+        auto cached = cell->lock().unwrap_unchecked();
+        if (result.is_ok()) {
+            cached->image   = result->downgrade();
+            cached->content = (*result)->content.downgrade();
+            if ((*result)->header.type == ImageType::VIDEO) cached->video = Some(result->clone());
+        }
+        (void)flight->result.set(rstd::move(result));
+        cached->in_flight   = None();
+        completion.finished = true;
+    }
+    const auto& delivered = *flight->result.wait();
+    if (delivered.is_ok() && m_ready) (*m_ready)->operator()((*delivered)->content.clone());
+    return CloneImageResult(delivered);
 }
 
 auto TexImageParser::Decode(ref<str> name) const -> Result<Arc<Image>, ImageParseError> {
-    if (auto path = ResolveExternalImagePath(name)) return ParseExternalImage(name, *path);
-    auto prepared       = rstd_try(Prepare(name));
-    auto image          = Arc<Image>::make();
+    if (auto path = ResolveExternalImagePath(name))
+        return ParseExternalImage(name, *path, m_statistics);
+    auto                           prepared = rstd_try(Prepare(name));
+    auto                           image    = Arc<Image>::make();
+    Option<Arc<DecodedImageLease>> lease;
     image->content->key = String::make(name);
     image->header       = prepared->description.header.clone();
     if (prepared->condition_count > 0)
@@ -456,17 +586,27 @@ auto TexImageParser::Decode(ref<str> name) const -> Result<Arc<Image>, ImagePars
                             .kind    = ImageParseErrorKind::DecodeFailed,
                             .message = rstd::format("decode embedded image {} failed", name),
                         });
-                    mip.data = ImageDataPtr(pixels, [](rstd::uint8_t* data) {
-                        stbi_image_free(data);
-                    });
+                    mip.data = OwnDecodedPixels(
+                        pixels,
+                        u64(rstd::uint64_t(width) * height * 4),
+                        [](rstd::uint8_t* data) {
+                            stbi_image_free(data);
+                        },
+                        lease,
+                        m_statistics);
                     if (width != source.width || height != source.height)
                         return Err(InvalidTextureData(name, "decoded extent"_str));
                     mip.size = isize(rstd::ptrdiff_t(width) * height * 4);
                 } else {
                     auto size = bytes.len().to_primitive();
-                    mip.data  = ImageDataPtr(new rstd::uint8_t[size], [](rstd::uint8_t* data) {
-                        delete[] data;
-                    });
+                    mip.data  = OwnDecodedPixels(
+                        new rstd::uint8_t[size],
+                        u64(size),
+                        [](rstd::uint8_t* data) {
+                            delete[] data;
+                        },
+                        lease,
+                        m_statistics);
                     copy_nonoverlapping(ptr<rstd::uint8_t>::from_raw_parts(
                                             reinterpret_cast<const rstd::uint8_t*>(bytes.data())),
                                         mut_ptr<rstd::uint8_t>::from_raw_parts(mip.data.get()),

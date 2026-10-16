@@ -2157,6 +2157,12 @@ struct ImageParseError {
 
 using ImageReadyCallback = Arc<dyn<Fn<void(Arc<vrento::Image>)>>>;
 
+enum class ImageRetention
+{
+    Parser,
+    Source,
+};
+
 struct IImageParser {
     using Trait                  = IImageParser;
     static constexpr bool direct = false;
@@ -2165,6 +2171,8 @@ struct IImageParser {
     struct Api {
         using Trait = IImageParser;
 
+        // Parser-managed reads share live storage and an owned result for every registered read.
+        // Released pixels may be decoded again; failed or interrupted reads remain retryable.
         auto Parse(ref<str> name) const -> Result<Arc<Image>, ImageParseError> {
             return rstd::trait_call<0>(this, name);
         }
@@ -2177,16 +2185,24 @@ struct IImageParser {
         auto Describe(ref<str> name) const -> Result<ImageDescription, ImageParseError> {
             return rstd::trait_call<3>(this, name);
         }
+        // Parser-owned immutable content coalesces overlapping reads and reuses live storage.
+        // Source-owned content stays pinned to the captured source's revision.
+        auto Retention(ref<str> name) const -> ImageRetention {
+            return rstd::trait_call<4>(this, name);
+        }
     };
 
     template<typename T>
-    using Funcs = TraitFuncs<&T::Parse, &T::ParseMany, &T::ParseHeader, &T::Describe>;
+    using Funcs =
+        TraitFuncs<&T::Parse, &T::ParseMany, &T::ParseHeader, &T::Describe, &T::Retention>;
 };
 
 class SceneImageSource {
 public:
     auto Describe(ref<str> name) const -> Result<ImageDescription, ImageParseError> {
         if (auto runtime = m_runtime_images.get(name)) return Ok((**runtime)->Describe());
+        if (m_parser && (*m_parser)->Retention(name) == ImageRetention::Parser)
+            return (*m_parser)->Describe(name);
         auto cached = [&]() -> Option<Arc<ParsedImage>> {
             auto images = m_parsed->lock().unwrap_unchecked();
             auto found  = images->get(name);
@@ -2209,6 +2225,8 @@ public:
     auto Parse(ref<str> name) const -> Result<Arc<Image>, ImageParseError> {
         auto runtime = m_runtime_images.get(name);
         if (runtime.is_some()) return Ok((*runtime)->clone());
+        if (m_parser && (*m_parser)->Retention(name) == ImageRetention::Parser)
+            return (*m_parser)->Parse(name);
         auto cell = [&] {
             auto cache = m_parsed->lock().unwrap_unchecked();
             if (auto image = cache->get(name)) return (*image)->clone();

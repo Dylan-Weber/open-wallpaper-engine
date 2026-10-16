@@ -95,6 +95,12 @@ struct TexFormatVersion {
 auto ParseImages(ref<dyn<IImageParser>> parser, slice<String> names, usize max_workers = usize(4))
     -> Vec<Result<Arc<Image>, ImageParseError>>;
 
+struct ImageDecodeStatistics {
+    u64 current_count {}, peak_count {};
+    u64 current_bytes {}, peak_bytes {}, total_bytes {};
+    u64 decode_attempts {}, decode_total {}, reuse_total {}, in_flight_reuses {};
+};
+
 class TexImageParser {
 public:
     TexImageParser(fs::VFS* vfs, Option<ImageReadyCallback> ready = None())
@@ -104,13 +110,31 @@ public:
     auto ParseMany(slice<String> names) const -> Vec<Result<Arc<Image>, ImageParseError>>;
     auto ParseHeader(ref<str> name) const -> Result<ImageHeader, ImageParseError>;
     auto Describe(ref<str> name) const -> Result<ImageDescription, ImageParseError>;
+    auto Retention(ref<str> name) const -> ImageRetention;
+    // Counts decoded pixel storage, excluding source ranges and decoder scratch buffers.
+    auto Statistics() const -> ImageDecodeStatistics {
+        auto statistics = m_statistics->lock().unwrap_unchecked();
+        return *statistics;
+    }
 
 private:
     auto Decode(ref<str> name) const -> Result<Arc<Image>, ImageParseError>;
-    using ImageCell  = Mutex<Option<Arc<Image>>>;
+    using ImageResult = Result<Arc<Image>, ImageParseError>;
+    struct InFlightImage {
+        rstd::sync::OnceLock<ImageResult> result;
+    };
+    struct CachedImage {
+        rstd::sync::Weak<Image>         image { rstd::sync::Weak<Image>::make() };
+        rstd::sync::Weak<vrento::Image> content { rstd::sync::Weak<vrento::Image>::make() };
+        Option<Arc<Image>>              video;
+        Option<Arc<InFlightImage>>      in_flight;
+    };
+    using ImageCell  = Mutex<CachedImage>;
     using ImageCache = HashMap<String, Arc<ImageCell>>;
-    Arc<Mutex<ImageCache>>     m_images { Arc<Mutex<ImageCache>>::make(ImageCache {}) };
-    Option<ImageReadyCallback> m_ready;
+    Arc<Mutex<ImageCache>>            m_images { Arc<Mutex<ImageCache>>::make(ImageCache {}) };
+    Arc<Mutex<ImageDecodeStatistics>> m_statistics { Arc<Mutex<ImageDecodeStatistics>>::make(
+        ImageDecodeStatistics {}) };
+    Option<ImageReadyCallback>        m_ready;
     struct PreparedMip {
         rstd::int32_t       width {}, height {};
         rstd::io::ReadRange source;

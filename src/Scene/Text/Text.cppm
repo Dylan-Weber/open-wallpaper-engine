@@ -18,7 +18,7 @@ struct AtlasDirtyRect {
 struct AtlasUpdateRect {
     AtlasDirtyRect rect;
     // Owned R8 rows, tightly packed with row pitch rect.w.
-    Vec<u8> bytes;
+    vrento::texture::TextureUploadPayload bytes;
 };
 struct AtlasUpdateBatch {
     rstd::uint64_t       serial {};

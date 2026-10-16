@@ -393,8 +393,9 @@ auto UploadPixels(tex::Submission& work, const owe::resource_registry::PreparedT
     const auto extent = upload.target.texture().description().extent;
     upload.width      = extent.width;
     upload.height     = extent.height;
-    for (unsigned i = 0; i < extent.width * extent.height * 4; ++i)
-        upload.bytes.push(rstd::u8(value.to_primitive()));
+    rstd::prelude::Vec<rstd::u8> bytes;
+    bytes.resize(rstd::usize(extent.width) * rstd::usize(extent.height) * rstd::usize(4), value);
+    upload.bytes = rstd::move(bytes);
     return work.commands()->Upload(rstd::move(upload));
 }
 

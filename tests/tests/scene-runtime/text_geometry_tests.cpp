@@ -79,13 +79,15 @@ TEST(TextAtlas, DirtySnapshotsAreNondestructiveAndRetryable) {
     {
         auto cancelled = page.SnapshotDirtyUpdates();
         EXPECT_EQ(cancelled.serial, first.serial);
-        EXPECT_EQ(cancelled.rects[usize()].bytes, bytes);
+        EXPECT_EQ(cancelled.rects[usize()].bytes.as_slice(), bytes.as_slice());
     }
     auto retry = page.SnapshotDirtyUpdates();
     EXPECT_EQ(retry.serial, first.serial);
     ASSERT_EQ(retry.rects.len(), usize(1));
-    EXPECT_EQ(retry.rects[usize()].bytes, bytes);
-    for (auto pixel : bytes) EXPECT_EQ(pixel, u8(255));
+    EXPECT_EQ(retry.rects[usize()].bytes.as_slice(), bytes.as_slice());
+    auto shared = retry.rects[usize()].bytes.clone();
+    EXPECT_EQ(shared.as_slice().as_raw_ptr(), retry.rects[usize()].bytes.as_slice().as_raw_ptr());
+    for (auto pixel : bytes.as_slice()) EXPECT_EQ(pixel, u8(255));
     page.AcknowledgeUpdates(retry.serial);
     EXPECT_TRUE(page.DirtyRects().is_empty());
     EXPECT_TRUE(page.SnapshotDirtyUpdates().rects.is_empty());
@@ -111,7 +113,7 @@ TEST(TextAtlas, DirtySnapshotOwnsPackedPixelsAfterPageDestruction) {
                 EXPECT_EQ(update.bytes[usize(y) * usize(rect.w) + usize(x)],
                           u8(page.AtlasPixels()[usize(rect.y + y) * usize(page.Extent()) +
                                                 usize(rect.x + x)]));
-        expected  = update.bytes.clone();
+        expected  = Vec<u8>::from(update.bytes.as_slice());
         auto next = resources.Rasterize(font, 4).unwrap();
         ASSERT_GE(next.x, rect.x);
         ASSERT_GE(next.y, rect.y);
@@ -120,10 +122,10 @@ TEST(TextAtlas, DirtySnapshotOwnsPackedPixelsAfterPageDestruction) {
         EXPECT_EQ(update.bytes[usize(next.y - rect.y) * usize(rect.w) + usize(next.x - rect.x)],
                   u8());
         EXPECT_EQ(page.AtlasPixels()[usize(next.y) * usize(page.Extent()) + usize(next.x)], 4u);
-        EXPECT_EQ(update.bytes, expected);
+        EXPECT_EQ(update.bytes.as_slice(), expected.as_slice());
         page.AcknowledgeUpdates(snapshot->serial);
     }
-    EXPECT_EQ(snapshot->rects[usize()].bytes, expected);
+    EXPECT_EQ(snapshot->rects[usize()].bytes.as_slice(), expected.as_slice());
 }
 
 TEST(TextAtlas, AcknowledgeSnapshotPreservesNewDirty) {
@@ -142,7 +144,7 @@ TEST(TextAtlas, AcknowledgeSnapshotPreservesNewDirty) {
     EXPECT_EQ(pending.rects[usize()].rect.y, next.y);
     EXPECT_EQ(pending.rects[usize()].rect.w, next.width);
     EXPECT_EQ(pending.rects[usize()].rect.h, next.height);
-    for (auto pixel : pending.rects[usize()].bytes) EXPECT_EQ(pixel, u8(2));
+    for (auto pixel : pending.rects[usize()].bytes.as_slice()) EXPECT_EQ(pixel, u8(2));
     page.AcknowledgeUpdates(first.serial);
     page.AcknowledgeUpdates(0);
     page.AcknowledgeUpdates(pending.serial + 1);
