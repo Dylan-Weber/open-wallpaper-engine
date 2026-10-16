@@ -98,6 +98,8 @@ sources = [
   "src/Scene/SceneLoader.cpp",
   "src/Scene/ScenePrepareError.cppm",
   "src/Scene/VulkanRender/PrepareError.cppm",
+  "src/Scene/VulkanRender/Video.cppm",
+  "src/Scene/VulkanRender/VideoError.cppm",
   "src/Scene/SceneRenderPipeline.cppm",
   "src/Scene/SceneRenderPipeline.cpp",
   "src/Scene/SceneWallpaper.cppm",

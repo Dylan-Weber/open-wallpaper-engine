@@ -17,6 +17,7 @@ import wescene.vulkan;
 import wescene.utils;
 import wescene.scene;
 import wescene.text;
+import wescene.video;
 
 using rstd::mem::memcpy;
 using rstd::mem::memset;
@@ -385,7 +386,7 @@ auto VulkanRender::tryPumpVideoTextures(double dt_seconds)
     -> Result<PrepareOutcome, RenderPrepareError> {
     auto ready = pImpl->preparationReady();
     if (ready.is_err() || *ready != PrepareOutcome::Ready) return ready;
-    auto pumped = pImpl->m_rendering_resources.resources.TryPumpVideoTextures(dt_seconds);
+    auto pumped = pImpl->m_rendering_resources.resources.TryPumpTextureProducers(dt_seconds);
     if (pumped.is_err())
         return Err(RenderPrepareError::Resources(ResourcePrepareOperation::Video,
                                                  rstd::move(pumped).unwrap_err()));
@@ -851,10 +852,16 @@ bool VulkanRender::Impl::init(RenderInitInfo info, SceneLoadBenchRecorderView lo
             m_present_format = m_device->swapchain().format();
         }
 #endif
-        m_rendering_resources.resources.SetVideoDecodeOptions({
-            .hwdec       = rstd::move(info.video_hwdec),
-            .render_node = rstd::move(info.video_render_node),
-        });
+        auto provider = Arc<dyn<vrento::resource_registry::TextureProducerFactory>>::make(
+            owe::video::WavsenTextureFactory(
+                *m_session, { rstd::move(info.video_hwdec), rstd::move(info.video_render_node) }));
+        auto registered =
+            m_rendering_resources.resources.SetTextureProducerFactory(rstd::move(provider));
+        if (registered.is_err()) {
+            rstd_error("video producer registration failed: {}",
+                       DescribeNativeFailure(registered.as_ref().unwrap_err()));
+            return false;
+        }
     }
 
     {

@@ -47,9 +47,6 @@ pub = true
 workspace = true
 pub = true
 
-[dependencies.wavsen]
-workspace = true
-
 [dependencies.vvk]
 workspace = true
 pub = true
