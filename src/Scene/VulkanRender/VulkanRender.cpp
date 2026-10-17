@@ -1081,7 +1081,10 @@ void VulkanRender::Impl::drawFrameOffscreen(Scene& scene) {
         auto synchronization = createFrameSynchronization(true);
         if (! synchronization) return;
         auto acquired = (*m_ex_swapchain)->AsSwapchain().acquireRenderTarget();
-        if (! acquired.acquired()) return;
+        if (! acquired.acquired()) {
+            if (acquired.error) rstd_error("output acquire failed: {}", *acquired.error);
+            return;
+        }
         auto owner  = synchronization.take().unwrap();
         auto target = vrento::vulkan::SurfaceTarget::create(
             *m_session, acquired.lease, Arc<dyn<rstd::any::Any>>::make(owner.clone()));
@@ -1108,10 +1111,10 @@ void VulkanRender::Impl::drawFrameOffscreen(Scene& scene) {
         }
     }
     auto completed = m_output->completion->Submit(sync_fd);
+    if (completed.error) rstd_error("output completion failed: {}", *completed.error);
     if (completed.status != FrameSurfaceCompletionStatus::Submitted &&
         completed.status != FrameSurfaceCompletionStatus::SessionLost) {
         m_output->blocked = true;
-        rstd_error("output completion failed: {}", static_cast<int>(completed.status));
         return;
     }
     ReleaseCompletedRetiredResources(*m_device, rr);

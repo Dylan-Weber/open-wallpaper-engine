@@ -1,13 +1,13 @@
 module;
 
 #include <unistd.h>
-#include <cerrno>
 
 module waywallen.bridge_ex_swapchain;
 
 import wescene.vulkan;
 import waywallen.bridge_producer_core;
 
+using namespace rstd::prelude;
 using rstd::sync::Arc;
 using rstd::sync::atomic::Atomic;
 using rstd::sync::atomic::Ordering;
@@ -44,6 +44,22 @@ owe::FrameSurfaceCompletionStatus ToFrameCompletionStatus(BridgeSlotCompletionSt
     return owe::FrameSurfaceCompletionStatus::ProtocolError;
 }
 
+auto SurfaceFailure(owe::FrameSurfaceErrorKind kind, BridgeSurfaceError cause)
+    -> Option<owe::FrameSurfaceError> {
+    return Some(owe::FrameSurfaceError {
+        kind, Some(Arc<dyn<rstd::error::Error>>::make(rstd::move(cause))) });
+}
+
+auto ToFrameCompletion(const BridgeSlotCompletionResult& result, owe::FrameSurfaceIdentity identity,
+                       bool submitting) -> owe::FrameSurfaceCompletionResult {
+    owe::FrameSurfaceCompletionResult converted { .status = ToFrameCompletionStatus(result.status),
+                                                  .identity = identity };
+    if (converted.error)
+        converted.error->cause = Some(Arc<dyn<rstd::error::Error>>::make(
+            submitting ? BridgeSurfaceError::Submit(result.status, result.error_code)
+                       : BridgeSurfaceError::Abort(result.status, result.error_code)));
+    return converted;
+}
 } // namespace
 
 void BridgeExSwapchain::poll() {
@@ -67,16 +83,21 @@ owe::FrameSurfaceAcquireResult BridgeExSwapchain::acquireRenderTarget() {
         case BridgeSlotAcquireStatus::NotReady:
             return { .status = owe::FrameSurfaceAcquireStatus::NotReady };
         case BridgeSlotAcquireStatus::SessionLost:
-            return { .status     = owe::FrameSurfaceAcquireStatus::SessionLost,
-                     .error_code = rstd::i32(acquired.error_code) };
+            return { .status = owe::FrameSurfaceAcquireStatus::SessionLost,
+                     .error  = SurfaceFailure(
+                         owe::FrameSurfaceErrorKind::SessionLost,
+                         BridgeSurfaceError::Acquire(acquired.status, acquired.error_code)) };
         case BridgeSlotAcquireStatus::Error:
-            return { .status     = owe::FrameSurfaceAcquireStatus::ProtocolError,
-                     .error_code = rstd::i32(acquired.error_code) };
+            return { .status = owe::FrameSurfaceAcquireStatus::ProtocolError,
+                     .error  = SurfaceFailure(
+                         owe::FrameSurfaceErrorKind::ProtocolFailure,
+                         BridgeSurfaceError::Acquire(acquired.status, acquired.error_code)) };
         case BridgeSlotAcquireStatus::ReadyUnused:
         case BridgeSlotAcquireStatus::ReadyReleased: break;
         }
-        return { .status     = owe::FrameSurfaceAcquireStatus::ProtocolError,
-                 .error_code = rstd::i32(-EINVAL) };
+        return { .status = owe::FrameSurfaceAcquireStatus::ProtocolError,
+                 .error  = rstd::Some(
+                     owe::FrameSurfaceError { owe::FrameSurfaceErrorKind::InvalidLease }) };
     }
 
     owe::vulkan::ImageParameters target;
@@ -101,9 +122,13 @@ owe::FrameSurfaceAcquireResult BridgeExSwapchain::acquireRenderTarget() {
         .discard_content      = true,
     };
     if (! lease.valid()) {
-        (void)m_core.abortSlot(acquired.identity);
-        return { .status     = owe::FrameSurfaceAcquireStatus::ProtocolError,
-                 .error_code = rstd::i32(-EINVAL) };
+        auto aborted = m_core.abortSlot(acquired.identity);
+        auto error   = owe::FrameSurfaceError { owe::FrameSurfaceErrorKind::InvalidLease };
+        if (! aborted.completed())
+            error.cause = Some(Arc<dyn<rstd::error::Error>>::make(
+                BridgeSurfaceError::Abort(aborted.status, aborted.error_code)));
+        return { .status = owe::FrameSurfaceAcquireStatus::ProtocolError,
+                 .error  = Some(rstd::move(error)) };
     }
 
     m_pending_identity = rstd::Some(acquired.identity);
@@ -127,9 +152,7 @@ BridgeExSwapchain::CompleteRendered(owe::FrameSurfaceIdentity identity, int prod
     auto core_identity = *m_pending_identity;
     m_pending_identity = rstd::None();
     auto result        = m_core.submitSlot(core_identity, producer_sync_fd);
-    return { .status     = ToFrameCompletionStatus(result.status),
-             .identity   = identity,
-             .error_code = rstd::i32(result.error_code) };
+    return ToFrameCompletion(result, identity, true);
 }
 
 owe::FrameSurfaceCompletionResult
@@ -144,9 +167,7 @@ BridgeExSwapchain::AbortRenderTarget(owe::FrameSurfaceIdentity identity) {
     auto core_identity = *m_pending_identity;
     m_pending_identity = rstd::None();
     auto result        = m_core.abortSlot(core_identity);
-    return { .status     = ToFrameCompletionStatus(result.status),
-             .identity   = identity,
-             .error_code = rstd::i32(result.error_code) };
+    return ToFrameCompletion(result, identity, false);
 }
 
 } // namespace ww_wescene

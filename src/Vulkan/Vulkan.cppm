@@ -16,6 +16,8 @@ using vrento::FrameSurfaceAcquireStatus;
 using vrento::FrameSurfaceCompletionCapability;
 using vrento::FrameSurfaceCompletionResult;
 using vrento::FrameSurfaceCompletionStatus;
+using vrento::FrameSurfaceError;
+using vrento::FrameSurfaceErrorKind;
 using vrento::FrameSurfaceIdentity;
 using vrento::FrameSurfaceLease;
 using vrento::FrameSurfaceReuseKind;
