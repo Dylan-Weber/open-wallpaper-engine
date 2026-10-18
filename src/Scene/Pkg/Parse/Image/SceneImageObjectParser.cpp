@@ -77,6 +77,7 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
     const Mdl::Mesh*      primary_puppet_mesh { nullptr };
     Vec<const Mdl::Mesh*> supplemental_puppet_meshes;
     if (! wpimgobj.puppet.is_empty()) {
+        auto span          = SceneLoadSpan(context.load_bench, &SceneLoadProbeIds::image_puppet);
         auto parsed_puppet = Box<Mdl>::make();
         if (! MdlParser::Parse(wpimgobj.puppet.as_str(), vfs, *parsed_puppet)) {
             rstd_error("parse puppet failed: {}", wpimgobj.puppet);
@@ -180,6 +181,7 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
     };
     Option<Arc<PuppetLayer>> image_puppet_layer;
     if (puppet.is_some() && has_bones) {
+        auto span = SceneLoadSpan(context.load_bench, &SceneLoadProbeIds::image_puppet_layer);
         image_puppet_layer =
             Some(MakePuppetLayer((*(*puppet)->puppet).clone(), wpimgobj.puppet_layers.as_slice()));
         RegisterPuppetLayer(context, spImgNode.as_ptr(), (*image_puppet_layer).clone());
@@ -243,7 +245,9 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
                                              context.shader_environment,
                                              image_wpmat,
                                              *context.scene,
-                                             rstd::move(shaderInfo));
+                                             rstd::move(shaderInfo),
+                                             GeometryStageRequirement::None,
+                                             context.load_bench);
         if (material_result.is_err()) {
             rstd_error("load imageobj '{}' material faild", wpimgobj.name);
             return;
@@ -264,9 +268,10 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
     }
 
     // mesh
-    SceneMesh             effct_final_mesh {};
-    auto                  spMesh  = Arc<SceneMesh>::make();
-    auto&                 mesh    = *spMesh;
+    auto      geometry_span = SceneLoadSpan(context.load_bench, &SceneLoadProbeIds::image_geometry);
+    SceneMesh effct_final_mesh {};
+    auto      spMesh              = Arc<SceneMesh>::make();
+    auto&     mesh                = *spMesh;
     const array<float, 2> mapRate = Texture0UvScale(material, wpimgobj.nopadding);
     const bool            source_uses_framebuffer_space = hasEffect && wpimgobj.composite_layer;
     const Vector3f        source_alignment_offset = hasEffect ? Vector3f::Zero() : alignment_offset;
@@ -419,7 +424,9 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
                                                               context.shader_environment,
                                                               *supplemental_wpmat,
                                                               *context.scene,
-                                                              rstd::move(supplemental_shader_info));
+                                                              rstd::move(supplemental_shader_info),
+                                                              GeometryStageRequirement::None,
+                                                              context.load_bench);
         if (supplemental_result.is_err()) {
             rstd_warn("load puppet material '{}' failed for '{}'", material_ref, wpimgobj.name);
             continue;
@@ -523,7 +530,9 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
                                                              context.shader_environment,
                                                              mask_wpmat,
                                                              *context.scene,
-                                                             rstd::move(mask_shaderInfo));
+                                                             rstd::move(mask_shaderInfo),
+                                                             GeometryStageRequirement::None,
+                                                             context.load_bench);
                 if (mask_result.is_err()) {
                     rstd_warn("load mask pre-pass material failed for '{}'", wpimgobj.name);
                     continue;
@@ -561,7 +570,9 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
                                                              context.shader_environment,
                                                              clip_wpmat,
                                                              *context.scene,
-                                                             rstd::move(clip_shaderInfo));
+                                                             rstd::move(clip_shaderInfo),
+                                                             GeometryStageRequirement::None,
+                                                             context.load_bench);
                 if (clip_result.is_err()) {
                     rstd_warn("load clipped main material failed for '{}'", wpimgobj.name);
                     continue;
@@ -593,7 +604,9 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
     spImgNode->AddMesh(spMesh.clone());
 
     SetUniformConfig(context, spImgNode, rstd::move(svData));
+    (void)geometry_span.finish();
     if (hasEffect) {
+        auto       span     = SceneLoadSpan(context.load_bench, &SceneLoadProbeIds::image_effects);
         auto&      scene    = *context.scene;
         auto       nodeAddr = scene.NodeResourceKey(image_node_id, "layer_camera"_str);
         const auto effect_extent =
@@ -836,7 +849,9 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
                                                    context.shader_environment,
                                                    wpmat,
                                                    *context.scene,
-                                                   rstd::move(wpEffShaderInfo));
+                                                   rstd::move(wpEffShaderInfo),
+                                                   GeometryStageRequirement::None,
+                                                   context.load_bench);
                 if (effect_result.is_err()) {
                     eff_mat_ok = false;
                     break;
@@ -911,7 +926,9 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
                                                              context.shader_environment,
                                                              mask_wpmat,
                                                              *context.scene,
-                                                             rstd::move(mask_shaderInfo));
+                                                             rstd::move(mask_shaderInfo),
+                                                             GeometryStageRequirement::None,
+                                                             context.load_bench);
                             if (mask_result.is_err()) {
                                 return false;
                             }
@@ -944,7 +961,9 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
                                                              context.shader_environment,
                                                              clip_wpmat,
                                                              *context.scene,
-                                                             rstd::move(clip_shaderInfo));
+                                                             rstd::move(clip_shaderInfo),
+                                                             GeometryStageRequirement::None,
+                                                             context.load_bench);
                             if (clip_result.is_err()) {
                                 return false;
                             }
@@ -1021,7 +1040,9 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
                                                      context.shader_environment,
                                                      passthrough_mat,
                                                      *context.scene,
-                                                     rstd::move(shader_info));
+                                                     rstd::move(shader_info),
+                                                     GeometryStageRequirement::None,
+                                                     context.load_bench);
                 if (material_result.is_err()) {
                     rstd_error("effect passthrough failed to load for '{}'", wpimgobj.name);
                     return result;
@@ -1111,7 +1132,9 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
                                                       context.shader_environment,
                                                       passthrough_mat,
                                                       *context.scene,
-                                                      rstd::move(wpFinalShaderInfo));
+                                                      rstd::move(wpFinalShaderInfo),
+                                                      GeometryStageRequirement::None,
+                                                      context.load_bench);
                     if (final_result.is_ok()) {
                         auto final_build  = rstd::move(final_result).unwrap_unchecked();
                         finalMaterial     = rstd::move(final_build.material);
@@ -1143,6 +1166,7 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
             }
         }
     }
+    auto finalize_span = SceneLoadSpan(context.load_bench, &SceneLoadProbeIds::image_finalize);
     const Matrix4d alignment_base_transform =
         image_effect_layer ? image_effect_layer->FinalMesh().GeometryTransform()
                            : spImgNode->GeometryTransform();

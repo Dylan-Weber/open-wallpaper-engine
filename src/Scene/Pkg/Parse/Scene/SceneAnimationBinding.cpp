@@ -7,6 +7,7 @@ import :scene_context;
 import eigen;
 import rstd;
 import rstd.log;
+import wescene.load_bench;
 
 using namespace rstd::prelude;
 using namespace rstd::literals;
@@ -441,6 +442,7 @@ auto owe::BuildAnimationBindingScope(const wpscene::ImageObject& object)
 
 void owe::PrepareAnimationBindings(SceneParseContext&            context,
                                    const wpscene::FieldBindings& bindings) {
+    auto span = SceneLoadSpan(context.load_bench, &SceneLoadProbeIds::animation_bindings);
     context.animation_bindings = BuildAnimationBindingScope(bindings);
 }
 
@@ -450,10 +452,12 @@ void owe::PrepareAnimationBindings(SceneParseContext&              context,
 }
 
 void owe::PrepareAnimationBindings(SceneParseContext& context, const wpscene::ImageObject& object) {
+    auto span = SceneLoadSpan(context.load_bench, &SceneLoadProbeIds::animation_bindings);
     context.animation_bindings = BuildAnimationBindingScope(object);
 }
 
 void owe::PrepareAnimationBindings(SceneParseContext& context, const wpscene::ShapeObject& object) {
+    auto span = SceneLoadSpan(context.load_bench, &SceneLoadProbeIds::animation_bindings);
     Vec<const wpscene::FieldBindingSpec*> authored;
     CollectBindings(object.field_bindings, authored);
     for (const auto& effect : object.effects) CollectEffectBindings(effect, authored);
@@ -462,6 +466,7 @@ void owe::PrepareAnimationBindings(SceneParseContext& context, const wpscene::Sh
 
 void owe::PrepareAnimationBindings(SceneParseContext&             context,
                                    const wpscene::ParticleObject& object) {
+    auto span = SceneLoadSpan(context.load_bench, &SceneLoadProbeIds::animation_bindings);
     Vec<const wpscene::FieldBindingSpec*> authored;
     CollectBindings(object.field_bindings, authored);
     CollectParticleBindings(object.particleObj, authored);
@@ -479,6 +484,7 @@ void owe::PrepareAnimationBindings(SceneParseContext& context, const wpscene::Li
 }
 
 void owe::PrepareAnimationBindings(SceneParseContext& context, const wpscene::TextObject& object) {
+    auto span = SceneLoadSpan(context.load_bench, &SceneLoadProbeIds::animation_bindings);
     Vec<const wpscene::FieldBindingSpec*> authored;
     CollectBindings(object.field_bindings, authored);
     for (const auto& effect : object.effects) CollectEffectBindings(effect, authored);

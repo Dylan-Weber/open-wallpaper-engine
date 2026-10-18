@@ -6,6 +6,7 @@
 
 import vvk;
 import rstd;
+import rstd.bench;
 import rstd.log;
 import wavsen.audio;
 import wescene.core;
@@ -83,6 +84,13 @@ int main(int argc, char** argv) {
 
     auto args                = viewer::ParseSceneViewerArgs(argc, argv);
     auto [w_width, w_height] = args.resolution;
+
+    auto load_bench = owe::CreateSceneLoadBench(args.load_bench_output.as_str());
+    Option<rstd::bench::probe::ProbeRecorder> startup_recorder;
+    if (load_bench) startup_recorder = Some((**load_bench).session().recorder());
+    auto startup_span = owe::SceneLoadSpan({ startup_recorder ? &*startup_recorder : nullptr,
+                                             load_bench ? &(**load_bench).ids() : nullptr },
+                                           &owe::SceneLoadProbeIds::viewer_startup);
 
     viewer::InitGlfwPlatformHint(/*force_x11=*/false);
 #if __is_target_os(macos)
@@ -191,7 +199,7 @@ int main(int argc, char** argv) {
     config.assets_dir      = rstd::move(args.assets_dir);
     config.source_pkg_path = rstd::move(args.scene_path);
     config.graphviz        = args.graphviz;
-    config.load_bench      = owe::CreateSceneLoadBench(args.load_bench_output.as_str());
+    config.load_bench      = load_bench.clone();
     config.fps             = static_cast<uint32_t>(args.fps.to_primitive());
     if (args.random_seed.is_some()) {
         config.random_seed = Some(*args.random_seed);
@@ -233,6 +241,16 @@ int main(int argc, char** argv) {
         });
     }
 
+    (void)startup_span.finish();
+    if (startup_recorder) {
+        auto batch = startup_recorder->drain();
+        if (batch.is_ok())
+            (**load_bench).add_preload_batch(rstd::move(batch).unwrap_unchecked());
+        else
+            eprintln("cannot drain viewer startup probes");
+        startup_recorder = None();
+    }
+    load_bench = None();
     psw->configure(rstd::move(config));
     psw->initVulkan(rstd::move(info));
 

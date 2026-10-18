@@ -12,6 +12,7 @@ import rstd.cppstd;
 import wescene.shader_compile;
 import wescene.scene;
 import wescene.utils;
+import wescene.load_bench;
 import :shader_lex;
 
 #define SHADER_DIR    "spvs03"
@@ -2504,7 +2505,8 @@ Combos ShaderParser::ResolveShaderCombos(const ShaderInfo& info, const Combos& i
 }
 
 String ShaderParser::PreShaderSrc(fs::VFS& vfs, ref<str> src, ShaderInfo* pShaderInfo,
-                                  slice<ShaderTexInfo> texinfos, ShaderCache* cache) {
+                                  slice<ShaderTexInfo> texinfos, ShaderCache* cache,
+                                  SceneLoadBenchRecorderView bench) {
     // Expand `#include "FILE"` in place: replace each include line with its
     // resolved content (recursively expanded). Preserves the include's
     // original position so a `struct Grid { ... }; #include "common.h"`
@@ -2514,6 +2516,7 @@ String ShaderParser::PreShaderSrc(fs::VFS& vfs, ref<str> src, ShaderInfo* pShade
     // user source (sans include directives).
     Option<String> source_cache_key;
     if (cache != nullptr) {
+        auto span        = SceneLoadSpan(bench, &SceneLoadProbeIds::shader_source_cache);
         source_cache_key = MakeShaderSourceCacheKey(src, texinfos);
         if (source_cache_key.is_some()) {
             auto cached = cache->m_source_entries.get(source_cache_key->as_str());
@@ -2524,6 +2527,7 @@ String ShaderParser::PreShaderSrc(fs::VFS& vfs, ref<str> src, ShaderInfo* pShade
         }
     }
 
+    auto   includes_span = SceneLoadSpan(bench, &SceneLoadProbeIds::shader_includes);
     String newsrc;
     newsrc.reserve(src.len());
     String all_includes;
@@ -2548,6 +2552,8 @@ String ShaderParser::PreShaderSrc(fs::VFS& vfs, ref<str> src, ShaderInfo* pShade
         cursor = w.LineEnd();
     }
     newsrc.push_str(src.get(cursor, src.len()).unwrap());
+    (void)includes_span.finish();
+    auto annotations_span = SceneLoadSpan(bench, &SceneLoadProbeIds::shader_annotations);
     if (cache == nullptr) {
         ParseShader(all_includes.as_str(), pShaderInfo, texinfos);
         ParseShader(newsrc.as_str(), pShaderInfo, texinfos);
@@ -2558,7 +2564,9 @@ String ShaderParser::PreShaderSrc(fs::VFS& vfs, ref<str> src, ShaderInfo* pShade
     ParseShader(all_includes.as_str(), &annotations, texinfos);
     ParseShader(newsrc.as_str(), &annotations, texinfos);
     MergeShaderAnnotations(*pShaderInfo, annotations);
+    (void)annotations_span.finish();
     if (source_cache_key.is_some()) {
+        auto span  = SceneLoadSpan(bench, &SceneLoadProbeIds::shader_source_store);
         auto bytes = newsrc.len() * usize(4) + EstimateShaderAnnotations(annotations) +
                      source_cache_key->len() * usize(2) + usize(128);
         if (cache->ReserveSource(bytes)) {
@@ -2724,66 +2732,79 @@ void MaybeRecordCompile(ref<str> scene_id, slice<ShaderUnit> units, const Shader
 
 } // namespace
 
-bool ShaderParser::CompileToSpv(ref<str> scene_id, mut_ref<ShaderUnit[]> units,
-                                Vec<ShaderCode>& codes, ShaderInfo* shader_info,
-                                slice<ShaderTexInfo> texs, ShaderCache* cache) {
+auto CompiledShaderArtifact::RetainedBytes() const -> usize {
+    // Tree nodes and Arc control blocks are conservatively charged to each cache entry.
+    usize bytes { sizeof(CompiledShaderArtifact) + sizeof(SceneShaderReflection) + 128 };
+    bytes += m_stages.capacity() * usize(sizeof(CompiledShaderStage));
+    for (const auto& stage : m_stages) {
+        for (const auto& [name, type] : stage.uniforms.iter())
+            bytes += name->capacity() + type->capacity() + usize(128);
+        bytes += stage.active_tex_slots.len() * usize(128);
+    }
+    for (const auto& stage : m_reflection->Stages())
+        bytes += usize(sizeof(SceneShaderStage)) + stage.entry_point.capacity() +
+                 stage.spirv.capacity() * usize(sizeof(u32));
+    const auto& reflected = m_reflection->Reflected();
+    bytes += reflected.blocks.capacity() * usize(sizeof(vulkan::ShaderReflected::Block));
+    for (const auto& block : reflected.blocks) {
+        bytes += block.name.capacity();
+        for (const auto& [name, member] : block.member_map.iter())
+            bytes += name->capacity() +
+                     usize(sizeof(vulkan::ShaderReflected::BlockedUniform) + 128) +
+                     member->array_dimensions.capacity() * usize(sizeof(u32));
+    }
+    for (const auto& [name, binding] : reflected.binding_map.iter()) {
+        static_cast<void>(binding);
+        bytes += name->capacity() + usize(sizeof(vulkan::ShaderReflected::Binding) + 128);
+    }
+    for (const auto& [name, input] : reflected.input_location_map.iter()) {
+        static_cast<void>(input);
+        bytes += name->capacity() + usize(sizeof(vulkan::ShaderReflected::Input) + 128);
+    }
+    bytes += m_interface.sampler_bindings.capacity() * usize(sizeof(SceneSamplerBinding));
+    for (const auto& binding : m_interface.sampler_bindings)
+        bytes += binding.shader_member.capacity();
+    bytes +=
+        m_interface.uniform_blocks.capacity() * usize(sizeof(SceneShaderUniformBlockInterface));
+    for (const auto& block : m_interface.uniform_blocks) bytes += block.name.capacity();
+    bytes +=
+        m_interface.descriptor_sets.capacity() * usize(sizeof(SceneShaderDescriptorSetInterface));
+    for (const auto& set : m_interface.descriptor_sets) {
+        bytes += set.bindings.capacity() * usize(sizeof(SceneShaderDescriptorBindingInterface));
+        for (const auto& binding : set.bindings) bytes += binding.name.capacity();
+    }
+    return bytes;
+}
+
+auto ShaderParser::CompileToSpv(ref<str> scene_id, mut_ref<ShaderUnit[]> units,
+                                ShaderInfo* shader_info, slice<ShaderTexInfo> texs,
+                                ShaderCache* cache, SceneLoadBenchRecorderView bench)
+    -> Result<Arc<CompiledShaderArtifact>, ShaderCompileError> {
     MaybeRecordCompile(scene_id, units.as_ref(), shader_info, texs);
-
-    auto make_compile_entry = [](slice<ShaderUnit> source_units, slice<ShaderCode> source_codes) {
-        ShaderCache::CompileEntry entry;
-        entry.stages.reserve(usize(source_units.len().to_primitive()));
-        entry.codes.reserve(source_codes.len());
-        entry.bytes = usize(sizeof(ShaderCache::CompileEntry));
-        for (const auto& unit : source_units) {
-            ShaderCache::CompiledStage stage { .stage = unit.stage };
-            stage.uniforms = unit.preprocess_info.uniforms.clone();
-            stage.active_tex_slots.reserve(
-                usize(unit.preprocess_info.active_tex_slots.len().to_primitive()));
-            for (const auto slot : unit.preprocess_info.active_tex_slots.iter()) {
-                stage.active_tex_slots.push(u32(*slot));
-            }
-            entry.stages.push(rstd::move(stage));
-            entry.bytes += usize(sizeof(ShaderCache::CompiledStage));
-            for (const auto& [name, value] : unit.preprocess_info.uniforms.iter()) {
-                entry.bytes += name->len() + value->len() + usize(128);
-            }
-            entry.bytes += usize(unit.preprocess_info.active_tex_slots.len().to_primitive() * 64);
+    auto apply_metadata = [&](const CompiledShaderArtifact& artifact) {
+        const auto stages = artifact.StageMetadata();
+        if (stages.len() != units.len()) return false;
+        for (usize index {}; index < stages.len(); ++index)
+            if (stages[index].stage != units[index].stage) return false;
+        for (usize index {}; index < stages.len(); ++index) {
+            units[index].preprocess_info.uniforms         = stages[index].uniforms.clone();
+            units[index].preprocess_info.active_tex_slots = stages[index].active_tex_slots.clone();
         }
-        for (const auto& code : source_codes) {
-            entry.codes.push(code.clone());
-            entry.bytes += usize(sizeof(ShaderCode)) + code.len() * usize(sizeof(rstd::uint32_t));
-        }
-        return entry;
-    };
-
-    auto apply_compile_entry = [&](const ShaderCache::CompileEntry& entry) {
-        if (entry.stages.len() != usize(units.len().to_primitive()) ||
-            entry.codes.len() != usize(units.len().to_primitive())) {
-            return false;
-        }
-        for (usize index {}; index < entry.stages.len(); ++index) {
-            const auto& stage = entry.stages[index];
-            auto&       unit  = units[usize(index.to_primitive())];
-            if (stage.stage != unit.stage) return false;
-            unit.preprocess_info.uniforms = stage.uniforms.clone();
-            unit.preprocess_info.active_tex_slots.clear();
-            for (const auto slot : stage.active_tex_slots) {
-                (void)unit.preprocess_info.active_tex_slots.insert(slot);
-            }
-        }
-        codes.clone_from(entry.codes);
         ShapeShaderDefaults(units.as_ref(), *shader_info);
         return true;
     };
-
-    auto store_compile_entry = [&](ref<str> key, ShaderCache::CompileEntry entry) {
+    auto store_artifact = [&](ref<str> key, const Arc<CompiledShaderArtifact>& artifact) {
         if (cache == nullptr) return;
         auto owned_key = String::make(key);
-        entry.bytes += owned_key.len() * usize(2) + usize(128);
-        if (! cache->ReserveCompile(entry.bytes)) return;
-        const auto bytes     = entry.bytes;
-        auto       order_key = owned_key.clone();
-        cache->m_compile_entries.insert(rstd::move(owned_key), rstd::move(entry));
+        auto bytes     = artifact->RetainedBytes() + usize(sizeof(ShaderCache::CompileEntry)) +
+                         owned_key.len() * usize(2) + usize(128);
+        if (! cache->ReserveCompile(bytes)) return;
+        auto order_key = owned_key.clone();
+        cache->m_compile_entries.insert(rstd::move(owned_key),
+                                        ShaderCache::CompileEntry {
+                                            .artifact = artifact.clone(),
+                                            .bytes    = bytes,
+                                        });
         cache->m_compile_order.push(rstd::move(order_key));
         cache->m_compile_bytes += bytes;
     };
@@ -2791,21 +2812,31 @@ bool ShaderParser::CompileToSpv(ref<str> scene_id, mut_ref<ShaderUnit[]> units,
     Option<rstd::path::PathBuf> cache_file_path;
     Option<ShaderCacheIdentity> cache_identity;
     if (cache != nullptr) {
-        cache_identity = MakeShaderCacheIdentity(units.as_ref(), shader_info->combos);
+        {
+            auto span      = SceneLoadSpan(bench, &SceneLoadProbeIds::shader_cache_key);
+            cache_identity = MakeShaderCacheIdentity(units.as_ref(), shader_info->combos);
+        }
         if (cache_identity) {
             auto key    = cache_identity->cache_key_hex.as_str();
             auto memory = cache->m_compile_entries.get(key);
             if (memory.is_some()) {
-                return apply_compile_entry(**memory);
+                auto span = SceneLoadSpan(bench, &SceneLoadProbeIds::shader_cache_memory);
+                if (! apply_metadata(*(*memory)->artifact))
+                    return Err(
+                        ShaderCompileError { .message = "cached shader stages mismatch"_Str });
+                return Ok((*memory)->artifact.clone());
             }
 
             auto cache_dir = cache->directory();
             if (cache_dir.is_some()) {
+                auto read_span  = SceneLoadSpan(bench, &SceneLoadProbeIds::shader_cache_read);
                 cache_file_path = Some(
                     GetCachePath(*cache_dir, scene_id, cache_identity->cache_key_hex.as_str()));
-                auto                  cached = rstd::fs::read(cache_file_path->as_path());
+                auto cached = rstd::fs::read(cache_file_path->as_path());
+                (void)read_span.finish();
                 ShaderCacheReadResult decoded;
                 if (cached.is_ok()) {
+                    auto span = SceneLoadSpan(bench, &SceneLoadProbeIds::shader_cache_decode);
                     auto cached_bytes = rstd::move(cached).unwrap_unchecked();
                     decoded           = ShaderCacheArtifactCodec::Decode(
                         *cache_identity,
@@ -2823,11 +2854,20 @@ bool ShaderParser::CompileToSpv(ref<str> scene_id, mut_ref<ShaderUnit[]> units,
                     }
                 }
                 if (decoded.status == ShaderCacheReadStatus::Hit) {
-                    auto entry = make_compile_entry(decoded.artifact.units.as_slice(),
-                                                    decoded.artifact.codes.as_slice());
-                    if (! apply_compile_entry(entry)) return false;
-                    store_compile_entry(cache_identity->cache_key_hex.as_str(), rstd::move(entry));
-                    return true;
+                    auto span     = SceneLoadSpan(bench, &SceneLoadProbeIds::shader_cache_restore);
+                    auto prepared = PrepareCompiledArtifact(decoded.artifact.units.as_slice(),
+                                                            decoded.artifact.codes.as_slice(),
+                                                            bench);
+                    if (prepared.is_ok()) {
+                        auto artifact = rstd::move(prepared).unwrap_unchecked();
+                        if (! apply_metadata(*artifact))
+                            return Err(ShaderCompileError {
+                                .message = "cached shader stages mismatch"_Str });
+                        store_artifact(cache_identity->cache_key_hex.as_str(), artifact);
+                        return Ok(rstd::move(artifact));
+                    }
+                    decoded.status = ShaderCacheReadStatus::Invalid;
+                    decoded.reason = rstd::move(prepared).unwrap_err_unchecked().message;
                 }
                 if (decoded.status == ShaderCacheReadStatus::Invalid &&
                     ! decoded.reason.is_empty()) {
@@ -2841,13 +2881,17 @@ bool ShaderParser::CompileToSpv(ref<str> scene_id, mut_ref<ShaderUnit[]> units,
         }
     }
 
-    for (auto& unit : units) {
-        unit.src =
-            Preprocessor(unit.src.as_str(), unit.stage, shader_info->combos, unit.preprocess_info);
+    {
+        auto span = SceneLoadSpan(bench, &SceneLoadProbeIds::shader_preprocess);
+        for (auto& unit : units) {
+            unit.src = Preprocessor(
+                unit.src.as_str(), unit.stage, shader_info->combos, unit.preprocess_info);
+        }
+        ShapeShaderDefaults(units.as_ref(), *shader_info);
     }
-    ShapeShaderDefaults(units.as_ref(), *shader_info);
 
-    auto compile = [](mut_ref<ShaderUnit[]> units, Vec<ShaderCode>& codes) {
+    auto compile = [bench](mut_ref<ShaderUnit[]> units, Vec<ShaderCode>& codes) {
+        auto lower_span = SceneLoadSpan(bench, &SceneLoadProbeIds::shader_lower);
         // Build the cross-stage interface before rewriting each source. Using
         // only adjacent sources misses uniforms that
         // lives on a non-adjacent stage (e.g. FS-only `g_Brightness` not seen
@@ -2884,9 +2928,11 @@ bool ShaderParser::CompileToSpv(ref<str> scene_id, mut_ref<ShaderUnit[]> units,
 
         Vec<vulkan::Uni_ShaderSpv> spvs;
         spvs.reserve(usize(units.len().to_primitive()));
+        (void)lower_span.finish();
 
-        if (! vulkan::CompileAndLinkShaderUnits(vunits.as_slice(), opt, spvs)) {
-            return false;
+        {
+            auto span = SceneLoadSpan(bench, &SceneLoadProbeIds::shader_backend);
+            if (! vulkan::CompileAndLinkShaderUnits(vunits.as_slice(), opt, spvs)) return false;
         }
 
         codes.clear();
@@ -2896,11 +2942,15 @@ bool ShaderParser::CompileToSpv(ref<str> scene_id, mut_ref<ShaderUnit[]> units,
         return true;
     };
 
-    if (! compile(units, codes)) return false;
-    if (cache != nullptr && cache_identity) {
-        store_compile_entry(cache_identity->cache_key_hex.as_str(),
-                            make_compile_entry(units.as_ref(), codes.as_slice()));
-    }
+    Vec<ShaderCode> codes;
+    if (! compile(units, codes))
+        return Err(ShaderCompileError { .message = "shader compilation failed"_Str });
+    auto prepared = PrepareCompiledArtifact(units.as_ref(), codes.as_slice(), bench);
+    if (prepared.is_err()) return prepared;
+    auto artifact   = rstd::move(prepared).unwrap_unchecked();
+    auto store_span = SceneLoadSpan(bench, &SceneLoadProbeIds::shader_cache_store);
+    if (cache != nullptr && cache_identity)
+        store_artifact(cache_identity->cache_key_hex.as_str(), artifact);
     if (cache_file_path.is_some() && cache_identity) {
         auto artifact =
             ShaderCacheArtifactCodec::Encode(*cache_identity, units.as_ref(), codes.as_slice());
@@ -2915,7 +2965,7 @@ bool ShaderParser::CompileToSpv(ref<str> scene_id, mut_ref<ShaderUnit[]> units,
                                                      usize(artifact->len().to_primitive())));
         }
     }
-    return true;
+    return Ok(rstd::move(artifact));
 }
 
 namespace
@@ -2954,22 +3004,35 @@ void MergeVariantFallbackMetadata(ShaderInfo& info, const SceneShaderVariantDesc
 
 } // namespace
 
-Option<Arc<SceneShaderReflection>> ShaderParser::UpdateSceneShaderVariantDescFromCompiledUnits(
-    SceneShaderVariantDesc& desc, slice<ShaderUnit> units, slice<ShaderCode> codes) {
-    for (rstd::size_t i = 0; i < desc.stages.len().to_primitive() && i < units.len().to_primitive();
-         ++i) {
-        desc.stages[usize(i)].active_texture_slots =
-            units[usize(i)].preprocess_info.active_tex_slots.clone();
-        desc.stages[usize(i)].uniforms = units[usize(i)].preprocess_info.uniforms.clone();
-        if (i < codes.len().to_primitive())
-            desc.stages[usize(i)].code_hash = SceneShaderStageCodeHash(codes[usize(i)]);
+auto ShaderParser::PrepareCompiledArtifact(slice<ShaderUnit> units, slice<ShaderCode> codes,
+                                           SceneLoadBenchRecorderView bench)
+    -> Result<Arc<CompiledShaderArtifact>, ShaderCompileError> {
+    auto reflect_span = SceneLoadSpan(bench, &SceneLoadProbeIds::shader_reflect);
+    if (units.len() != codes.len())
+        return Err(ShaderCompileError { .message = "compiled shader stage count mismatch"_Str });
+    auto stage_span = SceneLoadSpan(bench, &SceneLoadProbeIds::shader_reflect_stage_hash);
+    auto metadata   = Vec<CompiledShaderStage>::with_capacity(units.len());
+    for (usize index {}; index < units.len(); ++index) {
+        metadata.push(CompiledShaderStage {
+            .stage            = units[index].stage,
+            .uniforms         = units[index].preprocess_info.uniforms.clone(),
+            .active_tex_slots = units[index].preprocess_info.active_tex_slots.clone(),
+            .code_hash        = SceneShaderStageCodeHash(codes[index]),
+        });
     }
-
+    (void)stage_span.finish();
     Vec<vulkan::Uni_ShaderSpv> spvs;
     vulkan::ShaderReflected    reflected;
-    if (! vulkan::GenReflect(codes, spvs, reflected)) return None();
-
-    desc.sampler_bindings.clear();
+    {
+        auto span = SceneLoadSpan(bench, &SceneLoadProbeIds::shader_reflect_spirv);
+        if (! vulkan::GenReflect(codes, spvs, reflected))
+            return Err(ShaderCompileError { .message = "shader reflection failed"_Str });
+    }
+    for (usize index {}; index < units.len(); ++index)
+        if (spvs[index]->stage != units[index].stage)
+            return Err(ShaderCompileError { .message = "reflected shader stage mismatch"_Str });
+    CompiledShaderInterface interface;
+    interface.sampler_bindings.clear();
     constexpr ref<str> texture_prefix { "g_Texture"_str };
     for (const auto& [name_ref, binding_ref] : reflected.binding_map.iter()) {
         const auto  name    = name_ref->as_str();
@@ -2987,12 +3050,12 @@ Option<Arc<SceneShaderReflection>> ShaderParser::UpdateSceneShaderVariantDescFro
         auto parsed_slot = rstd::from_str<usize>(suffix);
         if (parsed_slot.is_err()) continue;
         const auto slot = parsed_slot.unwrap().to_primitive();
-        desc.sampler_bindings.push(SceneSamplerBinding {
+        interface.sampler_bindings.push(SceneSamplerBinding {
             .texture_slot  = slot,
             .shader_member = name_ref->clone(),
         });
     }
-    sort_unstable_by(desc.sampler_bindings.as_mut_slice().as_mut_ref(),
+    sort_unstable_by(interface.sampler_bindings.as_mut_slice().as_mut_ref(),
                      [](const auto& lhs, const auto& rhs) {
                          return lhs.texture_slot < rhs.texture_slot;
                      });
@@ -3089,9 +3152,9 @@ Option<Arc<SceneShaderReflection>> ShaderParser::UpdateSceneShaderVariantDescFro
             hash_into(member.num, seed);
         }
     }
-    desc.descriptor_layout_hash = rstd::as_cast<usize>(seed.finish());
+    interface.descriptor_layout_hash = rstd::as_cast<usize>(seed.finish());
 
-    desc.uniform_blocks.clear();
+    interface.uniform_blocks.clear();
     bool canonical_abi = false;
     for (const auto& block : reflected.blocks) {
         DefaultHasher block_seed;
@@ -3109,7 +3172,7 @@ Option<Arc<SceneShaderReflection>> ShaderParser::UpdateSceneShaderVariantDescFro
         auto       shared_block = FindGlobalUniformBlock(block.name.as_str());
         const bool shared       = shared_block.is_some();
         canonical_abi           = canonical_abi || shared;
-        desc.uniform_blocks.push(SceneShaderUniformBlockInterface {
+        interface.uniform_blocks.push(SceneShaderUniformBlockInterface {
             .name    = block.name.clone(),
             .set     = u32(block.set),
             .binding = u32(block.binding),
@@ -3119,14 +3182,14 @@ Option<Arc<SceneShaderReflection>> ShaderParser::UpdateSceneShaderVariantDescFro
         });
     }
 
-    desc.descriptor_sets.clear();
+    interface.descriptor_sets.clear();
     for (const auto& binding : bindings) {
         SceneShaderDescriptorSetInterface* target = nullptr;
-        for (auto& set : desc.descriptor_sets) {
+        for (auto& set : interface.descriptor_sets) {
             if (set.set == u32(binding.set)) target = rstd::addressof(set);
         }
         if (target == nullptr) {
-            desc.descriptor_sets.push(SceneShaderDescriptorSetInterface {
+            interface.descriptor_sets.push(SceneShaderDescriptorSetInterface {
                 .set = u32(binding.set),
                 .push_descriptor =
                     ! canonical_abi || binding.set != kGlobalUniformSet.to_primitive(),
@@ -3134,7 +3197,7 @@ Option<Arc<SceneShaderReflection>> ShaderParser::UpdateSceneShaderVariantDescFro
                                 ? kGlobalUniformSetIdentity
                                 : u64(),
             });
-            target = rstd::addressof(desc.descriptor_sets.last_mut().unwrap().get_mut());
+            target = rstd::addressof(interface.descriptor_sets.last_mut().unwrap().get_mut());
         }
         target->bindings.push(SceneShaderDescriptorBindingInterface {
             .name             = rstd::into(binding.name),
@@ -3148,15 +3211,16 @@ Option<Arc<SceneShaderReflection>> ShaderParser::UpdateSceneShaderVariantDescFro
     }
     if (canonical_abi) {
         bool has_draw_set = false;
-        for (const auto& set : desc.descriptor_sets) has_draw_set |= set.set == kDrawUniformSet;
+        for (const auto& set : interface.descriptor_sets)
+            has_draw_set |= set.set == kDrawUniformSet;
         if (! has_draw_set) {
-            desc.descriptor_sets.push(SceneShaderDescriptorSetInterface {
+            interface.descriptor_sets.push(SceneShaderDescriptorSetInterface {
                 .set             = kDrawUniformSet,
                 .push_descriptor = true,
             });
         }
     }
-    for (auto& set : desc.descriptor_sets) {
+    for (auto& set : interface.descriptor_sets) {
         if (set.identity != u64()) continue;
         DefaultHasher set_seed;
         hash_into(set.set.to_primitive(), set_seed);
@@ -3169,20 +3233,39 @@ Option<Arc<SceneShaderReflection>> ShaderParser::UpdateSceneShaderVariantDescFro
         }
         set.identity = set_seed.finish();
     }
-    sort_unstable_by(desc.descriptor_sets.as_mut_slice().as_mut_ref(),
+    sort_unstable_by(interface.descriptor_sets.as_mut_slice().as_mut_ref(),
                      [](const auto& lhs, const auto& rhs) {
                          return lhs.set < rhs.set;
                      });
-    auto result       = Arc<SceneShaderReflection>::make();
-    result->reflected = rstd::move(reflected);
+    auto stages = Vec<SceneShaderStage>::with_capacity(spvs.len());
     for (auto& stage : spvs) {
-        result->stages.push(SceneShaderStage {
+        stages.push(SceneShaderStage {
             .entry_point = rstd::move(stage->entry_point),
             .stage       = stage->stage,
             .spirv       = rstd::move(stage->spirv),
         });
     }
-    return Some(rstd::move(result));
+    return Ok(Arc<CompiledShaderArtifact>::make(
+        rstd::move(metadata),
+        Arc<SceneShaderReflection>::make(rstd::move(stages), rstd::move(reflected)),
+        rstd::move(interface)));
+}
+
+void ShaderParser::ApplyCompiledShaderInterface(SceneShaderVariantDesc&       desc,
+                                                const CompiledShaderArtifact& artifact,
+                                                SceneLoadBenchRecorderView    bench) {
+    auto span   = SceneLoadSpan(bench, &SceneLoadProbeIds::shader_interface_apply);
+    auto stages = artifact.StageMetadata();
+    for (usize index {}; index < desc.stages.len() && index < stages.len(); ++index) {
+        desc.stages[index].active_texture_slots = stages[index].active_tex_slots.clone();
+        desc.stages[index].uniforms             = stages[index].uniforms.clone();
+        desc.stages[index].code_hash            = stages[index].code_hash;
+    }
+    const auto& interface       = artifact.Interface();
+    desc.sampler_bindings       = interface.sampler_bindings.clone();
+    desc.uniform_blocks         = interface.uniform_blocks.clone();
+    desc.descriptor_sets        = interface.descriptor_sets.clone();
+    desc.descriptor_layout_hash = interface.descriptor_layout_hash;
 }
 
 CompileSceneShaderVariantResult
@@ -3249,31 +3332,25 @@ ShaderParser::CompileSceneShaderVariant(const SceneShaderVariantDesc& desc, fs::
         result.variant.texture_infos.push(ToSceneShaderTextureCompileInfo(texinfo));
     }
 
-    Vec<ShaderCode> spvs;
-    const bool      ok = CompileToSpv(desc.scene_id.as_str(),
-                                      units.as_mut_slice().as_mut_ref(),
-                                      spvs,
-                                      &result.info,
-                                      result.tex_info.as_slice(),
-                                      cache);
-    if (! ok) {
-        result.error = "CompileToSpv failed"_Str;
+    auto compiled = CompileToSpv(desc.scene_id.as_str(),
+                                 units.as_mut_slice().as_mut_ref(),
+                                 &result.info,
+                                 result.tex_info.as_slice(),
+                                 cache);
+    if (compiled.is_err()) {
+        result.error = rstd::move(compiled).unwrap_err_unchecked().message;
         return result;
     }
+    auto artifact                   = rstd::move(compiled).unwrap_unchecked();
     result.variant.default_uniforms = result.info.svs.clone();
-    auto reflection                 = ShaderParser::UpdateSceneShaderVariantDescFromCompiledUnits(
-        result.variant, units.as_slice(), spvs.as_slice());
-    if (reflection.is_none()) {
-        result.error = "shader reflection failed"_Str;
-        return result;
-    }
+    ApplyCompiledShaderInterface(result.variant, *artifact);
 
     auto shader               = Arc<SceneShader>::make();
     shader->name              = desc.shader_name.clone();
     shader->matrix_convention = ShaderMatrixConvention::RowVector;
     shader->matrix_abi        = ShaderMatrixAbi::Hlsl;
-    shader->codes             = rstd::move(spvs);
-    shader->reflection        = rstd::move(reflection);
+    shader->codes             = artifact->CloneCodes();
+    shader->reflection        = Some(artifact->ReflectionOwner());
     shader->sampler_bindings  = result.variant.sampler_bindings.clone();
     shader->uniform_blocks    = result.variant.uniform_blocks.clone();
     shader->descriptor_sets   = result.variant.descriptor_sets.clone();
@@ -3362,21 +3439,18 @@ CompileMaterialShaderResult ShaderParser::CompileMaterialShader(const Json& mate
         (void)input_combos.insert(rstd::into(WE_CB_BONECOUNT), "1"_Str);
     r.info.combos = ResolveShaderCombos(r.info, input_combos);
 
-    const bool ok = ShaderParser::CompileToSpv(
-        scene_id, units.as_mut_slice().as_mut_ref(), r.spvs, &r.info, r.tex_info.as_slice(), cache);
-    r.ok = ok;
-    if (! ok) {
-        r.error = "CompileToSpv failed"_Str;
+    auto compiled = ShaderParser::CompileToSpv(
+        scene_id, units.as_mut_slice().as_mut_ref(), &r.info, r.tex_info.as_slice(), cache);
+    if (compiled.is_err()) {
+        r.error = rstd::move(compiled).unwrap_err_unchecked().message;
         return r;
     }
+    auto artifact = rstd::move(compiled).unwrap_unchecked();
+    r.ok          = true;
+    r.spvs        = artifact->CloneCodes();
+    r.reflection  = Some(artifact->ReflectionOwner());
     SceneShaderVariantDesc variant;
-    r.reflection = ShaderParser::UpdateSceneShaderVariantDescFromCompiledUnits(
-        variant, units.as_slice(), r.spvs.as_slice());
-    if (r.reflection.is_none()) {
-        r.ok    = false;
-        r.error = "shader reflection failed"_Str;
-        return r;
-    }
+    ShaderParser::ApplyCompiledShaderInterface(variant, *artifact);
     r.uniform_blocks  = rstd::move(variant.uniform_blocks);
     r.descriptor_sets = rstd::move(variant.descriptor_sets);
     return r;

@@ -211,12 +211,11 @@ private:
     void       stopMainLoop();
     void       loadScene();
     void       ensureLoadBench(const Option<SceneLoadBenchHandle>&);
-    void       ingestLoadBenchBatch(const Option<SceneLoadBenchHandle>&,
-                                    const rstd::bench::probe::ProbeBatch&);
-    void       finishLoadBench();
-    auto       loadBenchView() -> SceneLoadBenchRecorderView;
-    auto       schemeColor() const -> Option<array<float, 3>>;
-    void       publishClearColor(array<float, 3> fallback);
+    void ingestLoadBenchBatch(const Option<SceneLoadBenchHandle>&, rstd::bench::probe::ProbeBatch);
+    void finishLoadBench();
+    auto loadBenchView() -> SceneLoadBenchRecorderView;
+    auto schemeColor() const -> Option<array<float, 3>>;
+    void publishClearColor(array<float, 3> fallback);
 
     bool m_inited { false };
 
@@ -233,6 +232,7 @@ private:
 
     Option<SceneLoadBenchHandle>               m_load_bench;
     Option<rstd::bench::probe::ProbeCollector> m_load_bench_collector;
+    Vec<rstd::bench::probe::ProbeBatch>        m_load_bench_batches;
     Option<rstd::bench::probe::ProbeRecorder>  m_load_bench_recorder;
     Option<rstd::bench::probe::SpanGuard>      m_load_total_span;
     u64                                        m_latest_load_bench_run_id { 0 };
@@ -827,15 +827,15 @@ void SceneRuntimeController::ensureLoadBench(const Option<SceneLoadBenchHandle>&
     m_load_bench               = context.clone();
     m_load_bench_collector =
         Some(rstd::bench::probe::ProbeCollector::new_(BenchContext(context).schema_owner()));
+    m_load_bench_batches.clear();
     auto batches = BenchContext(m_load_bench).take_preload_batches();
     for (usize index; index < batches.len(); ++index) {
-        auto ingested = m_load_bench_collector->ingest(batches[index]);
-        if (ingested.is_err()) rstd_warn("preload probe batch schema mismatch");
+        ingestLoadBenchBatch(context, rstd::move(batches[index]));
     }
 }
 
-void SceneRuntimeController::ingestLoadBenchBatch(const Option<SceneLoadBenchHandle>&   context,
-                                                  const rstd::bench::probe::ProbeBatch& batch) {
+void SceneRuntimeController::ingestLoadBenchBatch(const Option<SceneLoadBenchHandle>& context,
+                                                  rstd::bench::probe::ProbeBatch      batch) {
     if (! context) return;
     if (! m_load_bench) ensureLoadBench(context);
     if (! m_load_bench || ! context ||
@@ -843,7 +843,11 @@ void SceneRuntimeController::ingestLoadBenchBatch(const Option<SceneLoadBenchHan
         ! m_load_bench_collector)
         return;
     auto ingested = m_load_bench_collector->ingest(batch);
-    if (ingested.is_err()) rstd_warn("scene load probe batch schema mismatch");
+    if (ingested.is_err()) {
+        rstd_warn("scene load probe batch schema mismatch");
+        return;
+    }
+    m_load_bench_batches.push(rstd::move(batch));
 }
 
 void SceneRuntimeController::finishLoadBench() {
@@ -856,8 +860,7 @@ void SceneRuntimeController::finishLoadBench() {
     if (m_load_bench_recorder) {
         auto batch = m_load_bench_recorder->drain();
         if (batch.is_ok() && m_load_bench_collector) {
-            auto ingested = m_load_bench_collector->ingest(*batch);
-            if (ingested.is_err()) rstd_warn("main probe batch schema mismatch");
+            ingestLoadBenchBatch(m_load_bench, rstd::move(batch).unwrap_unchecked());
         } else if (batch.is_err()) {
             rstd_warn("main probe drain failed");
         }
@@ -874,7 +877,8 @@ void SceneRuntimeController::finishLoadBench() {
                       error);
         } else {
             auto output  = rstd::move(file).unwrap_unchecked();
-            auto written = rstd::bench::probe::write_text(output, report);
+            auto written = WriteSceneLoadTimeline(output, m_load_bench_batches.as_slice());
+            if (written.is_ok()) written = rstd::bench::probe::write_text(output, report);
             if (written.is_err()) {
                 auto error = rstd::move(written).unwrap_err_unchecked();
                 rstd_warn("cannot write scene load probe report {}: {}",
@@ -884,6 +888,7 @@ void SceneRuntimeController::finishLoadBench() {
         }
         m_load_bench_collector = None();
     }
+    m_load_bench_batches.clear();
     m_load_bench = None();
 }
 
@@ -1121,7 +1126,7 @@ void SceneRuntimeController::on(MainMsg::Stop_payload&& m) {
 }
 
 void SceneRuntimeController::on(MainMsg::LoadBenchBatch_payload&& m) {
-    ingestLoadBenchBatch(m.context, m.batch);
+    ingestLoadBenchBatch(m.context, rstd::move(m.batch));
 }
 
 void SceneRuntimeController::on(MainMsg::LoadBenchFinish_payload&& m) {
@@ -1132,7 +1137,7 @@ void SceneRuntimeController::on(MainMsg::LoadBenchFinish_payload&& m) {
 }
 
 void SceneRuntimeController::on(MainMsg::FirstFrame_payload&& m) {
-    if (m.batch) ingestLoadBenchBatch(m.context, *m.batch);
+    if (m.batch) ingestLoadBenchBatch(m.context, rstd::move(*m.batch));
     if (m_load_bench && m.context &&
         BenchContext(m_load_bench).run_id() == BenchContext(m.context).run_id()) {
         finishLoadBench();

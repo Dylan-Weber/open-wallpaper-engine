@@ -4,6 +4,7 @@ import rstd.bench;
 import wescene.load_bench;
 
 using namespace rstd::literals;
+using namespace rstd::prelude;
 
 namespace
 {
@@ -18,13 +19,14 @@ TEST(SceneLoadBench, EmptyOutputDisablesCollection) {
     EXPECT_TRUE(owe::CreateSceneLoadBench(""_str).is_none());
 }
 
-TEST(SceneLoadBench, RegistersStableCatalog) {
+TEST(SceneLoadBench, RegistersStableProbes) {
     auto context = owe::CreateSceneLoadBench("/tmp/owe-load-bench-test.txt"_str);
     ASSERT_TRUE(context.is_some());
     auto& bench = **context;
 
     auto schema = bench.schema_owner();
-    EXPECT_EQ(schema->len().to_primitive(), 50u);
+    EXPECT_EQ(schema->len().to_primitive(), 90u);
+    EXPECT_EQ(ProbeLabel(bench, bench.ids().viewer_startup), "viewer.startup"_str);
     EXPECT_EQ(ProbeLabel(bench, bench.ids().preload_scene_document), "preload.scene_document"_str);
     EXPECT_EQ(ProbeLabel(bench, bench.ids().parse_object_particle), "parse.object.particle"_str);
     EXPECT_EQ(ProbeLabel(bench, bench.ids().load_initial_properties),
@@ -40,6 +42,13 @@ TEST(SceneLoadBench, RegistersStableCatalog) {
               "render.bindings.prepare"_str);
     EXPECT_EQ(ProbeLabel(bench, bench.ids().render_renderer_compile),
               "render.renderer.compile"_str);
+    EXPECT_EQ(ProbeLabel(bench, bench.ids().material_build), "parse.material"_str);
+    EXPECT_EQ(ProbeLabel(bench, bench.ids().shader_cache_key), "parse.shader.cache.key"_str);
+    EXPECT_EQ(ProbeLabel(bench, bench.ids().shader_backend), "parse.shader.backend"_str);
+    EXPECT_EQ(ProbeLabel(bench, bench.ids().shader_reflect_spirv),
+              "parse.shader.reflect.spirv"_str);
+    EXPECT_EQ(ProbeLabel(bench, bench.ids().render_frame_runtime), "render.frame.runtime"_str);
+    EXPECT_EQ(ProbeLabel(bench, bench.ids().render_changes_flush), "render.changes.flush"_str);
 }
 
 TEST(SceneLoadBench, AssignsIncreasingRunIds) {
@@ -75,6 +84,32 @@ TEST(SceneLoadBench, MovesPreloadBatchOnce) {
     EXPECT_EQ(report.overall()[rstd::usize()].count.to_primitive(), 1u);
     EXPECT_EQ(report.dropped_samples().to_primitive(), 0u);
     EXPECT_TRUE(report.diagnostics().is_empty());
+}
+
+TEST(SceneLoadBench, WritesTimelineWithRecorderLocalParents) {
+    auto context = owe::CreateSceneLoadBench("/tmp/owe-load-bench-test.txt"_str);
+    ASSERT_TRUE(context.is_some());
+    auto& bench    = **context;
+    auto  recorder = bench.session().recorder();
+    {
+        auto parent = recorder.span(bench.ids().render_load);
+        auto child  = recorder.span(bench.ids().render_snapshot);
+    }
+    auto batches = Vec<rstd::bench::probe::ProbeBatch>::make();
+    batches.push(recorder.drain().unwrap());
+    auto second = bench.session().recorder();
+    {
+        auto span = second.span(bench.ids().vulkan_init);
+    }
+    batches.push(second.drain().unwrap());
+    auto output = rstd::io::Cursor(Vec<u8>::make());
+    ASSERT_TRUE(owe::WriteSceneLoadTimeline(output, batches.as_slice()).is_ok());
+    auto text = rstd::str_::from_utf8(output.get_ref().as_slice()).unwrap();
+    EXPECT_TRUE(text->contains("sample=render.snapshot recorder=1 thread="_str));
+    EXPECT_TRUE(text->contains("sequence=2 parent=1 started_ns="_str));
+    EXPECT_TRUE(text->contains("sequence=1 parent=0 started_ns="_str));
+    EXPECT_TRUE(text->contains(" elapsed_ns="_str));
+    EXPECT_TRUE(text->contains("sample=vulkan.init recorder=2 thread="_str));
 }
 
 } // namespace

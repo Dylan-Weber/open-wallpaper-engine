@@ -64,8 +64,8 @@ struct MaterialBuild {
 
 auto BuildMaterial(fs::VFS&, ShaderCache&, const SceneShaderEnvironment&, const wpscene::Material&,
                    Scene&, ShaderInfo = {},
-                   GeometryStageRequirement = GeometryStageRequirement::None)
-    -> Result<MaterialBuild, MaterialBuildError>;
+                   GeometryStageRequirement   = GeometryStageRequirement::None,
+                   SceneLoadBenchRecorderView = {}) -> Result<MaterialBuild, MaterialBuildError>;
 auto ApplyLayerColorBlend(wpscene::Material&, i32 color_blend_mode) -> Option<BlendMode>;
 auto NeutralColorUniforms(ShaderValueMap) -> ShaderValueMap;
 void ParseSpecTexName(String&, const wpscene::Material&, const ShaderInfo&, Scene&);
@@ -117,6 +117,7 @@ private:
 };
 
 struct SceneParseContext {
+    SceneLoadBenchRecorderView           load_bench;
     ParseSceneHandle                     scene;
     Option<Arc<ParticleRuntime>>         particle_runtime;
     i32                                  ortho_w { 0 };

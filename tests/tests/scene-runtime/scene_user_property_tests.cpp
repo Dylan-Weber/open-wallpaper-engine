@@ -6,6 +6,7 @@ import wescene.json;
 import owe.user_property;
 import wescene.scene;
 import wescene.fs;
+import wescene.pkg.parse;
 import wescene.types;
 import wescene.scene_user_property;
 
@@ -118,6 +119,8 @@ TEST(SceneUserProperty, AppliesRegisteredShaderUniformBinding) {
 TEST(SceneUserProperty, RecompilesComboAndSkipsUnchangedValue) {
     owe::Scene scene;
     scene.InstallExtension(Box<owe::fs::VFS>::make());
+    auto cache = Arc<owe::ShaderCache>::make();
+    scene.InstallExtension(Box<Arc<owe::ShaderCache>>::make(cache.clone()));
     auto                        material = Arc<owe::SceneMaterial>::make();
     owe::SceneShaderVariantDesc variant;
     variant.scene_id    = "combo-property"_Str;
@@ -130,7 +133,8 @@ TEST(SceneUserProperty, RecompilesComboAndSkipsUnchangedValue) {
     });
     variant.stages.push({
         .stage  = owe::ShaderType::FRAGMENT,
-        .source = "void main(){gl_FragColor=vec4(float(QUALITY));}"_Str,
+        .source = "#if QUALITY == 3\n#error invalid combo\n#endif\n"
+                  "void main(){gl_FragColor=vec4(float(QUALITY));}"_Str,
     });
     material->customShader.variant = Some(rstd::move(variant));
     owe::Scene::ShaderComboUserBinding binding {
@@ -139,6 +143,8 @@ TEST(SceneUserProperty, RecompilesComboAndSkipsUnchangedValue) {
         .fallback = "0"_Str,
     };
     (void)binding.options.insert("high"_Str, "2"_Str);
+    (void)binding.options.insert("low"_Str, "1"_Str);
+    (void)binding.options.insert("invalid"_Str, "3"_Str);
     scene.RegisterShaderComboUserBinding("quality"_Str, rstd::move(binding));
     auto property = rstd::json::from_str(R"({"type":"combo","value":"high"})"_str).unwrap();
     owe::SceneUserPropertyApplier::Apply(scene, "quality"_str, property);
@@ -153,6 +159,19 @@ TEST(SceneUserProperty, RecompilesComboAndSkipsUnchangedValue) {
     ASSERT_TRUE(material->customShader.shader);
     EXPECT_EQ((*material->customShader.shader).as_ptr().as_raw_ptr(),
               (*shader).as_ptr().as_raw_ptr());
+    auto low = rstd::json::from_str(R"({"type":"combo","value":"low"})"_str).unwrap();
+    owe::SceneUserPropertyApplier::Apply(scene, "quality"_str, low);
+    EXPECT_NE(&**material->customShader.shader, &**shader);
+    EXPECT_TRUE((*(*shader)->reflection)->Matches((*shader)->codes.as_slice()));
+    owe::SceneUserPropertyApplier::Apply(scene, "quality"_str, property);
+    EXPECT_EQ(&**(*material->customShader.shader)->reflection, &**(*shader)->reflection);
+    auto valid   = material->customShader.shader.clone();
+    auto invalid = rstd::json::from_str(R"({"type":"combo","value":"invalid"})"_str).unwrap();
+    auto failed  = owe::SceneUserPropertyApplier::Apply(scene, "quality"_str, invalid);
+    EXPECT_TRUE(failed.diagnostics_changed);
+    EXPECT_EQ(&**material->customShader.shader, &**valid);
+    EXPECT_EQ((**material->customShader.variant->resolved_combos.get("QUALITY"_str)).as_str(),
+              "2"_str);
 }
 
 TEST(SceneUserProperty, ReportsRegisteredShaderComboWithoutVfs) {

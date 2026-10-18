@@ -12,12 +12,15 @@
 
 import rstd.cppstd;
 import rstd;
+import rstd.bench;
 import spirvto;
 import wescene.fs;
 import wescene.pkg.parse;
 import wescene.scene;
 import wescene.shader_compile;
 import wescene.types;
+import wescene.load_bench;
+import wescene.json;
 
 using owe::ParseShader;
 using owe::ShaderInfo;
@@ -1413,6 +1416,179 @@ void main() {
     }
 }
 
+TEST(ShaderParser, LoadBenchDistinguishesCompileAndCachePaths) {
+    auto path = rstd::env::temp_dir();
+    auto name = rstd::format("owe-shader-load-bench-{}", rstd::process::id());
+    path.push(ref<rstd::path::Path>(name.as_str()));
+    (void)rstd::fs::remove_dir_all(path.as_path());
+    auto context = owe::CreateSceneLoadBench("/tmp/owe-shader-load-bench.txt"_str);
+    ASSERT_TRUE(context.is_some());
+    auto&                           bench    = **context;
+    auto                            recorder = bench.session().recorder();
+    owe::SceneLoadBenchRecorderView view { &recorder, &bench.ids() };
+    owe::ShaderCache                cache(Some(path.clone()));
+    owe::fs::VFS                    vfs;
+    auto                            compile = [&] {
+        auto units = Vec<owe::ShaderUnit>::make();
+        units.push(
+            { .stage = owe::ShaderType::VERTEX,
+              .src =
+                  "attribute vec3 a_Position;\nvoid main() { gl_Position = vec4(a_Position, 1.0); }\n"_Str });
+        units.push({ .stage = owe::ShaderType::FRAGMENT,
+                     .src   = "void main() { gl_FragColor = vec4(1.0); }\n"_Str });
+        ShaderInfo info;
+        for (auto& unit : units)
+            unit.src =
+                owe::ShaderParser::PreShaderSrc(vfs, unit.src.as_str(), &info, {}, &cache, view);
+        auto compiled = owe::ShaderParser::CompileToSpv(
+            "bench"_str, units.as_mut_slice().as_mut_ref(), &info, {}, &cache, view);
+        EXPECT_TRUE(compiled.is_ok());
+        return rstd::move(compiled).unwrap();
+    };
+    auto first = compile();
+    ASSERT_FALSE(first->CloneCodes().is_empty());
+    auto memory = compile();
+    EXPECT_EQ(&*memory, &*first);
+    EXPECT_EQ(&*memory->ReflectionOwner(), &*first->ReflectionOwner());
+    cache.ReleaseTransientEntries();
+    auto disk = compile();
+    EXPECT_NE(&*disk, &*first);
+    EXPECT_EQ(disk->CloneCodes(), first->CloneCodes());
+    EXPECT_TRUE(first->ReflectionOwner()->Matches(disk->CloneCodes().as_slice()));
+
+    auto batch = recorder.drain();
+    ASSERT_TRUE(batch.is_ok());
+    auto collector = rstd::bench::probe::ProbeCollector::new_(bench.schema_owner());
+    ASSERT_TRUE(collector.ingest(*batch).is_ok());
+    auto report = rstd::move(collector).finish();
+    auto count  = [&](rstd::bench::probe::ProbeId id) {
+        for (const auto& summary : report.overall())
+            if (summary.probe == id) return summary.count;
+        return usize();
+    };
+    EXPECT_EQ(count(bench.ids().shader_cache_key), usize(3));
+    EXPECT_EQ(count(bench.ids().shader_backend), usize(1));
+    EXPECT_EQ(count(bench.ids().shader_cache_memory), usize(1));
+    EXPECT_EQ(count(bench.ids().shader_cache_read), usize(2));
+    EXPECT_EQ(count(bench.ids().shader_cache_decode), usize(1));
+    EXPECT_EQ(count(bench.ids().shader_cache_restore), usize(1));
+    EXPECT_EQ(count(bench.ids().shader_reflect_spirv), usize(2));
+    EXPECT_EQ(count(bench.ids().shader_cache_store), usize(1));
+    EXPECT_EQ(count(bench.ids().shader_source_cache), usize(6));
+    EXPECT_EQ(count(bench.ids().shader_annotations), usize(4));
+    EXPECT_EQ(report.dropped_samples(), usize());
+    EXPECT_TRUE(report.diagnostics().is_empty());
+    EXPECT_TRUE(rstd::fs::remove_dir_all(path.as_path()).is_ok());
+}
+
+namespace
+{
+auto ReflectionVariant() -> owe::SceneShaderVariantDesc {
+    owe::SceneShaderVariantDesc desc;
+    desc.scene_id    = "reflection-sharing"_Str;
+    desc.shader_name = "reflection-sharing"_Str;
+    desc.stages.push({
+        .stage  = owe::ShaderType::VERTEX,
+        .source = "attribute vec3 a_Position;\nvoid main(){gl_Position=vec4(a_Position,1.0);}"_Str,
+    });
+    desc.stages.push({
+        .stage  = owe::ShaderType::FRAGMENT,
+        .source = "uniform float g_Brightness;\n"
+                  "void main(){gl_FragColor=vec4(g_Brightness);}"_Str,
+    });
+    return desc;
+}
+} // namespace
+
+TEST(ShaderParser, SharesReflectionWithoutSharingInstanceValues) {
+    owe::fs::VFS     vfs;
+    owe::ShaderCache cache;
+    auto             desc = ReflectionVariant();
+    (void)desc.default_uniforms.insert("g_Brightness"_Str, owe::ShaderValue(0.25f));
+    desc.texture_slots.push("first"_Str);
+    desc.default_textures.push({ .slot = i32(), .texture = "fallback-first"_Str });
+    auto first = owe::ShaderParser::CompileSceneShaderVariant(desc, vfs, {}, &cache);
+    ASSERT_TRUE(first.ok) << first.error;
+    (void)desc.default_uniforms.insert("g_Brightness"_Str, owe::ShaderValue(0.75f));
+    desc.texture_slots[usize()]            = "second"_Str;
+    desc.default_textures[usize()].texture = "fallback-second"_Str;
+    auto second = owe::ShaderParser::CompileSceneShaderVariant(desc, vfs, {}, &cache);
+    ASSERT_TRUE(second.ok) << second.error;
+    EXPECT_NE(&**first.shader, &**second.shader);
+    EXPECT_EQ(&**(*first.shader)->reflection, &**(*second.shader)->reflection);
+    EXPECT_FLOAT_EQ((**(*first.shader)->default_uniforms.get("g_Brightness"_str))[usize()], 0.25f);
+    EXPECT_FLOAT_EQ((**(*second.shader)->default_uniforms.get("g_Brightness"_str))[usize()], 0.75f);
+    EXPECT_EQ(first.variant.texture_slots[usize()], "first"_str);
+    EXPECT_EQ(second.variant.texture_slots[usize()], "second"_str);
+    EXPECT_EQ(first.variant.default_textures[usize()].texture, "fallback-first"_str);
+    EXPECT_EQ(second.variant.default_textures[usize()].texture, "fallback-second"_str);
+    first.variant.uniform_blocks.clear();
+    (*first.shader)->uniform_blocks.clear();
+    EXPECT_FALSE(second.variant.uniform_blocks.is_empty());
+    EXPECT_FALSE((*second.shader)->uniform_blocks.is_empty());
+
+    owe::Combos combos;
+    (void)combos.insert("QUALITY"_Str, "1"_Str);
+    auto changed = owe::ShaderParser::CompileSceneShaderVariant(desc, vfs, combos, &cache);
+    ASSERT_TRUE(changed.ok) << changed.error;
+    EXPECT_NE(&**(*changed.shader)->reflection, &**(*second.shader)->reflection);
+    auto restored = owe::ShaderParser::CompileSceneShaderVariant(desc, vfs, {}, &cache);
+    ASSERT_TRUE(restored.ok) << restored.error;
+    EXPECT_EQ(&**(*restored.shader)->reflection, &**(*second.shader)->reflection);
+    cache.ReleaseTransientEntries();
+    EXPECT_TRUE((*(*second.shader)->reflection)->Matches((*second.shader)->codes.as_slice()));
+}
+
+TEST(ShaderParser, StandaloneMaterialCompilationRetainsSharedReflection) {
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, rstd::move(assets).unwrap()).is_ok());
+    owe::ShaderCache cache;
+    auto material = owe::ParseJson(R"({"passes":[{"shader":"flat","textures":[]}]})"_str).unwrap();
+    auto first =
+        owe::ShaderParser::CompileMaterialShader(material, vfs, "standalone"_str, {}, &cache);
+    ASSERT_TRUE(first.ok) << first.error;
+    auto second =
+        owe::ShaderParser::CompileMaterialShader(material, vfs, "standalone"_str, {}, &cache);
+    ASSERT_TRUE(second.ok) << second.error;
+    ASSERT_TRUE(first.reflection.is_some());
+    ASSERT_TRUE(second.reflection.is_some());
+    EXPECT_EQ(&**first.reflection, &**second.reflection);
+    EXPECT_EQ(first.spvs, second.spvs);
+    EXPECT_EQ(first.uniform_blocks, second.uniform_blocks);
+    cache.ReleaseTransientEntries();
+    EXPECT_TRUE((*first.reflection)->Matches(first.spvs.as_slice()));
+    first.spvs.clear();
+    EXPECT_TRUE((*second.reflection)->Matches(second.spvs.as_slice()));
+}
+
+TEST(ShaderParser, EvictsCompiledArtifactsWithoutInvalidatingShaders) {
+    owe::fs::VFS     vfs;
+    owe::ShaderCache cache;
+    auto             desc  = ReflectionVariant();
+    auto             first = owe::ShaderParser::CompileSceneShaderVariant(desc, vfs, {}, &cache);
+    ASSERT_TRUE(first.ok) << first.error;
+    for (usize index {}; index < usize(32); ++index) {
+        owe::Combos combos;
+        (void)combos.insert("UNIQUE"_Str, rstd::format("{}", index));
+        auto result = owe::ShaderParser::CompileSceneShaderVariant(desc, vfs, combos, &cache);
+        ASSERT_TRUE(result.ok) << result.error;
+    }
+    auto recompiled = owe::ShaderParser::CompileSceneShaderVariant(desc, vfs, {}, &cache);
+    ASSERT_TRUE(recompiled.ok) << recompiled.error;
+    EXPECT_NE(&**(*recompiled.shader)->reflection, &**(*first.shader)->reflection);
+    EXPECT_EQ((*recompiled.shader)->codes, (*first.shader)->codes);
+    EXPECT_TRUE((*(*first.shader)->reflection)->Matches((*first.shader)->codes.as_slice()));
+    auto invalid                    = desc.clone();
+    invalid.stages[usize(1)].source = "invalid shader"_Str;
+    EXPECT_FALSE(owe::ShaderParser::CompileSceneShaderVariant(invalid, vfs, {}, &cache).ok);
+    auto recovered = owe::ShaderParser::CompileSceneShaderVariant(desc, vfs, {}, &cache);
+    ASSERT_TRUE(recovered.ok) << recovered.error;
+    EXPECT_EQ(&**(*recovered.shader)->reflection, &**(*recompiled.shader)->reflection);
+}
+
 TEST(ShaderParser, CompileSceneShaderVariantUsesPhysicalFileCache) {
     const auto root = std::filesystem::temp_directory_path() /
                       ("owe-shader-cache-" + std::to_string(rstd::process::id().to_primitive()));
@@ -1478,6 +1654,7 @@ void main() {
     ASSERT_TRUE(memory_second.ok) << memory_second.error;
     ASSERT_TRUE(memory_second.shader);
     ASSERT_TRUE((*memory_second.shader)->reflection.is_some());
+    EXPECT_EQ(&**(*memory_second.shader)->reflection, &**(*memory_first.shader)->reflection);
     EXPECT_TRUE(
         (*(*memory_second.shader)->reflection)->Matches((*memory_second.shader)->codes.as_slice()));
     EXPECT_EQ((*memory_second.shader)->codes, original_codes);
@@ -1490,6 +1667,10 @@ void main() {
     ASSERT_TRUE(memory_third.ok) << memory_third.error;
     ASSERT_TRUE(memory_third.shader);
     EXPECT_EQ((*memory_third.shader)->codes, original_codes);
+    EXPECT_EQ(&**(*memory_third.shader)->reflection, &**(*memory_first.shader)->reflection);
+    auto reversed = original_codes.clone();
+    rstd::mem::swap(reversed[usize()], reversed[usize(1)]);
+    EXPECT_FALSE((*(*memory_third.shader)->reflection)->Matches(reversed.as_slice()));
 
     const auto shader_cache = root / rstd::cppstd::to_string(desc.scene_id.as_str()) / "spvs03";
     ASSERT_TRUE(std::filesystem::is_directory(shader_cache));

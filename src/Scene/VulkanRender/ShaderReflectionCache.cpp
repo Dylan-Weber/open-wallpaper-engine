@@ -25,18 +25,17 @@ ShaderReflectionKey MakeShaderReflectionKey(const SceneShader& shader) {
     };
 }
 
-CachedShaderReflection MakeCachedReflection(Vec<Uni_ShaderSpv> spvs, ShaderReflected reflected) {
-    CachedShaderReflection out;
-    out.stages.reserve(spvs.len());
+auto MakeCachedReflection(Vec<Uni_ShaderSpv> spvs, ShaderReflected reflected)
+    -> rstd::sync::Arc<CachedShaderReflection> {
+    auto stages = Vec<CachedShaderStage>::with_capacity(spvs.len());
     for (auto& spv : spvs) {
-        out.stages.push(CachedShaderStage {
+        stages.push(CachedShaderStage {
             .entry_point = rstd::move(spv->entry_point),
             .stage       = spv->stage,
             .spirv       = rstd::move(spv->spirv),
         });
     }
-    out.reflected = rstd::move(reflected);
-    return out;
+    return rstd::sync::Arc<CachedShaderReflection>::make(rstd::move(stages), rstd::move(reflected));
 }
 
 } // namespace
@@ -45,7 +44,8 @@ auto ShaderReflectionCache::Query(const SceneShader& shader)
     -> Option<ref<CachedShaderReflection>> {
     auto key    = MakeShaderReflectionKey(shader);
     auto cached = m_entries.get(key);
-    if (cached.is_some()) return Some((**cached).deref());
+    if (cached.is_some() && (**cached)->Matches(shader.codes.as_slice()))
+        return Some((**cached).deref());
 
     if (shader.reflection.is_some() && (*shader.reflection)->Matches(shader.codes.as_slice())) {
         (void)m_entries.insert(key, shader.reflection->clone());
@@ -56,9 +56,7 @@ auto ShaderReflectionCache::Query(const SceneShader& shader)
     ShaderReflected    reflected;
     if (! m_backend->GenReflect(shader.codes.as_slice(), spvs, reflected)) return rstd::None();
 
-    (void)m_entries.insert(key,
-                           rstd::sync::Arc<CachedShaderReflection>::make(
-                               MakeCachedReflection(rstd::move(spvs), rstd::move(reflected))));
+    (void)m_entries.insert(key, MakeCachedReflection(rstd::move(spvs), rstd::move(reflected)));
     return Some((**m_entries.get(key)).deref());
 }
 
@@ -108,16 +106,16 @@ auto SceneShaderArtifactProvider::LoadShader(const resource::ShaderRequest& requ
         .matrix_convention = m_shader->matrix_convention,
         .matrix_abi        = m_shader->matrix_abi,
     };
-    artifact.stages.reserve((**reflection).stages.len());
-    for (const auto& stage : (**reflection).stages) {
+    artifact.stages.reserve((**reflection).Stages().len());
+    for (const auto& stage : (**reflection).Stages()) {
         artifact.stages.push(resource::ShaderArtifactStage {
             .stage       = stage.stage,
             .entry_point = stage.entry_point.clone(),
             .code        = stage.spirv.clone(),
         });
     }
-    artifact.uniform_blocks.reserve((**reflection).reflected.blocks.len());
-    for (const auto& block : (**reflection).reflected.blocks) {
+    artifact.uniform_blocks.reserve((**reflection).Reflected().blocks.len());
+    for (const auto& block : (**reflection).Reflected().blocks) {
         auto scope = resource::ShaderArtifactUniformBlock::Scope::Local;
         u64  identity {};
         for (const auto& declared : m_shader->uniform_blocks) {
@@ -161,8 +159,8 @@ auto SceneShaderArtifactProvider::LoadShader(const resource::ShaderRequest& requ
             .members  = rstd::move(members),
         });
     }
-    artifact.descriptor_bindings.reserve((**reflection).reflected.binding_map.len());
-    for (const auto& [name, binding_ref] : (**reflection).reflected.binding_map.iter()) {
+    artifact.descriptor_bindings.reserve((**reflection).Reflected().binding_map.len());
+    for (const auto& [name, binding_ref] : (**reflection).Reflected().binding_map.iter()) {
         const auto& binding = *binding_ref;
         artifact.descriptor_bindings.push(resource::ShaderArtifactDescriptorBinding {
             .name             = name->clone(),
@@ -244,8 +242,8 @@ auto SceneShaderArtifactProvider::LoadShader(const resource::ShaderRequest& requ
             });
         }
     }
-    artifact.vertex_inputs.reserve((**reflection).reflected.input_location_map.len());
-    for (const auto& [name, input_ref] : (**reflection).reflected.input_location_map.iter()) {
+    artifact.vertex_inputs.reserve((**reflection).Reflected().input_location_map.len());
+    for (const auto& [name, input_ref] : (**reflection).Reflected().input_location_map.iter()) {
         const auto& input = *input_ref;
         artifact.vertex_inputs.push(resource::ShaderArtifactVertexInput {
             .name     = name->clone(),

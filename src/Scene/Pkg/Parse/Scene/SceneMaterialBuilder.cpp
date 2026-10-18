@@ -254,8 +254,9 @@ SceneShaderVariantDesc MakeSceneShaderVariantDesc(
 
 auto BuildMaterial(fs::VFS& vfs, ShaderCache& shader_cache,
                    const SceneShaderEnvironment& environment, const wpscene::Material& wpmat,
-                   Scene& scene, ShaderInfo shader_info, GeometryStageRequirement geometry_stage)
-    -> Result<MaterialBuild, MaterialBuildError> {
+                   Scene& scene, ShaderInfo shader_info, GeometryStageRequirement geometry_stage,
+                   SceneLoadBenchRecorderView bench) -> Result<MaterialBuild, MaterialBuildError> {
+    auto          build_span = SceneLoadSpan(bench, &SceneLoadProbeIds::material_build);
     MaterialBuild build { .shader_info = rstd::move(shader_info) };
     auto&         material        = build.material;
     auto&         shader_info_ref = build.shader_info;
@@ -270,6 +271,7 @@ auto BuildMaterial(fs::VFS& vfs, ShaderCache& shader_cache,
     shader->matrix_abi        = ShaderMatrixAbi::Hlsl;
     auto shaderPath           = rstd::format("/assets/shaders/{}", wpmat.shader);
 
+    auto            sources_span = SceneLoadSpan(bench, &SceneLoadProbeIds::material_sources);
     Vec<ShaderUnit> sd_units;
     Vec<String>     sd_source_keys;
     Vec<String>     sd_original_sources;
@@ -306,7 +308,9 @@ auto BuildMaterial(fs::VFS& vfs, ShaderCache& shader_cache,
         (void)shader_info_ref.combos.insert(rstd::into(WE_CB_GS_ENABLED), "1"_Str);
     }
     add_shader_unit(ShaderType::FRAGMENT, rstd::format("{}.frag", shaderPath));
+    (void)sources_span.finish();
 
+    auto texture_span = SceneLoadSpan(bench, &SceneLoadProbeIds::material_texture_metadata);
     Vec<ShaderTexInfo>           texinfos;
     HashMap<String, ImageHeader> tex_headers;
     for (const auto& el : wpmat.textures) {
@@ -333,10 +337,15 @@ auto BuildMaterial(fs::VFS& vfs, ShaderCache& shader_cache,
             texinfos.push({ true });
     }
 
-    for (auto& unit : sd_units) {
-        unit.src = ShaderParser::PreShaderSrc(
-            vfs, unit.src, &shader_info_ref, texinfos.as_slice(), &shader_cache);
+    (void)texture_span.finish();
+    {
+        auto span = SceneLoadSpan(bench, &SceneLoadProbeIds::material_preprocess);
+        for (auto& unit : sd_units) {
+            unit.src = ShaderParser::PreShaderSrc(
+                vfs, unit.src, &shader_info_ref, texinfos.as_slice(), &shader_cache, bench);
+        }
     }
+    auto combos_span = SceneLoadSpan(bench, &SceneLoadProbeIds::material_combos);
     ApplyLegacyAtmosphereUniformAliases(wpmat, shader_info_ref);
     ApplyLegacyAtmosphereShaderCompat(wpmat, sd_units);
 
@@ -348,7 +357,9 @@ auto BuildMaterial(fs::VFS& vfs, ShaderCache& shader_cache,
     }
     ApplySceneFogCombos(environment, shader_info_ref);
     ApplyLegacyAtmosphereLightCombo(wpmat, shader_info_ref);
+    (void)combos_span.finish();
 
+    texture_span  = SceneLoadSpan(bench, &SceneLoadProbeIds::material_texture_metadata);
     auto textures = wpmat.textures.clone();
     if (! shader_info_ref.defTexs.is_empty()) {
         for (const auto& t : shader_info_ref.defTexs) {
@@ -473,8 +484,12 @@ auto BuildMaterial(fs::VFS& vfs, ShaderCache& shader_cache,
         }
     }
 
-    auto input_combos          = shader_info_ref.combos.clone();
-    shader_info_ref.combos     = ShaderParser::ResolveShaderCombos(shader_info_ref, input_combos);
+    (void)texture_span.finish();
+    combos_span            = SceneLoadSpan(bench, &SceneLoadProbeIds::material_combos);
+    auto input_combos      = shader_info_ref.combos.clone();
+    shader_info_ref.combos = ShaderParser::ResolveShaderCombos(shader_info_ref, input_combos);
+    (void)combos_span.finish();
+    auto variant_span          = SceneLoadSpan(bench, &SceneLoadProbeIds::material_variant);
     auto scene_id              = scene.SceneId();
     auto variant_desc          = MakeSceneShaderVariantDesc(scene_id,
                                                             wpmat,
@@ -486,21 +501,27 @@ auto BuildMaterial(fs::VFS& vfs, ShaderCache& shader_cache,
                                                             texinfos.as_slice(),
                                                             has_geometry_stage);
     variant_desc.texture_slots = material.textures.clone();
+    (void)variant_span.finish();
 
-    if (! ShaderParser::CompileToSpv(scene_id,
-                                     sd_units.as_mut_slice().as_mut_ref(),
-                                     shader->codes,
-                                     &shader_info_ref,
-                                     texinfos.as_slice(),
-                                     &shader_cache)) {
+    auto compile_span = SceneLoadSpan(bench, &SceneLoadProbeIds::material_compile);
+    auto compiled     = ShaderParser::CompileToSpv(scene_id,
+                                                   sd_units.as_mut_slice().as_mut_ref(),
+                                                   &shader_info_ref,
+                                                   texinfos.as_slice(),
+                                                   &shader_cache,
+                                                   bench);
+    if (compiled.is_err()) {
         return Err(MaterialBuildError {
-            .message = "shader compilation failed"_Str,
+            .message = rstd::move(compiled).unwrap_err_unchecked().message,
         });
     }
+    auto artifact      = rstd::move(compiled).unwrap_unchecked();
+    shader->codes      = artifact->CloneCodes();
+    shader->reflection = Some(artifact->ReflectionOwner());
+    (void)compile_span.finish();
     shader->default_uniforms      = shader_info_ref.svs.clone();
     variant_desc.default_uniforms = shader_info_ref.svs.clone();
-    ShaderParser::UpdateSceneShaderVariantDescFromCompiledUnits(
-        variant_desc, sd_units.as_slice(), shader->codes.as_slice());
+    ShaderParser::ApplyCompiledShaderInterface(variant_desc, *artifact, bench);
     shader->sampler_bindings = variant_desc.sampler_bindings.clone();
     shader->uniform_blocks   = variant_desc.uniform_blocks.clone();
     shader->descriptor_sets  = variant_desc.descriptor_sets.clone();

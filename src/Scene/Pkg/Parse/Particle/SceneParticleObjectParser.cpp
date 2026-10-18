@@ -478,7 +478,9 @@ void BuildParticleObjectNode(ParticleObjectParseServices& services,
                           *services.scene,
                           rstd::move(shaderInfo),
                           services.geometry_shader_supported ? GeometryStageRequirement::Required
-                                                             : GeometryStageRequirement::Disabled);
+                                                             : GeometryStageRequirement::Disabled,
+                          services.construction_context ? services.construction_context->load_bench
+                                                        : SceneLoadBenchRecorderView {});
         if (material_result.is_ok()) {
             auto material_build = rstd::move(material_result).unwrap_unchecked();
             material            = rstd::move(material_build.material);
@@ -575,7 +577,13 @@ void BuildParticleObjectNode(ParticleObjectParseServices& services,
     LoadInitializer(*particleSub, particle_obj, modifiers.Clone());
     LoadOperator(*particleSub, particle_obj, modifiers.Clone());
     LoadControlPoint(*services.construction_context, *particleSub, particle_obj, modifiers.Clone());
-    particleSub->Finalize();
+    {
+        auto span =
+            SceneLoadSpan(services.construction_context ? services.construction_context->load_bench
+                                                        : SceneLoadBenchRecorderView {},
+                          &SceneLoadProbeIds::particle_finalize);
+        particleSub->Finalize();
+    }
 
     // Register every {user:"<key>", value:...} binding on instanceoverride
     // so RenderSetUserProperty can mutate the shared state at runtime.

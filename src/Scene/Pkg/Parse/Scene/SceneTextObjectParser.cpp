@@ -584,7 +584,9 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
                                                  context.shader_environment,
                                                  pt_mat,
                                                  scene,
-                                                 rstd::move(si));
+                                                 rstd::move(si),
+                                                 GeometryStageRequirement::None,
+                                                 context.load_bench);
             if (material_result.is_err()) {
                 rstd_error("text '{}': compose BuildMaterial failed", obj.name);
                 return None();
@@ -720,7 +722,9 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
                                                          context.shader_environment,
                                                          wpmat,
                                                          scene,
-                                                         rstd::move(shader_info));
+                                                         rstd::move(shader_info),
+                                                         GeometryStageRequirement::None,
+                                                         context.load_bench);
                     if (material_result.is_err()) {
                         effect_ok = false;
                         break;

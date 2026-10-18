@@ -376,6 +376,52 @@ TEST(SceneObjectExpansion, UserVisibilityRestoresImageDescendants) {
     }
 }
 
+TEST(SceneShaderReflection, InitialMaterialsRetainSharedReflectionAfterFinalize) {
+    using namespace rstd::prelude;
+    auto document = owe::wpscene::ParseSceneDocumentJson(R"({
+        "camera": {},
+        "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+        "objects": [
+            {"id": 1, "name": "First", "image": "models/util/solidlayer.json", "size": "256 256"},
+            {"id": 2, "name": "Second", "image": "models/util/solidlayer.json", "size": "256 256"}
+        ]
+    })"_str,
+                                                         owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, rstd::move(assets).unwrap()).is_ok());
+    wavsen::audio::SoundManager sound;
+    owe::SceneParser            parser;
+    auto                        parsed =
+        parser.Parse("initial-reflection"_str,
+                     ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+                     mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+                     mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto  scene  = rstd::move(parsed).unwrap();
+    auto* first  = scene.scene->RootMut()->FindByName("First"_str);
+    auto* second = scene.scene->RootMut()->FindByName("Second"_str);
+    ASSERT_NE(first, nullptr);
+    ASSERT_NE(second, nullptr);
+    ASSERT_NE(first->Mesh(), nullptr);
+    ASSERT_NE(second->Mesh(), nullptr);
+    auto& a = first->Mesh()->Material()->customShader;
+    auto& b = second->Mesh()->Material()->customShader;
+    ASSERT_TRUE(a.shader.is_some());
+    ASSERT_TRUE(b.shader.is_some());
+    ASSERT_TRUE((*a.shader)->reflection.is_some());
+    ASSERT_TRUE((*b.shader)->reflection.is_some());
+    EXPECT_NE(&**a.shader, &**b.shader);
+    EXPECT_EQ(&**(*a.shader)->reflection, &**(*b.shader)->reflection);
+    EXPECT_TRUE((*(*a.shader)->reflection)->Matches((*a.shader)->codes.as_slice()));
+    (*a.shader)->codes.clear();
+    EXPECT_FALSE((*b.shader)->codes.is_empty());
+    EXPECT_TRUE((*(*b.shader)->reflection)->Matches((*b.shader)->codes.as_slice()));
+}
+
 TEST(SceneDocumentObjects, PreservesDeclarationOrderAndObjectKinds) {
     auto document = owe::wpscene::ParseSceneDocumentJson(
         R"JSON({

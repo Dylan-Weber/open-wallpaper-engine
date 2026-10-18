@@ -121,17 +121,25 @@ struct SceneShaderStage {
     ShaderCode spirv;
 };
 
-struct SceneShaderReflection {
-    Vec<SceneShaderStage>           stages;
-    vrento::vulkan::ShaderReflected reflected;
+class SceneShaderReflection {
+public:
+    SceneShaderReflection(Vec<SceneShaderStage> stages, vrento::vulkan::ShaderReflected reflected)
+        : m_stages(rstd::move(stages)), m_reflected(rstd::move(reflected)) {}
+
+    auto Stages() const -> slice<SceneShaderStage> { return m_stages.as_slice(); }
+    auto Reflected() const -> const vrento::vulkan::ShaderReflected& { return m_reflected; }
 
     bool Matches(slice<ShaderCode> codes) const {
-        if (codes.len() != stages.len()) return false;
+        if (codes.len() != m_stages.len()) return false;
         for (usize i {}; i < codes.len(); ++i) {
-            if (codes[i] != stages[i].spirv) return false;
+            if (codes[i] != m_stages[i].spirv) return false;
         }
         return true;
     }
+
+private:
+    const Vec<SceneShaderStage>           m_stages;
+    const vrento::vulkan::ShaderReflected m_reflected;
 };
 
 struct SceneShader {

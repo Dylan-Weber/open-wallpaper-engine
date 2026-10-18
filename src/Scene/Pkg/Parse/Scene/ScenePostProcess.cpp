@@ -89,7 +89,9 @@ void BuildBloomPostProcess(SceneParseContext& context, fs::VFS& vfs,
                                                                context.shader_environment,
                                                                wpmat,
                                                                scene,
-                                                               rstd::move(wpShaderInfo));
+                                                               rstd::move(wpShaderInfo),
+                                                               GeometryStageRequirement::None,
+                                                               context.load_bench);
         if (material_result.is_err()) {
             rstd_error("bloom: BuildMaterial failed: {}", mat_relpath);
             return false;

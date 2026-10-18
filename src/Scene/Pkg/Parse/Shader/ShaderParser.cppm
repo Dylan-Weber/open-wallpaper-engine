@@ -7,6 +7,7 @@ import rstd;
 import wescene.shader_compile;
 import wescene.scene;
 import wescene.fs;
+import wescene.load_bench;
 
 export import :uniform;
 
@@ -85,6 +86,48 @@ struct ShaderUnit {
     PreprocessorInfo preprocess_info;
 };
 
+struct CompiledShaderStage {
+    ShaderType               stage;
+    BTreeMap<String, String> uniforms;
+    BTreeSet<u32>            active_tex_slots;
+    usize                    code_hash {};
+};
+
+struct CompiledShaderInterface {
+    Vec<SceneSamplerBinding>               sampler_bindings;
+    Vec<SceneShaderUniformBlockInterface>  uniform_blocks;
+    Vec<SceneShaderDescriptorSetInterface> descriptor_sets;
+    usize                                  descriptor_layout_hash {};
+};
+
+class CompiledShaderArtifact {
+public:
+    CompiledShaderArtifact(Vec<CompiledShaderStage> stages, Arc<SceneShaderReflection> reflection,
+                           CompiledShaderInterface interface)
+        : m_stages(rstd::move(stages)),
+          m_reflection(rstd::move(reflection)),
+          m_interface(rstd::move(interface)) {}
+
+    auto StageMetadata() const -> slice<CompiledShaderStage> { return m_stages.as_slice(); }
+    auto ReflectionOwner() const -> Arc<SceneShaderReflection> { return m_reflection.clone(); }
+    auto Interface() const -> const CompiledShaderInterface& { return m_interface; }
+    auto CloneCodes() const -> Vec<ShaderCode> {
+        auto codes = Vec<ShaderCode>::with_capacity(m_stages.len());
+        for (const auto& stage : m_reflection->Stages()) codes.push(stage.spirv.clone());
+        return codes;
+    }
+    auto RetainedBytes() const -> usize;
+
+private:
+    const Vec<CompiledShaderStage>   m_stages;
+    const Arc<SceneShaderReflection> m_reflection;
+    const CompiledShaderInterface    m_interface;
+};
+
+struct ShaderCompileError {
+    String message;
+};
+
 class ShaderCache {
     struct SourceEntry {
         String     source;
@@ -92,16 +135,9 @@ class ShaderCache {
         usize      bytes {};
     };
 
-    struct CompiledStage {
-        ShaderType               stage;
-        BTreeMap<String, String> uniforms;
-        Vec<u32>                 active_tex_slots;
-    };
-
     struct CompileEntry {
-        Vec<CompiledStage> stages;
-        Vec<ShaderCode>    codes;
-        usize              bytes {};
+        Arc<CompiledShaderArtifact> artifact;
+        usize                       bytes {};
     };
 
     static constexpr usize kMaxSourceBytes { 4 * 1024 * 1024 };
@@ -196,18 +232,20 @@ void ParseShader(ref<str> src, ShaderInfo* info, slice<ShaderTexInfo> texinfos);
 class ShaderParser {
 public:
     static String PreShaderSrc(fs::VFS&, ref<str> src, ShaderInfo* pShaderInfo,
-                               slice<ShaderTexInfo> texs, ShaderCache* cache = nullptr);
+                               slice<ShaderTexInfo> texs, ShaderCache* cache = nullptr,
+                               SceneLoadBenchRecorderView = {});
 
     static String PreShaderHeader(ref<str> src, const Combos& combos, ShaderType);
 
     static Combos ResolveShaderCombos(const ShaderInfo&, const Combos& input_combos);
 
-    static bool CompileToSpv(ref<str> scene_id, mut_ref<ShaderUnit[]>, Vec<ShaderCode>& spvs,
-                             ShaderInfo*, slice<ShaderTexInfo>, ShaderCache* cache = nullptr);
+    static auto CompileToSpv(ref<str> scene_id, mut_ref<ShaderUnit[]>, ShaderInfo*,
+                             slice<ShaderTexInfo>, ShaderCache* cache = nullptr,
+                             SceneLoadBenchRecorderView = {})
+        -> Result<Arc<CompiledShaderArtifact>, ShaderCompileError>;
 
-    static Option<Arc<SceneShaderReflection>>
-    UpdateSceneShaderVariantDescFromCompiledUnits(SceneShaderVariantDesc&, slice<ShaderUnit>,
-                                                  slice<ShaderCode>);
+    static void ApplyCompiledShaderInterface(SceneShaderVariantDesc&, const CompiledShaderArtifact&,
+                                             SceneLoadBenchRecorderView = {});
 
     // Lightweight entry point: compile the vert+frag shader pair for one
     // material directly, without instantiating a Scene or running the
@@ -230,5 +268,10 @@ public:
     static CompileSceneShaderVariantResult
     CompileSceneShaderVariant(const SceneShaderVariantDesc& desc, fs::VFS& vfs,
                               const Combos& combos_override = {}, ShaderCache* cache = nullptr);
+
+private:
+    static auto PrepareCompiledArtifact(slice<ShaderUnit>, slice<ShaderCode>,
+                                        SceneLoadBenchRecorderView)
+        -> Result<Arc<CompiledShaderArtifact>, ShaderCompileError>;
 };
 } // namespace owe

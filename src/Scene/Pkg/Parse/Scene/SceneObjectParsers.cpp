@@ -383,11 +383,13 @@ void ParseLightObj(SceneParseContext& context, wpscene::LightObject& light_obj) 
 void ParseModelObjImpl(SceneParseContext& context, wpscene::ModelObject& model_obj) {
     auto& vfs = *context.vfs;
 
-    Mdl mdl;
+    Mdl  mdl;
+    auto read_span = SceneLoadSpan(context.load_bench, &SceneLoadProbeIds::model_read);
     if (! MdlParser::Parse(model_obj.model.as_str(), vfs, mdl)) {
         rstd_error("parse model failed: {}", model_obj.model);
         return;
     }
+    (void)read_span.finish();
 
     auto node  = Arc<SceneNode>::make(Vector3f(model_obj.origin.data()),
                                       Vector3f(model_obj.scale.data()),
@@ -456,7 +458,9 @@ void ParseModelObjImpl(SceneParseContext& context, wpscene::ModelObject& model_o
                                              context.shader_environment,
                                              *wpmat,
                                              *context.scene,
-                                             rstd::move(shader_info));
+                                             rstd::move(shader_info),
+                                             GeometryStageRequirement::None,
+                                             context.load_bench);
         if (material_result.is_err()) {
             rstd_error("load model material '{}' failed for '{}'", material_ref, model_obj.name);
             continue;
@@ -497,7 +501,9 @@ void ParseModelObjImpl(SceneParseContext& context, wpscene::ModelObject& model_o
                                                      context.shader_environment,
                                                      shadow_material,
                                                      *context.scene,
-                                                     rstd::move(shadow_info));
+                                                     rstd::move(shadow_info),
+                                                     GeometryStageRequirement::None,
+                                                     context.load_bench);
             if (shadow_result.is_ok()) {
                 auto shadow_build         = rstd::move(shadow_result).unwrap_unchecked();
                 auto pipeline             = shadow_build.material.Pipeline();
@@ -535,8 +541,11 @@ void ParseModelObjImpl(SceneParseContext& context, wpscene::ModelObject& model_o
 
         mesh->Submeshes().emplace_back();
         auto& submesh = mesh->Submeshes().last_mut().unwrap().get_mut();
-        MdlParser::GenMeshFromMdl(
-            submesh, mdl_mesh, { texcoord_scale[usize()], texcoord_scale[usize(1)] });
+        {
+            auto span = SceneLoadSpan(context.load_bench, &SceneLoadProbeIds::model_mesh);
+            MdlParser::GenMeshFromMdl(
+                submesh, mdl_mesh, { texcoord_scale[usize()], texcoord_scale[usize(1)] });
+        }
         submesh.material_slot = material_slot;
         if (model_puppet_layer.is_some())
             MdlParser::BindDrawOrder(submesh, mdl_mesh, (*model_puppet_layer).clone());

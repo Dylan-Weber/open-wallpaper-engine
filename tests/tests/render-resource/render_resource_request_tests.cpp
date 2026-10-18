@@ -20,6 +20,32 @@ using namespace rstd;
 using namespace vrento::vulkan;
 using namespace owe::resource_registry;
 
+struct CountingShaderBackend {
+    usize* reflections;
+};
+
+namespace rstd
+{
+template<>
+struct Impl<vrento::vulkan::ShaderBackend, CountingShaderBackend>
+    : ImplBase<CountingShaderBackend> {
+    bool Preprocess(ref<str> source, owe::ShaderType stage, SourceLang language,
+                    String& out) const {
+        return owe::vulkan::Preprocess(source, stage, language, out);
+    }
+    auto CompileAndLinkShaderUnits(slice<ShaderCompUnit> units, const ShaderCompOpt& options,
+                                   Vec<Uni_ShaderSpv>& out) const
+        -> Result<empty, vrento::resource::ResourceError> {
+        return owe::vulkan::TryCompileAndLinkShaderUnits(units, options, out);
+    }
+    bool GenReflect(slice<owe::ShaderCode> codes, Vec<Uni_ShaderSpv>& stages,
+                    ShaderReflected& out) const {
+        ++*self().reflections;
+        return owe::vulkan::GenReflect(codes, stages, out);
+    }
+};
+} // namespace rstd
+
 namespace
 {
 struct TestPassDesc {
@@ -1053,7 +1079,8 @@ TEST(ShaderBackend, PreprocessesBoundedSourceAndAllowsAliasedOutput) {
 }
 
 TEST(ShaderBackend, ReusesPreparedReflectionAndRejectsChangedCode) {
-    auto           backend = MakeShaderBackend();
+    usize          reflections {};
+    auto           backend = Box<dyn<ShaderBackend>>::make(CountingShaderBackend { &reflections });
     ShaderCompUnit unit {
         .stage       = owe::ShaderType::VERTEX,
         .src         = "#version 450\nvoid main() { gl_Position = vec4(0, 0, 0, 1); }"_Str,
@@ -1064,29 +1091,49 @@ TEST(ShaderBackend, ReusesPreparedReflectionAndRejectsChangedCode) {
         slice<ShaderCompUnit>::from_raw_parts(&unit, usize(1)), {}, compiled));
     owe::SceneShader shader;
     shader.codes.push(compiled[usize()]->spirv.clone());
-    auto prepared = Arc<owe::SceneShaderReflection>::make();
-    ASSERT_TRUE(backend->GenReflect(shader.codes.as_slice(), compiled, prepared->reflected));
+    ShaderReflected reflected;
+    ASSERT_TRUE(backend->GenReflect(shader.codes.as_slice(), compiled, reflected));
+    EXPECT_EQ(reflections, usize(1));
+    auto stages = Vec<owe::SceneShaderStage>::with_capacity(compiled.len());
     for (auto& stage : compiled) {
-        prepared->stages.push(owe::SceneShaderStage {
+        stages.push(owe::SceneShaderStage {
             .entry_point = rstd::move(stage->entry_point),
             .stage       = stage->stage,
             .spirv       = rstd::move(stage->spirv),
         });
     }
+    auto prepared =
+        Arc<owe::SceneShaderReflection>::make(rstd::move(stages), rstd::move(reflected));
     shader.reflection = Some(prepared.clone());
     ShaderReflectionCache cache(backend.as_ref());
     auto                  first = cache.Query(shader);
     ASSERT_TRUE(first.is_some());
     EXPECT_EQ(&**first, &*prepared);
+    ShaderReflectionCache graph_cache(backend.as_ref());
+    EXPECT_EQ(&**graph_cache.Query(shader), &*prepared);
+    SceneShaderArtifactProvider provider(graph_cache, shader);
+    auto                        loaded = provider.LoadShader(provider.Request());
+    ASSERT_TRUE(loaded.is_ok());
+    auto artifact = rstd::move(loaded).unwrap();
+    graph_cache.Clear();
+    EXPECT_EQ(reflections, usize(1));
     cache.Clear();
     auto reloaded = cache.Query(shader);
     ASSERT_TRUE(reloaded.is_some());
     EXPECT_EQ(&**reloaded, &*prepared);
+    EXPECT_EQ(reflections, usize(1));
     auto original                  = shader.codes.clone();
     shader.codes[usize()][usize()] = 0;
     EXPECT_TRUE(cache.Query(shader).is_none());
+    EXPECT_EQ(reflections, usize(2));
     shader.codes = rstd::move(original);
     EXPECT_EQ(&**cache.Query(shader), &*prepared);
+    EXPECT_EQ(reflections, usize(2));
+    shader.reflection = None();
+    shader.codes.clear();
+    cache.Clear();
+    EXPECT_FALSE(artifact.stages.is_empty());
+    EXPECT_EQ(artifact.stages[usize()].code, prepared->Stages()[usize()].spirv);
 }
 
 TEST(ShaderBackend, ReflectionFailureDoesNotPublishPartialOutput) {
@@ -1185,7 +1232,7 @@ TEST(ShaderBackend, OwnsOrderedReflectionAcrossCacheAndArtifact) {
             continue;
         }
         ASSERT_TRUE(cached.is_some());
-        const auto& reflected = (**cached).reflected;
+        const auto& reflected = (**cached).Reflected();
         ASSERT_EQ(reflected.blocks.len(), rstd::usize(1));
         const auto& block = reflected.blocks[rstd::usize()];
         EXPECT_EQ(block.name.as_str(), "Shared"_str);
