@@ -25,6 +25,7 @@ import weweb;
 import waywallen.bridge;
 import waywallen.bridge_audio;
 import waywallen.bridge_producer_core;
+import waywallen.render_resolution;
 import waywallen.web_producer_device;
 
 import waywallen.web_settings;
@@ -487,6 +488,9 @@ void apply_control(HostState& s, ReaderState& reader, ww_bridge_control_t& msg) 
     case WW_EVT_IN_REQUEST_FRAME:
         if (s.core) s.core->requestFrame();
         break;
+    case WW_EVT_IN_CONFIGURE_RENDER_TARGET:
+        if (s.core) s.core->queueRenderTarget(msg.u.configure_render_target.config);
+        break;
     case WW_EVT_IN_SET_LOG_LEVEL: ww_renderer_log_set_level(msg.u.set_log_level.level); break;
     default:
         rstd_warn("waywallen-weweb-renderer: unknown control op {}", static_cast<int>(msg.op));
@@ -525,7 +529,9 @@ int run(int argc, char** argv) {
 
     ww_renderer_log_init();
 
-    Options opts = parse_args(argc, argv);
+    Options    opts                 = parse_args(argc, argv);
+    bool       automatic_resolution = false;
+    const auto render_resolution    = ww_wescene::RenderResolution::describe(1920, 1080, false);
 
     ::prctl(PR_SET_PDEATHSIG, SIGTERM);
 
@@ -560,25 +566,20 @@ int run(int argc, char** argv) {
             die(rstd::format("{} rc={}", as_str(reason).unwrap(), rc).as_str());
         }
 
-        // Web wallpapers don't have a fixed native resolution; the
-        // `resolution` setting drives the actual extent against a
-        // 16:9 baseline (compositor handles final letterbox / scale
-        // on present). Schema disallows ORIGIN, so any invalid kv
-        // falls back to 1080p.
+        // Web has no native extent; preserve the existing 16:9 viewport aspect.
         {
             auto resolution = i32(ww_resolution_sanitize(
-                parse_i32(kv_get(init.settings, "resolution"), i32(WW_RESOLUTION_1080P))
+                parse_i32(kv_get(init.settings, "resolution"), i32(WW_RESOLUTION_AUTO))
                     .to_primitive()));
-            if (resolution == i32(WW_RESOLUTION_ORIGIN) ||
-                resolution == i32(WW_RESOLUTION_CUSTOM)) {
+            if (resolution == i32(WW_RESOLUTION_ORIGIN)) {
                 resolution = i32(WW_RESOLUTION_1080P);
             }
-            uint32_t width  = 16;
-            uint32_t height = 9;
-            ww_resolution_apply_cap(
-                resolution.to_primitive(), WW_RESOLUTION_CAP_ALLOW_UPSCALE, &width, &height);
-            opts.width  = u32(width);
-            opts.height = u32(height);
+            automatic_resolution = resolution == i32(WW_RESOLUTION_AUTO);
+            const auto extent    = render_resolution.resolve(
+                resolution.to_primitive(),
+                parse_u32(kv_get(init.settings, "custom_extent"), u32(1080)).to_primitive());
+            opts.width  = u32(extent.width);
+            opts.height = u32(extent.height);
         }
         opts.initial_fps = parse_u32(kv_get(init.settings, "fps"), opts.initial_fps);
         // Wire format is u32 0..100; CEF host takes 0..1 ratio.
@@ -678,8 +679,15 @@ int run(int argc, char** argv) {
     }
     auto                           session = adopted.unwrap();
     ww_wescene::BridgeProducerCore core(session.clone());
+    if (automatic_resolution) core.setRenderTargetCapabilities(render_resolution.capabilities);
     state.core = &core;
     state.host = &host;
+
+    core.setOnReadyChanged([&](const ww_wescene::BridgeReadyEvent& event) {
+        state.submitted_since_negotiate.store(false, rstd::sync::atomic::Ordering::Release);
+        host.OnResize(static_cast<int>(event.width), static_cast<int>(event.height));
+        enqueue_host_message(state, HostMsg::SyncPauseVisibility());
+    });
 
     core.setOnFirstNegotiated([&]() {
         // Apply the daemon's initial fps once slots are live. Set the
@@ -721,8 +729,11 @@ int run(int argc, char** argv) {
     // any pending negotiate directive first so the slot pool reflects
     // the latest extent / fourcc before acquiring.
     host.SetAcceleratedPaintCallback([&state, &core, &producer](const weweb::DmaBufFrame& frame) {
-        core.drainPendingDirective();
+        if (! core.drainPendingDirective()) return;
         if (! core.ready()) return;
+        if (frame.visible_width != static_cast<int>(core.width()) ||
+            frame.visible_height != static_cast<int>(core.height()))
+            return;
 
         auto imp = producer.Import(frame);
         if (! imp.ok) return;
@@ -738,8 +749,11 @@ int run(int argc, char** argv) {
     });
 
     host.SetCpuPaintCallback([&state, &core, &producer](const weweb::CpuPaintFrame& frame) {
-        core.drainPendingDirective();
+        if (! core.drainPendingDirective()) return;
         if (! core.ready()) return;
+        if (frame.width != static_cast<int>(core.width()) ||
+            frame.height != static_cast<int>(core.height()))
+            return;
 
         submit_bridge_slot(
             state,
@@ -765,6 +779,10 @@ int run(int argc, char** argv) {
             opts.width.to_primitive(), opts.height.to_primitive(), WW_MEM_HINT_DEVICE_LOCAL);
         rc != 0)
         die(rstd::format("ww_bridge_pool_advertise_caps failed: {}", rc).as_str());
+
+    if (automatic_resolution &&
+        session->sendTargetCapabilities(render_resolution.capabilities) != 0)
+        die("failed to advertise render target capabilities"_str);
 
     rstd_info("waywallen-weweb-renderer: ready, advertised caps {}x{}", opts.width, opts.height);
 

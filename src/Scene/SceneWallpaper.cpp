@@ -488,7 +488,8 @@ void SceneRenderController::onDraw() {
                 auto retried = (*m_pipeline)->retryPreparation(load_bench);
                 if (retried.is_err() || *retried != PrepareOutcome::Ready) return retried;
             }
-            m_frame_delta = frame_timer.TargetFrameTime() * m_speed.to_primitive();
+            m_frame_delta =
+                m_stopped ? 0.0 : frame_timer.TargetFrameTime() * m_speed.to_primitive();
             owe::script::FrameInputs fi;
             fi.frametime   = static_cast<float>(m_frame_delta);
             fi.runtime     = static_cast<float>(m_scene->Runtime().Frame().elapsed.to_primitive());
@@ -528,7 +529,7 @@ void SceneRenderController::onDraw() {
             frame_timer.FrameEnd();
             return;
         }
-        m_scene->PassFrameTime(m_frame_delta);
+        if (! m_stopped) m_scene->PassFrameTime(m_frame_delta);
 
         if (first_draw) {
             m_first_frame_ok = true;
@@ -762,9 +763,10 @@ void SceneRenderController::on(RenderMsg::SwapchainReady_payload&& m) {
     if (extent_changed && m_scene && (m_pipeline.is_some() && (*m_pipeline)->hasGraph())) {
         rebuildRenderGraph(vulkan::RenderGraphResourceRetention::KeepSceneTextures, false);
     }
-    if (m_stopped)
+    if (m_stopped) {
         frame_timer.Stop();
-    else
+        if (extent_changed && m_tx) (void)m_tx->send(RenderMsg::Draw());
+    } else
         frame_timer.Run();
 }
 

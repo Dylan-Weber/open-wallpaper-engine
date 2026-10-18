@@ -28,6 +28,7 @@ import waywallen.bridge;
 import waywallen.bridge_audio;
 import waywallen.bridge_ex_swapchain;
 import waywallen.bridge_session;
+import waywallen.render_resolution;
 
 using rstd::sync::Mutex;
 using rstd::time::Duration;
@@ -48,21 +49,23 @@ using rstd::sync::Arc;
 using rstd::sync::Weak;
 
 struct Options {
-    String   ipc_path;
-    uint32_t width { 1920 };
-    uint32_t height { 1080 };
-    PathBuf  initial_scene;
-    PathBuf  initial_assets;
-    String   workshop_id;
-    uint32_t initial_fps { 30 };
-    bool     test_pattern { false };
-    float    initial_volume { 1.0f };
-    float    initial_playback_rate { 1.0f };
-    bool     initial_mouse_parallax { true };
-    bool     settings_enable_audio { true };
-    bool     property_enable_audio { true };
-    String   render_node;
-    String   video_hwdec;
+    String                       ipc_path;
+    uint32_t                     width { 1920 };
+    uint32_t                     height { 1080 };
+    bool                         automatic_resolution { false };
+    ww_wescene::RenderResolution render_resolution {};
+    PathBuf                      initial_scene;
+    PathBuf                      initial_assets;
+    String                       workshop_id;
+    uint32_t                     initial_fps { 30 };
+    bool                         test_pattern { false };
+    float                        initial_volume { 1.0f };
+    float                        initial_playback_rate { 1.0f };
+    bool                         initial_mouse_parallax { true };
+    bool                         settings_enable_audio { true };
+    bool                         property_enable_audio { true };
+    String                       render_node;
+    String                       video_hwdec;
 
     String load_bench_output;
     // 1 disables MSAA. Clamped against device caps in VulkanRender::init.
@@ -775,6 +778,10 @@ void apply_control(HostState& s, ww_bridge_control_t& msg) {
         if (s.wp && s.paused.load(rstd::sync::atomic::Ordering::Acquire)) s.wp->requestFrame();
         break;
     }
+    case WW_EVT_IN_CONFIGURE_RENDER_TARGET:
+        if (s.swapchain) s.swapchain->queueRenderTarget(msg.u.configure_render_target.config);
+        if (s.wp) s.wp->requestFrame();
+        break;
     case WW_EVT_IN_REQUEST_FRAME:
         if (s.swapchain && s.swapchain->requestFrame() && s.wp &&
             s.paused.load(rstd::sync::atomic::Ordering::Acquire))
@@ -851,11 +858,10 @@ int run(int argc, char** argv) {
         // Use scene.json's authored canvas as the native aspect and then
         // apply the user's short-edge resolution setting.
         {
-            int32_t resolution = ww_resolution_sanitize(parse_i32(
-                kv_get(init.settings, "resolution"), static_cast<int32_t>(WW_RESOLUTION_1080P)));
-            if (resolution == static_cast<int32_t>(WW_RESOLUTION_ORIGIN))
-                resolution = static_cast<int32_t>(WW_RESOLUTION_1080P);
-            uint32_t custom_extent = parse_u32(kv_get(init.settings, "custom_extent"), 1080u);
+            int32_t resolution        = ww_resolution_sanitize(parse_i32(
+                kv_get(init.settings, "resolution"), static_cast<int32_t>(WW_RESOLUTION_AUTO)));
+            opts.automatic_resolution = resolution == WW_RESOLUTION_AUTO;
+            uint32_t custom_extent    = parse_u32(kv_get(init.settings, "custom_extent"), 1080u);
             if (! opts.initial_scene.is_empty()) {
                 auto scene_doc = [&] {
                     if (load_bench.is_none())
@@ -882,25 +888,27 @@ int run(int argc, char** argv) {
                         Some(Arc<owe::wpscene::SceneDocument>::make(rstd::move(*scene_doc)));
                 }
             }
-            if (opts.initial_scene_document &&
-                (*opts.initial_scene_document)->metadata.canvas_extent) {
+            const bool has_origin =
+                opts.initial_scene_document &&
+                (*opts.initial_scene_document)->metadata.canvas_extent.is_some();
+            if (has_origin) {
                 const auto extent = *(*opts.initial_scene_document)->metadata.canvas_extent;
                 opts.width        = extent[usize(0)].to_primitive();
                 opts.height       = extent[usize(1)].to_primitive();
                 rstd_info(
                     "waywallen-wescene-renderer: scene canvas {}x{}", opts.width, opts.height);
             } else {
-                opts.width  = 16;
-                opts.height = 9;
+                opts.width  = 1920;
+                opts.height = 1080;
                 rstd_info("waywallen-wescene-renderer: scene canvas unknown, using 16:9 fallback");
             }
-            if (resolution == static_cast<int32_t>(WW_RESOLUTION_CUSTOM)) {
-                ww_resolution_apply_short_edge(
-                    custom_extent, WW_RESOLUTION_CAP_ALLOW_UPSCALE, &opts.width, &opts.height);
-            } else {
-                ww_resolution_apply_cap(
-                    resolution, WW_RESOLUTION_CAP_ALLOW_UPSCALE, &opts.width, &opts.height);
-            }
+            opts.render_resolution =
+                ww_wescene::RenderResolution::describe(opts.width, opts.height, has_origin);
+            const auto extent = opts.render_resolution.resolve(resolution, custom_extent);
+            opts.width        = extent.width;
+            opts.height       = extent.height;
+            if (! opts.width || ! opts.height || opts.width > 65535 || opts.height > 65535)
+                die("render extent exceeds scene output limits"_str);
             rstd_info("waywallen-wescene-renderer: render extent {}x{}", opts.width, opts.height);
         }
         if (const char* v = kv_get(init.settings, "fps"); v && *v) {
@@ -1166,6 +1174,9 @@ int run(int argc, char** argv) {
     if (host.session.expired() || ! host.swapchain)
         die("ex_swapchain_factory did not produce a bridge session / swapchain"_str);
 
+    if (opts.automatic_resolution)
+        host.swapchain->setRenderTargetCapabilities(opts.render_resolution.capabilities);
+
     host.swapchain->setOnFirstNegotiated([&] {
         if (host.paused.load(rstd::sync::atomic::Ordering::Acquire)) {
             rstd_info("waywallen-wescene-renderer: negotiated while paused");
@@ -1182,6 +1193,10 @@ int run(int argc, char** argv) {
             opts.width, opts.height, WW_MEM_HINT_DEVICE_LOCAL | WW_MEM_HINT_HOST_VISIBLE);
         rc != 0)
         die(rstd::format("ww_bridge_pool_advertise_caps failed: {}", rc).as_str());
+
+    if (opts.automatic_resolution &&
+        session->sendTargetCapabilities(opts.render_resolution.capabilities) != 0)
+        die("failed to advertise render target capabilities"_str);
 
     rstd_info("waywallen-wescene-renderer: ready, advertise sent to daemon");
 

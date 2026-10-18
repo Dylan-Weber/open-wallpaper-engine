@@ -45,6 +45,28 @@ int BridgeSession::getExtent(uint32_t& out_width, uint32_t& out_height) {
     return ww_bridge_pool_get_extent(m_pool, &out_width, &out_height);
 }
 
+int BridgeSession::prepareTarget(const ww_pool_directive_t& directive, uint32_t width,
+                                 uint32_t height) {
+    return ww_bridge_pool_prepare_target(m_pool, &directive, width, height);
+}
+
+int BridgeSession::commitTarget(uint64_t& generation) {
+    auto lock = m_send_mutex.lock().unwrap();
+    return ww_bridge_pool_commit_target(m_pool, m_send_socket, &generation);
+}
+
+void BridgeSession::abortTarget() { ww_bridge_pool_abort_target(m_pool); }
+
+int BridgeSession::sendTargetCapabilities(const waywallen_render_target_capabilities_t& caps) {
+    auto lock = m_send_mutex.lock().unwrap();
+    return ww_bridge_send_render_target_capabilities(m_send_socket, &caps);
+}
+
+int BridgeSession::sendTargetResult(const waywallen_render_target_outcome_t& result) {
+    auto lock = m_send_mutex.lock().unwrap();
+    return ww_bridge_send_render_target_result(m_send_socket, &result);
+}
+
 int BridgeSession::tryAcquireAnyForRender(ww_pool_slot_acquire_result_t& out_result) {
     return ww_bridge_pool_try_acquire_any_for_render(m_pool, &out_result);
 }

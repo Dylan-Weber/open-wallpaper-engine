@@ -64,10 +64,10 @@ auto ToFrameCompletion(const BridgeSlotCompletionResult& result, owe::FrameSurfa
 
 void BridgeExSwapchain::poll() {
     const bool request_wake = m_frame_request_wake.exchange(false, Ordering::AcqRel);
-    m_core.drainPendingDirective();
-    const bool republished = m_core.republishRequestedFrame(true);
-    m_skip_acquire_in_poll = republished || m_core.hasPendingDirective() ||
-                             (request_wake && ! m_core.hasPendingFrameRequest());
+    const bool can_render   = m_core.drainPendingDirective();
+    const bool republished  = m_core.republishRequestedFrame(true);
+    m_skip_acquire_in_poll  = ! can_render || republished || m_core.hasPendingDirective() ||
+                              (request_wake && ! m_core.hasPendingFrameRequest());
 }
 
 owe::FrameSurfaceAcquireResult BridgeExSwapchain::acquireRenderTarget() {

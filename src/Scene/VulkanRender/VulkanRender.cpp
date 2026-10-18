@@ -1074,6 +1074,10 @@ void VulkanRender::Impl::drawFrameOffscreen(Scene& scene) {
     if (! m_output) {
         (*m_ex_swapchain)->AsSwapchain().poll();
         if (! (*m_ex_swapchain)->AsSwapchain().ready() || ! sceneRenderReady()) return;
+        // The mailbox must rebuild extent-dependent targets before using the new pool.
+        if ((*m_ex_swapchain)->AsSwapchain().width() != m_extent.width ||
+            (*m_ex_swapchain)->AsSwapchain().height() != m_extent.height)
+            return;
         if (waitForPreparedUploads(rr).is_err()) return;
         auto textures = dyn<SceneTextureAnimationView>::from_ref(scene);
         if (! m_scene_render_state.update(scene.Runtime().Frame(), m_extent, textures.as_ref(), rr))

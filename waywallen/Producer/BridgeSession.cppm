@@ -26,19 +26,25 @@ public:
 
     bool valid() const noexcept { return m_pool != nullptr && m_send_socket >= 0; }
 
-    int advertiseCaps(rstd::uint32_t width, rstd::uint32_t height, rstd::uint32_t mem_hints);
-    int applyDirective(const ww_pool_directive_t& directive);
-    int getExtent(rstd::uint32_t& out_width, rstd::uint32_t& out_height);
-    int tryAcquireAnyForRender(ww_pool_slot_acquire_result_t& out_result);
-    int submitAcquiredSlot(const ww_pool_slot_identity_t& identity, int producer_sync_fd,
-                           ww_pool_slot_submit_result_t& out_result);
-    int tryRepublishLatest(ww_pool_republish_result_t& out_result);
-    int waitRepublishLatest(ww_pool_cancel_fn cancel, void* userdata,
-                            ww_pool_republish_result_t& out_result);
-    int abortAcquiredSlot(const ww_pool_slot_identity_t& identity);
-    int sendBindFailed(const waywallen_bind_failure_t& failure);
-    int sendClearColor(float r, float g, float b, float a);
-    int setEventSubscriptions(rstd::uint64_t revision, const BTreeSet<String>& kinds);
+    int  advertiseCaps(rstd::uint32_t width, rstd::uint32_t height, rstd::uint32_t mem_hints);
+    int  applyDirective(const ww_pool_directive_t& directive);
+    int  prepareTarget(const ww_pool_directive_t& directive, rstd::uint32_t width,
+                       rstd::uint32_t height);
+    int  commitTarget(rstd::uint64_t& generation);
+    void abortTarget();
+    int  sendTargetCapabilities(const waywallen_render_target_capabilities_t& caps);
+    int  sendTargetResult(const waywallen_render_target_outcome_t& result);
+    int  getExtent(rstd::uint32_t& out_width, rstd::uint32_t& out_height);
+    int  tryAcquireAnyForRender(ww_pool_slot_acquire_result_t& out_result);
+    int  submitAcquiredSlot(const ww_pool_slot_identity_t& identity, int producer_sync_fd,
+                            ww_pool_slot_submit_result_t& out_result);
+    int  tryRepublishLatest(ww_pool_republish_result_t& out_result);
+    int  waitRepublishLatest(ww_pool_cancel_fn cancel, void* userdata,
+                             ww_pool_republish_result_t& out_result);
+    int  abortAcquiredSlot(const ww_pool_slot_identity_t& identity);
+    int  sendBindFailed(const waywallen_bind_failure_t& failure);
+    int  sendClearColor(float r, float g, float b, float a);
+    int  setEventSubscriptions(rstd::uint64_t revision, const BTreeSet<String>& kinds);
 
 private:
     ww_pool_t*         m_pool { nullptr };

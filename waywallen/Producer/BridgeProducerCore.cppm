@@ -102,6 +102,10 @@ public:
     // dropped (the newer directive supersedes it; the daemon's older
     // negotiation is implicitly abandoned).
     void queueDirective(const ww_pool_directive_t& directive);
+    void setRenderTargetCapabilities(waywallen_render_target_capabilities_t caps) {
+        m_target_caps = Some(caps);
+    }
+    void queueRenderTarget(const waywallen_render_target_config_t& config);
 
     // Thread-safe level-triggered request. The producer thread either
     // republishes the latest content or lets its next submit satisfy it.
@@ -119,7 +123,9 @@ public:
     void cancelFrameWait() { m_cancel_frame_wait.store(true, Ordering::Release); }
 
     // True iff a queued directive is waiting to be applied.
-    bool hasPendingDirective() const { return m_pending_valid.load(Ordering::Acquire); }
+    bool hasPendingDirective() const {
+        return m_pending_valid.load(Ordering::Acquire) || m_target_pending.load(Ordering::Acquire);
+    }
 
     // One-shot callback fired from the producer thread the first time a
     // directive is successfully applied. Setting after the first
@@ -144,7 +150,8 @@ public:
     // Producer-thread-only. Drain any pending directive so `format()` /
     // `ready()` reflect the new state before the caller decides whether
     // to acquire a slot.
-    void drainPendingDirective();
+    // False suppresses rendering for a rejected or deferred configuration wake.
+    bool drainPendingDirective();
 
     // Producer-thread-only. Busy/error outcomes do not expose a writable
     // image and do not create a pending acquisition.
@@ -177,6 +184,8 @@ public:
     rstd::uint32_t fourcc() const { return m_fourcc; }
 
 private:
+    void       notifyReady();
+    int        applyRenderTarget(const waywallen_render_target_config_t& config);
     void       markSessionLost();
     static int cancelRepublishWait(void* userdata);
 
@@ -192,8 +201,12 @@ private:
 
     VkFormat m_export_format { VK_FORMAT_UNDEFINED };
 
-    Atomic<bool>               m_pending_valid { false };
-    Mutex<ww_pool_directive_t> m_pending_directive;
+    Atomic<bool>                                   m_pending_valid { false };
+    Mutex<ww_pool_directive_t>                     m_pending_directive;
+    Option<waywallen_render_target_capabilities_t> m_target_caps;
+    Mutex<waywallen_render_target_config_t>        m_pending_target;
+    Atomic<bool>                                   m_target_pending { false };
+    rstd::uint64_t                                 m_target_revision { 0 };
 
     struct Callbacks {
         Option<FirstNegotiatedCallback> first;

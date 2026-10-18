@@ -29,6 +29,12 @@ public:
     ~BridgeExSwapchain() override;
 
     void queueDirective(const ww_pool_directive_t& directive) { m_core.queueDirective(directive); }
+    void setRenderTargetCapabilities(const waywallen_render_target_capabilities_t& caps) {
+        m_core.setRenderTargetCapabilities(caps);
+    }
+    void queueRenderTarget(const waywallen_render_target_config_t& config) {
+        m_core.queueRenderTarget(config);
+    }
     bool requestFrame() {
         const bool wake = m_core.requestFrame();
         if (wake) m_frame_request_wake.store(true, Ordering::Release);

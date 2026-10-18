@@ -86,11 +86,66 @@ void BridgeProducerCore::markSessionLost() {
 }
 
 void BridgeProducerCore::queueDirective(const ww_pool_directive_t& directive) {
+    if (m_target_caps) return;
     {
         auto pending = m_pending_directive.lock().unwrap();
         *pending     = directive;
         m_pending_valid.store(true, Ordering::Release);
     }
+}
+
+void BridgeProducerCore::queueRenderTarget(const waywallen_render_target_config_t& config) {
+    auto pending = m_pending_target.lock().unwrap();
+    *pending     = config;
+    m_target_pending.store(true, Ordering::Release);
+}
+
+int BridgeProducerCore::applyRenderTarget(const waywallen_render_target_config_t& config) {
+    if (m_have_pending) return -EBUSY;
+    ww_pool_directive_t               directive {};
+    waywallen_render_target_outcome_t result {};
+    result.revision = config.revision;
+    result.status   = 1;
+    result.message  = const_cast<char*>("invalid or stale render target");
+    int rc          = ! m_target_caps || config.revision <= m_target_revision
+                          ? -EINVAL
+                          : ww_bridge_render_target_directive(&*m_target_caps, &config, &directive);
+    if (rc == 0) {
+        const auto format = fourcc_to_vk_format(directive.format.fourcc);
+        if (format == VK_FORMAT_UNDEFINED || ! directive.count || directive.count > kMaxSlots) {
+            rc = -EINVAL;
+        } else {
+            rc = m_session->prepareTarget(directive, config.width, config.height);
+            if (rc == -EBUSY) return rc;
+            m_target_revision = config.revision;
+            result.status     = (rc == -ENOMEM || rc == -EPIPE) ? 2 : 3;
+            result.message    = const_cast<char*>("prepare render target failed");
+            if (rc == 0) {
+                rc = m_session->commitTarget(result.pool_generation);
+                if (rc == 0) {
+                    m_width         = config.width;
+                    m_height        = config.height;
+                    m_fourcc        = directive.format.fourcc;
+                    m_export_format = format;
+                    m_slot_count    = directive.count;
+                    result.status   = 0;
+                    result.width    = m_width;
+                    result.height   = m_height;
+                    result.message  = const_cast<char*>("");
+                } else {
+                    result.status  = 2;
+                    result.message = const_cast<char*>("commit render target failed");
+                    markSessionLost();
+                }
+                m_session->abortTarget();
+            }
+        }
+    }
+    if (m_session->sendTargetResult(result) != 0 || rc == -EPIPE) {
+        markSessionLost();
+        return -EPIPE;
+    }
+    return rc;
 }
 
 bool BridgeProducerCore::requestFrame() {
@@ -135,12 +190,32 @@ bool BridgeProducerCore::republishRequestedFrame(bool wait_for_release) {
     return false;
 }
 
-void BridgeProducerCore::drainPendingDirective() {
+bool BridgeProducerCore::drainPendingDirective() {
     if (m_session_lost) {
         m_pending_valid.store(false, Ordering::Release);
-        return;
+        m_target_pending.store(false, Ordering::Release);
+        return false;
     }
-    if (! m_pending_valid.load(Ordering::Acquire)) return;
+    if (m_target_pending.load(Ordering::Acquire)) {
+        waywallen_render_target_config_t config {};
+        {
+            auto pending = m_pending_target.lock().unwrap();
+            config       = *pending;
+            m_target_pending.store(false, Ordering::Release);
+        }
+        const auto rc = applyRenderTarget(config);
+        if (rc == -EBUSY) {
+            auto pending = m_pending_target.lock().unwrap();
+            if (! m_target_pending.load(Ordering::Acquire)) {
+                *pending = config;
+                m_target_pending.store(true, Ordering::Release);
+            }
+        } else if (rc == 0) {
+            notifyReady();
+        }
+        return rc == 0;
+    }
+    if (! m_pending_valid.load(Ordering::Acquire)) return true;
 
     ww_pool_directive_t d {};
     {
@@ -152,7 +227,7 @@ void BridgeProducerCore::drainPendingDirective() {
     int rc = applyDirective(d);
     if (rc == -EPIPE) {
         markSessionLost();
-        return;
+        return false;
     }
     if (rc == -EBUSY) {
         auto pending = m_pending_directive.lock().unwrap();
@@ -160,10 +235,15 @@ void BridgeProducerCore::drainPendingDirective() {
             *pending = d;
             m_pending_valid.store(true, Ordering::Release);
         }
-        return;
+        return false;
     }
-    if (rc != 0) return;
+    if (rc != 0) return false;
 
+    notifyReady();
+    return true;
+}
+
+void BridgeProducerCore::notifyReady() {
     // Snapshot callbacks under the lock and invoke unlocked so the
     // handler can re-enter the core (read width/height) without
     // blocking — only the producer thread ever invokes them anyway.

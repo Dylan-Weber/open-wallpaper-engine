@@ -13,6 +13,7 @@ sources = [
   "BridgeProducerCore.cppm",
   "BridgeProducerCore.cpp",
   "BridgeAudio.cppm",
+  "RenderResolution.cppm",
 ]
 
 [usage]
@@ -21,6 +22,10 @@ options = [
   "-Wextra",
   "-Wno-missing-field-initializers",
 ]
+
+[[test]]
+name = "render-resolution-tests"
+sources = ["tests/render_resolution.cpp"]
 
 [dependencies.owe-audio]
 workspace = true
