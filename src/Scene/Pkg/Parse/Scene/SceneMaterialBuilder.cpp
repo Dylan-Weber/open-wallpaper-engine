@@ -562,7 +562,7 @@ auto BuildMaterial(fs::VFS& vfs, ShaderCache& shader_cache,
     }
 
     material.customShader         = rstd::move(materialShader);
-    material.customShader.variant = Some(rstd::move(variant_desc));
+    material.customShader.variant = Some(SceneShaderVariant::from(rstd::move(variant_desc)));
     material.name                 = rstd::into(wpmat.shader.as_str());
 
     return Ok(rstd::move(build));

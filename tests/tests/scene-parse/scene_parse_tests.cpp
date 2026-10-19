@@ -850,8 +850,9 @@ TEST(TextColorBlendParsing, PreservesOverlayAdditiveAndDirectModes) {
     auto* material = overlay->Mesh()->Material();
     ASSERT_NE(material, nullptr);
     ASSERT_TRUE(material->customShader.variant.is_some());
-    EXPECT_EQ(*material->customShader.variant->input_combos.get("BLENDMODE"_str).unwrap(),
-              "11"_str);
+    EXPECT_EQ(
+        *material->customShader.variant->Description().input_combos.get("BLENDMODE"_str).unwrap(),
+        "11"_str);
     EXPECT_EQ(material->Pipeline().blend_mode, owe::BlendMode::Translucent);
     auto additive = scene.scene->RootMut()->FindByName("Additive"_str);
     ASSERT_NE(additive, nullptr);
@@ -905,12 +906,14 @@ TEST(ImageColorBlendParsing, LinearDodgeUsesAdditiveAttachmentOwner) {
     ASSERT_TRUE(node->Mesh()->Material()->customShader.variant.is_some());
     EXPECT_EQ(*node->Mesh()
                    ->Material()
-                   ->customShader.variant->input_combos.get("SCENE_ORTHO"_str)
+                   ->customShader.variant->Description()
+                   .input_combos.get("SCENE_ORTHO"_str)
                    .unwrap(),
               "1"_str);
     EXPECT_EQ(*node->Mesh()
                    ->Material()
-                   ->customShader.variant->input_combos.get("OWE_IMAGE_LAYER"_str)
+                   ->customShader.variant->Description()
+                   .input_combos.get("OWE_IMAGE_LAYER"_str)
                    .unwrap(),
               "1"_str);
 }

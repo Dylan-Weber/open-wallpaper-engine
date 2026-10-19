@@ -290,7 +290,7 @@ bool ApplyShaderCombos(Scene& scene, ref<str> key, const Json& property) {
                 "material has no shader variant descriptor"_str);
             continue;
         }
-        const auto& current_variant = *material.customShader.variant;
+        const auto& current_variant = material.customShader.variant->Description();
         auto        combo           = binding.combo.as_str();
         if (auto current = current_variant.resolved_combos.get(binding.combo.as_str());
             current.is_some() && (**current).as_str() == next->as_str())
@@ -313,11 +313,12 @@ bool ApplyShaderCombos(Scene& scene, ref<str> key, const Json& property) {
                                         compiled.error.as_str());
             continue;
         }
-        auto mutation = scene.SetMaterialShaderVariant(material,
-                                                       SceneShaderVariantMutation {
-                                                           .shader  = rstd::move(compiled.shader),
-                                                           .variant = rstd::move(compiled.variant),
-                                                       });
+        auto mutation = scene.SetMaterialShaderVariant(
+            material,
+            SceneShaderVariantMutation {
+                .shader  = rstd::move(compiled.shader),
+                .variant = SceneShaderVariant::from(rstd::move(compiled.variant)),
+            });
         graph_changed |= mutation.changed && (material.DirtyFlags() & SceneMaterialDirtyGraph) != 0;
     }
     return graph_changed;
@@ -337,7 +338,7 @@ bool MaterialHasUniform(const SceneMaterial& material, ref<str> uniform_name) {
         (*material.customShader.shader)->default_uniforms.contains_key(uniform_name))
         return true;
     return material.customShader.variant.is_some() &&
-           material.customShader.variant->default_uniforms.contains_key(uniform_name);
+           material.customShader.variant->Description().default_uniforms.contains_key(uniform_name);
 }
 
 void ApplyImageColor(Scene& scene, ref<str> key, const Json& property) {

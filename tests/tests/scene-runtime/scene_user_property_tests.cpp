@@ -136,7 +136,7 @@ TEST(SceneUserProperty, RecompilesComboAndSkipsUnchangedValue) {
         .source = "#if QUALITY == 3\n#error invalid combo\n#endif\n"
                   "void main(){gl_FragColor=vec4(float(QUALITY));}"_Str,
     });
-    material->customShader.variant = Some(rstd::move(variant));
+    material->customShader.variant = Some(owe::SceneShaderVariant::from(rstd::move(variant)));
     owe::Scene::ShaderComboUserBinding binding {
         .material = material.clone(),
         .combo    = "QUALITY"_Str,
@@ -150,7 +150,8 @@ TEST(SceneUserProperty, RecompilesComboAndSkipsUnchangedValue) {
     owe::SceneUserPropertyApplier::Apply(scene, "quality"_str, property);
     ASSERT_TRUE(material->customShader.shader);
     ASSERT_TRUE(material->customShader.variant.is_some());
-    const auto& current = *material->customShader.variant;
+    auto        previous_variant = material->customShader.variant->clone();
+    const auto& current          = previous_variant.Description();
     ASSERT_TRUE(current.resolved_combos.contains_key("QUALITY"_str));
     EXPECT_EQ((**current.resolved_combos.get("QUALITY"_str)).as_str(), "2"_str);
     EXPECT_EQ((**current.input_combos.get("QUALITY"_str)).as_str(), "2"_str);
@@ -162,15 +163,23 @@ TEST(SceneUserProperty, RecompilesComboAndSkipsUnchangedValue) {
     auto low = rstd::json::from_str(R"({"type":"combo","value":"low"})"_str).unwrap();
     owe::SceneUserPropertyApplier::Apply(scene, "quality"_str, low);
     EXPECT_NE(&**material->customShader.shader, &**shader);
+    EXPECT_NE(&material->customShader.variant->Description(), &current);
+    EXPECT_EQ((**current.resolved_combos.get("QUALITY"_str)).as_str(), "2"_str);
+    EXPECT_EQ((**material->customShader.variant->Description().resolved_combos.get("QUALITY"_str))
+                  .as_str(),
+              "1"_str);
     EXPECT_TRUE((*(*shader)->reflection)->Matches((*shader)->codes.as_slice()));
     owe::SceneUserPropertyApplier::Apply(scene, "quality"_str, property);
     EXPECT_EQ(&**(*material->customShader.shader)->reflection, &**(*shader)->reflection);
-    auto valid   = material->customShader.shader.clone();
+    auto        valid             = material->customShader.shader.clone();
+    const auto* valid_description = &material->customShader.variant->Description();
     auto invalid = rstd::json::from_str(R"({"type":"combo","value":"invalid"})"_str).unwrap();
     auto failed  = owe::SceneUserPropertyApplier::Apply(scene, "quality"_str, invalid);
     EXPECT_TRUE(failed.diagnostics_changed);
     EXPECT_EQ(&**material->customShader.shader, &**valid);
-    EXPECT_EQ((**material->customShader.variant->resolved_combos.get("QUALITY"_str)).as_str(),
+    EXPECT_EQ(&material->customShader.variant->Description(), valid_description);
+    EXPECT_EQ((**material->customShader.variant->Description().resolved_combos.get("QUALITY"_str))
+                  .as_str(),
               "2"_str);
 }
 

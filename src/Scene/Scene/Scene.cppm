@@ -233,6 +233,7 @@ struct SceneShaderDefaultTexture {
     void clone_from(const SceneShaderDefaultTexture& other) { *this = other.clone(); }
 };
 
+// Compilation owns this draft; materials retain only the frozen SceneShaderVariant.
 struct SceneShaderVariantDesc {
     String scene_id;
     String shader_name;
@@ -274,6 +275,41 @@ struct SceneShaderVariantDesc {
     void clone_from(const SceneShaderVariantDesc& other) { *this = other.clone(); }
 
     bool Valid() const { return ! shader_name.is_empty() && ! stages.is_empty(); }
+};
+
+class SceneShaderVariant {
+    struct Storage {
+        explicit Storage(SceneShaderVariantDesc desc): description(rstd::move(desc)) {}
+        const SceneShaderVariantDesc description;
+    };
+
+public:
+    SceneShaderVariant() = default;
+    SceneShaderVariant(SceneShaderVariant&& other) noexcept: m_storage(other.m_storage.take()) {}
+    auto operator=(SceneShaderVariant&& other) noexcept -> SceneShaderVariant& {
+        if (this != &other) m_storage = other.m_storage.take();
+        return *this;
+    }
+
+    static auto from(SceneShaderVariantDesc desc) -> SceneShaderVariant {
+        return SceneShaderVariant(Arc<Storage>::make(rstd::move(desc)));
+    }
+
+    auto Description() const -> const SceneShaderVariantDesc& {
+        if (m_storage.is_some()) return (**m_storage).description;
+        static const SceneShaderVariantDesc empty;
+        return empty;
+    }
+
+    bool Valid() const { return m_storage.is_some() && Description().Valid(); }
+    auto clone() const -> SceneShaderVariant {
+        return m_storage.is_some() ? SceneShaderVariant(m_storage->clone()) : SceneShaderVariant();
+    }
+    void clone_from(const SceneShaderVariant& other) { *this = other.clone(); }
+
+private:
+    explicit SceneShaderVariant(Arc<Storage> storage): m_storage(Some(rstd::move(storage))) {}
+    Option<Arc<Storage>> m_storage;
 };
 
 // ============================================================================
@@ -464,11 +500,11 @@ struct SceneShaderValueAnimation {
 using SceneShaderValueAnimationMap = BTreeMap<String, SceneShaderValueAnimation>;
 
 struct SceneMaterialCustomShader {
-    Option<Arc<SceneShader>>       shader;
-    ShaderValues                   constValues;
-    SceneShaderValueAnimationMap   valueAnimations;
-    Option<SceneShaderVariantDesc> variant;
-    u64                            value_version { 1 };
+    Option<Arc<SceneShader>>     shader;
+    ShaderValues                 constValues;
+    SceneShaderValueAnimationMap valueAnimations;
+    Option<SceneShaderVariant>   variant;
+    u64                          value_version { 1 };
 
     auto Clone() const -> SceneMaterialCustomShader;
 };
@@ -787,19 +823,19 @@ public:
     auto ShaderValueAnimation(ref<str> uniform_name) const -> Option<Arc<SceneAnimationPlayback>>;
     void RegisterAnimations(SceneNode&) const;
     bool TickShaderValueAnimations();
-    bool SetShaderVariant(Option<Arc<SceneShader>> shader, SceneShaderVariantDesc variant) {
+    bool SetShaderVariant(Option<Arc<SceneShader>> shader, SceneShaderVariant variant) {
         if (! shader || ! variant.Valid()) return false;
+        const auto&             desc = variant.Description();
         SceneMaterialDirtyFlags flags =
             customShader.variant.is_some()
-                ? ClassifySceneShaderVariantMutation(*customShader.variant, variant)
+                ? ClassifySceneShaderVariantMutation(customShader.variant->Description(), desc)
                 : SceneMaterialDirtyGraph;
         if (flags == SceneMaterialDirtyNone) return false;
-        if (! variant.texture_slots.is_empty() &&
-            SceneShaderVariantHasActiveTextureMetadata(variant)) {
+        if (! desc.texture_slots.is_empty() && SceneShaderVariantHasActiveTextureMetadata(desc)) {
             auto previous_textures = rstd::move(textures);
             auto previous_metadata = rstd::move(texture_metadata);
             auto previous_sources  = rstd::move(texture_sources);
-            textures               = variant.texture_slots.clone();
+            textures               = desc.texture_slots.clone();
             texture_metadata.resize(textures.len(), SceneMaterialTextureMetadata {});
             texture_sources.resize(usize(textures.len()), SceneMaterialTextureSource {});
             for (usize i {}; i < textures.len(); ++i) {
@@ -812,7 +848,7 @@ public:
                         texture_sources[usize(i)] = previous_sources[usize(i)];
                 }
             }
-            auto active = SceneShaderVariantActiveTextureSlots(variant);
+            auto active = SceneShaderVariantActiveTextureSlots(desc);
             for (usize i {}; i < textures.len(); ++i) {
                 if (! active.contains(rstd::as_cast<u32>(i))) {
                     textures[i].clear();
@@ -2530,7 +2566,7 @@ struct SceneMaterialTextureSlotMutation {
 
 struct SceneShaderVariantMutation {
     Option<Arc<SceneShader>> shader;
-    SceneShaderVariantDesc   variant;
+    SceneShaderVariant       variant;
 };
 
 struct SceneMaterialShaderVariantMutation {

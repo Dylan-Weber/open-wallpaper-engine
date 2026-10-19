@@ -945,7 +945,7 @@ TEST(SceneMaterialShaderVariant, CarriesCompileDescriptorThroughMaterialMove) {
         .source_key = "/assets/shaders/genericimage.vert"_Str,
         .source     = "vertex source"_Str,
     });
-    material.customShader.variant = Some(rstd::move(variant));
+    material.customShader.variant = Some(owe::SceneShaderVariant::from(rstd::move(variant)));
 
     auto mesh = Arc<owe::SceneMesh>::make();
     mesh->AddMaterial(std::move(material));
@@ -953,7 +953,7 @@ TEST(SceneMaterialShaderVariant, CarriesCompileDescriptorThroughMaterialMove) {
     ASSERT_NE(moved, nullptr);
     ASSERT_TRUE(moved->customShader.variant.is_some());
 
-    const auto& stored = *moved->customShader.variant;
+    const auto& stored = moved->customShader.variant->Description();
     EXPECT_TRUE(stored.Valid());
     EXPECT_EQ(stored.scene_id, "scene"_str);
     EXPECT_EQ(stored.shader_name, "genericimage"_str);
@@ -1039,7 +1039,7 @@ TEST(SceneMaterial, PreservesOwnedStateAcrossCopyAndMove) {
     EXPECT_EQ((*(**moved_animation).track).as_ptr().as_raw_ptr(), track.as_ptr().as_raw_ptr());
 }
 
-TEST(SceneMaterialShaderVariant, ClonesInterfaceDescriptionsIndependently) {
+TEST(SceneMaterialShaderVariant, SharesPublishedDescriptionAndKeepsInstancesIndependent) {
     owe::SceneMaterial          original;
     owe::SceneShaderVariantDesc variant;
     variant.shader_name = "clone-test"_Str;
@@ -1059,11 +1059,18 @@ TEST(SceneMaterialShaderVariant, ClonesInterfaceDescriptionsIndependently) {
     owe::SceneShaderDescriptorSetInterface set { .set = u32(2), .identity = u64(42) };
     set.bindings.push({ .name = "descriptor_binding_with_owned_name"_Str, .binding = u32(3) });
     variant.descriptor_sets.push(rstd::move(set));
-    original.customShader.variant = Some(rstd::move(variant));
-    auto  copied                  = original;
-    auto& source                  = *original.customShader.variant;
-    auto& target                  = *copied.customShader.variant;
-    EXPECT_EQ(owe::ClassifySceneShaderVariantMutation(source, target), owe::SceneMaterialDirtyNone);
+    (void)variant.default_uniforms.insert("u_Color"_Str, owe::ShaderValue(0.25f));
+    const auto* stages            = variant.stages.as_slice().as_raw_ptr();
+    original.customShader.variant = Some(owe::SceneShaderVariant::from(rstd::move(variant)));
+    original.textures.push("instance/texture"_Str);
+    (void)original.customShader.constValues.insert("u_Color"_Str, owe::ShaderValue(0.5f));
+    auto        copied = original;
+    const auto& target = copied.customShader.variant->Description();
+    static_assert(rstd::mtp::same_as<decltype(copied.customShader.variant->Description()),
+                                     const owe::SceneShaderVariantDesc&>);
+    EXPECT_EQ(&original.customShader.variant->Description(), &target);
+    EXPECT_EQ(target.stages.as_slice().as_raw_ptr(), stages);
+    auto source = target.clone();
     source.stages[usize()].source.push_str(" changed"_str);
     EXPECT_EQ(owe::ClassifySceneShaderVariantMutation(source, target),
               owe::SceneMaterialDirtyPipeline);
@@ -1093,9 +1100,44 @@ TEST(SceneMaterialShaderVariant, ClonesInterfaceDescriptionsIndependently) {
               "descriptor_binding_with_owned_name"_str);
     EXPECT_EQ(target.uniform_blocks[usize()].identity, u64(41));
     EXPECT_EQ(target.descriptor_sets[usize()].identity, u64(42));
-    auto cloned = target.clone();
+    original.customShader.variant = Some(owe::SceneShaderVariant::from(rstd::move(source)));
+    EXPECT_NE(&original.customShader.variant->Description(), &target);
+    (void)original.SetShaderValue("u_Color"_str, owe::ShaderValue(0.75f));
+    original.textures[usize()] = "instance/changed"_Str;
+    EXPECT_FLOAT_EQ((**copied.customShader.constValues.get("u_Color"_str))[usize()], 0.5f);
+    EXPECT_FLOAT_EQ((**target.default_uniforms.get("u_Color"_str))[usize()], 0.25f);
+    EXPECT_EQ(copied.textures[usize()], "instance/texture"_str);
+    auto cloned = copied.customShader.variant->clone();
     cloned.clone_from(cloned);
-    EXPECT_EQ(cloned.descriptor_sets, target.descriptor_sets);
+    EXPECT_EQ(&cloned.Description(), &target);
+    copied.customShader.variant   = None();
+    original.customShader.variant = None();
+    EXPECT_EQ(cloned.Description().stages[usize()].source, "source"_str);
+    EXPECT_EQ(cloned.Description().descriptor_sets[usize()].identity, u64(42));
+}
+
+TEST(SceneMaterialShaderVariant, MovesPublishedDescriptionWithoutLeavingBorrowedState) {
+    owe::SceneShaderVariant empty;
+    EXPECT_FALSE(empty.Valid());
+    EXPECT_FALSE(empty.clone().Valid());
+    EXPECT_TRUE(empty.Description().stages.is_empty());
+    owe::SceneShaderVariantDesc desc;
+    desc.shader_name = "move"_Str;
+    desc.stages.push({ .source = "source"_Str });
+    auto        original  = owe::SceneShaderVariant::from(rstd::move(desc));
+    auto        retained  = original.clone();
+    const auto* published = &original.Description();
+    auto        moved     = rstd::move(original);
+    EXPECT_FALSE(original.Valid());
+    EXPECT_TRUE(original.Description().stages.is_empty());
+    EXPECT_EQ(&moved.Description(), published);
+    empty = rstd::move(moved);
+    EXPECT_FALSE(moved.Valid());
+    EXPECT_EQ(&empty.Description(), published);
+    EXPECT_EQ(&retained.Description(), published);
+    auto& alias = empty;
+    empty       = rstd::move(alias);
+    EXPECT_TRUE(empty.Valid());
 }
 
 TEST(SceneShader, ResolvesLoaderDefinedSamplerMember) {
@@ -1138,19 +1180,22 @@ TEST(SceneMaterialShaderVariant, AppliesCompiledVariantThroughSceneOwner) {
         .source     = "source"_Str,
     });
 
-    auto mutation = scene.SetMaterialShaderVariant(*material,
-                                                   owe::SceneShaderVariantMutation {
-                                                       .shader  = Some(shader.clone()),
-                                                       .variant = variant.clone(),
-                                                   });
+    auto mutation = scene.SetMaterialShaderVariant(
+        *material,
+        owe::SceneShaderVariantMutation {
+            .shader  = Some(shader.clone()),
+            .variant = owe::SceneShaderVariant::from(variant.clone()),
+        });
 
     EXPECT_TRUE(mutation.changed);
     ASSERT_TRUE(mutation.material.is_some());
     ASSERT_TRUE(material->customShader.shader);
     EXPECT_EQ((*material->customShader.shader).as_ptr().as_raw_ptr(), shader.as_ptr().as_raw_ptr());
     ASSERT_TRUE(material->customShader.variant.is_some());
-    ASSERT_TRUE(material->customShader.variant->resolved_combos.contains_key("USE_COLOR"_str));
-    EXPECT_EQ((**material->customShader.variant->resolved_combos.get("USE_COLOR"_str)).as_str(),
+    ASSERT_TRUE(material->customShader.variant->Description().resolved_combos.contains_key(
+        "USE_COLOR"_str));
+    EXPECT_EQ((**material->customShader.variant->Description().resolved_combos.get("USE_COLOR"_str))
+                  .as_str(),
               "1"_str);
     EXPECT_EQ(material->DirtyFlags(), owe::SceneMaterialDirtyGraph);
 
@@ -1194,7 +1239,7 @@ TEST(SceneMaterialShaderVariant, ClassifiesVariantImpactAndAppliesActiveTextureS
     });
     (void)current.stages[usize()].active_texture_slots.insert(u32());
     (void)current.stages[usize()].uniforms.insert("u_Color"_Str, "float4"_Str);
-    material->customShader.variant = Some<owe::SceneShaderVariantDesc>(current.clone());
+    material->customShader.variant = Some(owe::SceneShaderVariant::from(current.clone()));
 
     auto hash_only                       = current.clone();
     hash_only.stages[usize(0)].code_hash = rstd::usize(101);
@@ -1202,11 +1247,12 @@ TEST(SceneMaterialShaderVariant, ClassifiesVariantImpactAndAppliesActiveTextureS
     hash_shader->name                    = "variant"_Str;
     hash_shader->codes.push(
         owe::ShaderCode::from(rstd::array<rstd::uint32_t, 1> { 101u }.as_slice()));
-    auto hash_rt = scene.SetMaterialShaderVariant(*material,
-                                                  owe::SceneShaderVariantMutation {
-                                                      .shader  = Some(hash_shader.clone()),
-                                                      .variant = hash_only.clone(),
-                                                  });
+    auto hash_rt = scene.SetMaterialShaderVariant(
+        *material,
+        owe::SceneShaderVariantMutation {
+            .shader  = Some(hash_shader.clone()),
+            .variant = owe::SceneShaderVariant::from(hash_only.clone()),
+        });
 
     EXPECT_TRUE(hash_rt.changed);
     EXPECT_EQ(material->DirtyFlags(), owe::SceneMaterialDirtyPipeline);
@@ -1221,11 +1267,12 @@ TEST(SceneMaterialShaderVariant, ClassifiesVariantImpactAndAppliesActiveTextureS
     layout_shader->name                = "variant"_Str;
     layout_shader->codes.push(
         owe::ShaderCode::from(rstd::array<rstd::uint32_t, 1> { 102u }.as_slice()));
-    auto layout_rt = scene.SetMaterialShaderVariant(*material,
-                                                    owe::SceneShaderVariantMutation {
-                                                        .shader  = Some(layout_shader.clone()),
-                                                        .variant = layout_only.clone(),
-                                                    });
+    auto layout_rt = scene.SetMaterialShaderVariant(
+        *material,
+        owe::SceneShaderVariantMutation {
+            .shader  = Some(layout_shader.clone()),
+            .variant = owe::SceneShaderVariant::from(layout_only.clone()),
+        });
 
     EXPECT_TRUE(layout_rt.changed);
     EXPECT_EQ(material->DirtyFlags(),
@@ -1242,11 +1289,12 @@ TEST(SceneMaterialShaderVariant, ClassifiesVariantImpactAndAppliesActiveTextureS
     auto shader                           = Arc<owe::SceneShader>::make();
     shader->name                          = "variant"_Str;
     shader->codes.push(owe::ShaderCode::from(rstd::array<rstd::uint32_t, 1> { 1u }.as_slice()));
-    auto pipeline_rt = scene.SetMaterialShaderVariant(*material,
-                                                      owe::SceneShaderVariantMutation {
-                                                          .shader  = Some(shader.clone()),
-                                                          .variant = same_slots.clone(),
-                                                      });
+    auto pipeline_rt = scene.SetMaterialShaderVariant(
+        *material,
+        owe::SceneShaderVariantMutation {
+            .shader  = Some(shader.clone()),
+            .variant = owe::SceneShaderVariant::from(same_slots.clone()),
+        });
 
     EXPECT_TRUE(pipeline_rt.changed);
     EXPECT_EQ(material->DirtyFlags(),
@@ -1268,11 +1316,12 @@ TEST(SceneMaterialShaderVariant, ClassifiesVariantImpactAndAppliesActiveTextureS
     graph_shader->name = "variant"_Str;
     graph_shader->codes.push(
         owe::ShaderCode::from(rstd::array<rstd::uint32_t, 1> { 2u }.as_slice()));
-    auto graph_rt = scene.SetMaterialShaderVariant(*material,
-                                                   owe::SceneShaderVariantMutation {
-                                                       .shader  = Some(graph_shader.clone()),
-                                                       .variant = graph_slots.clone(),
-                                                   });
+    auto graph_rt = scene.SetMaterialShaderVariant(
+        *material,
+        owe::SceneShaderVariantMutation {
+            .shader  = Some(graph_shader.clone()),
+            .variant = owe::SceneShaderVariant::from(graph_slots.clone()),
+        });
 
     EXPECT_TRUE(graph_rt.changed);
     EXPECT_EQ(material->DirtyFlags(), owe::SceneMaterialDirtyGraph);

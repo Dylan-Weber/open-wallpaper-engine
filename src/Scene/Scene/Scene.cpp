@@ -1908,9 +1908,9 @@ bool SceneMaterial::SetShaderValueAnimation(String uniform_name, Arc<SceneAnimat
 
 auto SceneMaterialCustomShader::Clone() const -> SceneMaterialCustomShader {
     SceneMaterialCustomShader cloned {
-        .shader      = shader.clone(),
-        .constValues = constValues.clone(),
-        .variant     = variant.is_some() ? Some<SceneShaderVariantDesc>(variant->clone()) : None(),
+        .shader        = shader.clone(),
+        .constValues   = constValues.clone(),
+        .variant       = variant.clone(),
         .value_version = value_version,
     };
     struct PlaybackClone {
@@ -2236,7 +2236,7 @@ bool Scene::SetMaterialShaderValueByKey(SceneMaterial& material, ref<str> materi
                                         const ShaderValue& value) {
     auto uniform_name = material_key;
     if (material.customShader.variant.is_some()) {
-        const auto& aliases = material.customShader.variant->uniform_aliases;
+        const auto& aliases = material.customShader.variant->Description().uniform_aliases;
         if (auto alias = aliases.get(material_key); alias.is_some()) {
             uniform_name = (**alias).as_str();
         }
