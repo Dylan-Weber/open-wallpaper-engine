@@ -1484,8 +1484,12 @@ TEST(ResourcePrepareService, MapsLogicalTextureUsesToPlannedPhysicalSlots) {
     ASSERT_TRUE(first.is_some());
     ASSERT_TRUE(second.is_some());
     ASSERT_TRUE(third.is_some());
-    EXPECT_EQ((**first).resource, (**second).resource);
+    EXPECT_NE((**first).resource, (**second).resource);
     EXPECT_NE((**first).resource, (**third).resource);
+    EXPECT_EQ((**first).physical->Slots()[rstd::usize()].view.texture().identity(),
+              (**second).physical->Slots()[rstd::usize()].view.texture().identity());
+    EXPECT_NE((**first).physical->Slots()[rstd::usize()].view.texture().identity(),
+              (**third).physical->Slots()[rstd::usize()].view.texture().identity());
     EXPECT_EQ((**first).request().name, "composite-v0"_str);
     EXPECT_EQ((**second).request().name, "composite-v1"_str);
 }

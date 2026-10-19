@@ -145,7 +145,7 @@ private:
 class UniformBufferBinding {
 public:
     UniformBufferBinding(SceneDrawItemId, resource::BufferUseHandle, UniformBufferLayout,
-                         Vec<BoundUniformSource>, ShaderValues, ref<SceneMaterial>,
+                         Vec<BoundUniformSource>, SceneShaderDefaults, ref<SceneMaterial>,
                          Vec<PreparedUniformTextureMetadata>, SceneRenderViewKind,
                          ShaderMatrixConvention, ShaderMatrixAbi);
     auto Update(ref<dyn<UniformBufferFrameContext>>,
@@ -156,7 +156,7 @@ public:
 private:
     SceneDrawItemId                     m_draw_item;
     mutable vrento::UniformBinding      m_binding;
-    ShaderValues                        m_defaults;
+    SceneShaderDefaults                 m_defaults;
     ref<SceneMaterial>                  m_material;
     Vec<PreparedUniformTextureMetadata> m_textures;
     SceneRenderViewKind                 m_render_view;

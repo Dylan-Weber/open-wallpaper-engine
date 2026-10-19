@@ -56,7 +56,8 @@ void SceneDraw::captureGeometry() {
     vertex_offsets_.clear();
     auto* material = ResolvePassMaterial(m_desc, updates_);
     if (! material || ! updates_.node || ! (*updates_.node)->Mesh()) return;
-    material_  = Some(SceneMaterial(*material));
+    material_ = Some(
+        MaterialSnapshot { material->customShader.shader.clone(), material->PipelineSnapshot() });
     auto& mesh = *(*updates_.node)->Mesh();
     geometry_  = mesh.CaptureGeometry(m_desc.submesh_index);
     if (! geometry_) return;
@@ -167,15 +168,14 @@ auto SceneDraw::declareResources(ResourceDeclarationContext& context)
     m_desc.render_pass_use    = None();
     m_desc.framebuffer_use    = None();
     if (! geometry_) captureGeometry();
-    if (! geometry_ || ! material_ || ! material_->customShader.shader) return None();
+    if (! geometry_ || ! material_ || ! material_->shader) return None();
     auto  geometry         = geometry_->layout();
     auto* material         = &*material_;
     m_desc.pipeline_use    = Some(context.ReservePipeline());
     m_desc.render_pass_use = Some(context.ReserveRenderPass());
-    auto shader_request    = MakeSceneShaderRequest(**material->customShader.shader);
+    auto shader_request    = MakeSceneShaderRequest(**material->shader);
     auto artifact_request  = shader_request.clone();
-    m_desc.shader_use =
-        Some(context.AddShader(rstd::move(shader_request), **material->customShader.shader));
+    m_desc.shader_use = Some(context.AddShader(rstd::move(shader_request), **material->shader));
 
     auto artifact = context.ShaderArtifact(artifact_request);
     if (artifact.is_some()) {
@@ -674,7 +674,7 @@ auto SceneDraw::describeGraphics(const resource::ShaderArtifact& artifact)
     ShaderReflected        shader_reflection;
     const ShaderReflected* ref { nullptr };
     {
-        const SceneShader& shader = **material_ref.customShader.shader;
+        const SceneShader& shader = **material_ref.shader;
 
         shader_reflection = ShaderReflectionFromArtifact(artifact);
         spvs              = ShaderSpvsFromArtifact(artifact);

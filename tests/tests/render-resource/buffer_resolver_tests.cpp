@@ -105,6 +105,45 @@ TEST(SceneMesh, SharesPublishedGeometryAcrossDrawsAndInstances) {
     EXPECT_TRUE(mesh.CaptureGeometry(u32(100)).is_none());
 }
 
+TEST(SceneMesh, ExplicitPublicationSharesSourceAndRetainedWritesKeepOldSnapshots) {
+    owe::SceneMesh mesh(false);
+    mesh.Submeshes().push(MakeSubmesh());
+    auto& submesh  = mesh.Submeshes()[usize()];
+    auto* original = submesh.vertex_arrays[usize()].Data();
+    submesh.PublishGeometry();
+    auto first    = mesh.CaptureGeometry(u32()).unwrap();
+    auto instance = mesh.CloneInstance();
+    EXPECT_EQ(first.vertexContent(usize()).as_slice().as_raw_ptr(),
+              reinterpret_cast<const rstd::byte*>(original));
+    EXPECT_EQ(instance->CaptureGeometry(u32())->vertexContent(usize()).as_slice().as_raw_ptr(),
+              first.vertexContent(usize()).as_slice().as_raw_ptr());
+    owe::RenderItemId id { .index = u32(1), .generation = u64(2) };
+    auto              buffers            = MakeBuffers(mesh, id);
+    buffers.dynamic                      = false;
+    auto                        use      = buffers.vertices[usize()];
+    auto                        identity = buffers.vertex_keys[usize()].storage_generation;
+    const rstd::array<float, 3> changed { 2.0f, 3.0f, 4.0f };
+    ASSERT_TRUE(submesh.vertex_arrays[usize()].SetVertexs(usize(), changed.as_slice()));
+    EXPECT_NE(submesh.vertex_arrays[usize()].Data(), original);
+    auto second = instance->CaptureGeometry(u32()).unwrap();
+    EXPECT_EQ(second.vertexContent(usize()).as_slice().as_raw_ptr(),
+              reinterpret_cast<const rstd::byte*>(submesh.vertex_arrays[usize()].Data()));
+    EXPECT_EQ(second.layout().vertices[usize()].storage_generation, identity);
+    EXPECT_EQ(original[0], 0.0f);
+    EXPECT_EQ(submesh.vertex_arrays[usize()].Data()[0], 2.0f);
+    owe::vulkan::DrawBufferRequest request { .render_item = id, .mesh = &mesh };
+    BufferWriter                   writer;
+    writer.fail_on = u32(1);
+    auto sink      = rstd::dyn<owe::resource::BufferContentWriter>::from_ref(writer);
+    EXPECT_FALSE(
+        owe::vulkan::RenderBufferResolver::updateDrawBuffers(request, buffers, sink.as_mut_ref()));
+    writer.fail_on = u32();
+    EXPECT_TRUE(
+        owe::vulkan::RenderBufferResolver::updateDrawBuffers(request, buffers, sink.as_mut_ref()));
+    EXPECT_EQ(buffers.vertices[usize()], use);
+    EXPECT_EQ(writer.update_count, u32(2));
+}
+
 TEST(DynamicDrawBuffer, RetriesUploadFailureWithoutInvalidatingLayout) {
     owe::SceneMesh mesh(true);
     mesh.Submeshes().push(MakeSubmesh());

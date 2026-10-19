@@ -232,7 +232,6 @@ SceneShaderVariantDesc MakeSceneShaderVariantDesc(
     desc.input_combos            = input_combos.clone();
     desc.resolved_combos         = info.combos.clone();
     desc.uniform_aliases         = info.alias.clone();
-    desc.default_uniforms        = info.svs.clone();
     desc.default_textures        = info.defTexs.clone();
     desc.geometry_shader_enabled = geometry_shader_enabled;
 
@@ -519,8 +518,8 @@ auto BuildMaterial(fs::VFS& vfs, ShaderCache& shader_cache,
     shader->codes      = artifact->Codes();
     shader->reflection = Some(artifact->ReflectionOwner());
     (void)compile_span.finish();
-    shader->default_uniforms      = shader_info_ref.svs.clone();
-    variant_desc.default_uniforms = shader_info_ref.svs.clone();
+    shader->default_uniforms      = SceneShaderDefaults::from(shader_info_ref.svs.clone());
+    variant_desc.default_uniforms = shader->default_uniforms.clone();
     ShaderParser::ApplyCompiledShaderInterface(variant_desc, *artifact, bench);
     shader->sampler_bindings = variant_desc.sampler_bindings.clone();
     shader->uniform_blocks   = variant_desc.uniform_blocks.clone();

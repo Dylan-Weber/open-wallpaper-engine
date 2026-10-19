@@ -862,10 +862,12 @@ TEST(SceneMaterialRuntimeMutation, UpdatesShaderValuesAndTextureSlotsThroughScen
     auto* material = mesh->MaterialSlots()[usize()].as_ptr().as_raw_ptr();
     ASSERT_NE(material, nullptr);
 
-    auto shader = Arc<owe::SceneShader>::make();
-    (void)shader->default_uniforms.insert(
+    auto              shader = Arc<owe::SceneShader>::make();
+    owe::ShaderValues defaults;
+    (void)defaults.insert(
         "u_Color"_Str,
         owe::ShaderValue(owe::ShaderValue(std::array<float, 4> { 0.0f, 0.0f, 0.0f, 0.0f })));
+    shader->default_uniforms      = owe::SceneShaderDefaults::from(rstd::move(defaults));
     material->customShader.shader = Some(rstd::move(shader));
 
     const auto value_version = material->customShader.value_version;
@@ -905,9 +907,11 @@ TEST(SceneMaterialRuntimeMutation, UpdatesShaderValuesAndTextureSlotsThroughScen
 TEST(SceneMaterialRuntimeMutation, ZeroFillsShortShaderVectorsToDeclaredShape) {
     owe::SceneMaterial material;
     auto               shader = Arc<owe::SceneShader>::make();
-    (void)shader->default_uniforms.insert(
+    owe::ShaderValues  defaults;
+    (void)defaults.insert(
         "g_CloudSpeeds"_Str,
         owe::ShaderValue(owe::ShaderValue(rstd::array<float, 4> { 0.01f, 0.01f, -0.02f, -0.02f })));
+    shader->default_uniforms     = owe::SceneShaderDefaults::from(rstd::move(defaults));
     material.customShader.shader = Some(rstd::move(shader));
 
     ASSERT_TRUE(material.SetShaderValue("g_CloudSpeeds"_str,
@@ -1059,7 +1063,9 @@ TEST(SceneMaterialShaderVariant, SharesPublishedDescriptionAndKeepsInstancesInde
     owe::SceneShaderDescriptorSetInterface set { .set = u32(2), .identity = u64(42) };
     set.bindings.push({ .name = "descriptor_binding_with_owned_name"_Str, .binding = u32(3) });
     variant.descriptor_sets.push(rstd::move(set));
-    (void)variant.default_uniforms.insert("u_Color"_Str, owe::ShaderValue(0.25f));
+    owe::ShaderValues defaults;
+    (void)defaults.insert("u_Color"_Str, owe::ShaderValue(0.25f));
+    variant.default_uniforms      = owe::SceneShaderDefaults::from(rstd::move(defaults));
     const auto* stages            = variant.stages.as_slice().as_raw_ptr();
     original.customShader.variant = Some(owe::SceneShaderVariant::from(rstd::move(variant)));
     original.textures.push("instance/texture"_Str);
@@ -1147,6 +1153,81 @@ TEST(SceneShader, ResolvesLoaderDefinedSamplerMember) {
 
     EXPECT_EQ(shader.SamplerMember(3), "u_SourceImage"_str);
     EXPECT_TRUE(shader.SamplerMember(0).is_empty());
+}
+
+TEST(SceneShaderDefaults, SharesPublishedValuesAndRetainsReplacedVersions) {
+    owe::ShaderValues values;
+    Vec<float>        large;
+    large.resize(usize(32), 0.25f);
+    (void)values.insert("array"_Str, owe::ShaderValue(large.as_slice()));
+    auto original = owe::SceneShaderDefaults::from(rstd::move(values));
+    auto retained = original.clone();
+    static_assert(rstd::mtp::same_as<decltype(original.Values()), const owe::ShaderValues&>);
+    EXPECT_EQ(&original.Values(), &retained.Values());
+    EXPECT_EQ((**original.get("array"_str)).data(), (**retained.get("array"_str)).data());
+    auto moved = rstd::move(original);
+    EXPECT_TRUE(original.is_empty());
+    EXPECT_EQ(&moved.Values(), &retained.Values());
+    moved.clone_from(moved);
+    EXPECT_EQ(&moved.Values(), &retained.Values());
+    owe::ShaderValues replacement;
+    (void)replacement.insert("array"_Str, owe::ShaderValue(0.75f));
+    moved = owe::SceneShaderDefaults::from(rstd::move(replacement));
+    EXPECT_NE(&moved.Values(), &retained.Values());
+    EXPECT_FLOAT_EQ((**retained.get("array"_str))[usize(31)], 0.25f);
+    original = rstd::move(moved);
+    EXPECT_TRUE(moved.is_empty());
+    EXPECT_FLOAT_EQ((**original.get("array"_str))[usize()], 0.75f);
+}
+
+TEST(SceneShaderDefaults, ComparesFloatBitsAndLayoutInsteadOfOwnerIdentity) {
+    auto publish = [](float value, bool zero_fill) {
+        owe::ShaderValues     values;
+        owe::UniformValueView view { .data = &value, .size = usize(1) };
+        view.layout.zero_fill_tail = zero_fill;
+        (void)values.insert("value"_Str, owe::ShaderValue(view));
+        return owe::SceneShaderDefaults::from(rstd::move(values));
+    };
+    EXPECT_TRUE(publish(0.25f, false) == publish(0.25f, false));
+    EXPECT_FALSE(publish(0.0f, false) == publish(-0.0f, false));
+    EXPECT_FALSE(publish(0.25f, false) == publish(0.25f, true));
+    const auto nan = rstd::bit_cast<float>(rstd::uint32_t(0x7fc00001));
+    EXPECT_TRUE(publish(nan, false) == publish(nan, false));
+}
+
+TEST(SceneMaterialShaderVariant, RefreshesDefaultValuesWithoutRebuildingPipeline) {
+    auto publish = [](float value) {
+        owe::ShaderValues values;
+        (void)values.insert("value"_Str, owe::ShaderValue(value));
+        return owe::SceneShaderDefaults::from(rstd::move(values));
+    };
+    owe::SceneShaderVariantDesc current;
+    current.shader_name = "defaults"_Str;
+    current.stages.push({ .source = "source"_Str, .code_hash = usize(42) });
+    current.default_uniforms = publish(0.25f);
+    auto equal               = current.clone();
+    equal.default_uniforms   = publish(0.25f);
+    EXPECT_EQ(owe::ClassifySceneShaderVariantMutation(current, equal), owe::SceneMaterialDirtyNone);
+    auto next             = current.clone();
+    next.default_uniforms = publish(0.75f);
+    EXPECT_EQ(owe::ClassifySceneShaderVariantMutation(current, next),
+              owe::SceneMaterialDirtyResources);
+    auto changed_source                   = next.clone();
+    changed_source.stages[usize()].source = "changed"_Str;
+    EXPECT_EQ(owe::ClassifySceneShaderVariantMutation(current, changed_source),
+              owe::SceneMaterialDirtyResources | owe::SceneMaterialDirtyPipeline);
+
+    owe::SceneMaterial material;
+    material.customShader.variant = Some(owe::SceneShaderVariant::from(rstd::move(current)));
+    auto shader                   = Arc<owe::SceneShader>::make();
+    shader->default_uniforms      = next.default_uniforms.clone();
+    EXPECT_TRUE(material.SetShaderVariant(Some(shader.clone()),
+                                          owe::SceneShaderVariant::from(rstd::move(next))));
+    EXPECT_EQ(material.ConsumeDirtyFlags(), owe::SceneMaterialDirtyResources);
+    EXPECT_FLOAT_EQ((**(*material.customShader.shader)->default_uniforms.get("value"_str))[usize()],
+                    0.75f);
+    EXPECT_FALSE(
+        material.SetShaderVariant(Some(shader.clone()), material.customShader.variant->clone()));
 }
 
 TEST(SceneMaterialShaderVariant, AppliesCompiledVariantThroughSceneOwner) {

@@ -3322,7 +3322,6 @@ ShaderParser::CompileSceneShaderVariant(const SceneShaderVariantDesc& desc, fs::
 
     result.variant.resolved_combos         = result.info.combos.clone();
     result.variant.uniform_aliases         = result.info.alias.clone();
-    result.variant.default_uniforms        = result.info.svs.clone();
     result.variant.default_textures        = result.info.defTexs.clone();
     result.variant.geometry_shader_enabled = has_geometry_stage;
     result.variant.texture_infos.clear();
@@ -3342,7 +3341,7 @@ ShaderParser::CompileSceneShaderVariant(const SceneShaderVariantDesc& desc, fs::
         return result;
     }
     auto artifact                   = rstd::move(compiled).unwrap_unchecked();
-    result.variant.default_uniforms = result.info.svs.clone();
+    result.variant.default_uniforms = SceneShaderDefaults::from(result.info.svs.clone());
     ApplyCompiledShaderInterface(result.variant, *artifact);
 
     auto shader               = Arc<SceneShader>::make();
@@ -3354,7 +3353,7 @@ ShaderParser::CompileSceneShaderVariant(const SceneShaderVariantDesc& desc, fs::
     shader->sampler_bindings  = result.variant.sampler_bindings.clone();
     shader->uniform_blocks    = result.variant.uniform_blocks.clone();
     shader->descriptor_sets   = result.variant.descriptor_sets.clone();
-    shader->default_uniforms  = result.info.svs.clone();
+    shader->default_uniforms  = result.variant.default_uniforms.clone();
     result.shader             = Some(rstd::move(shader));
     result.ok                 = true;
     return result;

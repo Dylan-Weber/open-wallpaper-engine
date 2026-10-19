@@ -1501,21 +1501,31 @@ auto ReflectionVariant() -> owe::SceneShaderVariantDesc {
 } // namespace
 
 TEST(ShaderParser, SharesReflectionWithoutSharingInstanceValues) {
-    owe::fs::VFS     vfs;
-    owe::ShaderCache cache;
-    auto             desc = ReflectionVariant();
-    (void)desc.default_uniforms.insert("g_Brightness"_Str, owe::ShaderValue(0.25f));
+    owe::fs::VFS      vfs;
+    owe::ShaderCache  cache;
+    auto              desc = ReflectionVariant();
+    owe::ShaderValues first_defaults;
+    (void)first_defaults.insert("g_Brightness"_Str, owe::ShaderValue(0.25f));
+    desc.default_uniforms = owe::SceneShaderDefaults::from(rstd::move(first_defaults));
     desc.texture_slots.push("first"_Str);
     desc.default_textures.push({ .slot = i32(), .texture = "fallback-first"_Str });
     auto first = owe::ShaderParser::CompileSceneShaderVariant(desc, vfs, {}, &cache);
     ASSERT_TRUE(first.ok) << first.error;
-    (void)desc.default_uniforms.insert("g_Brightness"_Str, owe::ShaderValue(0.75f));
-    desc.texture_slots[usize()]            = "second"_Str;
+    owe::ShaderValues second_defaults;
+    (void)second_defaults.insert("g_Brightness"_Str, owe::ShaderValue(0.75f));
+    desc.default_uniforms       = owe::SceneShaderDefaults::from(rstd::move(second_defaults));
+    desc.texture_slots[usize()] = "second"_Str;
     desc.default_textures[usize()].texture = "fallback-second"_Str;
     auto second = owe::ShaderParser::CompileSceneShaderVariant(desc, vfs, {}, &cache);
     ASSERT_TRUE(second.ok) << second.error;
     EXPECT_NE(&**first.shader, &**second.shader);
     EXPECT_EQ(&**(*first.shader)->reflection, &**(*second.shader)->reflection);
+    EXPECT_EQ(&(*first.shader)->default_uniforms.Values(),
+              &first.variant.default_uniforms.Values());
+    EXPECT_EQ(&(*second.shader)->default_uniforms.Values(),
+              &second.variant.default_uniforms.Values());
+    EXPECT_NE(&(*first.shader)->default_uniforms.Values(),
+              &(*second.shader)->default_uniforms.Values());
     EXPECT_FLOAT_EQ((**(*first.shader)->default_uniforms.get("g_Brightness"_str))[usize()], 0.25f);
     EXPECT_FLOAT_EQ((**(*second.shader)->default_uniforms.get("g_Brightness"_str))[usize()], 0.75f);
     EXPECT_EQ(first.variant.texture_slots[usize()], "first"_str);

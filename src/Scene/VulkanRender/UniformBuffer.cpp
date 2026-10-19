@@ -147,7 +147,7 @@ namespace owe::vulkan
 
 UniformBufferBinding::UniformBufferBinding(
     SceneDrawItemId draw_item, resource::BufferUseHandle buffer, UniformBufferLayout layout,
-    Vec<BoundUniformSource> sources, ShaderValues defaults, ref<SceneMaterial> material,
+    Vec<BoundUniformSource> sources, SceneShaderDefaults defaults, ref<SceneMaterial> material,
     Vec<PreparedUniformTextureMetadata> textures, SceneRenderViewKind render_view,
     ShaderMatrixConvention convention, ShaderMatrixAbi abi)
     : m_draw_item(draw_item),

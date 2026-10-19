@@ -127,6 +127,12 @@ public:
     void refreshSnapshot() { captureGeometry(); }
 
 private:
+    struct MaterialSnapshot {
+        Option<Arc<SceneShader>>         shader;
+        vrento::MaterialPipelineSnapshot pipeline;
+
+        auto Pipeline() const -> const vrento::MaterialPipelineDesc& { return pipeline.value; }
+    };
     bool bindings_ready_ {};
     bool samplesTexture(usize) const;
     auto describeGraphics(const resource::ShaderArtifact&)
@@ -134,7 +140,7 @@ private:
     Vec<vrento::vulkan::GraphicsDrawRange>         draws_;
     bool                                           visible_ { true };
     void                                           captureGeometry();
-    Option<SceneMaterial>                          material_;
+    Option<MaterialSnapshot>                       material_;
     Option<vrento::GeometrySnapshot>               geometry_;
     Vec<rstd::collections::HashMap<String, usize>> vertex_offsets_;
     MeshPrimitive                                  primitive_ { MeshPrimitive::TRIANGLE };

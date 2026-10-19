@@ -115,6 +115,9 @@ public:
         -> rstd::Result<rstd::empty, owe::resource::ResourceError> {
         last_use = use;
         ++update_count;
+        if (reject)
+            return rstd::Err(
+                owe::resource::ResourceError { owe::resource::ResourceErrorKind::BackendFailure });
         bytes.clear();
         bytes.reserve(content.len().to_primitive());
         for (rstd::usize index; index < content.len(); ++index) {
@@ -126,6 +129,7 @@ public:
     owe::resource::BufferUseHandle last_use;
     rstd::u64                      update_count { 0 };
     std::vector<rstd::u8>          bytes;
+    bool                           reject {};
 };
 
 class StaticSource {
@@ -648,6 +652,83 @@ TEST(UniformBufferBinding, UpdatesGenericSceneThroughBufferWriterTrait) {
     EXPECT_FLOAT_EQ(values[1], 0.0f);
     EXPECT_FLOAT_EQ(values[2], 0.0f);
     EXPECT_FLOAT_EQ(values[3], 0.0f);
+}
+
+TEST(UniformBufferBinding, RetainsDefaultVersionAndAppliesLiveOverridesAfterRetry) {
+    owe::Scene scene;
+    auto       registrar   = dyn<owe::UniformSourceRegistrar>::from_ref(scene);
+    auto       attachments = dyn<owe::UniformAttachmentWriter>::from_ref(scene);
+    auto       source      = registrar->Register(
+        Box<dyn<owe::UniformSource>>::make(uniform_test::StaticSource("live", 2.0f)));
+    ASSERT_TRUE(attachments->AttachGlobal(source));
+    auto publish = [](float value) {
+        owe::ShaderValues defaults;
+        for (auto name : { "fallback"_str, "instance"_str, "live"_str })
+            (void)defaults.insert(String::make(name), owe::ShaderValue(value));
+        return owe::SceneShaderDefaults::from(rstd::move(defaults));
+    };
+    auto shader              = Arc<owe::SceneShader>::make();
+    shader->default_uniforms = publish(0.25f);
+    auto node                = Arc<owe::SceneNode>::make();
+    node->AddMesh(MakeUniformMesh(shader.clone()));
+    scene.RootMut()->AppendChild(node.clone());
+    scene.RebuildResourceIndex();
+    auto draw = scene.ResourceIndex().drawItemFor(*scene.ResourceIndex().nodeId(*node), u32());
+    ASSERT_TRUE(draw);
+    auto& material = *node->Mesh()->MaterialSlots()[usize()];
+    ASSERT_TRUE(material.SetShaderValue("instance"_str, owe::ShaderValue(1.0f)));
+    ASSERT_TRUE(material.SetShaderValue("live"_str, owe::ShaderValue(1.5f)));
+    owe::resource::ShaderArtifactUniformBlock block { .name = "local"_Str, .size = usize(12) };
+    for (auto name : { "fallback"_str, "instance"_str, "live"_str }) {
+        block.members.push({ .name   = String::make(name),
+                             .offset = rstd::as_cast<u32>(block.members.len() * usize(4)),
+                             .size   = usize(4) });
+    }
+    SceneUniformBindingPrepareContext prepare_impl(scene);
+    auto prepare = dyn<UniformBindingPrepareContext>::from_ref(prepare_impl);
+    const owe::resource::BufferUseHandle buffer { .index = u64(3), .generation = u64(1) };
+    auto old_binding  = MakeUniformBufferBinding(prepare.as_ref(), *draw, buffer, block);
+    auto same_version = MakeUniformBufferBinding(prepare.as_ref(), *draw, buffer, block);
+    ASSERT_TRUE(old_binding.is_ok());
+    ASSERT_TRUE(same_version.is_ok());
+    shader->default_uniforms = publish(0.75f);
+    auto new_binding         = MakeUniformBufferBinding(prepare.as_ref(), *draw, buffer, block);
+    ASSERT_TRUE(new_binding.is_ok());
+    auto override_material = material;
+    ASSERT_TRUE(override_material.SetShaderValue("instance"_str, owe::ShaderValue(3.0f)));
+    auto override_binding =
+        MakeUniformBufferBinding(prepare.as_ref(),
+                                 *draw,
+                                 buffer,
+                                 block,
+                                 {},
+                                 owe::SceneRenderViewKind::Primary,
+                                 owe::ShaderMatrixConvention::ColumnVector,
+                                 owe::ShaderMatrixAbi::NativeSpirv,
+                                 Some(ref<owe::SceneMaterial>::from_raw_parts(&override_material)));
+    ASSERT_TRUE(override_binding.is_ok());
+    auto                           textures = dyn<owe::SceneTextureAnimationView>::from_ref(scene);
+    SceneRenderUniformFrameContext frame_impl(
+        scene.Runtime().Frame(), { 1280.0f, 720.0f }, textures.as_ref());
+    auto                       frame = dyn<UniformBufferFrameContext>::from_ref(frame_impl);
+    uniform_test::BufferWriter writer;
+    auto                       target = dyn<owe::resource::BufferContentWriter>::from_ref(writer);
+    writer.reject                     = true;
+    EXPECT_TRUE((*old_binding)->Update(frame.as_ref(), target.as_mut_ref()).is_err());
+    writer.reject = false;
+    auto check    = [&](auto& binding, float fallback, float instance) {
+        ASSERT_TRUE((*binding)->Update(frame.as_ref(), target.as_mut_ref()).is_ok());
+        ASSERT_EQ(writer.bytes.size(), 12u);
+        array<float, 3> values {};
+        rstd::mem::memcpy(values.data(), writer.bytes.data(), usize(12));
+        EXPECT_FLOAT_EQ(values[usize()], fallback);
+        EXPECT_FLOAT_EQ(values[usize(1)], instance);
+        EXPECT_FLOAT_EQ(values[usize(2)], 2.0f);
+    };
+    check(old_binding, 0.25f, 1.0f);
+    check(same_version, 0.25f, 1.0f);
+    check(new_binding, 0.75f, 1.0f);
+    check(override_binding, 0.75f, 3.0f);
 }
 
 TEST(UniformBufferBinding, HoldsDemandOnlyForAReflectedLiveOutput) {
@@ -1459,7 +1540,8 @@ TEST(SceneDraw, TextureReadsFollowSamplerReflection) {
 }
 
 TEST(SceneDraw, StaticRecipeSurvivesSceneAndDeclarationDestruction) {
-    Option<vrento::vulkan::PassInput> description;
+    Option<vrento::vulkan::PassInput>        description;
+    Option<vrento::vulkan::GraphicsDrawDesc> override_description;
     {
         auto           backend = MakeShaderBackend();
         ShaderCompUnit unit {
@@ -1474,13 +1556,27 @@ TEST(SceneDraw, StaticRecipeSurvivesSceneAndDeclarationDestruction) {
         shader->codes.push(compiled[usize()]->spirv.clone());
         auto node = Arc<owe::SceneNode>::make();
         node->AddMesh(MakeUniformMesh(shader.clone()));
+        auto& material = *node->Mesh()->MaterialSlots()[usize()];
+        material.SetBlendMode(owe::BlendMode::Translucent);
         SceneDraw draw(SceneDraw::Desc {},
                        { .node = Some(mut_ref<owe::SceneNode>::from_raw_parts(node.as_ptr())) });
+        auto      override_material = Arc<owe::SceneMaterial>::make(material);
+        override_material->SetBlendMode(owe::BlendMode::Additive);
+        SceneDraw override_draw(
+            SceneDraw::Desc { .graph_pass_index = usize(1) },
+            { .node              = Some(mut_ref<owe::SceneNode>::from_raw_parts(node.as_ptr())),
+              .material_override = Some(override_material.clone()) });
+        material.SetBlendMode(owe::BlendMode::Disable);
+        material.customShader.shader = None();
+        override_material->SetBlendMode(owe::BlendMode::Disable);
+        override_material->customShader.shader = None();
         owe::resource::ResourcePlan plan { .generation = u64(7) };
         ShaderReflectionCache       cache(backend.as_ref());
         ResourceDeclarationContext  declarations(plan, cache);
         auto                        recipe = draw.declareResources(declarations);
         ASSERT_TRUE(recipe);
+        override_description = override_draw.declareResources(declarations);
+        ASSERT_TRUE(override_description);
         description =
             Some(make_test_pass(7,
                                 1,
@@ -1492,6 +1588,9 @@ TEST(SceneDraw, StaticRecipeSurvivesSceneAndDeclarationDestruction) {
     ASSERT_TRUE(recipe);
     ASSERT_TRUE((**recipe).layout);
     EXPECT_EQ((**recipe).request.shader_stages.len(), usize(1));
+    EXPECT_TRUE((**recipe).request.color_blend.blendEnable);
+    EXPECT_TRUE(override_description->request.color_blend.blendEnable);
+    EXPECT_EQ(override_description->request.color_blend.dstColorBlendFactor, VK_BLEND_FACTOR_ONE);
     Vec<PipelineLayoutRequirement> requirements;
     requirements.push((**recipe).layout->clone());
     EXPECT_TRUE(PlanPipelineLayouts(requirements.as_slice(), false).is_ok());

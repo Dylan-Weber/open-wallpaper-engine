@@ -9,6 +9,7 @@ import wescene.core;
 using namespace rstd::prelude;
 using rstd::collections::BTreeMap;
 using rstd::collections::HashMap;
+using rstd::sync::Arc;
 
 export namespace owe
 {
@@ -43,6 +44,61 @@ public:
 using UniformValue   = ShaderValue;
 using ShaderValues   = BTreeMap<String, ShaderValue>;
 using ShaderValueMap = ShaderValues;
+
+class SceneShaderDefaults {
+    struct Storage {
+        explicit Storage(ShaderValues values): values(rstd::move(values)) {}
+        const ShaderValues values;
+    };
+
+public:
+    SceneShaderDefaults() = default;
+    SceneShaderDefaults(SceneShaderDefaults&& other) noexcept: m_storage(other.m_storage.take()) {}
+    auto operator=(SceneShaderDefaults&& other) noexcept -> SceneShaderDefaults& {
+        if (this != &other) m_storage = other.m_storage.take();
+        return *this;
+    }
+
+    static auto from(ShaderValues values) -> SceneShaderDefaults {
+        if (values.is_empty()) return {};
+        return SceneShaderDefaults(Arc<Storage>::make(rstd::move(values)));
+    }
+    auto Values() const -> const ShaderValues& {
+        if (m_storage) return (**m_storage).values;
+        static const ShaderValues empty;
+        return empty;
+    }
+    auto clone() const -> SceneShaderDefaults {
+        return m_storage ? SceneShaderDefaults(m_storage->clone()) : SceneShaderDefaults();
+    }
+    void clone_from(const SceneShaderDefaults& other) { *this = other.clone(); }
+    auto get(ref<str> name) const { return Values().get(name); }
+    auto iter() const { return Values().iter(); }
+    auto len() const -> usize { return Values().len(); }
+    bool is_empty() const { return Values().is_empty(); }
+    bool contains_key(ref<str> name) const { return Values().contains_key(name); }
+
+    friend bool operator==(const SceneShaderDefaults& lhs, const SceneShaderDefaults& rhs) {
+        if (&lhs.Values() == &rhs.Values()) return true;
+        if (lhs.len() != rhs.len()) return false;
+        for (const auto& [name, value] : lhs.iter()) {
+            auto other = rhs.get(name->as_str());
+            if (! other || value->size() != (**other).size() ||
+                value->View().layout != (**other).View().layout)
+                return false;
+            for (usize index {}; index < value->size(); ++index) {
+                if (rstd::bit_cast<rstd::uint32_t>((*value)[index]) !=
+                    rstd::bit_cast<rstd::uint32_t>((**other)[index]))
+                    return false;
+            }
+        }
+        return true;
+    }
+
+private:
+    explicit SceneShaderDefaults(Arc<Storage> storage): m_storage(Some(rstd::move(storage))) {}
+    Option<Arc<Storage>> m_storage;
+};
 
 using vrento::UniformBlockDefinition;
 using vrento::UniformBlockScope;

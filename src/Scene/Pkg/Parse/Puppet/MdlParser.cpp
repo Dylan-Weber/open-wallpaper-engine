@@ -1322,6 +1322,7 @@ void MdlParser::GenMeshFromMdl(SceneMesh::Submesh& submesh, const Mdl::Mesh& src
             submesh.draw_ranges.push({ u32(p.start), u32(p.size) });
         }
     }
+    submesh.PublishGeometry();
 }
 
 void MdlParser::BindDrawOrder(SceneMesh::Submesh& submesh, const Mdl::Mesh& src,

@@ -156,7 +156,7 @@ public:
     Vec<SceneSamplerBinding>               sampler_bindings;
     Vec<SceneShaderUniformBlockInterface>  uniform_blocks;
     Vec<SceneShaderDescriptorSetInterface> descriptor_sets;
-    ShaderValues                           default_uniforms;
+    SceneShaderDefaults                    default_uniforms;
 
     ref<str> SamplerMember(rstd::size_t texture_slot) const {
         for (const auto& binding : sampler_bindings) {
@@ -241,7 +241,7 @@ struct SceneShaderVariantDesc {
     BTreeMap<String, String>               input_combos;
     BTreeMap<String, String>               resolved_combos;
     BTreeMap<String, String>               uniform_aliases;
-    ShaderValues                           default_uniforms;
+    SceneShaderDefaults                    default_uniforms;
     Vec<SceneShaderDefaultTexture>         default_textures;
     Vec<String>                            texture_slots;
     Vec<SceneSamplerBinding>               sampler_bindings;
@@ -715,6 +715,7 @@ ClassifySceneShaderVariantMutation(const SceneShaderVariantDesc& current,
     if (! SameSceneShaderVariantUniformShape(current, next)) {
         flags |= SceneMaterialDirtyResources | SceneMaterialDirtyPipeline;
     }
+    if (current.default_uniforms != next.default_uniforms) flags |= SceneMaterialDirtyResources;
     if (current.resolved_combos != next.resolved_combos ||
         current.input_combos != next.input_combos ||
         current.texture_infos.len() != next.texture_infos.len() ||
@@ -728,7 +729,7 @@ ClassifySceneShaderVariantMutation(const SceneShaderVariantDesc& current,
     if (! SameSceneShaderVariantDescriptorLayout(current, next)) {
         flags |= SceneMaterialDirtyResources | SceneMaterialDirtyPipeline;
     }
-    if (flags == SceneMaterialDirtyNone && current.stages.len() == next.stages.len()) {
+    if (current.stages.len() == next.stages.len()) {
         for (usize i {}; i < current.stages.len(); ++i) {
             if (current.stages[i].source_key != next.stages[i].source_key ||
                 current.stages[i].source != next.stages[i].source) {
@@ -980,9 +981,17 @@ public:
         String output_override;
         bool   preserve_output { false };
 
+        void PublishGeometry() {
+            for (auto& vertex : vertex_arrays) (void)vertex.PublishContent();
+            for (auto& index : index_arrays) (void)index.PublishContent();
+            if (! shared_geometry) geometry_snapshot = None();
+            shared_geometry = true;
+        }
+
     private:
         friend class SceneMesh;
         Option<vrento::GeometrySnapshot> geometry_snapshot;
+        bool                             shared_geometry {};
     };
 
     SceneMesh(bool dynamic = false)
@@ -1033,12 +1042,26 @@ public:
     auto CaptureGeometry(u32 submesh_index) const -> Option<vrento::GeometrySnapshot> {
         auto view = BufferView(submesh_index);
         if (! view) return None();
-        auto& snapshot = m_data->submeshes[rstd::as_cast<usize>(submesh_index)].geometry_snapshot;
-        if (! snapshot || snapshot->layout() != view->layout())
-            snapshot = Some(vrento::GeometrySnapshot::capture(
-                *view,
-                snapshot ? Some(ref<vrento::GeometrySnapshot>::from_raw_parts(&*snapshot))
-                         : None()));
+        auto& submesh  = m_data->submeshes[rstd::as_cast<usize>(submesh_index)];
+        auto& snapshot = submesh.geometry_snapshot;
+        if (! snapshot || snapshot->layout() != view->layout()) {
+            if (submesh.shared_geometry) {
+                Vec<vrento::resource::BufferContent> vertices;
+                vertices.reserve(submesh.vertex_arrays.len());
+                for (auto& vertex : submesh.vertex_arrays) vertices.push(vertex.PublishContent());
+                Option<vrento::resource::BufferContent> index;
+                if (! submesh.index_arrays.is_empty())
+                    index = Some(submesh.index_arrays[usize()].PublishContent());
+                snapshot = vrento::GeometrySnapshot::from(
+                    view->layout(), rstd::move(vertices), rstd::move(index));
+                if (! snapshot) return None();
+            } else {
+                snapshot = Some(vrento::GeometrySnapshot::capture(
+                    *view,
+                    snapshot ? Some(ref<vrento::GeometrySnapshot>::from_raw_parts(&*snapshot))
+                             : None()));
+            }
+        }
         return Some(snapshot->clone());
     }
 
