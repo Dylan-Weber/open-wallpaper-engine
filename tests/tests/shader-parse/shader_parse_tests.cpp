@@ -52,8 +52,8 @@ TEST(SceneShaderHash, PreservesStageOrderAndTracksRuntimeInterfaces) {
     auto changed = make_shader();
     rstd::mem::swap(changed.codes[usize()], changed.codes[usize(1)]);
     EXPECT_NE(expected, owe::SceneShaderCodeHash(changed));
-    changed                         = make_shader();
-    changed.codes[usize()][usize()] = 5;
+    changed                = make_shader();
+    changed.codes[usize()] = owe::ShaderCode::from(array<rstd::uint32_t, 2> { 5u, 2u }.as_slice());
     EXPECT_NE(expected, owe::SceneShaderCodeHash(changed));
     changed = make_shader();
     changed.codes.push(owe::ShaderCode {});
@@ -1446,15 +1446,15 @@ TEST(ShaderParser, LoadBenchDistinguishesCompileAndCachePaths) {
         return rstd::move(compiled).unwrap();
     };
     auto first = compile();
-    ASSERT_FALSE(first->CloneCodes().is_empty());
+    ASSERT_FALSE(first->Codes().is_empty());
     auto memory = compile();
     EXPECT_EQ(&*memory, &*first);
     EXPECT_EQ(&*memory->ReflectionOwner(), &*first->ReflectionOwner());
     cache.ReleaseTransientEntries();
     auto disk = compile();
     EXPECT_NE(&*disk, &*first);
-    EXPECT_EQ(disk->CloneCodes(), first->CloneCodes());
-    EXPECT_TRUE(first->ReflectionOwner()->Matches(disk->CloneCodes().as_slice()));
+    EXPECT_EQ(disk->Codes(), first->Codes());
+    EXPECT_TRUE(first->ReflectionOwner()->Matches(disk->Codes().as_slice()));
 
     auto batch = recorder.drain();
     ASSERT_TRUE(batch.is_ok());
@@ -1646,7 +1646,11 @@ void main() {
     auto original_codes = (*memory_first.shader)->codes.clone();
     ASSERT_FALSE(original_codes.is_empty());
     ASSERT_FALSE(original_codes[usize()].is_empty());
-    (*memory_first.shader)->codes[usize()][usize()] = 0u;
+    EXPECT_EQ(original_codes[usize()].data(),
+              (*(*memory_first.shader)->reflection)->Stages()[usize()].spirv.data());
+    auto changed_words     = Vec<rstd::uint32_t>::from(original_codes[usize()].as_slice());
+    changed_words[usize()] = 0u;
+    (*memory_first.shader)->codes[usize()] = owe::ShaderCode::from(rstd::move(changed_words));
     EXPECT_FALSE(
         (*(*memory_first.shader)->reflection)->Matches((*memory_first.shader)->codes.as_slice()));
     (void)memory_first.variant.stages[usize(1)].uniforms.insert("g_Brightness"_Str, "vec4"_Str);
@@ -1658,6 +1662,7 @@ void main() {
     EXPECT_TRUE(
         (*(*memory_second.shader)->reflection)->Matches((*memory_second.shader)->codes.as_slice()));
     EXPECT_EQ((*memory_second.shader)->codes, original_codes);
+    EXPECT_EQ((*memory_second.shader)->codes[usize()].data(), original_codes[usize()].data());
     ASSERT_TRUE(memory_second.variant.stages[usize(1)].uniforms.contains_key("g_Brightness"_str));
     EXPECT_EQ((**memory_second.variant.stages[usize(1)].uniforms.get("g_Brightness"_str)).as_str(),
               "float"_str);

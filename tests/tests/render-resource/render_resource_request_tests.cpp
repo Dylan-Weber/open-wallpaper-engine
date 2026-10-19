@@ -906,10 +906,7 @@ TEST(ShaderArtifact, ReconstructsPreparedInterfaceWithoutCacheLookup) {
     owe::resource::ShaderArtifact artifact;
     artifact.matrix_convention = owe::ShaderMatrixConvention::RowVector;
     artifact.matrix_abi        = owe::ShaderMatrixAbi::Hlsl;
-    auto code                  = owe::ShaderCode::make();
-    code.push(1u);
-    code.push(2u);
-    code.push(3u);
+    auto code = owe::ShaderCode::from(array<rstd::uint32_t, 3> { 1u, 2u, 3u }.as_slice());
     artifact.stages.push(owe::resource::ShaderArtifactStage {
         .stage       = owe::ShaderType::VERTEX,
         .entry_point = rstd::string::String::make("main"_str),
@@ -954,6 +951,8 @@ TEST(ShaderArtifact, ReconstructsPreparedInterfaceWithoutCacheLookup) {
     ASSERT_EQ(stages.len(), rstd::usize(1));
     EXPECT_EQ(stages[rstd::usize()]->entry_point.as_str(), "main"_str);
     EXPECT_EQ(stages[rstd::usize()]->spirv.len(), rstd::usize(3));
+    EXPECT_EQ(stages[usize()]->spirv.data(), artifact.stages[usize()].code.data());
+    EXPECT_EQ(cloned.stages[usize()].code.data(), artifact.stages[usize()].code.data());
     ASSERT_EQ(reflection.blocks.len(), rstd::usize(1));
     EXPECT_EQ(reflection.blocks[rstd::usize()].set, 4u);
     EXPECT_EQ(reflection.blocks[rstd::usize()].binding, 7u);
@@ -1115,6 +1114,8 @@ TEST(ShaderBackend, ReusesPreparedReflectionAndRejectsChangedCode) {
     auto                        loaded = provider.LoadShader(provider.Request());
     ASSERT_TRUE(loaded.is_ok());
     auto artifact = rstd::move(loaded).unwrap();
+    EXPECT_EQ(artifact.stages[usize()].code.data(), shader.codes[usize()].data());
+    EXPECT_EQ(shader.codes[usize()].data(), prepared->Stages()[usize()].spirv.data());
     graph_cache.Clear();
     EXPECT_EQ(reflections, usize(1));
     cache.Clear();
@@ -1122,8 +1123,10 @@ TEST(ShaderBackend, ReusesPreparedReflectionAndRejectsChangedCode) {
     ASSERT_TRUE(reloaded.is_some());
     EXPECT_EQ(&**reloaded, &*prepared);
     EXPECT_EQ(reflections, usize(1));
-    auto original                  = shader.codes.clone();
-    shader.codes[usize()][usize()] = 0;
+    auto original          = shader.codes.clone();
+    auto changed_words     = Vec<rstd::uint32_t>::from(shader.codes[usize()].as_slice());
+    changed_words[usize()] = 0;
+    shader.codes[usize()]  = owe::ShaderCode::from(rstd::move(changed_words));
     EXPECT_TRUE(cache.Query(shader).is_none());
     EXPECT_EQ(reflections, usize(2));
     shader.codes = rstd::move(original);
@@ -2349,12 +2352,13 @@ TEST(PipelineCacheKey, PreservesShaderEncodingAndOwnedStages) {
     PipelineResourceRequest request;
     auto                    stage = Box<ShaderSpv>::make();
     stage->stage                  = owe::ShaderType::VERTEX;
-    stage->spirv.push(0x07230203u);
-    stage->spirv.push(0xffffffffu);
+    stage->spirv =
+        owe::ShaderCode::from(array<rstd::uint32_t, 2> { 0x07230203u, 0xffffffffu }.as_slice());
     request.shader_stages.push(rstd::move(stage));
-    auto desc                                      = MakePipelineResourceDesc(request);
-    request.shader_stages[usize()]->entry_point    = "changed"_Str;
-    request.shader_stages[usize()]->spirv[usize()] = 0u;
+    auto desc                                   = MakePipelineResourceDesc(request);
+    request.shader_stages[usize()]->entry_point = "changed"_Str;
+    request.shader_stages[usize()]->spirv =
+        owe::ShaderCode::from(array<rstd::uint32_t, 2> { 0u, 0xffffffffu }.as_slice());
     request.shader_stages.clear();
 
     PipelineKeyWriter writer;
@@ -2373,7 +2377,8 @@ TEST(PipelineCacheKey, PreservesShaderEncodingAndOwnedStages) {
     auto ordered = MakePipelineCacheKey(desc);
     std::swap(desc.shader_stages[usize()], desc.shader_stages[usize(1)]);
     EXPECT_TRUE(SamePipelineCacheKey(ordered, MakePipelineCacheKey(desc)));
-    desc.shader_stages[usize()].spirv[usize(1)] = 1u;
+    desc.shader_stages[usize()].spirv =
+        owe::ShaderCode::from(array<rstd::uint32_t, 2> { 0x07230203u, 1u }.as_slice());
     EXPECT_FALSE(SamePipelineCacheKey(ordered, MakePipelineCacheKey(desc)));
 }
 

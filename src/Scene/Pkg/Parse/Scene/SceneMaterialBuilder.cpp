@@ -516,7 +516,7 @@ auto BuildMaterial(fs::VFS& vfs, ShaderCache& shader_cache,
         });
     }
     auto artifact      = rstd::move(compiled).unwrap_unchecked();
-    shader->codes      = artifact->CloneCodes();
+    shader->codes      = artifact->Codes();
     shader->reflection = Some(artifact->ReflectionOwner());
     (void)compile_span.finish();
     shader->default_uniforms      = shader_info_ref.svs.clone();

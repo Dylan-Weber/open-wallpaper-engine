@@ -111,7 +111,7 @@ public:
     auto StageMetadata() const -> slice<CompiledShaderStage> { return m_stages.as_slice(); }
     auto ReflectionOwner() const -> Arc<SceneShaderReflection> { return m_reflection.clone(); }
     auto Interface() const -> const CompiledShaderInterface& { return m_interface; }
-    auto CloneCodes() const -> Vec<ShaderCode> {
+    auto Codes() const -> Vec<ShaderCode> {
         auto codes = Vec<ShaderCode>::with_capacity(m_stages.len());
         for (const auto& stage : m_reflection->Stages()) codes.push(stage.spirv.clone());
         return codes;

@@ -166,7 +166,7 @@ TEST(ResourcePlan, VisitsTypedRequestsThroughPublicTrait) {
     EXPECT_EQ(counter.shaders, rstd::usize(1));
 }
 
-TEST(ShaderArtifact, ClonesOwnedStageCode) {
+TEST(ShaderArtifact, SharesImmutableStageCode) {
     owe::resource::ShaderArtifact artifact {
         .source =
             owe::resource::ShaderDefinitionId { .index = rstd::u32(1), .generation = rstd::u64(3) },
@@ -175,11 +175,13 @@ TEST(ShaderArtifact, ClonesOwnedStageCode) {
         .stage       = owe::ShaderType::VERTEX,
         .entry_point = rstd::string::String::make("main"_str),
     };
-    stage.code.push(7u);
+    stage.code = owe::ShaderCode::from(rstd::array<rstd::uint32_t, 1> { 7u }.as_slice());
     artifact.stages.push(rstd::move(stage));
 
-    auto cloned                                      = artifact.clone();
-    cloned.stages[rstd::usize()].code[rstd::usize()] = 9u;
+    auto cloned = artifact.clone();
+    EXPECT_EQ(cloned.stages[rstd::usize()].code.data(), artifact.stages[rstd::usize()].code.data());
+    cloned.stages[rstd::usize()].code =
+        owe::ShaderCode::from(rstd::array<rstd::uint32_t, 1> { 9u }.as_slice());
 
     EXPECT_EQ(artifact.stages[rstd::usize()].code[rstd::usize()], 7u);
     EXPECT_EQ(cloned.stages[rstd::usize()].code[rstd::usize()], 9u);

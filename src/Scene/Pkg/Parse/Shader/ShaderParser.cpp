@@ -2290,7 +2290,7 @@ public:
                 spirv_size > record.remaining()) {
                 return Invalid("invalid SPIR-V size"_str);
             }
-            ShaderCode code;
+            Vec<rstd::uint32_t> code;
             code.reserve(usize(spirv_size / 4));
             for (rstd::uint32_t word = 0; word < spirv_size / 4; ++word) {
                 rstd::uint32_t value = 0;
@@ -2299,7 +2299,7 @@ public:
             }
             if (! record.done()) return Invalid("unexpected stage data"_str);
             artifact.units.push(rstd::move(unit));
-            artifact.codes.push(rstd::move(code));
+            artifact.codes.push(ShaderCode::from(rstd::move(code)));
         }
         if (! payload_reader.done()) return Invalid("unexpected payload data"_str);
         return ShaderCacheReadResult {
@@ -2743,7 +2743,7 @@ auto CompiledShaderArtifact::RetainedBytes() const -> usize {
     }
     for (const auto& stage : m_reflection->Stages())
         bytes += usize(sizeof(SceneShaderStage)) + stage.entry_point.capacity() +
-                 stage.spirv.capacity() * usize(sizeof(u32));
+                 stage.spirv.capacity() * usize(sizeof(u32)) + usize(128);
     const auto& reflected = m_reflection->Reflected();
     bytes += reflected.blocks.capacity() * usize(sizeof(vulkan::ShaderReflected::Block));
     for (const auto& block : reflected.blocks) {
@@ -3349,7 +3349,7 @@ ShaderParser::CompileSceneShaderVariant(const SceneShaderVariantDesc& desc, fs::
     shader->name              = desc.shader_name.clone();
     shader->matrix_convention = ShaderMatrixConvention::RowVector;
     shader->matrix_abi        = ShaderMatrixAbi::Hlsl;
-    shader->codes             = artifact->CloneCodes();
+    shader->codes             = artifact->Codes();
     shader->reflection        = Some(artifact->ReflectionOwner());
     shader->sampler_bindings  = result.variant.sampler_bindings.clone();
     shader->uniform_blocks    = result.variant.uniform_blocks.clone();
@@ -3447,7 +3447,7 @@ CompileMaterialShaderResult ShaderParser::CompileMaterialShader(const Json& mate
     }
     auto artifact = rstd::move(compiled).unwrap_unchecked();
     r.ok          = true;
-    r.spvs        = artifact->CloneCodes();
+    r.spvs        = artifact->Codes();
     r.reflection  = Some(artifact->ReflectionOwner());
     SceneShaderVariantDesc variant;
     ShaderParser::ApplyCompiledShaderInterface(variant, *artifact);
