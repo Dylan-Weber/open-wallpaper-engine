@@ -13,6 +13,7 @@ sources = [
   "src/Core/Fs.cppm",
   "src/Core/Fs/Fs.cppm",
   "src/Core/IO/Binary.cppm",
+  "src/Core/TextureMemory.cppm",
   "src/Core/Json.cppm",
   "src/Core/Json.cpp",
   "src/Core/UserProperty.cppm",

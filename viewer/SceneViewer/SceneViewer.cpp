@@ -185,8 +185,10 @@ int main(int argc, char** argv) {
     }
 #endif
 
-    auto* psw = new owe::SceneWallpaper();
-    data.psw  = psw;
+    auto  texture_memory = args.texture_system ? owe::TextureMemorySession::System()
+                                               : owe::TextureMemorySession::VirtualMemory();
+    auto* psw            = new owe::SceneWallpaper(texture_memory.options());
+    data.psw             = psw;
 
     Atomic<bool> audio_response_demand { false };
     psw->setAudioResponseDemandCallback([&audio_response_demand](bool active) {
@@ -360,6 +362,35 @@ int main(int argc, char** argv) {
         }
     }
     delete psw;
+    if (! args.texture_memory_output.is_empty()) {
+        auto            stats = texture_memory.statistics();
+        rstd::json::Map fields;
+        auto            add = [&fields](ref<str> key, u64 value) {
+            fields.insert(String::make(key), rstd::into<owe::Json>(value));
+        };
+        fields.insert("backend"_Str,
+                      rstd::into<owe::Json>(String::make(stats.virtual_memory ? "virtual-memory"_str
+                                                                              : "system"_str)));
+        fields.insert("overflow"_Str, rstd::into<owe::Json>(stats.logical.overflow));
+        add("live_bytes"_str, stats.logical.live_bytes);
+        add("peak_live_bytes"_str, stats.logical.peak_live_bytes);
+        add("allocations"_str, stats.logical.allocations);
+        add("deallocations"_str, stats.logical.deallocations);
+        add("failures"_str, stats.logical.failures);
+        add("mapped_bytes"_str,
+            stats.virtual_memory ? rstd::as_cast<u64>(stats.virtual_memory->mapped_bytes) : u64());
+        add("mapped_bytes_peak"_str,
+            stats.virtual_memory ? rstd::as_cast<u64>(stats.virtual_memory->mapped_bytes_peak)
+                                 : u64());
+        add("mappings"_str,
+            stats.virtual_memory ? rstd::as_cast<u64>(stats.virtual_memory->mappings) : u64());
+        add("mappings_peak"_str,
+            stats.virtual_memory ? rstd::as_cast<u64>(stats.virtual_memory->mappings_peak) : u64());
+        auto report = rstd::json::to_string(owe::Json::Object(rstd::move(fields)));
+        auto path   = rstd::path::PathBuf::from(args.texture_memory_output.as_str());
+        if (rstd::fs::write(path.as_path(), report.as_str().as_bytes()).is_err())
+            eprintln("failed to write texture memory statistics");
+    }
     // wgl.Clear();
     glfwDestroyWindow(window);
     glfwTerminate();

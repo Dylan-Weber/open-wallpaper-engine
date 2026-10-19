@@ -24,12 +24,14 @@ struct SceneViewerArgs {
     PathBuf     user_properties_path;
     String      mouse_position;
     String      load_bench_output;
+    String      texture_memory_output;
     Option<u64> random_seed;
     Resolution  resolution;
     i32         fps;
     u32         msaa_samples;
     bool        enable_valid_layer;
     bool        async_pipelines;
+    bool        texture_system;
     bool        graphviz;
     bool        stdin_json;
 };
@@ -159,25 +161,37 @@ SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
             .help("Set the resolution, eg. 1920x1080"_str)
             .default_value("1280x720"_str));
 
+    auto texture_system = command.add_arg(
+        Arg<bool>::flag("texture-system"_str)
+            .long_name("texture-system"_str)
+            .help("Use the system allocator instead of mmap for texture CPU buffers"_str));
+    auto texture_memory_output =
+        command.add_arg(Arg<String>::value("texture-memory-output"_str, string_parser())
+                            .long_name("texture-memory-output"_str)
+                            .help("Write texture CPU allocation statistics to FILE on exit"_str)
+                            .default_value(""_str));
+
     auto parsed = owe::cli::ParseArgs(rstd::move(command), argc, argv);
     if (parsed.is_err()) rstd::process::exit(i32(parsed.unwrap_err().code));
     auto matches = rstd::move(parsed).unwrap();
 
     return SceneViewerArgs {
-        .assets_dir           = PathBuf::from(Value(matches, assets).as_str()),
-        .scene_path           = PathBuf::from(Value(matches, scene).as_str()),
-        .cache_path           = PathBuf::from(Value(matches, cache_path).as_str()),
-        .user_properties_path = PathBuf::from(Value(matches, user_properties).as_str()),
-        .mouse_position       = Value(matches, mouse_position).clone(),
-        .load_bench_output    = Value(matches, load_bench_output).clone(),
-        .random_seed          = OptionalValue(matches, random_seed),
-        .resolution           = Value(matches, resolution),
-        .fps                  = Value(matches, fps),
-        .msaa_samples         = Value(matches, msaa),
-        .enable_valid_layer   = Flag(matches, valid_layer),
-        .async_pipelines      = Flag(matches, async_pipelines),
-        .graphviz             = Flag(matches, graphviz),
-        .stdin_json           = Flag(matches, stdin_json),
+        .assets_dir            = PathBuf::from(Value(matches, assets).as_str()),
+        .scene_path            = PathBuf::from(Value(matches, scene).as_str()),
+        .cache_path            = PathBuf::from(Value(matches, cache_path).as_str()),
+        .user_properties_path  = PathBuf::from(Value(matches, user_properties).as_str()),
+        .mouse_position        = Value(matches, mouse_position).clone(),
+        .load_bench_output     = Value(matches, load_bench_output).clone(),
+        .texture_memory_output = Value(matches, texture_memory_output).clone(),
+        .random_seed           = OptionalValue(matches, random_seed),
+        .resolution            = Value(matches, resolution),
+        .fps                   = Value(matches, fps),
+        .msaa_samples          = Value(matches, msaa),
+        .enable_valid_layer    = Flag(matches, valid_layer),
+        .async_pipelines       = Flag(matches, async_pipelines),
+        .texture_system        = Flag(matches, texture_system),
+        .graphviz              = Flag(matches, graphviz),
+        .stdin_json            = Flag(matches, stdin_json),
     };
 }
 

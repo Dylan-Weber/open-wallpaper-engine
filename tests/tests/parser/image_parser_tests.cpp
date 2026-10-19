@@ -12,6 +12,8 @@ import wescene.pkg.parse;
 import wescene.pkg_asset_version;
 import wescene.scene;
 import wescene.types;
+import wescene.stb_image;
+import wescene.texture_memory;
 
 using namespace rstd::prelude;
 using namespace rstd::literals;
@@ -83,6 +85,38 @@ TEST(ImageHeader, CloneOwnsMetadataIndependently) {
     EXPECT_EQ(owe::ToString(owe::TextureFormat::BC3), "BC3"_str);
     EXPECT_TRUE(owe::ToString(static_cast<owe::ImageType>(999)).is_empty());
     EXPECT_TRUE(owe::ToString(static_cast<owe::TextureFormat>(999)).is_empty());
+}
+
+TEST(TextureMemory, VirtualMemoryReleasesOnAnotherThread) {
+    auto tracker =
+        rstd::alloc::SharedTrackingAllocator<rstd::alloc::VirtualMemoryAllocator>::make();
+    auto observer = tracker.downgrade();
+    auto bytes    = Vec<u8, rstd::alloc::SharedAllocator>::new_in(
+        rstd::alloc::SharedAllocator::make(tracker.clone()));
+    ASSERT_TRUE(bytes.try_reserve_exact(usize(12345)).is_ok());
+    EXPECT_GT(tracker.upstream_statistics().mapped_bytes, usize());
+    auto worker = rstd::thread::spawn([bytes = rstd::move(bytes)] {
+    });
+    ASSERT_TRUE(worker.is_ok());
+    EXPECT_TRUE(rstd::move(worker).unwrap().join().is_ok());
+    EXPECT_EQ(tracker.snapshot().live_bytes, u64());
+    EXPECT_EQ(tracker.upstream_statistics().mapped_bytes, usize());
+    EXPECT_FALSE(observer.expired());
+}
+
+TEST(TextureMemory, AllocationKeepsBackendAliveAfterRootDies) {
+    auto tracker =
+        Some(rstd::alloc::SharedTrackingAllocator<rstd::alloc::VirtualMemoryAllocator>::make());
+    auto observer = tracker->downgrade();
+    auto bytes    = Vec<u8, rstd::alloc::SharedAllocator>::new_in(
+        rstd::alloc::SharedAllocator::make(tracker->clone()));
+    ASSERT_TRUE(bytes.try_reserve_exact(usize(12345)).is_ok());
+    tracker = None();
+    EXPECT_FALSE(observer.expired());
+    auto worker = rstd::thread::spawn([bytes = rstd::move(bytes)] {
+                  }).unwrap();
+    EXPECT_TRUE(rstd::move(worker).join().is_ok());
+    EXPECT_TRUE(observer.expired());
 }
 
 namespace
@@ -255,6 +289,91 @@ constexpr unsigned char RedPng[] {
     0x3d, 0x1d, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
 };
 
+TEST(TextureMemory, DecoderPixelsOutliveDecoderAndKeepTheirAllocator) {
+    auto memory = owe::TextureMemorySession::VirtualMemory();
+    auto pixels = [&] {
+        owe::stb::Decoder decoder(memory.options().bytes);
+        return decoder.LoadMemory(RedPng, sizeof(RedPng)).unwrap();
+    }();
+    EXPECT_EQ(pixels.info.width, 1);
+    EXPECT_EQ(pixels.data()[0], 255);
+    EXPECT_GT(memory.statistics().logical.live_bytes, u64());
+    auto released = rstd::thread::spawn([pixels = rstd::move(pixels)]() mutable {
+                        pixels.reset();
+                    }).unwrap();
+    EXPECT_TRUE(rstd::move(released).join().is_ok());
+    EXPECT_EQ(memory.statistics().logical.live_bytes, u64());
+    EXPECT_EQ(memory.statistics().virtual_memory->mapped_bytes, usize());
+}
+
+TEST(TextureMemory, ConcurrentDecodersDoNotShareAllocatorDomains) {
+    auto a     = owe::TextureMemorySession::System();
+    auto b     = owe::TextureMemorySession::VirtualMemory();
+    auto start = [](owe::TextureMemoryOptions options) {
+        return rstd::thread::spawn([options = rstd::move(options)] {
+                   owe::stb::Decoder decoder(options.bytes.clone());
+                   return decoder.LoadMemory(RedPng, sizeof(RedPng)).unwrap();
+               })
+            .unwrap();
+    };
+    auto first  = start(a.options());
+    auto second = start(b.options());
+    auto p      = rstd::move(first).join().unwrap();
+    auto q      = rstd::move(second).join().unwrap();
+    EXPECT_GT(a.statistics().logical.live_bytes, u64());
+    EXPECT_GT(b.statistics().logical.live_bytes, u64());
+    p.reset();
+    EXPECT_EQ(a.statistics().logical.live_bytes, u64());
+    EXPECT_GT(b.statistics().logical.live_bytes, u64());
+    q.reset();
+    EXPECT_EQ(b.statistics().virtual_memory->mapped_bytes, usize());
+}
+
+TEST(TextureMemory, DecoderAllocationFailuresReleaseAllTemporaryStorage) {
+    for (auto limit :
+         array<usize, 5> { usize(), usize(64), usize(512), usize(4096), usize(16384) }) {
+        auto budget  = rstd::alloc::BudgetAllocator<>::try_make(limit).unwrap();
+        auto tracker = rstd::alloc::SharedTrackingAllocator<rstd::alloc::BudgetAllocator<>>::make(
+            rstd::move(budget));
+        owe::stb::Decoder decoder(rstd::alloc::SharedAllocator::make(tracker.clone()));
+        auto              result = decoder.LoadMemory(RedPng, sizeof(RedPng));
+        if (result.is_ok())
+            result->reset();
+        else
+            EXPECT_EQ(result.unwrap_err(), owe::stb::Error::OutOfMemory);
+        EXPECT_EQ(tracker.snapshot().live_bytes, u64());
+    }
+}
+
+TEST(TextureMemory, EmptyDecoderInputDoesNotAllocate) {
+    auto              memory = owe::TextureMemorySession::VirtualMemory();
+    owe::stb::Decoder decoder(memory.options().bytes);
+    EXPECT_EQ(decoder.LoadMemory(nullptr, 0).unwrap_err(), owe::stb::Error::InvalidData);
+    EXPECT_EQ(decoder.InfoMemory(nullptr, 1).unwrap_err(), owe::stb::Error::InvalidData);
+    EXPECT_EQ(decoder.InfoMemory(RedPng, -1).unwrap_err(), owe::stb::Error::InvalidData);
+    EXPECT_EQ(memory.statistics().logical.allocations, u64());
+}
+
+TEST(TextureMemory, DecoderFileFormatsPreservePixelsAndReleaseTheirMappings) {
+    auto              memory = owe::TextureMemorySession::VirtualMemory();
+    owe::stb::Decoder decoder(memory.options().bytes);
+    for (auto file : array<ref<str>, 5> {
+             "red.jpg"_str, "red.bmp"_str, "red.tga"_str, "red.gif"_str, "red16.png"_str }) {
+        auto name = rstd::format("{}/image-memory/{}", WAYWALLEN_FIXTURE_DIR, file);
+        auto path = rstd::ffi::CString::make(rstd::move(name).into_bytes()).unwrap();
+        auto info = decoder.InfoFile(path.as_ref().as_ptr()).unwrap();
+        EXPECT_EQ(info.width, 16);
+        EXPECT_EQ(info.height, 16);
+        auto pixels = decoder.LoadFile(path.as_ref().as_ptr()).unwrap();
+        EXPECT_GT(pixels.data()[0], 240);
+        EXPECT_LT(pixels.data()[1], 8);
+        EXPECT_LT(pixels.data()[2], 8);
+        EXPECT_EQ(pixels.data()[3], 255);
+        pixels.reset();
+        EXPECT_EQ(memory.statistics().virtual_memory->mapped_bytes, usize());
+    }
+}
+
 struct TextureReadGate {
     struct Fields {
         bool  armed {}, entered {}, released {}, fail {};
@@ -335,6 +454,12 @@ struct ControlledTextureMount {
 template<>
 struct rstd::Impl<rstd::io::ReadAt, ControlledTextureSource>
     : rstd::ImplBase<ControlledTextureSource> {
+    auto read_buf_at(rstd::io::BorrowedCursor buffer, u64 offset) const -> rstd::io::Result<empty> {
+        auto count = this->self().read_at(buffer.ensure_init(), offset);
+        if (count.is_err()) return Err(count.unwrap_err());
+        (void)buffer.advance(*count);
+        return Ok(empty {});
+    }
     auto read_at(mut_ref<u8[]> buffer, u64 offset) const -> rstd::io::Result<usize> {
         return this->self().read_at(buffer, offset);
     }
@@ -458,6 +583,60 @@ TEST_F(ConditionalTextureTest, RegisteredReadsShareResultWhenConsumersImmediatel
     EXPECT_EQ(stats.current_count, u64());
     EXPECT_EQ(stats.current_bytes, u64());
     EXPECT_EQ(gate->fields.lock().unwrap()->reads, usize(1));
+}
+
+TEST_F(ConditionalTextureTest, RawPixelsMoveIntoUploadPayloadWithoutAnotherAllocation) {
+    WritePayload(owe::ImageType::UNKNOWN, false, "0123456789abcdef"_str.as_bytes(), 4, 4);
+    auto memory = owe::TextureMemorySession::VirtualMemory();
+    Option<vrento::texture::TextureUploadPayload> payload;
+    {
+        owe::TexImageParser parser(&vfs, None(), memory.options());
+        ASSERT_TRUE(parser.Describe("payload"_str).is_ok());
+        auto before = memory.statistics().logical.allocations;
+        auto image  = parser.Parse("payload"_str).unwrap();
+        EXPECT_EQ(memory.statistics().logical.allocations - before, u64(1));
+        EXPECT_EQ(memory.statistics().logical.live_bytes, u64(16));
+        payload = Some(vrento::texture::TextureUploadPayload::FromImage(
+                           image->content.clone(), usize(), usize())
+                           .unwrap());
+    }
+    EXPECT_EQ(memory.statistics().logical.live_bytes, u64(16));
+    EXPECT_EQ((*payload)[usize()], u8('0'));
+    payload = None();
+    EXPECT_EQ(memory.statistics().logical.live_bytes, u64());
+    EXPECT_EQ(memory.statistics().virtual_memory->mapped_bytes, usize());
+}
+
+TEST_F(ConditionalTextureTest, CompressedRawPixelsUseTheSameConfiguredAllocator) {
+    WritePayload(owe::ImageType::UNKNOWN, true, "0123456789abcdef"_str.as_bytes(), 4, 4);
+    auto                memory = owe::TextureMemorySession::VirtualMemory();
+    owe::TexImageParser parser(&vfs, None(), memory.options());
+    {
+        auto image = parser.Parse("payload"_str).unwrap();
+        EXPECT_EQ(memory.statistics().logical.live_bytes, u64(16));
+        EXPECT_EQ(image->content->slots[usize()].mipmaps[usize()].data.get()[0], '0');
+    }
+    EXPECT_EQ(memory.statistics().virtual_memory->mapped_bytes, usize());
+}
+
+TEST_F(ConditionalTextureTest, EmbeddedPngTracksScratchAndReleasesPixels) {
+    WritePayload(
+        owe::ImageType::PNG,
+        true,
+        slice<u8>::from_raw_parts(reinterpret_cast<const byte*>(RedPng), usize(sizeof(RedPng))),
+        1,
+        1,
+        0);
+    auto                memory = owe::TextureMemorySession::VirtualMemory();
+    owe::TexImageParser parser(&vfs, None(), memory.options());
+    {
+        auto image = parser.Parse("payload"_str).unwrap();
+        EXPECT_EQ(image->content->slots[usize()].mipmaps[usize()].data.get()[0], 255);
+        EXPECT_GT(memory.statistics().logical.peak_live_bytes,
+                  memory.statistics().logical.live_bytes);
+    }
+    EXPECT_EQ(memory.statistics().logical.live_bytes, u64());
+    EXPECT_EQ(memory.statistics().virtual_memory->mapped_bytes, usize());
 }
 
 TEST_F(ConditionalTextureTest, FailedFlightDeliversSameErrorAndNextReadRetries) {

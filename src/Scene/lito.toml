@@ -8,6 +8,7 @@ name = "owe-scene"
 module = "wescene"
 archive = "owe-scene"
 sources = [
+  "third_party/stb_image.cppm",
   "src/Scene/Audio/SceneAudioResponse.cppm",
   "src/Scene/Audio/SceneAudioResponse.cpp",
   "src/Scene/Lighting/Lighting.cppm",

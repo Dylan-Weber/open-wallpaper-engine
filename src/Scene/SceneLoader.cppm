@@ -20,6 +20,7 @@ struct SceneLoadRequest {
     SceneParseCapabilities                          capabilities;
     SceneLoadBenchRecorderView                      load_bench;
     Option<ImageReadyCallback>                      image_ready;
+    TextureMemoryOptions                            texture_memory;
 };
 enum class SceneLoadStage
 {

@@ -2156,6 +2156,7 @@ enum class ImageParseErrorKind
     MissingContent,
     InvalidData,
     DecodeFailed,
+    OutOfMemory,
 };
 
 struct ImageParseError {

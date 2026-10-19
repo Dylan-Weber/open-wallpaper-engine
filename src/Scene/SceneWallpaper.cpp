@@ -167,7 +167,7 @@ class SceneRenderController;
 
 class SceneRuntimeController {
 public:
-    SceneRuntimeController();
+    explicit SceneRuntimeController(TextureMemoryOptions);
     ~SceneRuntimeController();
 
     bool init();
@@ -206,11 +206,12 @@ public:
     void setOnClearColor(ClearColorCallback cb) { m_clear_color_cb = rstd::move(cb); }
 
 private:
-    MainSender sender() const;
-    void       startMainLoop();
-    void       stopMainLoop();
-    void       loadScene();
-    void       ensureLoadBench(const Option<SceneLoadBenchHandle>&);
+    TextureMemoryOptions m_texture_memory;
+    MainSender           sender() const;
+    void                 startMainLoop();
+    void                 stopMainLoop();
+    void                 loadScene();
+    void                 ensureLoadBench(const Option<SceneLoadBenchHandle>&);
     void ingestLoadBenchBatch(const Option<SceneLoadBenchHandle>&, rstd::bench::probe::ProbeBatch);
     void finishLoadBench();
     auto loadBenchView() -> SceneLoadBenchRecorderView;
@@ -1199,6 +1200,7 @@ void SceneRuntimeController::loadScene() {
             .max_geometry_total_output_components = u32(m_render_capabilities->max_geometry_total_output_components),
         },
         .load_bench = loadBenchView(),
+        .texture_memory = m_texture_memory.clone(),
     }, mut_ref<wavsen::audio::SoundManager>::from_raw_parts(m_sound_manager.get()));
     if (loaded.is_err()) {
         rstd_error("scene load failed: {}", loaded.unwrap_err().message);
@@ -1250,8 +1252,9 @@ bool SceneRuntimeController::init() {
     return true;
 }
 
-SceneRuntimeController::SceneRuntimeController()
-    : m_sound_manager(Box<wavsen::audio::SoundManager>::make()),
+SceneRuntimeController::SceneRuntimeController(TextureMemoryOptions memory)
+    : m_texture_memory(rstd::move(memory)),
+      m_sound_manager(Box<wavsen::audio::SoundManager>::make()),
       m_render_controller(Box<SceneRenderController>::make(*this)) {
     auto [tx, rx] = rstd::sync::mpmc::channel<MainMsg>();
     m_main_tx     = Some(rstd::move(tx));
@@ -1267,7 +1270,10 @@ SceneRuntimeController::~SceneRuntimeController() {
 
 } // namespace owe
 
-SceneWallpaper::SceneWallpaper(): m_runtime(Box<SceneRuntimeController>::make()) {}
+SceneWallpaper::SceneWallpaper(): SceneWallpaper(TextureMemoryOptions {}) {}
+
+SceneWallpaper::SceneWallpaper(TextureMemoryOptions memory)
+    : m_runtime(Box<SceneRuntimeController>::make(rstd::move(memory))) {}
 
 SceneWallpaper::~SceneWallpaper() = default;
 

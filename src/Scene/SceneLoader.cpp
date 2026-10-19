@@ -149,7 +149,8 @@ auto LoadScene(SceneLoadRequest request, mut_ref<wavsen::audio::SoundManager> so
                        .user_properties  = Some(ref<rstd::json::Map>::from_raw_parts(&properties)),
                        .shader_cache_dir = rstd::move(shader_cache),
                        .capabilities     = request.capabilities,
-                       .image_ready      = rstd::move(request.image_ready) });
+                       .image_ready      = rstd::move(request.image_ready),
+                       .texture_memory   = rstd::move(request.texture_memory) });
     if (parsed.is_err()) {
         auto error = parsed.unwrap_err();
         return Err(

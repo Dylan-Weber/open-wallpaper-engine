@@ -1,4 +1,5 @@
 export module wescene.pkg.parse:scene_context;
+import wescene.texture_memory;
 import eigen;
 
 import rstd;
@@ -340,14 +341,13 @@ struct ProcessOpts {
     unsigned kinds { All };
 };
 
-SceneParseContext BuildContext(fs::VFS&, ref<str> scene_id, const wpscene::SceneMetadata&,
-                               array<i32, 2>                ortho_extent,
-                               Option<ref<rstd::json::Map>> user_properties           = None(),
-                               Option<rstd::path::PathBuf>  shader_cache_dir          = None(),
-                               GeometryShaderLimits         geometry_limits           = {},
-                               bool                         directional_shadow        = false,
-                               bool                         geometry_shader_supported = true,
-                               Option<ImageReadyCallback>   image_ready               = None());
+SceneParseContext
+BuildContext(fs::VFS&, ref<str> scene_id, const wpscene::SceneMetadata&, array<i32, 2> ortho_extent,
+             Option<ref<rstd::json::Map>> user_properties  = None(),
+             Option<rstd::path::PathBuf>  shader_cache_dir = None(),
+             GeometryShaderLimits geometry_limits = {}, bool directional_shadow = false,
+             bool geometry_shader_supported = true, Option<ImageReadyCallback> image_ready = None(),
+             TextureMemoryOptions texture_memory = {});
 
 void IndexSceneDocument(SceneParseContext&, ref<wpscene::SceneDocument>, slice<SceneObjectVar>);
 void ProcessContainers(SceneParseContext&, mut_ref<SceneObjectVar[]>);

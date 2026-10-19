@@ -7,6 +7,7 @@ import wescene.load_bench;
 import wescene.scene;
 import wescene.pkg.scene_obj;
 import :uniform_source;
+import wescene.texture_memory;
 
 using namespace rstd::prelude;
 using rstd::sync::Arc;
@@ -41,6 +42,7 @@ struct SceneParseOptions {
     Option<rstd::path::PathBuf>  shader_cache_dir;
     SceneParseCapabilities       capabilities;
     Option<ImageReadyCallback>   image_ready;
+    TextureMemoryOptions         texture_memory;
 };
 
 struct ParsedScene {

@@ -5,6 +5,7 @@ import rstd.cppstd;
 import wescene.fs;
 import wescene.json;
 import wescene.pkg_fs;
+import wescene.texture_memory;
 
 using namespace rstd::prelude;
 using namespace rstd::literals;
@@ -35,6 +36,12 @@ struct MemorySource {
 
 template<>
 struct rstd::Impl<rstd::io::ReadAt, MemorySource> : rstd::ImplBase<MemorySource> {
+    auto read_buf_at(rstd::io::BorrowedCursor buffer, u64 offset) const -> rstd::io::Result<empty> {
+        auto count = this->self().read_at(buffer.ensure_init(), offset);
+        if (count.is_err()) return Err(count.unwrap_err());
+        (void)buffer.advance(*count);
+        return Ok(empty {});
+    }
     auto read_at(mut_ref<u8[]> buffer, u64 offset) const -> rstd::io::Result<usize> {
         return this->self().read_at(buffer, offset);
     }
@@ -200,6 +207,34 @@ TEST(BinaryReader, CompletesReadsAcrossBufferedBoundary) {
     std::string prefix(8191, '\0');
     EXPECT_EQ(reader.Read(prefix.data(), prefix.size()), prefix.size());
     EXPECT_EQ(reader.ReadUint32(), 0x12345678u);
+}
+
+TEST(BinaryReader, ConfiguredReadOwnsBytesAndPreservesPosition) {
+    auto                  memory = owe::TextureMemorySession::VirtualMemory();
+    auto                  source = rstd::io::SharedReadAt::make(MemorySource { "abcdef" });
+    owe::fs::BinaryReader reader(
+        rstd::io::ReadRange::make(rstd::move(source), u64(), u64(6)).unwrap());
+    ASSERT_TRUE(reader.SeekSet(2));
+    {
+        auto bytes = reader.read_all_bytes_in(memory.options().bytes).unwrap();
+        EXPECT_EQ(bytes.len(), usize(4));
+        EXPECT_EQ(bytes[usize()], u8('c'));
+        EXPECT_EQ(reader.position(), u64(6));
+        EXPECT_EQ(memory.statistics().logical.live_bytes, u64(4));
+    }
+    EXPECT_EQ(memory.statistics().virtual_memory->mapped_bytes, usize());
+}
+
+TEST(BinaryReader, AllocationFailureDoesNotConsumeInput) {
+    auto                  source = rstd::io::SharedReadAt::make(MemorySource { "abcdef" });
+    owe::fs::BinaryReader reader(
+        rstd::io::ReadRange::make(rstd::move(source), u64(), u64(6)).unwrap());
+    auto budget = rstd::alloc::BudgetAllocator<>::try_make(usize()).unwrap();
+    auto failed = reader.read_all_bytes_in(rstd::move(budget));
+    ASSERT_TRUE(failed.is_err());
+    EXPECT_EQ(failed.unwrap_err().kind(), rstd::io::ErrorKind { rstd::io::ErrorKind::OutOfMemory });
+    EXPECT_EQ(reader.position(), u64());
+    EXPECT_EQ(reader.read_all_bytes().unwrap().len(), usize(6));
 }
 
 TEST(Vfs, PathsUseComponentBoundariesAndRejectTraversal) {

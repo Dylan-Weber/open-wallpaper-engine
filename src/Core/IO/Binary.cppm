@@ -146,15 +146,43 @@ public:
         return String::from_utf8(rstd::move(bytes)).unwrap();
     }
 
-    auto read_all_bytes() -> rstd::io::Result<Vec<u8>> {
+    template<typename A>
+    auto read_all_bytes_in(A allocator) -> rstd::io::Result<Vec<u8, A>> {
         if (remaining() > rstd::as_cast<u64>(usize::MAX)) {
             return rstd::Err(rstd::io::error::Error::from_kind(
                 rstd::io::error::ErrorKind { rstd::io::error::ErrorKind::InvalidData }));
         }
-        auto value = Vec<u8>::with_capacity(rstd::as_cast<usize>(remaining()));
-        value.resize(rstd::as_cast<usize>(remaining()), u8());
-        rstd_try(read_exact(value.data(), value.len()));
+        auto value    = Vec<u8, A>::new_in(rstd::move(allocator));
+        auto count    = rstd::as_cast<usize>(remaining());
+        auto reserved = value.try_reserve_exact(count);
+        if (reserved.is_err())
+            return Err(rstd::io::Error::from_kind(rstd::io::ErrorKind {
+                reserved.unwrap_err() == ::alloc::collections::TryReserveError::CapacityOverflow
+                    ? rstd::io::ErrorKind::InvalidData
+                    : rstd::io::ErrorKind::OutOfMemory }));
+        auto buffer = rstd::io::BorrowedBuf::from_uninit(
+            rstd::slice_::split_at_mut(value.spare_capacity_mut().as_uninit(), count)
+                .template get<0>());
+        while (buffer.len() < count) {
+            auto before = buffer.len();
+            auto result = m_handle->read_buf(buffer.unfilled());
+            m_position += rstd::as_cast<u64>(buffer.len() - before);
+            if (result.is_err()) {
+                auto error = result.unwrap_err();
+                if (error.kind() == rstd::io::ErrorKind { rstd::io::ErrorKind::Interrupted })
+                    continue;
+                return Err(rstd::move(error));
+            }
+            if (buffer.len() == before)
+                return Err(rstd::io::Error::from_kind(
+                    rstd::io::ErrorKind { rstd::io::ErrorKind::UnexpectedEof }));
+        }
+        value.set_len_unchecked(buffer.len());
         return Ok(rstd::move(value));
+    }
+
+    auto read_all_bytes() -> rstd::io::Result<Vec<u8>> {
+        return read_all_bytes_in(rstd::alloc::Global {});
     }
 
     auto read_all_string() -> rstd::io::Result<String> {

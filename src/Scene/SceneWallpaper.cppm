@@ -13,6 +13,7 @@ export import wescene.vulkan;
 export import wescene.types;
 export import wescene.utils;
 export import wescene.pkg.parse;
+export import wescene.texture_memory;
 export import owe.audio_response;
 
 using namespace rstd::prelude;
@@ -79,6 +80,7 @@ class SceneRuntimeController;
 class SceneWallpaper : NoCopy {
 public:
     SceneWallpaper();
+    explicit SceneWallpaper(TextureMemoryOptions);
     ~SceneWallpaper();
     bool init();
     bool inited() const;

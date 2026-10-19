@@ -2,8 +2,6 @@ module;
 
 #include <rstd/macro.hpp>
 #include <lz4.h>
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
 
 module wescene.pkg.parse;
 import wescene.core;
@@ -13,6 +11,7 @@ import rstd.log;
 import wescene.utils;
 import wescene.scene;
 import wescene.pkg_asset_version;
+import wescene.stb_image;
 
 using rstd::mem::memcmp;
 
@@ -21,7 +20,6 @@ using namespace rstd::prelude;
 using namespace rstd::literals;
 using rstd::ffi::CString;
 using rstd::os::unix::ffi::OsStrExt;
-using rstd::ptr_::copy_nonoverlapping;
 using rstd::sync::Arc;
 
 enum class TexFlagEnum : rstd::uint32_t
@@ -73,8 +71,9 @@ auto OwnDecodedPixels(rstd::uint8_t* pixels, u64 bytes, Release release,
                       Option<Arc<DecodedImageLease>>&          lease,
                       const Arc<Mutex<ImageDecodeStatistics>>& statistics) -> ImageDataPtr {
     if (! lease) lease = Some(Arc<DecodedImageLease>::make(statistics.clone()));
-    auto owner =
-        ImageDataPtr(pixels, [hold = lease->clone(), bytes, release](rstd::uint8_t* data) mutable {
+    auto owner = ImageDataPtr(
+        pixels,
+        [hold = lease->clone(), bytes, release = rstd::move(release)](rstd::uint8_t* data) mutable {
             release(data);
             hold->Release(bytes);
         });
@@ -148,23 +147,52 @@ auto InvalidTextureData(ref<str> name, ref<str> section) -> ImageParseError {
              .message = rstd::format("texture {} has invalid {}", name, section) };
 }
 
-auto ReadMipBytes(rstd::io::ReadRange source, bool compressed, int decoded_size, ref<str> name)
-    -> Result<Vec<u8>, ImageParseError> {
+using TextureBytes = Vec<u8, rstd::alloc::SharedAllocator>;
+
+auto ImageAllocationError(ref<str> name) -> ImageParseError {
+    return { .kind    = ImageParseErrorKind::OutOfMemory,
+             .message = rstd::format("texture {} allocation failed", name) };
+}
+
+auto DecoderError(ref<str> name, stb::Error error) -> ImageParseError {
+    if (error == stb::Error::OutOfMemory) return ImageAllocationError(name);
+    return { .kind    = ImageParseErrorKind::DecodeFailed,
+             .message = rstd::format("decode image {} failed", name) };
+}
+
+auto ReadTextureBytes(fs::BinaryReader& reader, ref<str> name, const TextureMemoryOptions& memory)
+    -> Result<TextureBytes, ImageParseError> {
+    auto input = reader.read_all_bytes_in(memory.bytes.clone());
+    if (input.is_err()) {
+        if (input.as_ref().unwrap_err().kind() ==
+            rstd::io::ErrorKind { rstd::io::ErrorKind::OutOfMemory })
+            return Err(ImageAllocationError(name));
+        return Err(InvalidTextureData(name, "mip payload"_str));
+    }
+    return Ok(rstd::move(input).unwrap());
+}
+
+auto ReadMipBytes(rstd::io::ReadRange source, bool compressed, int decoded_size, ref<str> name,
+                  const TextureMemoryOptions& memory) -> Result<TextureBytes, ImageParseError> {
     fs::BinaryReader reader(rstd::move(source));
-    auto             input = reader.read_all_bytes();
-    if (input.is_err()) return Err(InvalidTextureData(name, "mip payload"_str));
-    if (! compressed) return Ok(rstd::move(input).unwrap());
-    auto output = Vec<u8>::with_capacity(usize(decoded_size));
-    output.resize(usize(decoded_size), u8());
-    auto size = LZ4_decompress_safe(reinterpret_cast<const char*>(input->data()),
-                                    reinterpret_cast<char*>(output.data()),
-                                    static_cast<int>(input->len().to_primitive()),
-                                    decoded_size);
+    auto             input = rstd_try(ReadTextureBytes(reader, name, memory));
+    if (! compressed) return Ok(rstd::move(input));
+    if (decoded_size < 0 || input.len() > usize(i32::MAX.to_primitive()))
+        return Err(InvalidTextureData(name, "LZ4 size"_str));
+    auto output = TextureBytes::new_in(memory.bytes.clone());
+    if (output.try_reserve_exact(usize(decoded_size)).is_err())
+        return Err(ImageAllocationError(name));
+    auto size = LZ4_decompress_safe(
+        reinterpret_cast<const char*>(input.data()),
+        reinterpret_cast<char*>(output.spare_capacity_mut().as_uninit().as_raw_ptr()),
+        static_cast<int>(input.len().to_primitive()),
+        decoded_size);
     if (size != decoded_size) return Err(InvalidTextureData(name, "LZ4 payload"_str));
+    output.set_len_unchecked(usize(size));
     return Ok(rstd::move(output));
 }
 
-constexpr stbi_io_callbacks ImageCallbacks {
+constexpr stb::Callbacks ImageCallbacks {
     [](void* user, char* data, int size) -> int {
         return static_cast<int>(static_cast<fs::BinaryReader*>(user)->Read(data, size));
     },
@@ -177,16 +205,21 @@ constexpr stbi_io_callbacks ImageCallbacks {
 };
 
 auto DescribeMip(rstd::io::ReadRange source, bool compressed, int decoded_size, ImageType declared,
-                 int width, int height, ref<str> name) -> Result<ImageType, ImageParseError> {
+                 int width, int height, ref<str> name, const TextureMemoryOptions& memory)
+    -> Result<ImageType, ImageParseError> {
     fs::BinaryReader reader(source.clone());
-    Vec<u8>          stored, prefix;
+    auto             stored = TextureBytes::new_in(memory.bytes.clone());
+    auto             prefix = TextureBytes::new_in(memory.bytes.clone());
+    stb::Decoder     decoder(memory.bytes.clone());
     if (compressed) {
-        auto bytes = reader.read_all_bytes();
-        if (bytes.is_err()) return Err(InvalidTextureData(name, "mip payload"_str));
-        stored = rstd::move(bytes).unwrap();
+        stored = rstd_try(ReadTextureBytes(reader, name, memory));
+        if (stored.len() > usize(i32::MAX.to_primitive()) || decoded_size < 0)
+            return Err(InvalidTextureData(name, "LZ4 size"_str));
     }
     int limit = compressed ? rstd::min(decoded_size, 128) : 16;
     for (;;) {
+        if (prefix.try_reserve_exact(usize(limit) - prefix.len()).is_err())
+            return Err(ImageAllocationError(name));
         prefix.resize(usize(limit), u8());
         int size;
         if (compressed) {
@@ -209,16 +242,14 @@ auto DescribeMip(rstd::io::ReadRange source, bool compressed, int decoded_size, 
             if (compressed) return Err(InvalidTextureData(name, "compressed video"_str));
             return Ok(type);
         }
-        int  w {}, h {}, channels {};
-        bool valid =
+        auto metadata =
             compressed
-                ? stbi_info_from_memory(reinterpret_cast<const unsigned char*>(prefix.data()),
-                                        size,
-                                        &w,
-                                        &h,
-                                        &channels)
-                : stbi_info_from_callbacks(&ImageCallbacks, &reader, &w, &h, &channels);
-        if (valid) {
+                ? decoder.InfoMemory(reinterpret_cast<const unsigned char*>(prefix.data()), size)
+                : decoder.InfoCallbacks(ImageCallbacks, &reader);
+        if (metadata.is_err() && metadata.as_ref().unwrap_err() == stb::Error::OutOfMemory)
+            return Err(ImageAllocationError(name));
+        if (metadata.is_ok()) {
+            auto w = metadata->width, h = metadata->height;
             if (w != width || h != height || i64(w) * i64(h) > i64(i32::MAX.to_primitive() / 4))
                 return Err(InvalidTextureData(name, "container extent"_str));
             return Ok(type);
@@ -421,12 +452,14 @@ ImageHeader MakeExternalImageHeader(int width, int height) {
 }
 
 auto ParseExternalImage(ref<str> key, const CString& path,
-                        const Arc<Mutex<ImageDecodeStatistics>>& statistics)
-    -> Result<Arc<Image>, ImageParseError> {
-    int   width = 0, height = 0, channels = 0;
-    auto* pixels = stbi_load(path.as_ref().as_ptr(), &width, &height, &channels, 4);
-    if (! pixels || width <= 0 || height <= 0) {
-        if (pixels) stbi_image_free(pixels);
+                        const Arc<Mutex<ImageDecodeStatistics>>& statistics,
+                        const TextureMemoryOptions& memory) -> Result<Arc<Image>, ImageParseError> {
+    stb::Decoder decoder(memory.bytes.clone());
+    auto         result = decoder.LoadFile(path.as_ref().as_ptr());
+    if (result.is_err()) return Err(DecoderError(key, result.unwrap_err()));
+    auto pixels = rstd::move(result).unwrap();
+    auto width = pixels.info.width, height = pixels.info.height;
+    if (width <= 0 || height <= 0 || i64(width) * i64(height) > i64(i32::MAX.to_primitive() / 4)) {
         return Err(ImageParseError {
             .kind    = ImageParseErrorKind::DecodeFailed,
             .message = rstd::format("decode external image {} failed", key),
@@ -446,11 +479,12 @@ auto ParseExternalImage(ref<str> key, const CString& path,
     mipmap.height = height;
     mipmap.size   = isize(static_cast<rstd::ptrdiff_t>(width * height * 4));
     Option<Arc<DecodedImageLease>> lease;
-    mipmap.data = OwnDecodedPixels(
-        reinterpret_cast<rstd::uint8_t*>(pixels),
+    auto*                          pixel_data = pixels.data();
+    mipmap.data                               = OwnDecodedPixels(
+        pixel_data,
         u64(rstd::uint64_t(width) * height * 4),
-        [](rstd::uint8_t* data) {
-            stbi_image_free(data);
+        [pixels = rstd::move(pixels)](rstd::uint8_t*) mutable {
+            pixels.reset();
         },
         lease,
         statistics);
@@ -553,7 +587,7 @@ auto TexImageParser::Parse(ref<str> name) const -> Result<Arc<Image>, ImageParse
 
 auto TexImageParser::Decode(ref<str> name) const -> Result<Arc<Image>, ImageParseError> {
     if (auto path = ResolveExternalImagePath(name))
-        return ParseExternalImage(name, *path, m_statistics);
+        return ParseExternalImage(name, *path, m_statistics, m_memory);
     auto                           prepared = rstd_try(Prepare(name));
     auto                           image    = Arc<Image>::make();
     Option<Arc<DecodedImageLease>> lease;
@@ -571,26 +605,23 @@ auto TexImageParser::Decode(ref<str> name) const -> Result<Arc<Image>, ImagePars
                 mip.video_source = Some(source.source.clone());
             } else {
                 auto bytes = rstd_try(ReadMipBytes(
-                    source.source.clone(), source.compressed, source.decoded_size, name));
+                    source.source.clone(), source.compressed, source.decoded_size, name, m_memory));
                 if (source.type != ImageType::UNKNOWN) {
-                    int   width {}, height {}, channels {};
-                    auto* pixels =
-                        stbi_load_from_memory(reinterpret_cast<const unsigned char*>(bytes.data()),
-                                              static_cast<int>(bytes.len().to_primitive()),
-                                              &width,
-                                              &height,
-                                              &channels,
-                                              4);
-                    if (! pixels)
-                        return Err(ImageParseError {
-                            .kind    = ImageParseErrorKind::DecodeFailed,
-                            .message = rstd::format("decode embedded image {} failed", name),
-                        });
-                    mip.data = OwnDecodedPixels(
-                        pixels,
+                    if (bytes.len() > usize(i32::MAX.to_primitive()))
+                        return Err(InvalidTextureData(name, "container size"_str));
+                    stb::Decoder decoder(m_memory.bytes.clone());
+                    auto         result =
+                        decoder.LoadMemory(reinterpret_cast<const unsigned char*>(bytes.data()),
+                                           static_cast<int>(bytes.len().to_primitive()));
+                    if (result.is_err()) return Err(DecoderError(name, result.unwrap_err()));
+                    auto  pixels = rstd::move(result).unwrap();
+                    auto  width = pixels.info.width, height = pixels.info.height;
+                    auto* pixel_data = pixels.data();
+                    mip.data         = OwnDecodedPixels(
+                        pixel_data,
                         u64(rstd::uint64_t(width) * height * 4),
-                        [](rstd::uint8_t* data) {
-                            stbi_image_free(data);
+                        [pixels = rstd::move(pixels)](rstd::uint8_t*) mutable {
+                            pixels.reset();
                         },
                         lease,
                         m_statistics);
@@ -598,19 +629,16 @@ auto TexImageParser::Decode(ref<str> name) const -> Result<Arc<Image>, ImagePars
                         return Err(InvalidTextureData(name, "decoded extent"_str));
                     mip.size = isize(rstd::ptrdiff_t(width) * height * 4);
                 } else {
-                    auto size = bytes.len().to_primitive();
-                    mip.data  = OwnDecodedPixels(
-                        new rstd::uint8_t[size],
+                    auto  size    = bytes.len().to_primitive();
+                    auto* pointer = reinterpret_cast<rstd::uint8_t*>(bytes.data());
+                    mip.data      = OwnDecodedPixels(
+                        pointer,
                         u64(size),
-                        [](rstd::uint8_t* data) {
-                            delete[] data;
+                        [bytes = rstd::move(bytes)](rstd::uint8_t*) mutable {
+                            bytes = TextureBytes::new_in(bytes.allocator().clone());
                         },
                         lease,
                         m_statistics);
-                    copy_nonoverlapping(ptr<rstd::uint8_t>::from_raw_parts(
-                                            reinterpret_cast<const rstd::uint8_t*>(bytes.data())),
-                                        mut_ptr<rstd::uint8_t>::from_raw_parts(mip.data.get()),
-                                        bytes.len());
                     mip.size = isize(size);
                 }
             }
@@ -678,10 +706,11 @@ auto TexImageParser::ParseMany(slice<String> names) const
 
 auto TexImageParser::ParseHeader(ref<str> name) const -> Result<ImageHeader, ImageParseError> {
     if (auto path = ResolveExternalImagePath(name)) {
-        int width {}, height {}, channels {};
-        if (stbi_info(path->as_ref().as_ptr(), &width, &height, &channels) && width > 0 &&
-            height > 0)
-            return Ok(MakeExternalImageHeader(width, height));
+        stb::Decoder decoder(m_memory.bytes.clone());
+        auto         metadata = decoder.InfoFile(path->as_ref().as_ptr());
+        if (metadata.is_err()) return Err(DecoderError(name, metadata.unwrap_err()));
+        if (metadata->width > 0 && metadata->height > 0)
+            return Ok(MakeExternalImageHeader(metadata->width, metadata->height));
         return Err(ImageParseError {
             .kind    = ImageParseErrorKind::DecodeFailed,
             .message = rstd::format("read external image header {} failed", name),
@@ -761,7 +790,8 @@ auto TexImageParser::Prepare(ref<str> name) const -> Result<Arc<PreparedImage>, 
                                                 declared,
                                                 mip.width,
                                                 mip.height,
-                                                name));
+                                                name,
+                                                m_memory));
                 if (mip.type != ImageType::UNKNOWN) {
                     header.type   = mip.type;
                     header.format = TextureFormat::RGBA8;

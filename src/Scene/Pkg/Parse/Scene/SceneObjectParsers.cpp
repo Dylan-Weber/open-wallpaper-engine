@@ -197,11 +197,12 @@ void ParseCameraObj(SceneParseContext& context, wpscene::CameraObject& cam) {
 }
 
 void InitContext(SceneParseContext& context, fs::VFS& vfs, const wpscene::SceneMetadata& sc,
-                 array<i32, 2> ortho_extent, Option<ImageReadyCallback> image_ready) {
+                 array<i32, 2> ortho_extent, Option<ImageReadyCallback> image_ready,
+                 TextureMemoryOptions texture_memory) {
     context.vfs = &vfs;
     auto& scene = *context.scene;
-    scene.SetImageParser(
-        Arc<dyn<IImageParser>>::make(TexImageParser(&vfs, rstd::move(image_ready))));
+    scene.SetImageParser(Arc<dyn<IImageParser>>::make(
+        TexImageParser(&vfs, rstd::move(image_ready), rstd::move(texture_memory))));
     context.particle_runtime = Some(Arc<ParticleRuntime>::make());
     GenCardMesh(*scene.DefaultEffectMeshMut(), { 2.0f, 2.0f });
 
@@ -619,16 +620,16 @@ void IndexSceneDocument(SceneParseContext& context, ref<wpscene::SceneDocument> 
     }
 }
 
-SceneParseContext BuildContext(fs::VFS& vfs, ref<str> scene_id, const wpscene::SceneMetadata& sc,
-                               array<i32, 2>                ortho_extent,
-                               Option<ref<rstd::json::Map>> user_properties,
-                               Option<rstd::path::PathBuf>  shader_cache_dir,
-                               GeometryShaderLimits geometry_limits, bool directional_shadow,
-                               bool                       geometry_shader_supported,
-                               Option<ImageReadyCallback> image_ready) {
+SceneParseContext
+BuildContext(fs::VFS& vfs, ref<str> scene_id, const wpscene::SceneMetadata& sc,
+             array<i32, 2> ortho_extent, Option<ref<rstd::json::Map>> user_properties,
+             Option<rstd::path::PathBuf> shader_cache_dir, GeometryShaderLimits geometry_limits,
+             bool directional_shadow, bool geometry_shader_supported,
+             Option<ImageReadyCallback> image_ready, TextureMemoryOptions texture_memory) {
     SceneParseContext context;
     PrepareAnimationBindings(context, sc.general.field_bindings);
-    InitContext(context, vfs, sc, ortho_extent, rstd::move(image_ready));
+    InitContext(
+        context, vfs, sc, ortho_extent, rstd::move(image_ready), rstd::move(texture_memory));
     ParseCamera(context, sc);
     context.pkg_version               = sc.pkg_version;
     context.user_properties           = user_properties;

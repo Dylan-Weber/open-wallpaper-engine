@@ -4,6 +4,7 @@ import rstd;
 import wescene.types;
 import wescene.scene;
 import wescene.fs;
+export import wescene.texture_memory;
 
 using rstd::collections::HashMap;
 using rstd::sync::Mutex;
@@ -103,8 +104,9 @@ struct ImageDecodeStatistics {
 
 class TexImageParser {
 public:
-    TexImageParser(fs::VFS* vfs, Option<ImageReadyCallback> ready = None())
-        : m_vfs(vfs->Snapshot()), m_ready(rstd::move(ready)) {}
+    TexImageParser(fs::VFS* vfs, Option<ImageReadyCallback> ready = None(),
+                   TextureMemoryOptions memory = {})
+        : m_ready(rstd::move(ready)), m_memory(rstd::move(memory)), m_vfs(vfs->Snapshot()) {}
 
     auto Parse(ref<str> name) const -> Result<Arc<Image>, ImageParseError>;
     auto ParseMany(slice<String> names) const -> Vec<Result<Arc<Image>, ImageParseError>>;
@@ -135,6 +137,7 @@ private:
     Arc<Mutex<ImageDecodeStatistics>> m_statistics { Arc<Mutex<ImageDecodeStatistics>>::make(
         ImageDecodeStatistics {}) };
     Option<ImageReadyCallback>        m_ready;
+    TextureMemoryOptions              m_memory;
     struct PreparedMip {
         rstd::int32_t       width {}, height {};
         rstd::io::ReadRange source;
