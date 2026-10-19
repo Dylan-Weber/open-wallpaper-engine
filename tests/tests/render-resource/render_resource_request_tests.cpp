@@ -1549,6 +1549,38 @@ TEST(ResourceDeclarationContext, ScopesLocalResourceNamesToThePlanGeneration) {
     EXPECT_EQ(rstd::cppstd::as_string_view(name.as_str()), "plan:7:pass:25:0:vertex:0");
 }
 
+TEST(ResourceDeclarationContext, RetainsSharedContentByDefinitionVersion) {
+    using namespace owe::vulkan;
+    owe::resource::ResourcePlan plan { .generation = u64(2) };
+    auto                        backend = MakeShaderBackend();
+    ShaderReflectionCache       cache(backend.as_ref());
+    ResourceDeclarationContext  declarations(plan, cache);
+    Vec<u8>                     input;
+    input.resize(usize(4), u8(3));
+    auto pointer = input.as_slice().as_raw_ptr();
+    auto content = owe::resource::BufferContent::from(rstd::move(input));
+    declarations.AddBuffer(
+        owe::resource::BufferRequest {
+            .name             = "shared-bytes"_Str,
+            .definition       = { .size = usize(4096) },
+            .content_version  = u64(4),
+            .content_identity = u64(8),
+        },
+        content.clone());
+    auto definition                     = plan.buffers[usize()].definition.clone();
+    content                             = {};
+    auto                       retained = declarations.takeData();
+    ResourceDeclarationContext restored(plan, cache, rstd::move(retained));
+    auto                       loaded = restored.LoadBuffer(definition).unwrap();
+    EXPECT_EQ(loaded.as_slice().as_raw_ptr(), pointer);
+    EXPECT_EQ(loaded.len(), usize(4));
+    auto request = definition.definition().clone();
+    request.content_version += u64(1);
+    EXPECT_TRUE(restored.LoadBuffer(definition.with_definition(rstd::move(request))).is_err());
+    auto loaded_again = restored.LoadBuffer(definition).unwrap();
+    EXPECT_EQ(loaded_again.as_slice()[usize()], u8(3));
+}
+
 TEST(SceneDraw, RefreshesImportedTextureOnStableUse) {
     owe::Scene scene;
     scene.RootMut()->ID() = rstd::i32(1);

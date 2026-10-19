@@ -58,9 +58,8 @@ void SceneDraw::captureGeometry() {
     if (! material || ! updates_.node || ! (*updates_.node)->Mesh()) return;
     material_  = Some(SceneMaterial(*material));
     auto& mesh = *(*updates_.node)->Mesh();
-    auto  view = mesh.BufferView(m_desc.submesh_index);
-    if (! view) return;
-    geometry_           = Some(vrento::GeometrySnapshot::capture(*view));
+    geometry_  = mesh.CaptureGeometry(m_desc.submesh_index);
+    if (! geometry_) return;
     primitive_          = mesh.Primitive();
     default_alpha_      = ! ((*updates_.node)->Camera().is_empty() ||
                              (*updates_.node)->Camera().starts_with("global"_str));
@@ -169,7 +168,7 @@ auto SceneDraw::declareResources(ResourceDeclarationContext& context)
     m_desc.framebuffer_use    = None();
     if (! geometry_) captureGeometry();
     if (! geometry_ || ! material_ || ! material_->customShader.shader) return None();
-    auto  geometry         = geometry_->view();
+    auto  geometry         = geometry_->layout();
     auto* material         = &*material_;
     m_desc.pipeline_use    = Some(context.ReservePipeline());
     m_desc.render_pass_use = Some(context.ReserveRenderPass());
@@ -226,19 +225,18 @@ auto SceneDraw::declareResources(ResourceDeclarationContext& context)
         }
     }
 
-    auto declare_buffer = [&](const vrento::GeometryBufferView& buffer,
-                              DrawBufferRole                    role,
-                              u32                               slot) {
-        auto name    = m_desc.draw_item.Valid()
-                           ? BuildDrawBufferResourceName(m_desc.draw_item, role, slot)
-                           : context.ScopeResourceName(rstd::format("pass:{}:{}:buffer:{}:{}",
-                                                                    m_desc.graph_pass_index,
-                                                                    m_desc.submesh_index,
-                                                                    unsigned(role),
-                                                                    slot));
-        auto content = Vec<u8>::from(buffer.bytes);
-        content.resize(buffer.capacity, u8());
-        auto use = context.AddBuffer(
+    auto declare_buffer = [&](const vrento::GeometryBufferLayout& buffer,
+                              DrawBufferRole                      role,
+                              u32                                 slot,
+                              resource::BufferContent             content) {
+        auto name = m_desc.draw_item.Valid()
+                        ? BuildDrawBufferResourceName(m_desc.draw_item, role, slot)
+                        : context.ScopeResourceName(rstd::format("pass:{}:{}:buffer:{}:{}",
+                                                                 m_desc.graph_pass_index,
+                                                                 m_desc.submesh_index,
+                                                                 unsigned(role),
+                                                                 slot));
+        auto use  = context.AddBuffer(
             resource::BufferRequest { .name       = rstd::move(name),
                                       .definition = { .size  = buffer.capacity,
                                                       .usage = role == DrawBufferRole::Index
@@ -250,12 +248,17 @@ auto SceneDraw::declareResources(ResourceDeclarationContext& context)
                                                         : resource::BufferLifetimeClass::Retained,
                                       .content_version  = buffer.data_generation,
                                       .content_identity = buffer.storage_generation },
-            content.as_slice());
+            rstd::move(content));
         m_desc.buffer_uses.push(resource::BufferUseHandle(use));
     };
     for (usize index {}; index < geometry.vertices.len(); ++index)
-        declare_buffer(geometry.vertices[index], DrawBufferRole::Vertex, rstd::as_cast<u32>(index));
-    if (geometry.index) declare_buffer(*geometry.index, DrawBufferRole::Index, u32());
+        declare_buffer(geometry.vertices[index],
+                       DrawBufferRole::Vertex,
+                       rstd::as_cast<u32>(index),
+                       geometry_->vertexContent(index));
+    if (geometry.index)
+        declare_buffer(
+            *geometry.index, DrawBufferRole::Index, u32(), geometry_->indexContent().unwrap());
     return artifact ? describeGraphics(**artifact) : None();
 }
 
@@ -655,7 +658,7 @@ auto SceneDraw::createUniformBufferUpdates(ref<dyn<UniformBindingPrepareContext>
 auto SceneDraw::describeGraphics(const resource::ShaderArtifact& artifact)
     -> Option<vrento::vulkan::GraphicsDrawDesc> {
     if (! geometry_ || ! material_) return None();
-    auto        geometry     = geometry_->view();
+    auto        geometry     = geometry_->layout();
     const auto& material_ref = *material_;
     const bool  has_depth_attachment =
         m_desc.depth_only || (output_depth_ && UsesDepthAttachment(material_ref.Pipeline()));
@@ -844,11 +847,13 @@ auto SceneDraw::resolveResources(const Device& device, DrawResourceContext& cont
     auto extent          = (**target).image.getActive().extent;
     m_desc.output_extent = { extent.width, extent.height };
     if (! geometry_) return missing(DrawResourceKind::Geometry);
-    vrento::RenderBufferResolver buffer_resolver(*context.resources);
-    vrento::DrawBufferRequest    buffer_request { .render_item   = m_desc.render_item,
-                                                  .geometry      = geometry_->view(),
-                                                  .submesh_index = m_desc.submesh_index,
-                                                  .buffer_uses   = m_desc.buffer_uses.as_slice() };
+    vrento::RenderBufferResolver     buffer_resolver(*context.resources);
+    auto                             layout = geometry_->layout();
+    vrento::DrawBufferPrepareRequest buffer_request { .render_item   = m_desc.render_item,
+                                                      .geometry      = layout,
+                                                      .submesh_index = m_desc.submesh_index,
+                                                      .buffer_uses =
+                                                          m_desc.buffer_uses.as_slice() };
     auto draw_buffers = buffer_resolver.tryPrepareDrawBuffers(buffer_request);
     if (draw_buffers.is_err())
         return Err(DrawPrepareError::Buffers(rstd::move(draw_buffers).unwrap_err()));

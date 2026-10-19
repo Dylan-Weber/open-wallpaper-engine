@@ -55,16 +55,23 @@ struct ShaderArtifactProvider {
 struct BufferContentProvider {
     rstd::usize              loads { 0 };
     rstd::vec::Vec<rstd::u8> content;
+    bool                     fail {}, zeroed {};
 
     BufferContentProvider(): content(rstd::vec::Vec<rstd::u8>::make()) {
         content.push(rstd::u8(1));
         content.push(rstd::u8(2));
     }
 
-    auto LoadBuffer(const owe::resource::BufferRequest&)
-        -> rstd::Result<rstd::slice<rstd::u8>, owe::resource::ResourceError> {
+    auto LoadBuffer(const owe::resource::BufferResourceRef& request)
+        -> rstd::Result<owe::resource::BufferContent, owe::resource::ResourceError> {
         ++loads;
-        return rstd::Ok(content.as_slice());
+        if (fail)
+            return rstd::Err(owe::resource::ResourceError {
+                .kind = owe::resource::ResourceErrorKind::MissingContent });
+        if (zeroed)
+            return rstd::Ok(
+                owe::resource::BufferContent::zeroed(request.definition().definition.size));
+        return rstd::Ok(owe::resource::BufferContent::from(content.as_slice()));
     }
 };
 
@@ -73,6 +80,8 @@ struct BufferBackend {
     rstd::usize                          writes { 0 };
     rstd::u64                            next_ticket { 0 };
     owe::vulkan::BufferAllocationRequest last_request;
+    rstd::usize                          zeros {}, last_bytes {};
+    bool                                 fail_write {};
 
     auto AllocateBuffer(const owe::vulkan::BufferAllocationRequest& request)
         -> rstd::Result<owe::vulkan::BufferAllocation, vrento::vulkan::BackendError> {
@@ -85,12 +94,21 @@ struct BufferBackend {
         return rstd::Ok(owe::vulkan::BufferAllocation {});
     }
 
-    auto QueueBufferWrite(rstd::mut_ref<owe::vulkan::BufferAllocation>, rstd::slice<rstd::u8>,
+    auto QueueBufferWrite(rstd::mut_ref<owe::vulkan::BufferAllocation>, rstd::slice<rstd::u8> bytes,
                           VkDeviceSize)
         -> rstd::Result<owe::vulkan::BufferUploadTicket, vrento::vulkan::BackendError> {
         ++writes;
+        last_bytes = bytes.len();
+        if (fail_write)
+            return rstd::Err(vrento::vulkan::BackendError { "test write"_Str,
+                                                            vrento::vulkan::BackendCause::Busy() });
         ++next_ticket;
         return rstd::Ok(owe::vulkan::BufferUploadTicket { .value = next_ticket });
+    }
+    auto QueueBufferZero(rstd::mut_ref<owe::vulkan::BufferAllocation> allocation)
+        -> rstd::Result<owe::vulkan::BufferUploadTicket, vrento::vulkan::BackendError> {
+        ++zeros;
+        return QueueBufferWrite(allocation, {}, 0);
     }
 };
 
@@ -1218,6 +1236,149 @@ TEST(ResourcePrepareService, VisitsBufferAndShaderPlansThroughTypedProviders) {
     EXPECT_EQ(buffer_provider.loads, rstd::usize(1));
     EXPECT_EQ(upload_backend.allocations, rstd::usize(1));
     EXPECT_EQ(shader_provider.loads, rstd::usize(1));
+}
+
+TEST(BufferRegistry, LoadsOnlyMissingVersionsAndRetriesFailedUploads) {
+    owe::resource_registry::BufferRegistry registry;
+    BufferBackend                          backend;
+    BufferContentProvider                  provider;
+    auto upload     = rstd::dyn<owe::vulkan::BufferBackend>::from_ref(backend);
+    auto source     = rstd::dyn<owe::resource::BufferContentProvider>::from_ref(provider);
+    auto definition = owe::resource::BufferResourceRef(owe::resource::BufferRequest {
+        .name       = "lazy-vertices"_Str,
+        .definition = { .size = rstd::usize(4096), .usage = owe::resource::BufferUsage::Vertex },
+        .content_version  = rstd::u64(3),
+        .content_identity = rstd::u64(5),
+    });
+    EXPECT_TRUE(registry.Ensure(definition.clone(), rstd::None(), upload.as_mut_ref()).is_err());
+    EXPECT_EQ(backend.allocations, rstd::usize());
+    auto prepare = [&](const owe::resource::BufferResourceRef& value) {
+        return registry.Ensure(value.clone(), rstd::Some(source.as_mut_ref()), upload.as_mut_ref());
+    };
+    provider.fail = true;
+    EXPECT_TRUE(prepare(definition).is_err());
+    EXPECT_EQ(backend.allocations, rstd::usize());
+    provider.fail = false;
+    auto first    = prepare(definition).unwrap();
+    EXPECT_EQ(backend.last_bytes, rstd::usize(2));
+    EXPECT_EQ(provider.loads, rstd::usize(2));
+    EXPECT_TRUE(registry.Ensure(definition.clone(), rstd::None(), upload.as_mut_ref()).is_ok());
+    EXPECT_EQ(provider.loads, rstd::usize(2));
+    auto changed             = definition.definition().clone();
+    changed.content_identity = rstd::u64(6);
+    definition               = definition.with_definition(rstd::move(changed));
+    backend.fail_write       = true;
+    EXPECT_TRUE(prepare(definition).is_err());
+    EXPECT_EQ(first.physical->source_identity, rstd::u64(5));
+    backend.fail_write = false;
+    EXPECT_TRUE(prepare(definition).is_ok());
+    EXPECT_EQ(first.physical->source_identity, rstd::u64(6));
+    EXPECT_EQ(backend.allocations, rstd::usize(1));
+    EXPECT_EQ(provider.loads, rstd::usize(4));
+    provider.fail = true;
+    EXPECT_TRUE(prepare(definition).is_ok());
+    EXPECT_EQ(provider.loads, rstd::usize(4));
+}
+
+TEST(BufferRegistry, DynamicReuseDoesNotRequireOrReapplyInitialContent) {
+    owe::resource_registry::BufferRegistry registry;
+    BufferBackend                          backend;
+    BufferContentProvider                  provider;
+    auto upload     = rstd::dyn<owe::vulkan::BufferBackend>::from_ref(backend);
+    auto source     = rstd::dyn<owe::resource::BufferContentProvider>::from_ref(provider);
+    auto definition = owe::resource::BufferResourceRef(owe::resource::BufferRequest {
+        .name       = "dynamic-lazy"_Str,
+        .definition = { .size = rstd::usize(64) },
+        .lifetime   = owe::resource::BufferLifetimeClass::Dynamic,
+    });
+    auto first =
+        registry.Ensure(definition.clone(), rstd::Some(source.as_mut_ref()), upload.as_mut_ref())
+            .unwrap();
+    EXPECT_TRUE(
+        registry.Update(first.resource, provider.content.as_slice(), upload.as_mut_ref()).is_ok());
+    auto request            = definition.definition().clone();
+    request.content_version = rstd::u64(100);
+    definition              = definition.with_definition(rstd::move(request));
+    EXPECT_TRUE(registry.Ensure(definition.clone(), rstd::None(), upload.as_mut_ref()).is_ok());
+    EXPECT_EQ(provider.loads, rstd::usize(1));
+    EXPECT_EQ(backend.writes, rstd::usize(2));
+    registry.Reset();
+    EXPECT_TRUE(registry.Resolve(first.resource).is_none());
+    EXPECT_TRUE(registry.Ensure(definition.clone(), rstd::None(), upload.as_mut_ref()).is_err());
+    EXPECT_TRUE(
+        registry.Ensure(definition.clone(), rstd::Some(source.as_mut_ref()), upload.as_mut_ref())
+            .is_ok());
+    EXPECT_EQ(provider.loads, rstd::usize(2));
+}
+
+TEST(BufferRegistry, ReloadsRegisteredSourceAfterPhysicalEviction) {
+    owe::resource_registry::BufferRegistry registry;
+    BufferBackend                          backend;
+    BufferContentProvider                  provider;
+    auto upload     = rstd::dyn<owe::vulkan::BufferBackend>::from_ref(backend);
+    auto source     = rstd::dyn<owe::resource::BufferContentProvider>::from_ref(provider);
+    auto definition = owe::resource::BufferResourceRef(owe::resource::BufferRequest {
+        .name       = "evicted-source"_Str,
+        .definition = { .size = rstd::usize(64) },
+    });
+    owe::resource::BufferHandle handle;
+    {
+        auto prepared =
+            registry
+                .Ensure(definition.clone(), rstd::Some(source.as_mut_ref()), upload.as_mut_ref())
+                .unwrap();
+        handle = prepared.resource;
+        const owe::vulkan::BufferUploadTicket ticket { .value = backend.next_ticket };
+        registry.MarkUploadsSubmitted(
+            rstd::slice<owe::vulkan::BufferUploadTicket>::from_raw_parts(&ticket, rstd::usize(1)),
+            rstd::None());
+    }
+    registry.EvictUnused();
+    EXPECT_TRUE(registry.Resolve(handle).is_none());
+    auto prepared =
+        registry.Ensure(definition.clone(), rstd::Some(source.as_mut_ref()), upload.as_mut_ref())
+            .unwrap();
+    EXPECT_EQ(prepared.resource, handle);
+    EXPECT_EQ(provider.loads, rstd::usize(2));
+    EXPECT_EQ(backend.allocations, rstd::usize(2));
+    provider.content.resize(rstd::usize(65), rstd::u8());
+    auto request = definition.definition().clone();
+    ++request.content_version;
+    EXPECT_TRUE(registry
+                    .Ensure(definition.with_definition(rstd::move(request)),
+                            rstd::Some(source.as_mut_ref()),
+                            upload.as_mut_ref())
+                    .is_err());
+    EXPECT_EQ(backend.allocations, rstd::usize(2));
+}
+
+TEST(ResourcePrepareService, CachedBuffersSkipUnavailableProviderAndZeroInitialization) {
+    owe::resource::TextureRegistry         textures;
+    owe::resource_registry::BufferRegistry buffers;
+    owe::resource_registry::ShaderRegistry shaders;
+    BufferBackend                          backend;
+    BufferContentProvider                  provider;
+    provider.zeroed = true;
+    auto upload     = rstd::dyn<owe::vulkan::BufferBackend>::from_ref(backend);
+    auto source     = rstd::dyn<owe::resource::BufferContentProvider>::from_ref(provider);
+    owe::resource_registry::ResourcePrepareService service(
+        textures, rstd::None(), buffers, upload.as_mut_ref(), shaders);
+    owe::resource::ResourcePlan plan { .generation = rstd::u64(2) };
+    plan.buffers.push(owe::resource::BufferPlanEntry {
+        .handle = { .index = rstd::u64(1), .generation = plan.generation },
+        .definition =
+            owe::resource::BufferRequest {
+                .name       = "zero-uniform"_Str,
+                .definition = { .size  = rstd::usize(1024),
+                                .usage = owe::resource::BufferUsage::Uniform },
+            },
+    });
+    EXPECT_TRUE(service.Prepare(plan, { .buffer = rstd::Some(source.as_mut_ref()) }).is_ok());
+    EXPECT_EQ(backend.zeros, rstd::usize(1));
+    EXPECT_EQ(backend.last_bytes, rstd::usize());
+    EXPECT_TRUE(service.Prepare(plan, {}).is_ok());
+    EXPECT_EQ(provider.loads, rstd::usize(1));
+    EXPECT_EQ(backend.zeros, rstd::usize(1));
 }
 
 TEST(ResourcePrepareService, InitializesRetainedHistoryTextureOnce) {

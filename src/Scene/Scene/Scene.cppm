@@ -943,6 +943,10 @@ public:
         // that the main puppet pass samples via g_Texture8.
         String output_override;
         bool   preserve_output { false };
+
+    private:
+        friend class SceneMesh;
+        Option<vrento::GeometrySnapshot> geometry_snapshot;
     };
 
     SceneMesh(bool dynamic = false)
@@ -988,6 +992,18 @@ public:
         if (! submesh.index_arrays.is_empty())
             view.index = Some(submesh.index_arrays[usize(0)].BufferView());
         return Some(rstd::move(view));
+    }
+
+    auto CaptureGeometry(u32 submesh_index) const -> Option<vrento::GeometrySnapshot> {
+        auto view = BufferView(submesh_index);
+        if (! view) return None();
+        auto& snapshot = m_data->submeshes[rstd::as_cast<usize>(submesh_index)].geometry_snapshot;
+        if (! snapshot || snapshot->layout() != view->layout())
+            snapshot = Some(vrento::GeometrySnapshot::capture(
+                *view,
+                snapshot ? Some(ref<vrento::GeometrySnapshot>::from_raw_parts(&*snapshot))
+                         : None()));
+        return Some(snapshot->clone());
     }
 
     // Materials are per-mesh-instance, NOT shared via ChangeMeshDataFrom — same

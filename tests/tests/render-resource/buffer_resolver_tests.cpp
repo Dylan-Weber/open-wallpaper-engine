@@ -87,6 +87,24 @@ TEST(DynamicDrawBuffer, UploadsUnconfirmedContentBeforeSkippingUnchangedGeometry
     EXPECT_EQ(writer.update_count, rstd::u32(2));
 }
 
+TEST(SceneMesh, SharesPublishedGeometryAcrossDrawsAndInstances) {
+    owe::SceneMesh mesh(true);
+    mesh.Submeshes().push(MakeSubmesh());
+    auto first    = mesh.CaptureGeometry(u32()).unwrap();
+    auto second   = mesh.CaptureGeometry(u32()).unwrap();
+    auto instance = mesh.CloneInstance();
+    auto third    = instance->CaptureGeometry(u32()).unwrap();
+    auto pointer  = first.vertexContent(usize()).as_slice().as_raw_ptr();
+    EXPECT_EQ(second.vertexContent(usize()).as_slice().as_raw_ptr(), pointer);
+    EXPECT_EQ(third.vertexContent(usize()).as_slice().as_raw_ptr(), pointer);
+    mesh.GetVertexArray(usize()).ResetSize();
+    auto replaced = instance->CaptureGeometry(u32()).unwrap();
+    EXPECT_EQ(replaced.layout().vertices[usize()].count, usize());
+    EXPECT_EQ(first.layout().vertices[usize()].count, usize(2));
+    EXPECT_EQ(first.vertexContent(usize()).as_slice().as_raw_ptr(), pointer);
+    EXPECT_TRUE(mesh.CaptureGeometry(u32(100)).is_none());
+}
+
 TEST(DynamicDrawBuffer, RetriesUploadFailureWithoutInvalidatingLayout) {
     owe::SceneMesh mesh(true);
     mesh.Submeshes().push(MakeSubmesh());

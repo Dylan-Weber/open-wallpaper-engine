@@ -152,15 +152,19 @@ struct DrawResourceContext {
 };
 
 struct ResourceDeclarationData {
-    u64                                                        m_next_buffer { 0 };
-    u64                                                        m_next_shader { 0 };
-    u64                                                        m_next_pipeline { 0 };
-    u64                                                        m_next_render_pass { 0 };
-    u64                                                        m_next_framebuffer { 0 };
-    u64                                                        m_next_external { 0 };
-    HashMap<String, Vec<rstd::u8>>                             m_buffers;
-    HashMap<String, resource::BufferUseHandle>                 m_shared_buffers;
-    HashMap<resource::ShaderRequest, resource::ShaderArtifact> m_shaders;
+    struct BufferSource {
+        resource::BufferResourceRef definition;
+        resource::BufferContent     content;
+    };
+    u64 m_next_buffer { 0 };
+    u64 m_next_shader { 0 };
+    u64 m_next_pipeline { 0 };
+    u64 m_next_render_pass { 0 };
+    u64 m_next_framebuffer { 0 };
+    u64 m_next_external { 0 };
+    HashMap<resource::ResourceHandle<resource::BufferResourceTag>, BufferSource> m_buffers;
+    HashMap<String, resource::BufferUseHandle>                                   m_shared_buffers;
+    HashMap<resource::ShaderRequest, resource::ShaderArtifact>                   m_shaders;
 };
 
 class ResourceDeclarationContext {
@@ -177,13 +181,11 @@ public:
 
     auto AddBuffer(resource::BufferRequest request, slice<rstd::u8> content)
         -> resource::BufferUseHandle {
-        auto bytes = Vec<rstd::u8>::from(content);
-        return AddBuffer(rstd::move(request), rstd::move(bytes));
+        return AddBuffer(rstd::move(request), resource::BufferContent::from(content));
     }
 
     auto AddBuffer(resource::BufferRequest request) -> resource::BufferUseHandle {
-        auto bytes = Vec<rstd::u8>::with_capacity(request.definition.size);
-        bytes.resize(request.definition.size, rstd::u8(0));
+        auto bytes = resource::BufferContent::zeroed(request.definition.size);
         return AddBuffer(rstd::move(request), rstd::move(bytes));
     }
 
@@ -248,16 +250,24 @@ public:
         };
     }
 
-    auto LoadBuffer(const resource::BufferRequest& request)
-        -> Result<slice<rstd::u8>, resource::ResourceError> {
-        auto content = data_.m_buffers.get(request.name);
-        if (content.is_none()) {
+    auto LoadBuffer(const resource::BufferResourceRef& definition)
+        -> Result<resource::BufferContent, resource::ResourceError> {
+        if (! definition.valid())
+            return Err(
+                resource::ResourceError { .kind = resource::ResourceErrorKind::MissingDefinition });
+        auto content = data_.m_buffers.get(definition.id());
+        if (content.is_none() || (**content).definition.revision() != definition.revision() ||
+            (**content).definition.definition().content_identity !=
+                definition.definition().content_identity ||
+            (**content).definition.definition().content_version !=
+                definition.definition().content_version) {
             return Err(resource::ResourceError {
-                .kind    = resource::ResourceErrorKind::MissingContent,
-                .message = rstd::format("buffer content {} unavailable", request.name),
+                .kind = resource::ResourceErrorKind::MissingContent,
+                .message =
+                    rstd::format("buffer content {} unavailable", definition.definition().name),
             });
         }
-        return Ok((**content).as_slice());
+        return Ok((**content).content.clone());
     }
 
     auto ShaderArtifact(const resource::ShaderRequest& request) const
@@ -269,21 +279,24 @@ public:
         return rstd::format("plan:{}:{}", m_plan.generation, local_name);
     }
 
-private:
-    auto AddBuffer(resource::BufferRequest request, Vec<rstd::u8> content)
+    auto AddBuffer(resource::BufferRequest request, resource::BufferContent content)
         -> resource::BufferUseHandle {
         auto handle = resource::BufferUseHandle {
             .index      = data_.m_next_buffer++,
             .generation = m_plan.generation,
         };
-        auto name = request.name.clone();
-        (void)data_.m_buffers.insert(rstd::move(name), rstd::move(content));
+        auto definition = resource::BufferResourceRef(rstd::move(request));
+        (void)data_.m_buffers.insert(
+            definition.id(),
+            ResourceDeclarationData::BufferSource { definition.clone(), rstd::move(content) });
         m_plan.buffers.push(resource::BufferPlanEntry {
             .handle     = handle,
-            .definition = rstd::move(request),
+            .definition = rstd::move(definition),
         });
         return handle;
     }
+
+private:
     resource::ResourcePlan&        m_plan;
     mut_ref<ShaderReflectionCache> m_shader_cache;
     ResourceDeclarationData        data_;
