@@ -813,11 +813,21 @@ int run(int argc, char** argv) {
 
     auto next_audio_push = Instant::now();
 
-    while (! state.shutdown.load(rstd::sync::atomic::Ordering::Acquire) && ! host.ShouldExit()) {
-        drain_host_messages(state);
-        core.drainPendingDirective();
-        (void)core.republishRequestedFrame();
+    while (! host.ShouldExit()) {
+        if (state.shutdown.load(rstd::sync::atomic::Ordering::Acquire)) host.RequestClose();
+        if (! host.IsClosing()) {
+            drain_host_messages(state);
+            core.drainPendingDirective();
+            (void)core.republishRequestedFrame();
+        }
         host.Pump();
+        if (host.IsClosing()) {
+            state.shutdown.store(true, rstd::sync::atomic::Ordering::Release);
+            const auto delay         = frame_delay(state);
+            const auto closing_delay = Duration::from_millis(u64(10));
+            rstd::thread::sleep(delay < closing_delay ? delay : closing_delay);
+            continue;
+        }
         // CEF's OSR pacing goes idle without explicit invalidate kicks
         // (see project memory: CEF 147 OSR + DMA-BUF). Dedup happens
         // inside CEF at windowless_frame_rate.

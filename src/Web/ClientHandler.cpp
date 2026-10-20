@@ -20,36 +20,97 @@ ClientHandler::ClientHandler(owe::Json user_props, CefRefPtr<OsrRenderHandler> r
       render_handler_(rstd::move(render_handler)),
       audio_muted_(initially_muted) {}
 
-void ClientHandler::SetCloseCallback(Box<dyn<Fn<void()>>> cb) { close_cb_ = Some(rstd::move(cb)); }
-
 void ClientHandler::SetAudioDemandCallback(Option<AudioDemandCallback> cb) {
+    if (IsClosing()) return;
     audio_demand_cb_ = rstd::move(cb);
     if (auto callback = audio_demand_cb_.clone(); callback) (*callback)->operator()(audio_demand_);
 }
 
 void ClientHandler::SetAudioMuted(bool muted) {
     audio_muted_ = muted;
-    if (browser_ && browser_->GetHost()) browser_->GetHost()->SetAudioMuted(muted);
+    if (auto browser = GetBrowser()) browser->GetHost()->SetAudioMuted(muted);
+}
+
+bool ClientHandler::IsClosing() const {
+    return state_ == State::Closing || state_ == State::Closed;
+}
+
+bool ClientHandler::IsClosed() const { return state_ == State::Closed; }
+
+CefRefPtr<CefBrowser> ClientHandler::GetBrowser() const { return IsClosing() ? nullptr : browser_; }
+
+void ClientHandler::RequestClose() {
+    if (IsClosing()) return;
+    state_ = State::Closing;
+    render_handler_->SetAcceleratedPaintCallback(None());
+    render_handler_->SetCpuPaintCallback(None());
+    audio_demand_ = false;
+    if (auto callback = audio_demand_cb_.take()) (*callback)->operator()(false);
+
+    pending_close_.reserve(browsers_.len());
+    for (const auto& browser : browsers_) pending_close_.push(CefRefPtr<CefBrowser>(browser));
+    FinishClose();
+}
+
+void ClientHandler::CloseBrowsers() {
+    // Do not destroy a newly created browser from its OnAfterCreated callback.
+    auto closing = rstd::move(pending_close_);
+    for (const auto& browser : closing)
+        if (browser->IsValid()) browser->GetHost()->CloseBrowser(true);
+}
+
+void ClientHandler::FinishClose() {
+    if (state_ == State::Closing && ! creation_pending_ && pending_popups_ == usize() &&
+        browsers_.is_empty())
+        state_ = State::Closed;
 }
 
 void ClientHandler::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
-    browser_ = browser;
-    if (browser_ && browser_->GetHost()) {
-        browser_->GetHost()->SetAudioMuted(audio_muted_);
+    if (browser->IsPopup()) {
+        if (pending_popups_ > usize()) --pending_popups_;
+    } else {
+        creation_pending_ = false;
+        browser_          = browser;
     }
+    browsers_.push(CefRefPtr<CefBrowser>(browser));
+    if (IsClosing()) {
+        pending_close_.push(CefRefPtr<CefBrowser>(browser));
+        return;
+    }
+    state_ = State::Open;
+    browser->GetHost()->SetAudioMuted(audio_muted_);
+}
+
+bool ClientHandler::OnBeforePopup(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, int, const CefString&,
+                                  const CefString&, cef_window_open_disposition_t, bool,
+                                  const CefPopupFeatures&, CefWindowInfo&, CefRefPtr<CefClient>&,
+                                  CefBrowserSettings&, CefRefPtr<CefDictionaryValue>&, bool*) {
+    if (IsClosing()) return true;
+    ++pending_popups_;
+    return false;
+}
+
+void ClientHandler::OnBeforePopupAborted(CefRefPtr<CefBrowser>, int) {
+    if (pending_popups_ > usize()) --pending_popups_;
+    FinishClose();
 }
 
 bool ClientHandler::DoClose(CefRefPtr<CefBrowser> /*browser*/) {
     return false; // proceed with the default close
 }
 
-void ClientHandler::OnBeforeClose(CefRefPtr<CefBrowser> /*browser*/) {
-    if (audio_demand_) {
-        audio_demand_ = false;
-        if (auto callback = audio_demand_cb_.clone(); callback) (*callback)->operator()(false);
+void ClientHandler::OnBeforeClose(CefRefPtr<CefBrowser> browser) {
+    for (usize index {}; index < browsers_.len(); ++index) {
+        if (browsers_[index]->IsSame(browser)) {
+            (void)browsers_.remove(index);
+            break;
+        }
     }
-    browser_ = nullptr;
-    if (close_cb_) (*close_cb_)->operator()();
+    if (browser_ && browser_->IsSame(browser)) {
+        browser_ = nullptr;
+        RequestClose();
+    }
+    FinishClose();
 }
 
 bool ClientHandler::OnProcessMessageReceived(CefRefPtr<CefBrowser> /*browser*/,
@@ -58,6 +119,7 @@ bool ClientHandler::OnProcessMessageReceived(CefRefPtr<CefBrowser> /*browser*/,
                                              CefRefPtr<CefProcessMessage> message) {
     if (source_process != PID_RENDERER || ! message || message->GetName() != "weweb.audio-demand")
         return false;
+    if (IsClosing()) return true;
     auto args = message->GetArgumentList();
     if (! args || args->GetSize() < 2) return true;
     const int generation = args->GetInt(0);
@@ -79,7 +141,8 @@ bool ClientHandler::OnProcessMessageReceived(CefRefPtr<CefBrowser> /*browser*/,
 
 void ClientHandler::OnLoadEnd(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
                               int /*httpStatusCode*/) {
-    if (! frame || ! frame->IsMain()) return;
+    if (IsClosing() || ! frame || ! frame->IsMain() || ! browser_ || ! browser_->IsSame(browser))
+        return;
     bool expected = false;
     if (! property_injected_.compare_exchange_strong(
             expected, true, Ordering::SeqCst, Ordering::SeqCst))

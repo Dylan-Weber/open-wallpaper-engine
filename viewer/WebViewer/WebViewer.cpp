@@ -391,9 +391,14 @@ int main(int argc, char** argv) {
 
     // Main loop. ~60Hz nominal. CefDoMessageLoopWork is cheap; the
     // Vulkan FIFO present pacing also throttles us.
-    while (! glfwWindowShouldClose(window) && ! host.ShouldExit()) {
+    while (! host.ShouldExit()) {
         glfwPollEvents();
+        if (glfwWindowShouldClose(window)) host.RequestClose();
         host.Pump();
+        if (host.IsClosing()) {
+            glfwWaitEventsTimeout(0.01);
+            continue;
+        }
 
         if (! audio_response_demand.load(rstd::sync::atomic::Ordering::Acquire)) {
             if (audio_capture.is_inited()) audio_capture.uninit();
@@ -431,7 +436,8 @@ int main(int argc, char** argv) {
                 metrics.logical_width > 0 && metrics.logical_height > 0) {
                 if (! presenter->Resize()) {
                     eprintln("webviewer: presenter Resize failed");
-                    break;
+                    host.RequestClose();
+                    continue;
                 }
 #if __is_target_os(macos)
                 host.OnResize(metrics.logical_width, metrics.logical_height, metrics.scale);

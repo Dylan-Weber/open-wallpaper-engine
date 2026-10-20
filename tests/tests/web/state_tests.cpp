@@ -99,12 +99,35 @@ TEST(WebState, AudioDemandCanClearItsOwnCallback) {
         })));
     EXPECT_EQ(calls, 1);
     EXPECT_EQ(released, 1);
-    int closed = 0;
-    client->SetCloseCallback(Box<dyn<Fn<void()>>>::make([&] {
-        ++closed;
-    }));
-    client->OnBeforeClose(nullptr);
-    EXPECT_EQ(closed, 1);
+    client->RequestClose();
+    EXPECT_TRUE(client->IsClosing());
+    EXPECT_FALSE(client->IsClosed());
+}
+
+TEST(WebState, CloseWhileCreatingStopsCallbacksWithoutCompletingCreation) {
+    CefRefPtr<OsrRenderHandler> render       = new OsrRenderHandler;
+    CefRefPtr<ClientHandler>    client       = new ClientHandler(owe::Json::Null(), render, false);
+    int                         paints       = 0;
+    int                         demand_calls = 0;
+    render->SetCpuPaintCallback(Some(CpuPaintCallback::make([&](const CpuPaintFrame&) {
+        ++paints;
+    })));
+    client->SetAudioDemandCallback(Some(AudioDemandCallback::make([&](bool active) {
+        EXPECT_FALSE(active);
+        ++demand_calls;
+    })));
+    EXPECT_FALSE(client->IsClosing());
+    EXPECT_FALSE(client->IsClosed());
+    client->RequestClose();
+    client->RequestClose();
+    client->OnBeforePopupAborted(nullptr, 1);
+    array<u8, 4> pixels {};
+    render->OnPaint(nullptr, PET_VIEW, {}, pixels.data(), 1, 1);
+    EXPECT_TRUE(client->IsClosing());
+    EXPECT_FALSE(client->IsClosed());
+    EXPECT_FALSE(client->GetBrowser());
+    EXPECT_EQ(paints, 0);
+    EXPECT_EQ(demand_calls, 2);
 }
 
 TEST(WebState, HostOwnsCallbacksBeforeInitialization) {
@@ -118,9 +141,10 @@ TEST(WebState, HostOwnsCallbacksBeforeInitialization) {
         EXPECT_EQ(released, 1);
         EXPECT_FALSE(host.ShouldExit());
         host.RequestClose();
+        EXPECT_TRUE(host.IsClosing());
         EXPECT_TRUE(host.ShouldExit());
-        host.Shutdown();
-        host.Shutdown();
+        EXPECT_TRUE(host.Shutdown());
+        EXPECT_TRUE(host.Shutdown());
     }
     EXPECT_EQ(released, 1);
 }

@@ -147,8 +147,9 @@ struct BrowserHost::Impl {
     Option<AcceleratedPaintCallback> accel_cb;
     Option<CpuPaintCallback>         cpu_cb;
     Option<AudioDemandCallback>      audio_demand_cb;
-    Atomic<bool>                     should_exit { false };
+    Atomic<bool>                     close_requested { false };
     bool                             initialised { false };
+    bool                             pumping { false };
     // Stash the original argv from RunOrExitIfHelper; CefInitialize needs
     // the real argv to derive the per-child --type=… / --icu-data-file=…
     // switches it forwards to subprocesses.
@@ -162,7 +163,9 @@ struct BrowserHost::Impl {
 
 BrowserHost::BrowserHost(): impl_(Box<Impl>::make()) { impl_->app = new AppHandler(); }
 
-BrowserHost::~BrowserHost() { Shutdown(); }
+BrowserHost::~BrowserHost() {
+    if (! Shutdown()) rstd::panic("BrowserHost destroyed before browser close completed");
+}
 
 int BrowserHost::RunOrExitIfHelper(int argc, char** argv) {
     impl_->saved_argc = argc;
@@ -187,6 +190,7 @@ int BrowserHost::RunOrExitIfHelper(int argc, char** argv) {
 }
 
 bool BrowserHost::Init(const InitOptions& opts) {
+    if (IsClosing()) return false;
     if (impl_->initialised) {
         eprintln("weweb: BrowserHost::Init called twice");
         return false;
@@ -279,6 +283,7 @@ bool BrowserHost::OpenWallpaper(const WebManifest& manifest, ref<Path> workshop_
         eprintln("weweb: OpenWallpaper before Init");
         return false;
     }
+    if (IsClosing() || impl_->client) return false;
 
     impl_->osr = new OsrRenderHandler();
     impl_->osr->SetViewSize(width, height);
@@ -293,10 +298,6 @@ bool BrowserHost::OpenWallpaper(const WebManifest& manifest, ref<Path> workshop_
     impl_->client =
         new ClientHandler(manifest.user_props.clone(), impl_->osr, opts.initially_muted);
     impl_->client->SetAudioDemandCallback(impl_->audio_demand_cb.clone());
-    impl_->client->SetCloseCallback(Box<dyn<Fn<void()>>>::make([this] {
-        impl_->should_exit.store(true, Ordering::SeqCst);
-    }));
-
     auto        entry = PathBuf::from(workshop_dir).join(manifest.entry_html.as_str());
     std::string url   = "file://" + CefPath(entry.as_path());
 
@@ -312,27 +313,32 @@ bool BrowserHost::OpenWallpaper(const WebManifest& manifest, ref<Path> workshop_
     if (! created) {
         eprintln("weweb: CefBrowserHost::CreateBrowser failed for {}",
                  rstd::cppstd::as_str(url).unwrap());
+        impl_->client = nullptr;
+        impl_->osr    = nullptr;
     }
     return created;
 }
 
 void BrowserHost::SetAcceleratedPaintCallback(Option<AcceleratedPaintCallback> cb) {
+    if (IsClosing()) return;
     impl_->accel_cb = rstd::move(cb);
     if (impl_->osr) impl_->osr->SetAcceleratedPaintCallback(impl_->accel_cb.clone());
 }
 
 void BrowserHost::SetCpuPaintCallback(Option<CpuPaintCallback> cb) {
+    if (IsClosing()) return;
     impl_->cpu_cb = rstd::move(cb);
     if (impl_->osr) impl_->osr->SetCpuPaintCallback(impl_->cpu_cb.clone());
 }
 
 void BrowserHost::SetAudioResponseDemandCallback(Option<AudioDemandCallback> cb) {
+    if (IsClosing()) return;
     impl_->audio_demand_cb = rstd::move(cb);
     if (impl_->client) impl_->client->SetAudioDemandCallback(impl_->audio_demand_cb.clone());
 }
 
 void BrowserHost::Invalidate() {
-    if (! impl_->client) return;
+    if (IsClosing() || ! impl_->client) return;
     auto b = impl_->client->GetBrowser();
     if (b && b->GetHost()) b->GetHost()->Invalidate(PET_VIEW);
 }
@@ -340,7 +346,7 @@ void BrowserHost::Invalidate() {
 void BrowserHost::OnResize(int width, int height) { OnResize(width, height, 1.0f); }
 
 void BrowserHost::OnResize(int width, int height, float device_scale_factor) {
-    if (width <= 0 || height <= 0) return;
+    if (IsClosing() || width <= 0 || height <= 0) return;
     if (! impl_->osr) return;
     impl_->osr->SetViewSize(width, height);
     impl_->osr->SetDeviceScaleFactor(device_scale_factor);
@@ -351,7 +357,7 @@ void BrowserHost::OnResize(int width, int height, float device_scale_factor) {
 }
 
 void BrowserHost::OnMouseMove(int x, int y, bool left_down) {
-    if (! impl_->client) return;
+    if (IsClosing() || ! impl_->client) return;
     auto b = impl_->client->GetBrowser();
     if (! b || ! b->GetHost()) return;
     CefMouseEvent ev;
@@ -362,7 +368,7 @@ void BrowserHost::OnMouseMove(int x, int y, bool left_down) {
 }
 
 void BrowserHost::OnMouseButton(int x, int y, int cef_button, bool down, int click_count) {
-    if (! impl_->client) return;
+    if (IsClosing() || ! impl_->client) return;
     auto b = impl_->client->GetBrowser();
     if (! b || ! b->GetHost()) return;
     CefMouseEvent ev;
@@ -375,7 +381,7 @@ void BrowserHost::OnMouseButton(int x, int y, int cef_button, bool down, int cli
 }
 
 void BrowserHost::OnMouseWheel(int x, int y, int delta_x, int delta_y) {
-    if (! impl_->client) return;
+    if (IsClosing() || ! impl_->client) return;
     auto b = impl_->client->GetBrowser();
     if (! b || ! b->GetHost()) return;
     CefMouseEvent ev;
@@ -386,7 +392,7 @@ void BrowserHost::OnMouseWheel(int x, int y, int delta_x, int delta_y) {
 
 void BrowserHost::OnKey(int cef_key_event_type, int native_key_code, int windows_key_code,
                         int modifiers, unsigned int unicode_char) {
-    if (! impl_->client) return;
+    if (IsClosing() || ! impl_->client) return;
     auto b = impl_->client->GetBrowser();
     if (! b || ! b->GetHost()) return;
     CefKeyEvent ev;
@@ -400,17 +406,25 @@ void BrowserHost::OnKey(int cef_key_event_type, int native_key_code, int windows
 }
 
 void BrowserHost::OnFocus(bool gained) {
-    if (! impl_->client) return;
+    if (IsClosing() || ! impl_->client) return;
     auto b = impl_->client->GetBrowser();
     if (! b || ! b->GetHost()) return;
     b->GetHost()->SetFocus(gained);
 }
 
 void BrowserHost::Pump() {
-    if (impl_->initialised) CefDoMessageLoopWork();
+    if (! impl_->initialised) return;
+    if (impl_->pumping) rstd::panic("BrowserHost::Pump cannot be reentered");
+    impl_->pumping = true;
+    if (impl_->close_requested.load(Ordering::SeqCst) && impl_->client)
+        impl_->client->RequestClose();
+    if (impl_->client) impl_->client->CloseBrowsers();
+    CefDoMessageLoopWork();
+    impl_->pumping = false;
 }
 
 void BrowserHost::ApplyVolume(float volume) {
+    if (IsClosing()) return;
     if (impl_->client) impl_->client->SetAudioMuted(volume <= 0.0f);
     auto object = rstd::json::Map::make();
     object.insert("value"_Str, rstd::into<owe::Json>(f32(volume)));
@@ -419,19 +433,19 @@ void BrowserHost::ApplyVolume(float volume) {
 }
 
 void BrowserHost::SetFrameRate(int fps) {
-    if (fps <= 0 || ! impl_->client) return;
+    if (IsClosing() || fps <= 0 || ! impl_->client) return;
     auto b = impl_->client->GetBrowser();
     if (b && b->GetHost()) b->GetHost()->SetWindowlessFrameRate(fps);
 }
 
 void BrowserHost::SetPaused(bool paused) {
-    if (! impl_->client) return;
+    if (IsClosing() || ! impl_->client) return;
     auto b = impl_->client->GetBrowser();
     if (b && b->GetHost()) b->GetHost()->WasHidden(paused);
 }
 
 void BrowserHost::ApplyUserProperty(ref<str> key, const owe::Json& value) {
-    if (! impl_->client) return;
+    if (IsClosing() || ! impl_->client) return;
     auto browser = impl_->client->GetBrowser();
     if (! browser) return;
     auto frame = browser->GetMainFrame();
@@ -442,7 +456,7 @@ void BrowserHost::ApplyUserProperty(ref<str> key, const owe::Json& value) {
 }
 
 void BrowserHost::PushAudioData(slice<float> data) {
-    if (! impl_->client || data.is_empty()) return;
+    if (IsClosing() || ! impl_->client || data.is_empty()) return;
     auto browser = impl_->client->GetBrowser();
     if (! browser) return;
     auto frame = browser->GetMainFrame();
@@ -451,12 +465,30 @@ void BrowserHost::PushAudioData(slice<float> data) {
     frame->ExecuteJavaScript(to_string(snippet.as_str()), "weweb://internal/push_audio.js", 0);
 }
 
-bool BrowserHost::ShouldExit() const { return impl_->should_exit.load(Ordering::SeqCst); }
+bool BrowserHost::ShouldExit() const {
+    if (impl_->client) return impl_->client->IsClosed();
+    return impl_->close_requested.load(Ordering::SeqCst);
+}
 
-void BrowserHost::RequestClose() { impl_->should_exit.store(true, Ordering::SeqCst); }
+bool BrowserHost::IsClosing() const {
+    return impl_->close_requested.load(Ordering::SeqCst) ||
+           (impl_->client && impl_->client->IsClosing());
+}
 
-void BrowserHost::Shutdown() {
+void BrowserHost::RequestClose() { impl_->close_requested.store(true, Ordering::SeqCst); }
+
+bool BrowserHost::Shutdown() {
+    if (impl_->pumping || (impl_->client && ! impl_->client->IsClosed())) {
+        eprintln("weweb: Shutdown requires completed browser close outside Pump");
+        return false;
+    }
+    impl_->client          = nullptr;
+    impl_->osr             = nullptr;
+    impl_->accel_cb        = None();
+    impl_->cpu_cb          = None();
+    impl_->audio_demand_cb = None();
     if (impl_->initialised) {
+        impl_->close_requested.store(true, Ordering::SeqCst);
         CefShutdown();
         impl_->initialised = false;
     }
@@ -466,6 +498,7 @@ void BrowserHost::Shutdown() {
         impl_->cef_loaded = false;
     }
 #endif
+    return true;
 }
 
 } // namespace weweb

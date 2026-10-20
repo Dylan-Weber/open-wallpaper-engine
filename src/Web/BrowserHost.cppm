@@ -80,6 +80,7 @@ public:
                unsigned int unicode_char);
     void OnFocus(bool gained);
 
+    // Drive CEF on the initialization thread, including while closing.
     void Pump();
 
     void ApplyVolume(float volume);
@@ -89,8 +90,11 @@ public:
     void PushAudioData(slice<float> data);
 
     bool ShouldExit() const;
+    bool IsClosing() const;
+    // May be called from another thread; Pump applies the request.
     void RequestClose();
-    void Shutdown();
+    // Returns false while browser creation/close or a Pump callback is active.
+    bool Shutdown();
 
 private:
     struct Impl;

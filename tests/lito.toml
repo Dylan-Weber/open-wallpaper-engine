@@ -117,7 +117,7 @@ sources = ["tests/main.cpp", "tests/tex-schema/tex_schema_tests.cpp"]
 [[test]]
 name = "web-state-tests"
 sources = [
-  "tests/main.cpp",
+  "tests/web/main.cpp",
   "tests/web/state_tests.cpp",
   "tests/web/profile_tests.cpp",
 ]

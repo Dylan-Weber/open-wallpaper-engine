@@ -111,10 +111,13 @@ public:
     ClientHandler(const ClientHandler&)            = delete;
     ClientHandler& operator=(const ClientHandler&) = delete;
 
-    void                  SetCloseCallback(Box<dyn<Fn<void()>>> cb);
     void                  SetAudioDemandCallback(Option<AudioDemandCallback> cb);
     void                  SetAudioMuted(bool muted);
-    CefRefPtr<CefBrowser> GetBrowser() const { return browser_; }
+    void                  RequestClose();
+    void                  CloseBrowsers();
+    bool                  IsClosing() const;
+    bool                  IsClosed() const;
+    CefRefPtr<CefBrowser> GetBrowser() const;
 
     CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
     CefRefPtr<CefLoadHandler>     GetLoadHandler() override { return this; }
@@ -122,6 +125,14 @@ public:
     CefRefPtr<CefRenderHandler>   GetRenderHandler() override { return render_handler_; }
 
     void OnAfterCreated(CefRefPtr<CefBrowser> browser) override;
+    bool OnBeforePopup(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, int popup_id,
+                       const CefString& target_url, const CefString& target_frame_name,
+                       cef_window_open_disposition_t target_disposition, bool user_gesture,
+                       const CefPopupFeatures& popup_features, CefWindowInfo& window_info,
+                       CefRefPtr<CefClient>& client, CefBrowserSettings& settings,
+                       CefRefPtr<CefDictionaryValue>& extra_info,
+                       bool*                          no_javascript_access) override;
+    void OnBeforePopupAborted(CefRefPtr<CefBrowser> browser, int popup_id) override;
     bool DoClose(CefRefPtr<CefBrowser> browser) override;
     void OnBeforeClose(CefRefPtr<CefBrowser> browser) override;
 
@@ -146,16 +157,30 @@ public:
     bool HasAtLeastOneRef() const override { return ref_count_.HasAtLeastOneRef(); }
 
 private:
-    owe::Json                    user_props_;
-    CefRefPtr<OsrRenderHandler>  render_handler_;
-    CefRefPtr<CefBrowser>        browser_;
-    Option<Box<dyn<Fn<void()>>>> close_cb_;
-    Option<AudioDemandCallback>  audio_demand_cb_;
-    int                          audio_context_generation_ { 0 };
-    bool                         audio_demand_ { false };
-    bool                         audio_muted_ { false };
-    Atomic<bool>                 property_injected_ { false };
-    CefRefCount                  ref_count_;
+    enum class State
+    {
+        Creating,
+        Open,
+        Closing,
+        Closed
+    };
+
+    void FinishClose();
+
+    owe::Json                   user_props_;
+    CefRefPtr<OsrRenderHandler> render_handler_;
+    CefRefPtr<CefBrowser>       browser_;
+    Vec<CefRefPtr<CefBrowser>>  browsers_;
+    Vec<CefRefPtr<CefBrowser>>  pending_close_;
+    State                       state_ { State::Creating };
+    bool                        creation_pending_ { true };
+    usize                       pending_popups_ {};
+    Option<AudioDemandCallback> audio_demand_cb_;
+    int                         audio_context_generation_ { 0 };
+    bool                        audio_demand_ { false };
+    bool                        audio_muted_ { false };
+    Atomic<bool>                property_injected_ { false };
+    CefRefCount                 ref_count_;
 };
 
 String BuildPropertyListenerSnippet(const owe::Json& props);
