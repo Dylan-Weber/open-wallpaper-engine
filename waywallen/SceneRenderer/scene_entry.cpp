@@ -486,11 +486,6 @@ struct HostState {
     // hot-reload (volume / fps) into the looper.
     owe::SceneWallpaper* wp { nullptr };
 
-    // Render-target extent. Pointer events arrive in pixel coords from
-    // the consumer display;
-    u32 width {};
-    u32 height {};
-
     rstd::sync::atomic::Atomic<bool> shutdown { false };
     rstd::sync::atomic::Atomic<bool> paused { false };
     rstd::sync::atomic::Atomic<bool> muted { false };
@@ -698,16 +693,15 @@ void apply_control(HostState& s, ww_bridge_control_t& msg) {
     case WW_EVT_IN_UNMUTE: set_runtime_mute(s, false, msg.u.unmute.transition.fade_ms); break;
     case WW_EVT_IN_POINTER_MOTION: {
         const auto& pm = msg.u.pointer_motion.event;
-        if (s.wp && s.width > u32() && s.height > u32()) {
-            // The daemon sends (-1, -1) when the pointer leaves the output.
-            const bool inside = pm.x >= 0.0f && pm.y >= 0.0f && pm.x <= s.width.to_primitive() &&
-                                pm.y <= s.height.to_primitive();
-            if (inside) {
-                s.wp->mouseInput(static_cast<double>(pm.x) / s.width.to_primitive(),
-                                 static_cast<double>(pm.y) / s.height.to_primitive());
-            }
-            s.wp->mouseEnter(inside);
-        }
+        if (! s.wp) break;
+        auto                     session = s.session.upgrade();
+        ww_wescene::RenderExtent extent {};
+        // Auto can replace the startup extent; pointer pixels refer to the active pool.
+        auto position = session && session->getExtent(extent.width, extent.height) == 0
+                            ? extent.normalizePointer(pm.x, pm.y)
+                            : None<array<double, 2>>();
+        if (position) s.wp->mouseInput((*position)[usize()], (*position)[usize(1)]);
+        s.wp->mouseEnter(position.is_some());
         break;
     }
     case WW_EVT_IN_POINTER_BUTTON: {
@@ -1010,8 +1004,6 @@ int run(int argc, char** argv) {
     });
 
     host.wp          = &wp;
-    host.width       = u32(opts.width);
-    host.height      = u32(opts.height);
     host.base_volume = f32(opts.initial_volume);
     host.settings_enable_audio.store(opts.settings_enable_audio,
                                      rstd::sync::atomic::Ordering::Release);

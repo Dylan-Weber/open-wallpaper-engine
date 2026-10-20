@@ -9,6 +9,12 @@ export namespace ww_wescene
 struct RenderExtent {
     rstd::uint32_t width;
     rstd::uint32_t height;
+
+    auto normalizePointer(float x, float y) const -> rstd::Option<rstd::array<double, 2>> {
+        if (! width || ! height || ! (x >= 0.0f && y >= 0.0f && x <= width && y <= height))
+            return rstd::None();
+        return rstd::Some(rstd::array<double, 2> { double(x) / width, double(y) / height });
+    }
 };
 
 struct RenderResolution {

@@ -25,4 +25,20 @@ int main() {
     const auto origin = scene.resolve(WW_RESOLUTION_ORIGIN, 1080);
     rstd_assert(origin.width == 10000 && origin.height == 5000);
     rstd_assert(scene.capabilities.mode == 1 && web.capabilities.mode == 2);
+
+    for (auto extent :
+         rstd::array<ww_wescene::RenderExtent, 3> { ww_wescene::RenderExtent { 8192, 2576 },
+                                                    ww_wescene::RenderExtent { 2048, 644 },
+                                                    ww_wescene::RenderExtent { 4096, 1288 } }) {
+        auto position = extent.normalizePointer(extent.width * 0.625f, extent.height * 0.25f);
+        rstd_assert(position && (*position)[rstd::usize()] == 0.625 &&
+                    (*position)[rstd::usize(1)] == 0.25);
+        rstd_assert(extent.normalizePointer(0, 0).is_some());
+        rstd_assert(extent.normalizePointer(float(extent.width), float(extent.height)).is_some());
+        rstd_assert(extent.normalizePointer(-1, -1).is_none());
+        rstd_assert(extent.normalizePointer(float(extent.width) + 1, 0).is_none());
+        rstd_assert(extent.normalizePointer(0, float(extent.height) + 1).is_none());
+    }
+    rstd_assert((ww_wescene::RenderExtent { 0, 644 }).normalizePointer(0, 0).is_none());
+    rstd_assert((ww_wescene::RenderExtent { 2048, 0 }).normalizePointer(0, 0).is_none());
 }
