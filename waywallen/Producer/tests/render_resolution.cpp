@@ -24,7 +24,35 @@ int main() {
     const auto scene  = RenderResolution::describe(10000, 5000, true);
     const auto origin = scene.resolve(WW_RESOLUTION_ORIGIN, 1080);
     rstd_assert(origin.width == 10000 && origin.height == 5000);
-    rstd_assert(scene.capabilities.mode == 1 && web.capabilities.mode == 2);
+    rstd_assert(scene.capabilities.mode == 2 && web.capabilities.mode == 2);
+    const auto scene_custom = scene.resolve(WW_RESOLUTION_CUSTOM, 8192);
+    rstd_assert(scene_custom.width == 16384 && scene_custom.height == 8192);
+    const auto scene_auto = scene.resolve(WW_RESOLUTION_AUTO, 1080);
+    rstd_assert(scene_auto.width == 7680 && scene_auto.height == 3840);
+    const auto procedural = RenderResolution::describe(128, 128, true);
+    rstd_assert(procedural.capabilities.mode == 2);
+    rstd_assert(procedural.capabilities.reference_width == 128 &&
+                procedural.capabilities.reference_height == 128);
+    rstd_assert(procedural.capabilities.max_width >= 2560 &&
+                procedural.capabilities.max_height >= 2560);
+    waywallen_render_target_config_t config {
+        .revision              = 1,
+        .capabilities_revision = procedural.capabilities.revision,
+        .width                 = 2560,
+        .height                = 2560,
+    };
+    ww_pool_directive_t directive {};
+    rstd_assert(ww_bridge_render_target_directive(&procedural.capabilities, &config, &directive) ==
+                0);
+    config.width = config.height = 8192;
+    rstd_assert(ww_bridge_render_target_directive(&procedural.capabilities, &config, &directive) !=
+                0);
+    const auto procedural_origin = procedural.resolve(WW_RESOLUTION_ORIGIN, 1080);
+    rstd_assert(procedural_origin.width == 128 && procedural_origin.height == 128);
+    const auto procedural_custom = procedural.resolve(WW_RESOLUTION_CUSTOM, 1440);
+    rstd_assert(procedural_custom.width == 1440 && procedural_custom.height == 1440);
+    const auto procedural_limit = procedural.resolve(WW_RESOLUTION_CUSTOM, 8192);
+    rstd_assert(procedural_limit.width == 8192 && procedural_limit.height == 8192);
 
     for (auto extent :
          rstd::array<ww_wescene::RenderExtent, 3> { ww_wescene::RenderExtent { 8192, 2576 },

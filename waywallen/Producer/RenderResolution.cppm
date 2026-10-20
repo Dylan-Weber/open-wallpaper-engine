@@ -19,25 +19,28 @@ struct RenderExtent {
 
 struct RenderResolution {
     waywallen_render_target_capabilities_t capabilities;
+    bool                                   has_origin;
 
-    static RenderResolution describe(rstd::uint32_t width, rstd::uint32_t height, bool native) {
+    static RenderResolution describe(rstd::uint32_t width, rstd::uint32_t height, bool has_origin) {
+        // A scene canvas defines coordinates, not a ceiling on generated pixel detail.
         return { { .revision         = 1,
                    .reference_width  = width,
                    .reference_height = height,
-                   .mode             = native ? 1u : 2u,
+                   .mode             = 2,
                    .min_width        = 1,
                    .min_height       = 1,
-                   .max_width        = native ? width : (width >= height ? 7680u : 4320u),
-                   .max_height       = native ? height : (width >= height ? 4320u : 7680u),
+                   .max_width        = width >= height ? 7680u : 4320u,
+                   .max_height       = width >= height ? 4320u : 7680u,
                    .width_alignment  = 1,
-                   .height_alignment = 1 } };
+                   .height_alignment = 1 },
+                 has_origin };
     }
 
     RenderExtent resolve(rstd::int32_t resolution, rstd::uint32_t custom_extent) const {
         RenderExtent extent { capabilities.reference_width, capabilities.reference_height };
         const auto cap = resolution == WW_RESOLUTION_CUSTOM ? custom_extent
                                                             : ww_resolution_short_edge(resolution);
-        if (capabilities.mode != 2) {
+        if (has_origin && resolution != WW_RESOLUTION_AUTO) {
             ww_resolution_apply_short_edge(
                 cap, WW_RESOLUTION_CAP_ALLOW_UPSCALE, &extent.width, &extent.height);
             return extent;
