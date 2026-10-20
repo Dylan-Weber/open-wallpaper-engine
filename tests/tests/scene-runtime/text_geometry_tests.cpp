@@ -254,6 +254,46 @@ TEST(TextLayouter, LayoutOriginPreservesFontBaselineAcrossTextChanges) {
     }
 }
 
+TEST(TextLayouter, FontBoundsExcludeTrailingLeadingWithoutMovingBaselines) {
+    auto source      = rstd::path::PathBuf::from(__FILE__ ""_str);
+    auto root        = source.as_path().parent().unwrap().parent().unwrap().parent().unwrap();
+    auto path        = rstd::path::PathBuf::from(root).join("fixtures/fonts/LineGap.ttf"_str);
+    auto bytes       = rstd::fs::read(path.as_path()).unwrap();
+    auto resources   = TextResources();
+    auto font_source = resources->RegisterFont(bytes.as_slice()).unwrap();
+    auto mesh        = Arc<owe::SceneMesh>::make();
+    owe::text::TextLayoutStyle style;
+    style.mesh_origin = owe::text::TextMeshOrigin::Layout;
+    style.halign      = "left"_Str;
+    style.wrap_width  = 300;
+    owe::text::TextLayouter layouter(resources.clone(),
+                                     { .source = Some(font_source), .size = 100 },
+                                     mesh.clone(),
+                                     rstd::move(style),
+                                     8);
+    for (auto text : array<ref<str>, 3> { "A"_str, "g"_str, "A\n\ng"_str }) {
+        ASSERT_TRUE(layouter.SetText(text).is_ok());
+        const auto& layout = *layouter.Layout();
+        const auto  bounds = layout.typographic_bounds();
+        EXPECT_FLOAT_EQ(layouter.TextWidth(), 300);
+        EXPECT_FLOAT_EQ(layouter.TextHeight(), float(bounds.height));
+        EXPECT_FLOAT_EQ(float(layout.logical_bounds().height - bounds.height), 100);
+        const auto& glyph    = layout.glyphs()[usize()];
+        auto        bitmap   = layout.fonts()[usize(glyph.font)].rasterize(glyph.glyph, 1).unwrap();
+        const auto& vertices = mesh->GetVertexArray(usize());
+        EXPECT_FLOAT_EQ(vertices.Data()[1],
+                        float(bounds.height / 2 + bounds.y - glyph.position.y - bitmap.origin.y));
+    }
+    EXPECT_FLOAT_EQ(layouter.TextHeight(), 500);
+    ASSERT_TRUE(layouter.SetText("A"_str).is_ok());
+    EXPECT_FLOAT_EQ(layouter.TextHeight(), 100);
+    ASSERT_TRUE(layouter.SetPixelSize(50).is_ok());
+    EXPECT_FLOAT_EQ(layouter.TextHeight(), 50);
+    ASSERT_TRUE(layouter.SetHorizontalAlign("right"_str).is_ok());
+    EXPECT_FLOAT_EQ(layouter.TextHeight(), 50);
+    EXPECT_FLOAT_EQ(layouter.TextWidth(), 300);
+}
+
 TEST(TextGeometry, DynamicEffectFollowsCurrentTextBounds) {
     const owe::text::TextGeometryPolicy policy {
         .frame_width  = 419.0f,

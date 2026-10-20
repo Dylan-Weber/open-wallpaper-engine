@@ -560,12 +560,13 @@ struct TextLayouter::Impl {
         };
         Vec<Quad>         quads;
         TextLayoutMetrics measured;
-        measured.text_width    = float(output.logical_bounds().width);
-        measured.text_height   = float(output.logical_bounds().height);
-        measured.source_width  = measured.text_width;
-        measured.source_height = measured.text_height;
-        measured.padding       = style.padding;
-        auto pages             = resources->Pages();
+        const auto        bounds = output.typographic_bounds();
+        measured.text_width      = float(bounds.width);
+        measured.text_height     = float(bounds.height);
+        measured.source_width    = measured.text_width;
+        measured.source_height   = measured.text_height;
+        measured.padding         = style.padding;
+        auto pages               = resources->Pages();
         if (pages.is_empty()) return Err(vectext::TextError::Limit);
         if (style.opaquebackground) {
             auto pad = style.padding;
@@ -587,8 +588,9 @@ struct TextLayouter::Impl {
             if (raster.is_err()) return Err(raster.unwrap_err());
             auto atlas = raster.unwrap();
             if (! atlas.width || ! atlas.height) continue;
-            float left   = float(glyph.position.x + atlas.origin.x) - measured.text_width / 2;
-            float top    = measured.text_height / 2 - float(glyph.position.y + atlas.origin.y);
+            float left = float(glyph.position.x + atlas.origin.x) - measured.text_width / 2;
+            float top =
+                measured.text_height / 2 - float(glyph.position.y - bounds.y + atlas.origin.y);
             float right  = left + float(atlas.width / atlas.scale),
                   bottom = top - float(atlas.height / atlas.scale);
             if (! have_bounds) {

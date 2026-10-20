@@ -423,7 +423,7 @@ dependencies = [
 [[packages]]
 name = "vectext"
 version = "0.1.0"
-source = "git+https://github.com/vecren/vectext.git#b07865bd933daaa7d7f9db32e64cd1dc9795a3e8"
+source = "git+https://github.com/vecren/vectext.git#d918972da5c08b5afc73b812062e855fce2d847d"
 dependencies = [
   "liunicode",
   "rstd-nostd",
