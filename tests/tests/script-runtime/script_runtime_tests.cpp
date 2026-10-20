@@ -1636,6 +1636,176 @@ TEST(ScriptLocalStorage, PreservesNativePathBytes) {
     }
 }
 
+TEST(ScriptLocalStorage, IndependentRuntimesMergeWritesAndDeletes) {
+    auto      directory = rstd::fs::TempDir::make("owe-ls-shared"_str).unwrap();
+    auto      path      = rstd::path::PathBuf::from(directory.path()).join("storage.json"_str);
+    JsRuntime first;
+    JsRuntime second;
+    first.SetPersistence(path.clone());
+    second.SetPersistence(path.clone());
+    ASSERT_NE(MakeProbe(first, "shared/a", "localStorage.set('a', 1);"), nullptr);
+    ASSERT_NE(MakeProbe(second, "shared/b", "localStorage.set('b', 2);"), nullptr);
+    {
+        JsRuntime reader;
+        reader.SetPersistence(path.clone());
+        auto* probe = MakeProbe(reader, "shared/merged", R"JS(
+            export function update() {
+                return localStorage.get('a') + localStorage.get('b');
+            }
+        )JS");
+        ASSERT_NE(probe, nullptr);
+        reader.TickAll();
+        EXPECT_EQ(LastScalar(probe), 3.0);
+    }
+    ASSERT_NE(MakeProbe(first, "shared/delete", "localStorage.remove('a');"), nullptr);
+    ASSERT_NE(MakeProbe(second, "shared/stale", "localStorage.set('c', 4);"), nullptr);
+    JsRuntime reader;
+    reader.SetPersistence(path.clone());
+    auto* probe = MakeProbe(reader, "shared/deleted", R"JS(
+        export function update() {
+            return localStorage.get('a') === undefined
+                ? localStorage.get('b') + localStorage.get('c') : -1;
+        }
+    )JS");
+    ASSERT_NE(probe, nullptr);
+    reader.TickAll();
+    EXPECT_EQ(LastScalar(probe), 6.0);
+}
+
+TEST(ScriptLocalStorage, ConcurrentRuntimesKeepIndependentKeys) {
+    auto directory = rstd::fs::TempDir::make("owe-ls-concurrent"_str).unwrap();
+    auto path      = rstd::path::PathBuf::from(directory.path()).join("storage.json"_str);
+    rstd::sync::atomic::Atomic<usize>   ready {};
+    Vec<rstd::thread::JoinHandle<bool>> workers;
+    for (usize writer {}; writer < usize(4); ++writer) {
+        workers.push(rstd::thread::spawn([&, writer] {
+                         JsRuntime runtime;
+                         runtime.SetPersistence(path.clone());
+                         ready.fetch_add(usize(1));
+                         while (ready.load() != usize(4)) rstd::thread::yield_now();
+                         auto source = rstd::format(
+                             "for (let i = 0; i < 16; ++i) localStorage.set('{}_' + i, 1);",
+                             writer);
+                         auto name = rstd::format("concurrent/{}", writer);
+                         return runtime.MakeFieldScript(source.as_str(),
+                                                        name.as_str(),
+                                                        FieldKind::Scalar,
+                                                        owe::MakeObject(),
+                                                        owe::IntoJson(0),
+                                                        nullptr) != nullptr;
+                     }).unwrap());
+    }
+    for (auto& worker : workers) EXPECT_TRUE(rstd::move(worker).join().unwrap());
+    JsRuntime reader;
+    reader.SetPersistence(path.clone());
+    auto* probe = MakeProbe(reader, "concurrent/read", R"JS(
+        export function update() {
+            let count = 0;
+            for (let writer = 0; writer < 4; ++writer)
+                for (let index = 0; index < 16; ++index)
+                    count += localStorage.get(writer + '_' + index) ?? 0;
+            return count;
+        }
+    )JS");
+    ASSERT_NE(probe, nullptr);
+    reader.TickAll();
+    EXPECT_EQ(LastScalar(probe), 64.0);
+}
+
+TEST(ScriptLocalStorage, RetriesPendingMutationsAfterLockOrReadFailure) {
+    for (bool block_lock : { false, true }) {
+        auto      directory = rstd::fs::TempDir::make("owe-ls-retry"_str).unwrap();
+        auto      root      = rstd::path::PathBuf::from(directory.path());
+        auto      path      = root.join("storage.json"_str);
+        auto      lock_path = root.join("storage.json.lock"_str);
+        JsRuntime first;
+        JsRuntime second;
+        first.SetPersistence(path.clone());
+        second.SetPersistence(path.clone());
+        ASSERT_NE(MakeProbe(first, "retry/seed", "localStorage.set('old', 5);"), nullptr);
+        auto committed = rstd::fs::read_to_string(path).unwrap();
+        if (block_lock) {
+            ASSERT_TRUE(rstd::fs::remove_file(lock_path).is_ok());
+            ASSERT_TRUE(rstd::fs::create_dir(lock_path).is_ok());
+        } else {
+            ASSERT_TRUE(rstd::fs::write_atomic(path, "invalid json"_bytes).is_ok());
+        }
+        auto* pending = MakeProbe(first, "retry/pending", R"JS(
+            localStorage.set('a', 1);
+            localStorage.remove('old');
+            localStorage.set('a', 3);
+            localStorage.set('discard', 9);
+            localStorage.remove('discard');
+            export function update() {
+                return localStorage.get('a') === 3 && localStorage.get('old') === undefined
+                    && localStorage.get('discard') === undefined ? 1 : 0;
+            }
+        )JS");
+        ASSERT_NE(pending, nullptr);
+        first.TickAll();
+        EXPECT_EQ(LastScalar(pending), 1.0);
+        if (block_lock) {
+            ASSERT_TRUE(rstd::fs::remove_dir(lock_path).is_ok());
+        } else {
+            ASSERT_TRUE(rstd::fs::write_atomic(path, committed.as_str().as_bytes()).is_ok());
+        }
+        ASSERT_NE(MakeProbe(second, "retry/remote", "localStorage.set('remote', 42);"), nullptr);
+        ASSERT_NE(MakeProbe(first, "retry/recover", "localStorage.set('b', 2);"), nullptr);
+        JsRuntime reader;
+        reader.SetPersistence(path.clone());
+        auto* probe = MakeProbe(reader, "retry/read", R"JS(
+            export function update() {
+                return localStorage.get('old') === undefined && localStorage.get('discard') === undefined
+                    ? localStorage.get('a') + localStorage.get('b') + localStorage.get('remote') : -1;
+            }
+        )JS");
+        ASSERT_NE(probe, nullptr);
+        reader.TickAll();
+        EXPECT_EQ(LastScalar(probe), 47.0);
+        first.TickAll();
+        EXPECT_EQ(LastScalar(pending), 1.0);
+    }
+}
+
+TEST(ScriptLocalStorage, SymlinkAliasesKeepTargetsAndShareMutations) {
+    for (bool existing : { false, true }) {
+        auto      directory = rstd::fs::TempDir::make("owe-ls-symlink"_str).unwrap();
+        auto      root      = rstd::path::PathBuf::from(directory.path());
+        auto      target    = root.join("real.json"_str);
+        auto      relative  = root.join("relative.json"_str);
+        auto      absolute  = root.join("absolute.json"_str);
+        JsRuntime direct;
+        direct.SetPersistence(target.clone());
+        if (existing)
+            ASSERT_NE(MakeProbe(direct, "symlink/seed", "localStorage.set('seed', 7);"), nullptr);
+        ASSERT_TRUE(rstd::fs::soft_link("real.json"_str, relative).is_ok());
+        ASSERT_TRUE(rstd::fs::soft_link(target, absolute).is_ok());
+        JsRuntime relative_writer;
+        JsRuntime absolute_writer;
+        relative_writer.SetPersistence(relative.clone());
+        absolute_writer.SetPersistence(absolute.clone());
+        ASSERT_NE(MakeProbe(relative_writer, "symlink/relative", "localStorage.set('a', 1);"),
+                  nullptr);
+        ASSERT_NE(MakeProbe(direct, "symlink/direct", "localStorage.set('b', 2);"), nullptr);
+        ASSERT_NE(MakeProbe(absolute_writer, "symlink/absolute", "localStorage.set('c', 4);"),
+                  nullptr);
+        EXPECT_TRUE(rstd::fs::symlink_metadata(relative).unwrap().is_symlink());
+        EXPECT_TRUE(rstd::fs::symlink_metadata(absolute).unwrap().is_symlink());
+        EXPECT_FALSE(rstd::fs::exists(root.join("relative.json.lock"_str)).unwrap());
+        EXPECT_FALSE(rstd::fs::exists(root.join("absolute.json.lock"_str)).unwrap());
+        JsRuntime reader;
+        reader.SetPersistence(target.clone());
+        auto* probe = MakeProbe(reader, "symlink/read", R"JS(
+            export function update() {
+                return localStorage.get('a') + localStorage.get('b') + localStorage.get('c');
+            }
+        )JS");
+        ASSERT_NE(probe, nullptr);
+        reader.TickAll();
+        EXPECT_EQ(LastScalar(probe), 7.0);
+    }
+}
+
 TEST(ScriptLocalStorage, ObjectRoundTrip) {
     const std::string path = MakeTmpLsPath("obj");
 
