@@ -1,3 +1,34 @@
+<release version="0.3.1" date="2026-10-20">
+  <description>
+    <p>Added:</p>
+    <ul>
+      <li>Automatic output resolution for waywallen plugin.</li>
+      <li>Localized scene and web wallpaper type labels. #152 by @wehrwolfmann</li>
+    </ul>
+    <p>Fixes:</p>
+    <ul>
+      <li>Composed layer parallax origins. #147 by @barrence01</li>
+      <li>Cursor movement events and cursor-bound particle emission respect pointer presence. #148 by @LostAttractor</li>
+      <li>Scripted music selection across property changes and reloads. #150 by @LostAttractor</li>
+      <li>Indexed scene layer queries and script object identity. #155 by @nztom</li>
+      <li>Scene loading timeouts caused by inactive texture bindings and excessive frame-graph dependencies.</li>
+      <li>Framebuffer history initialization and texture references across render-graph rebuilds.</li>
+      <li>Text alignment and line spacing.</li>
+      <li>Pointer coordinates after output resizing and low-resolution procedural wallpapers.</li>
+      <li>Concurrent scene localStorage writes.</li>
+      <li>Web wallpaper cache reuse with exclusive profile leases.</li>
+      <li>Web browser shutdown follows close completion through the host message loop.</li>
+    </ul>
+    <p>Improved:</p>
+    <ul>
+      <li>Cache shader reflection metadata to reduce loading time.</li>
+      <li>Stream texture decoding and uploads to reduce memory usage.</li>
+      <li>Share immutable shader, geometry and material data across scene snapshots.</li>
+      <li>Expand loading diagnostics and migrate more to vrento and vectext.</li>
+    </ul>
+  </description>
+</release>
+
 <release version="0.3.0" date="2026-09-25">
   <description>
     <p>Added:</p>
