@@ -119,6 +119,7 @@ name = "web-state-tests"
 sources = [
   "tests/main.cpp",
   "tests/web/state_tests.cpp",
+  "tests/web/profile_tests.cpp",
 ]
 
 [dev-dependencies.owe-web]

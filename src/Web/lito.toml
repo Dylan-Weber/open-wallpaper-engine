@@ -10,6 +10,7 @@ sources = [
   "Web.cppm",
   "DmaBufFrame.cppm",
   "Manifest.cppm",
+  "Profile.cppm",
   "BrowserHost.cppm",
   "Cef.cppm",
   "CefInternal.cppm",

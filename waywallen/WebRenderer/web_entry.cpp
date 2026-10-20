@@ -153,12 +153,6 @@ PathBuf derive_cache_dir(ref<str> workshop_id) {
     auto dir = base.join("waywallen-weweb-renderer"_str);
     if (! workshop_id.is_empty()) dir.push(workshop_id);
 
-    // CEF enforces a process singleton per root_cache_path. Multiple
-    // renderer processes for the same wallpaper therefore need separate
-    // root cache directories.
-    dir.push(rstd::format("process-{}", rstd::process::id()).as_str());
-
-    (void)rstd::fs::create_dir_all(dir.as_path());
     return dir;
 }
 
@@ -526,6 +520,8 @@ void reader_loop(HostState& s) {
 namespace waywallen
 {
 int run(int argc, char** argv) {
+    // Keep the profile leased through BrowserHost destruction and CEF shutdown.
+    Option<weweb::CefProfileLease> profile;
     // CRITICAL: CEF re-execs this binary as helper procs. Must run
     // before argparse / logging / anything with side effects.
     weweb::BrowserHost host;
@@ -710,11 +706,17 @@ int run(int argc, char** argv) {
     });
 
     // BrowserHost::Init wants resources / locales relative to argv[0].
-    auto                            exe_dir = executable_dir(argv[0]);
+    auto exe_dir = executable_dir(argv[0]);
+    auto acquired_profile =
+        weweb::CefProfileLease::acquire(derive_cache_dir(opts.workshop_id.as_str()));
+    if (acquired_profile.is_err()) {
+        die(rstd::format("acquire CEF profile: {}", acquired_profile.unwrap_err()).as_str());
+    }
+    profile = Some(acquired_profile.unwrap());
     weweb::BrowserHost::InitOptions ho;
     ho.resources_dir = exe_dir.clone();
     ho.locales_dir   = exe_dir.join("locales"_str);
-    ho.cache_dir     = derive_cache_dir(opts.workshop_id.as_str());
+    ho.cache_dir     = PathBuf::from(profile->path());
     if (opts.remote_debugging_port > i32()) {
         ho.enable_remote_debugging = true;
         ho.remote_debugging_port   = opts.remote_debugging_port.to_primitive();
