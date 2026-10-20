@@ -26,6 +26,7 @@ namespace vk  = vrento::vulkan;
 namespace tex = vrento::texture;
 struct OutputCounts {
     unsigned acquired {}, submitted {}, aborted {};
+    unsigned width { 64 }, height { 64 };
     bool     reject_next {};
 };
 class OutputSurface : public vrento::ExSwapchain {
@@ -34,40 +35,48 @@ class OutputSurface : public vrento::ExSwapchain {
     vvk::ImageView                view_;
     rstd::uint64_t                serial_ {};
     bool                          defined_ {};
+    unsigned                      width_ {}, height_ {};
     rstd::sync::Arc<OutputCounts> counts_;
 
 public:
     explicit OutputSurface(vk::DeviceSession session, rstd::sync::Arc<OutputCounts> counts =
                                                           rstd::sync::Arc<OutputCounts>::make())
-        : session_(session), counts_(rstd::move(counts)) {
+        : session_(session), counts_(rstd::move(counts)) {}
+    void resize() {
+        if (width_ == counts_->width && height_ == counts_->height) return;
         VkImageCreateInfo info { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
         info.imageType = VK_IMAGE_TYPE_2D;
         info.format    = VK_FORMAT_R8G8B8A8_UNORM;
-        info.extent    = { 64, 64, 1 };
+        info.extent    = { counts_->width, counts_->height, 1 };
         info.mipLevels = info.arrayLayers = 1;
         info.samples                      = VK_SAMPLE_COUNT_1_BIT;
         info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-        image_     = session.device().memory_allocator().create_image(info).unwrap();
+        auto image = session_.device().memory_allocator().create_image(info).unwrap();
         VkImageViewCreateInfo view { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
-        view.image            = image_.handle();
+        view.image            = image.handle();
         view.viewType         = VK_IMAGE_VIEW_TYPE_2D;
         view.format           = info.format;
         view.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
-        rstd_assert(session.device().handle().CreateImageView(view, view_) == VK_SUCCESS);
+        rstd_assert(session_.device().handle().CreateImageView(view, view_) == VK_SUCCESS);
+        image_   = rstd::move(image);
+        width_   = counts_->width;
+        height_  = counts_->height;
+        defined_ = false;
     }
-    unsigned width() const override { return 64; }
-    unsigned height() const override { return 64; }
+    unsigned width() const override { return counts_->width; }
+    unsigned height() const override { return counts_->height; }
     VkFormat format() const override { return VK_FORMAT_R8G8B8A8_UNORM; }
     bool     ready() const override { return true; }
     void     setOnReadyChanged(Option<vrento::ExSwapchainReadyCallback>) override {}
     auto     acquireRenderTarget() -> vrento::FrameSurfaceAcquireResult override {
+        resize();
         ++counts_->acquired;
         vrento::FrameSurfaceIdentity identity { u64(1), u32(), u64(++serial_) };
         vrento::FrameSurfaceLease    lease;
         lease.identity             = identity;
         lease.image.handle         = image_.handle();
         lease.image.view           = *view_;
-        lease.image.extent         = { 64, 64, 1 };
+        lease.image.extent         = { width_, height_, 1 };
         lease.format               = format();
         lease.initial_layout       = defined_ ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_UNDEFINED;
         lease.initial_queue_family = lease.final_queue_family =
@@ -156,12 +165,10 @@ TEST(RenderOutput, ClearAndResize) {
         String::make("_rt_default"_str),
         owe::SceneRenderTarget {
             .width = i32(64), .height = i32(64), .bind = { .enable = true, .screen = true } });
-    scene.RegisterRenderTarget("_rt_copy"_Str,
-                               owe::SceneRenderTarget { .width                  = i32(64),
-                                                        .height                 = i32(64),
-                                                        .has_mipmap             = true,
-                                                        .mipmap_level           = 3,
-                                                        .initialize_transparent = true });
+    scene.RegisterRenderTarget(
+        "_rt_copy"_Str,
+        owe::SceneRenderTarget {
+            .width = i32(64), .height = i32(64), .has_mipmap = true, .mipmap_level = 3 });
     scene.RegisterRenderTarget("_rt_seen"_Str,
                                owe::SceneRenderTarget { .width = i32(64), .height = i32(64) });
     scene.RegisterRenderTarget("_rt_uninitialized"_Str,
@@ -200,7 +207,8 @@ TEST(RenderOutput, ClearAndResize) {
             auto source = textures
                               .declare(graph,
                                        { .key        = String::make(from),
-                                         .definition = scene.TargetResource(from).unwrap() })
+                                         .definition = scene.TargetResource(from).unwrap(),
+                                         .initialize_history_transparent = true })
                               .unwrap();
             if (written)
                 source = *written;
@@ -209,7 +217,8 @@ TEST(RenderOutput, ClearAndResize) {
             auto initial = textures
                                .declare(graph,
                                         { .key        = String::make(to),
-                                          .definition = scene.TargetResource(to).unwrap() })
+                                          .definition = scene.TargetResource(to).unwrap(),
+                                          .initialize_history_transparent = true })
                                .unwrap();
             auto description =
                 vk::declare_texture_copy(graph, pass, source, initial, {}, {}).unwrap();
@@ -220,12 +229,12 @@ TEST(RenderOutput, ClearAndResize) {
             return target;
         };
         copy({ 1 }, uninitialized ? "_rt_uninitialized"_str : "_rt_copy"_str, "_rt_seen"_str);
-        auto result =
-            textures
-                .declare(graph,
-                         { .key        = "_rt_default"_Str,
-                           .definition = scene.TargetResource("_rt_default"_str).unwrap() })
-                .unwrap();
+        auto result = textures
+                          .declare(graph,
+                                   { .key        = "_rt_default"_Str,
+                                     .definition = scene.TargetResource("_rt_default"_str).unwrap(),
+                                     .initialize_history_transparent = true })
+                          .unwrap();
         auto clear_id = vrento::fg::PassId { 10 };
         auto color    = scene.ClearColor();
         auto clear =
@@ -261,8 +270,26 @@ TEST(RenderOutput, ClearAndResize) {
     };
     renderer.configureRenderTargets(scene);
     auto snapshot = owe::ExtractRenderSceneSnapshot(scene);
-    renderer.tryInstallSceneRenderState(scene, build(true), snapshot).unwrap();
-    renderer.drawFrame(scene);
+    auto install  = [&](bool uninitialized = false) {
+        auto result = renderer.tryInstallSceneRenderState(scene, build(uninitialized), snapshot);
+        for (unsigned attempt {};
+             result.is_ok() && *result == owe::PrepareOutcome::Pending && attempt < 2000;
+             ++attempt) {
+            rstd::thread::sleep(rstd::time::Duration::from_millis(u64(1)));
+            result = renderer.tryContinuePrepare(scene);
+        }
+        rstd_assert(result.is_ok() && *result == owe::PrepareOutcome::Ready);
+    };
+    auto draw = [&] {
+        renderer.drawFrame(scene);
+        for (unsigned attempt {}; renderer.framePending() && attempt < 2000; ++attempt) {
+            rstd::thread::sleep(rstd::time::Duration::from_millis(u64(1)));
+            renderer.drawFrame(scene);
+        }
+        rstd_assert(! renderer.framePending());
+    };
+    install(true);
+    draw();
     rstd_assert(! renderer.framePending() && ! renderer.frameSubmitted());
     auto failure = renderer.diagnostics().frame_error;
     rstd_assert(failure && failure->stage == vk::GraphExecutionStage::Binding);
@@ -270,9 +297,9 @@ TEST(RenderOutput, ClearAndResize) {
     rstd_assert(failure->texture_error() &&
                 failure->texture_error()->kind == tex::ErrorKind::Invalid);
     rstd_assert(counts->acquired == 1 && counts->aborted == 1 && counts->submitted == 0);
-    renderer.tryInstallSceneRenderState(scene, build(), snapshot).unwrap();
+    install();
     rstd_assert(! renderer.renderedTarget("_rt_default"_str).unwrap().ready());
-    renderer.drawFrame(scene);
+    draw();
     auto old   = renderer.renderedTarget("_rt_default"_str).unwrap().take_ready();
     auto first = pixels(queue, old);
     for (usize i {}; i < first.len(); ++i)
@@ -281,8 +308,8 @@ TEST(RenderOutput, ClearAndResize) {
     auto initial = pixels(queue, renderer.renderedTarget("_rt_seen"_str).unwrap().take_ready());
     for (auto byte : initial) rstd_assert(byte == u8());
     scene.SetClearColor({ 0.0f, 1.0f, 0.0f });
-    renderer.tryInstallSceneRenderState(scene, build(), snapshot).unwrap();
-    renderer.drawFrame(scene);
+    install();
+    draw();
     auto second = pixels(queue, renderer.renderedTarget("_rt_default"_str).unwrap().take_ready());
     for (usize i {}; i < second.len(); ++i)
         rstd_assert(second[i] ==
@@ -305,25 +332,29 @@ TEST(RenderOutput, ClearAndResize) {
                         i,
                         u8(data[i]));
     }
+    counts->width = 96;
     rstd_assert(renderer.onSwapchainReady(96, 64));
     rstd_assert(scene.ResizeRenderTarget("_rt_copy"_str, i32(96), i32(64)));
     rstd_assert(scene.ResizeRenderTarget("_rt_seen"_str, i32(96), i32(64)));
     renderer.configureRenderTargets(scene);
-    renderer.tryInstallSceneRenderState(scene, build(), snapshot).unwrap();
-    renderer.drawFrame(scene);
+    install();
+    draw();
     auto resized = renderer.renderedTarget("_rt_default"_str).unwrap().take_ready();
     rstd_assert(resized.texture().description().extent.width == 96);
     auto final = pixels(queue, resized);
     for (usize i {}; i < final.len(); ++i)
         rstd_assert(final[i] ==
                     u8(i.to_primitive() % 4 == 1 || i.to_primitive() % 4 == 3 ? 255 : 0));
+    auto resized_history =
+        pixels(queue, renderer.renderedTarget("_rt_seen"_str).unwrap().take_ready());
+    for (auto byte : resized_history) rstd_assert(byte == u8());
     rstd_assert(counts->submitted == 3 && counts->aborted == 1);
     counts->reject_next = true;
-    renderer.drawFrame(scene);
+    draw();
     rstd_assert(! renderer.frameSubmitted() && ! renderer.framePending());
     rstd_assert(counts->aborted == 2 && counts->submitted == 3);
-    renderer.tryInstallSceneRenderState(scene, build(), snapshot).unwrap();
-    renderer.drawFrame(scene);
+    install();
+    draw();
     rstd_assert(renderer.frameSubmitted() && ! renderer.framePending());
     rstd_assert(! renderer.diagnostics().frame_error);
     rstd_assert(counts->acquired == 6 && counts->submitted == 4 && counts->aborted == 2);

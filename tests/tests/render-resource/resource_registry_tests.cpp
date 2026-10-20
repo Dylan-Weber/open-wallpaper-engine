@@ -226,16 +226,33 @@ struct ImageBackend {
         ++creates;
         if (transparent) ++transparent_creates;
         ++generation;
-        return rstd::Ok(owe::resource_registry::PreparedImageAllocation {
-            .allocation = TextureAllocation(generation.to_primitive(),
+        auto allocation = TextureAllocation(generation.to_primitive(),
                                             rstd::sync::Arc<rstd::dyn<rstd::any::Any>>::make(0),
                                             rstd::None(),
                                             desc,
-                                            { definition.sample }),
+                                            { definition.sample });
+        if (transparent) allocation->MarkPending();
+        return rstd::Ok(owe::resource_registry::PreparedImageAllocation {
+            .allocation = rstd::move(allocation),
             .upload     = transparent
                               ? rstd::Some(owe::vulkan::ImageUploadTicket { .value = generation })
                               : rstd::None<owe::vulkan::ImageUploadTicket>(),
         });
+    }
+
+    auto InitializeTexture(rstd::sync::Arc<owe::resource_registry::TextureAllocation> allocation)
+        -> rstd::Result<owe::resource_registry::PreparedImageAllocation,
+                        owe::resource::ResourceError> {
+        if (allocation->InitialReadiness().unwrap() !=
+            owe::resource_registry::ImageReadiness::Allocated)
+            return rstd::Ok(owe::resource_registry::PreparedImageAllocation {
+                rstd::move(allocation), rstd::None() });
+        ++transparent_creates;
+        ++generation;
+        allocation->MarkPending();
+        return rstd::Ok(owe::resource_registry::PreparedImageAllocation {
+            rstd::move(allocation),
+            rstd::Some(owe::vulkan::ImageUploadTicket { .value = generation }) });
     }
 };
 
@@ -1405,11 +1422,11 @@ TEST(ResourcePrepareService, InitializesRetainedHistoryTextureOnce) {
                     .width  = rstd::i32(64),
                     .height = rstd::i32(32),
                 }),
-                .lifetime   = owe::resource::TextureLifetimeClass::Retained,
-                .content    = owe::resource::TextureContentFlag(
-                    owe::resource::TextureContent::InitializeTransparent),
+                .lifetime   = owe::resource::TextureLifetimeClass::FrameLocal,
             },
-        .access = owe::resource::ResourceAccess::ReadWrite,
+        .access                 = owe::resource::ResourceAccess::ReadWrite,
+        .preserve_contents      = true,
+        .initialize_transparent = true,
     });
 
     owe::resource_registry::ResourcePrepareService service(
@@ -1429,11 +1446,14 @@ TEST(ResourcePrepareService, InitializesRetainedHistoryTextureOnce) {
     EXPECT_TRUE(textures.ResolveCurrent((**first_texture).resource).is_none());
     EXPECT_TRUE(textures.ResolvePending((**first_texture).resource).is_some());
 
-    auto second = service.Prepare(plan);
+    auto rebuilt                                      = plan.clone();
+    rebuilt.generation                                = rstd::u64(21);
+    rebuilt.textures[rstd::usize()].handle.generation = rebuilt.generation;
+    auto second                                       = service.Prepare(rebuilt);
     ASSERT_TRUE(second.is_ok());
     EXPECT_EQ(second->TextureCount(), rstd::usize(1));
     EXPECT_EQ(image_backend.transparent_creates, rstd::usize(1));
-    auto second_texture = second->Resolve(plan.textures[rstd::usize()].handle);
+    auto second_texture = second->Resolve(rebuilt.textures[rstd::usize()].handle);
     ASSERT_TRUE(second_texture.is_some());
     EXPECT_EQ((**second_texture).physical->Slots()[rstd::usize()].view.texture().identity(),
               first_slots[rstd::usize()].view.texture().identity());

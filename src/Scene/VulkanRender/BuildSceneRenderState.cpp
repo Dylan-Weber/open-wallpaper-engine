@@ -142,6 +142,8 @@ static vulkan::SceneRenderTextureSpec MakeTextureDesc(ExtraInfo& extra, ref<str>
     }
     if (extra.transient_texture_families.contains(key))
         desc.allocation_family = Some(String::make(key));
+    // Scene-owned color history starts transparent; ordinary undefined reads remain invalid.
+    desc.initialize_history_transparent = ! desc.imported && desc.definition.valid();
     return desc;
 }
 

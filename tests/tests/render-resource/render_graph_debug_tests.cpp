@@ -475,6 +475,45 @@ TEST(SceneRenderGraph, OrdersShadowAtlasWriterBeforeReceiver) {
     EXPECT_TRUE(atlas_read);
 }
 
+TEST(SceneRenderGraph, InitializesOnlyThePreviousFrameInColorFeedback) {
+    owe::Scene scene;
+    for (auto key : { "_rt_default"_str, "_rt_force"_str, "_rt_state"_str })
+        scene.RegisterRenderTarget(
+            String::make(key),
+            owe::SceneRenderTarget { .width = i32(32), .height = i32(32), .allowReuse = true });
+    auto append = [&](ref<str> name, ref<str> input, ref<str> output) {
+        auto node     = Arc<owe::SceneNode>::make();
+        auto mesh     = Arc<owe::SceneMesh>::make();
+        auto material = GraphMaterial(usize(1));
+        material.name = String::make(name);
+        material.textures.push(String::make(input));
+        mesh->AddMaterial(rstd::move(material));
+        owe::SceneMesh::Submesh submesh;
+        submesh.output_override = String::make(output);
+        mesh->Submeshes().push(rstd::move(submesh));
+        node->AddMesh(rstd::move(mesh));
+        scene.RootMut()->AppendChild(rstd::move(node));
+    };
+    append("force"_str, "_rt_state"_str, "_rt_force"_str);
+    append("simulate"_str, "_rt_force"_str, "_rt_state"_str);
+    append("combine"_str, "_rt_state"_str, "_rt_default"_str);
+    auto  snapshot = owe::ExtractRenderSceneSnapshot(scene);
+    auto  graph    = owe::BuildSceneRenderState(scene, snapshot).unwrap();
+    auto  plan     = graph.textures.resourcePlan(graph.graph).unwrap();
+    usize history_versions {};
+    for (const auto& entry : plan.textures) {
+        const bool history = entry.request().name == "_rt_state"_str;
+        EXPECT_EQ(entry.initialize_transparent, history);
+        if (! history) continue;
+        ++history_versions;
+        EXPECT_TRUE(entry.preserve_contents);
+        auto authored = scene.TargetResource("_rt_state"_str).unwrap();
+        EXPECT_EQ(entry.definition.id(), authored.id());
+        EXPECT_EQ(entry.definition.revision(), authored.revision());
+    }
+    EXPECT_EQ(history_versions, usize(2));
+}
+
 TEST(SceneRenderGraph, SharesOneLinkTargetForMultipleConsumers) {
     owe::Scene scene;
     scene.SetOrtho({ rstd::i32(1920), rstd::i32(1080) });
