@@ -98,7 +98,8 @@ ParticleAnimationMode ToAnimMode(ref<str> str) {
     }
 }
 
-bool ParticleShaderUsesGeometryStage(fs::VFS& vfs, ref<str> shader, bool geometry_shader_supported) {
+bool ParticleShaderUsesGeometryStage(fs::VFS& vfs, ref<str> shader,
+                                     bool geometry_shader_supported) {
     if (! geometry_shader_supported) return false;
     auto geometry = rstd::format("/assets/shaders/{}.geom", shader);
     return vfs.metadata(fs::Path(geometry.as_str())).is_ok();
