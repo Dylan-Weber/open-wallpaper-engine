@@ -172,11 +172,10 @@ TEST(Puppet, GravitySettlesABoneBelowItsPlace) {
 }
 
 TEST(Puppet, LayerImpulseMovesTheBoneAndResetPutsItBack) {
-    auto  puppet = Arc<owe::Puppet>::make();
-    auto& leg    = puppet->bones.emplace_back();
-    leg.name     = String::make("leg"_str);
-    leg.simulation_json =
-        String::make(rstd::cppstd::as_str(Settings(false, true)).unwrap());
+    auto  puppet        = Arc<owe::Puppet>::make();
+    auto& leg           = puppet->bones.emplace_back();
+    leg.name            = String::make("leg"_str);
+    leg.simulation_json = String::make(rstd::cppstd::as_str(Settings(false, true)).unwrap());
     puppet->prepared();
 
     owe::PuppetLayer layer(puppet.clone());

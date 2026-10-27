@@ -245,8 +245,8 @@ script::ScriptScene& EnsureScriptScene(SceneParseContext& context) {
                         (*layer)->ResetBonePhysics(request.bone);
                         return;
                     }
-                    const auto& d = request.directional;
-                    const auto& a = request.angular;
+                    const auto&           d = request.directional;
+                    const auto&           a = request.angular;
                     const Eigen::Vector3f directional(d[usize(0)], d[usize(1)], d[usize(2)]);
                     const Eigen::Vector3f angular(a[usize(0)], a[usize(1)], a[usize(2)]);
                     (*layer)->ApplyBoneImpulse(request.bone, directional, angular);

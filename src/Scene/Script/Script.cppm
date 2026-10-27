@@ -253,8 +253,7 @@ public:
         Box<dyn<FnMut<Option<BoneTranslation>(owe::SceneNode*, uint32_t, double)>>>;
     void SetBoneResolvers(BoneIndexResolver     index_resolver,
                           BoneTransformResolver transform_resolver);
-    using BonePhysicsHandler =
-        Box<dyn<FnMut<void(owe::SceneNode*, const BonePhysicsRequest&)>>>;
+    using BonePhysicsHandler = Box<dyn<FnMut<void(owe::SceneNode*, const BonePhysicsRequest&)>>>;
     void SetBonePhysicsHandler(BonePhysicsHandler handler);
 
     // Drive every alive FieldScript once. Invokes their cached `update`
