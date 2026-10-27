@@ -1223,6 +1223,16 @@ TEST(SceneShadowParsing, RequiresRendererCapabilityBeforeRegisteringDerivedResou
     EXPECT_FLOAT_EQ((**atlas).depth_clear_value, 0.0f);
     EXPECT_TRUE((**atlas).sample.compare_enable);
     EXPECT_EQ((**atlas).sample.compare_op, owe::CompareOp::Greater);
+    // Wallpaper Engine's "ultra" shadows: a 1024-pixel square for each cascade
+    EXPECT_EQ((**atlas).width, rstd::i32(3072));
+    EXPECT_EQ((**atlas).height, rstd::i32(1024));
+    const auto& viewports = supported_scene.scene->ShadowDefinitions()[rstd::usize()].viewports;
+    ASSERT_EQ(viewports.len(), rstd::usize(3));
+    for (const auto& viewport : viewports) {
+        EXPECT_FLOAT_EQ(viewport.width.to_primitive(), 1024.0f);
+        EXPECT_EQ(viewport.scissor_height, rstd::u32(1024));
+    }
+    EXPECT_FLOAT_EQ(viewports[rstd::usize(2)].x.to_primitive(), 2048.0f);
 }
 
 TEST(ModelObjectJson, ReadsMaterialSkin) {

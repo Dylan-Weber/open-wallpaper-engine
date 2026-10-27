@@ -658,11 +658,14 @@ BuildContext(fs::VFS& vfs, ref<str> scene_id, const wpscene::SceneMetadata& sc,
         });
 
     if (context.shader_environment.directional_shadow) {
+        // Wallpaper Engine's "ultra" shadows: a 1024-pixel square of the atlas for each cascade
+        // (512 at "high", 256 below).
+        constexpr float tile = 1024.0f;
         context.scene->RegisterRenderTarget(
             String::make(WE_SHADOW_ATLAS_PREFIX),
             SceneRenderTarget {
-                .width             = i32(768),
-                .height            = i32(256),
+                .width             = i32(3 * static_cast<int>(tile)),
+                .height            = i32(static_cast<int>(tile)),
                 .kind              = SceneRenderTargetKind::DepthSampled,
                 .depth_clear_value = 0.0f,
                 .sample =
@@ -679,14 +682,14 @@ BuildContext(fs::VFS& vfs, ref<str> scene_id, const wpscene::SceneMetadata& sc,
         auto viewports = Vec<SceneShadowViewport>::make();
         for (u32 index {}; index < u32(3); ++index) {
             viewports.push(SceneShadowViewport {
-                .x              = f32(256.0f * static_cast<float>(index.to_primitive())),
-                .y              = f32(256.0f),
-                .width          = f32(256.0f),
-                .height         = f32(-256.0f),
-                .scissor_x      = i32(256) * rstd::as_cast<i32>(index),
+                .x              = f32(tile * static_cast<float>(index.to_primitive())),
+                .y              = f32(tile),
+                .width          = f32(tile),
+                .height         = f32(-tile),
+                .scissor_x      = i32(static_cast<int>(tile)) * rstd::as_cast<i32>(index),
                 .scissor_y      = i32(),
-                .scissor_width  = u32(256),
-                .scissor_height = u32(256),
+                .scissor_width  = u32(static_cast<unsigned>(tile)),
+                .scissor_height = u32(static_cast<unsigned>(tile)),
             });
         }
         context.scene->RegisterShadowDefinition(SceneShadowDefinition {
