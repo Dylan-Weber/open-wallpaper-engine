@@ -786,6 +786,59 @@ TEST(ScriptBones, LocalOriginAndAngles) {
     EXPECT_FLOAT_EQ(pose.angles.z, 1.5f);
 }
 
+TEST(ScriptAttachments, IndexOriginAndAnglesInTheScene) {
+    // Measured in Wallpaper Engine with an attachment ("Head") of a model layer:
+    // attachments are numbered from 0, -1 for a name the layer does not have;
+    // the origin is the attachment's place in the scene and the angles its turn
+    // in the scene, in degrees (here the layer's 58.3 about z on the head's -15.24
+    // about x).
+    owe::SceneNode node;
+    JsRuntime      rt;
+    rt.SetAttachmentResolvers(
+        JsRuntime::AttachmentIndexResolver::make(
+            [](owe::SceneNode*, ref<str> name) -> Option<uint32_t> {
+                if (name == "Head"_str) return Some(uint32_t(0));
+                return None();
+            }),
+        JsRuntime::AttachmentTransformResolver::make(
+            [](owe::SceneNode*, uint32_t index, double) -> Option<AttachmentTransform> {
+                if (index != 0) return None();
+                const Eigen::Matrix3f rotation =
+                    (Eigen::AngleAxisf(58.3f * 3.14159265f / 180.0f, Eigen::Vector3f::UnitZ()) *
+                     Eigen::AngleAxisf(-15.24f * 3.14159265f / 180.0f, Eigen::Vector3f::UnitX()))
+                        .toRotationMatrix();
+                AttachmentTransform transform { .origin = { 960.0f, 415.0f, 0.0f } };
+                for (usize i {}; i < usize(9); ++i) {
+                    transform.rotation[i] = rotation.data()[i.to_primitive()];
+                }
+                return Some(rstd::move(transform));
+            }));
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            const near = (a, b) => Math.abs(a - b) < 0.01;
+            const origin = thisLayer.getAttachmentOrigin('Head');
+            const angles = thisLayer.getAttachmentAngles(0);
+            const checks = [
+                thisLayer.getAttachmentIndex('Head') === 0,
+                thisLayer.getAttachmentIndex('missing') === -1,
+                near(origin.x, 960) && near(origin.y, 415) && near(origin.z, 0),
+                near(angles.x, -15.24) && near(angles.y, 0) && near(angles.z, 58.3),
+                thisLayer.getAttachmentOrigin(0).x === origin.x,
+            ];
+            export function update() { return checks.every((ok) => ok) ? 1 : 0; }
+        )JS"_str,
+        "test/attachments"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+
+    rt.TickAll();
+
+    EXPECT_EQ(LastScalar(fs), 1.0);
+}
+
 TEST(ScriptNodeSoftMutation, VisibleAndAlphaWrites) {
     owe::SceneNode node;
     JsRuntime      rt;

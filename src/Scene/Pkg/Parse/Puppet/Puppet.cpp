@@ -559,6 +559,10 @@ bool PuppetLayer::setLocalBoneTransform(uint32_t index, const Eigen::Affine3f& l
     return true;
 }
 
+Option<usize> PuppetLayer::attachmentIndex(ref<str> name) const noexcept {
+    return m_puppet->attachmentIndex(name);
+}
+
 Option<Eigen::Affine3f> PuppetLayer::attachmentTransform(usize index, double time) noexcept {
     if (index >= m_puppet->attachments.len()) return None();
     const auto& attachment = m_puppet->attachments[index];
