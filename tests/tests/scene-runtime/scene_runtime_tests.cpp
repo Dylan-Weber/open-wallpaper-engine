@@ -2498,3 +2498,46 @@ TEST(SceneCameraPath, CameraLayerRestoresTheDefaultWhenHidden) {
     EXPECT_TRUE(camera->IsLookAt());
     EXPECT_DOUBLE_EQ(camera->Transforms().eye.z(), 5.0);
 }
+
+// A camera layer's visible script decides whether it drives the camera, while its parents are
+// shown (Ocarina of Time's scripts pick one of its "Look At Events" cameras, all under a layer
+// that only shows when that camera type is chosen).
+TEST(SceneParserCameraLayer, VisibleScriptsDecideWhichLayerDrivesTheCamera) {
+    auto parse = [](bool parent_visible) {
+        auto json = rstd::format(R"JSON({{
+            "camera": {{ "center": "0 0 0", "eye": "0 1 5", "up": "0 1 0" }},
+            "general": {{ "orthogonalprojection": null, "fov": 50 }},
+            "objects": [
+                {{ "id": 1, "name": "Cameras", "origin": "0 0 0", "visible": {} }},
+                {{ "id": 2, "name": "Cam", "camera": "default", "origin": "10 20 30",
+                   "angles": "0 0 0", "fov": 50, "parent": 1,
+                   "visible": {{ "value": false,
+                                 "script": "export function update(value) {{ return true; }}" }} }}
+            ]
+        }})JSON",
+                                 parent_visible ? "true" : "false");
+        return owe::wpscene::ParseSceneDocumentJson(json.as_str(),
+                                                    owe::wpscene::kSceneVersionUnknown);
+    };
+    for (bool parent_visible : { true, false }) {
+        auto document = parse(parent_visible);
+        ASSERT_TRUE(document.is_some());
+        owe::fs::VFS                vfs;
+        wavsen::audio::SoundManager sound_manager;
+        owe::SceneParser            parser;
+        auto                        parsed = parser.Parse(
+            "camera-visible-script"_str,
+            ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+            mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+            mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+        ASSERT_TRUE(parsed.is_ok());
+        auto scene = rstd::move(parsed).unwrap();
+        owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+        scene.scene->TickCameraPaths();
+        auto camera = scene.scene->ActiveCamera();
+        ASSERT_TRUE(camera.is_some());
+        EXPECT_FLOAT_EQ(static_cast<float>((**camera).GetPosition().x()),
+                        parent_visible ? 10.0f : 0.0f)
+            << "parent visible: " << parent_visible;
+    }
+}
