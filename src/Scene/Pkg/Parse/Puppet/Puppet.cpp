@@ -288,7 +288,37 @@ slice<Eigen::Affine3f> PuppetLayer::genFrame(double time) noexcept {
     for (usize i {}; i < m_final_affines.len(); ++i) {
         m_final_affines[i] *= bones[i].inv_bind.matrix();
     }
+    applyLocalOverrides(time);
     return m_final_affines.as_slice();
+}
+
+// The scripts' local poses for this frame (setLocalBoneTransform), parents first, each moving its
+// bone and the bone's descendants. A frame at another time drops them.
+void PuppetLayer::applyLocalOverrides(double time) noexcept {
+    if (m_local_overrides.is_empty()) return;
+    if (static_cast<float>(time) != m_local_overrides_time) {
+        m_local_overrides.clear();
+        return;
+    }
+    const auto& bones = m_puppet->bones;
+    auto        pose  = [&](usize index) -> Affine3f {
+        return m_final_affines[index] * bones[index].world_bind;
+    };
+    Vec<bool> moved;
+    for (usize i {}; i < bones.len(); ++i) moved.push(false);
+    for (usize i {}; i < m_local_overrides.len(); ++i) {
+        if (m_local_overrides[i].is_none()) continue;
+        const Affine3f parent =
+            bones[i].noAnimParent() ? Affine3f::Identity() : pose(usize(bones[i].anim_parent));
+        const Affine3f delta = parent * *m_local_overrides[i] * pose(i).inverse();
+        // a bone's descendants come after it, as genFrame requires
+        for (usize j = i; j < bones.len(); ++j) {
+            const auto& bone = bones[j];
+            moved[j]         = j == i || (! bone.noAnimParent() && usize(bone.anim_parent) >= i &&
+                                          moved[usize(bone.anim_parent)]);
+            if (moved[j]) m_final_affines[j] = delta * m_final_affines[j];
+        }
+    }
 }
 
 static constexpr void genInterpolationInfo(Puppet::Animation::InterpolationInfo& info, double& cur,
@@ -500,6 +530,33 @@ Option<Eigen::Affine3f> PuppetLayer::boneTransform(uint32_t index, double time) 
     if (zero_based >= frame.len()) return None();
     Eigen::Affine3f transform = frame[zero_based] * m_puppet->bones[zero_based].world_bind;
     return Some(rstd::move(transform));
+}
+
+Option<Eigen::Affine3f> PuppetLayer::localBoneTransform(uint32_t index, double time) noexcept {
+    if (index == 0) return None();
+    const usize zero_based(index - 1);
+    const auto& bones = m_puppet->bones;
+    if (zero_based >= bones.len()) return None();
+    auto     frame = genFrame(time);
+    Affine3f local = frame[zero_based] * bones[zero_based].world_bind;
+    if (! bones[zero_based].noAnimParent()) {
+        const usize parent(bones[zero_based].anim_parent);
+        local = (frame[parent] * bones[parent].world_bind).inverse() * local;
+    }
+    return Some(rstd::move(local));
+}
+
+bool PuppetLayer::setLocalBoneTransform(uint32_t index, const Eigen::Affine3f& local,
+                                        double time) noexcept {
+    if (index == 0 || usize(index - 1) >= m_puppet->bones.len()) return false;
+    const float frame_time = static_cast<float>(time);
+    if (m_local_overrides.is_empty() || frame_time != m_local_overrides_time) {
+        m_local_overrides.clear();
+        for (usize i {}; i < m_puppet->bones.len(); ++i) m_local_overrides.push(None());
+        m_local_overrides_time = frame_time;
+    }
+    (void)m_local_overrides[usize(index - 1)].insert(local);
+    return true;
 }
 
 Option<Eigen::Affine3f> PuppetLayer::attachmentTransform(usize index, double time) noexcept {
