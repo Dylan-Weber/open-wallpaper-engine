@@ -98,6 +98,12 @@ ParticleAnimationMode ToAnimMode(ref<str> str) {
     }
 }
 
+bool ParticleShaderUsesGeometryStage(fs::VFS& vfs, ref<str> shader, bool geometry_shader_supported) {
+    if (! geometry_shader_supported) return false;
+    auto geometry = rstd::format("/assets/shaders/{}.geom", shader);
+    return vfs.metadata(fs::Path(geometry.as_str())).is_ok();
+}
+
 void ApplyParticleOverride(wpscene::ParticleInstanceoverride& state, ref<str> field,
                            slice<float> values) {
     auto write_scalar = [&](float& destination) {
@@ -468,6 +474,8 @@ void BuildParticleObjectNode(ParticleObjectParseServices& services,
         (void)shaderInfo.combos.insert("SPRITESHEETBLEND"_Str, "1"_Str);
     }
 
+    const bool use_geometry_stage = ParticleShaderUsesGeometryStage(
+        vfs, particle_obj.material.shader.as_str(), services.geometry_shader_supported);
     bool mat_ok = false;
     try {
         auto material_result =
@@ -477,8 +485,8 @@ void BuildParticleObjectNode(ParticleObjectParseServices& services,
                           particle_obj.material,
                           *services.scene,
                           rstd::move(shaderInfo),
-                          services.geometry_shader_supported ? GeometryStageRequirement::Required
-                                                             : GeometryStageRequirement::Disabled,
+                          use_geometry_stage ? GeometryStageRequirement::Required
+                                             : GeometryStageRequirement::Disabled,
                           services.construction_context ? services.construction_context->load_bench
                                                         : SceneLoadBenchRecorderView {});
         if (material_result.is_ok()) {
@@ -563,9 +571,9 @@ void BuildParticleObjectNode(ParticleObjectParseServices& services,
                                 mesh_maxcount,
                                 thick_format,
                                 render_rope_trail,
-                                services.geometry_shader_supported);
+                                use_geometry_stage);
         } else {
-            SetParticleMesh(mesh, mesh_maxcount, thick_format, services.geometry_shader_supported);
+            SetParticleMesh(mesh, mesh_maxcount, thick_format, use_geometry_stage);
         }
     }
 
