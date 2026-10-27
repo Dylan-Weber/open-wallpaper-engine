@@ -117,6 +117,22 @@ TEST(Puppet, LocalBoneTransformsHoldForTheirFrame) {
     EXPECT_TRUE(layer.localBoneTransform(3, time).is_none());
 }
 
+// setBoneTransform: a bone's place in the puppet's space, for this frame; its parent stays put.
+TEST(Puppet, BoneTransformsSetInThePuppetsSpace) {
+    owe::PuppetLayer layer(MakeChainPuppet());
+    layer.prepared({});
+    const double    time   = 0.25;
+    Eigen::Affine3f target = Eigen::Affine3f::Identity();
+    target.translate(Eigen::Vector3f(50.0f, 60.0f, 0.0f));
+    ASSERT_TRUE(layer.setBoneTransform(2, target, time));
+    auto pose = layer.boneTransform(2, time);
+    ASSERT_TRUE(pose.is_some());
+    EXPECT_NEAR(pose->translation().x(), 50.0f, 1e-3f);
+    EXPECT_NEAR(pose->translation().y(), 60.0f, 1e-3f);
+    EXPECT_NEAR(layer.boneTransform(1, time)->translation().x(), 100.0f, 1e-3f);
+    EXPECT_FALSE(layer.setBoneTransform(3, target, time));
+}
+
 TEST(Puppet, VisibilityChangesKeepTheSamePlayback) {
     auto                             puppet = MakeReplacementPuppet();
     owe::PuppetLayer                 layer(puppet.clone());

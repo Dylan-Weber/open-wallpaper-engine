@@ -839,6 +839,100 @@ TEST(ScriptAttachments, IndexOriginAndAnglesInTheScene) {
     EXPECT_EQ(LastScalar(fs), 1.0);
 }
 
+// Wallpaper Engine's getTransformMatrix, getBoneTransform, getLocalBoneTransform and
+// getAttachmentMatrix give Mat4s (column-major, the translation in m[12..14]), and
+// setBoneTransform and setLocalBoneTransform take them.
+TEST(ScriptBones, MatricesAreMat4s) {
+    owe::SceneNode node;
+    node.SetTranslate({ 5.0f, 0.0f, 0.0f });
+    JsRuntime   rt;
+    FrameInputs fi {};
+    rt.SetFrameInputs(fi);
+    rt.SetBoneResolvers(
+        JsRuntime::BoneIndexResolver::make([](owe::SceneNode*, ref<str> name) -> uint32_t {
+            return name == "hand"_str ? 2 : 0;
+        }),
+        JsRuntime::BoneTransformResolver::make(
+            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTranslation> {
+                return None();
+            }));
+    auto translated = [](float x, float y, float z) {
+        JsRuntime::BoneMatrix matrix {};
+        for (usize i {}; i < usize(4); ++i) matrix[i * usize(5)] = 1.0f;
+        matrix[usize(12)] = x;
+        matrix[usize(13)] = y;
+        matrix[usize(14)] = z;
+        return matrix;
+    };
+    const auto            world      = translated(10.0f, 20.0f, 30.0f);
+    const auto            local      = translated(1.0f, 2.0f, 3.0f);
+    uint32_t              world_bone = 0, local_bone = 0;
+    JsRuntime::BoneMatrix set_world {}, set_local {};
+    rt.SetBoneMatrixResolvers(
+        JsRuntime::BoneMatrixGetter::make(
+            [&](owe::SceneNode*, uint32_t bone, double) -> Option<JsRuntime::BoneMatrix> {
+                if (bone != 2) return None();
+                return Some(JsRuntime::BoneMatrix(world));
+            }),
+        JsRuntime::BoneMatrixGetter::make(
+            [&](owe::SceneNode*, uint32_t bone, double) -> Option<JsRuntime::BoneMatrix> {
+                if (bone != 2) return None();
+                return Some(JsRuntime::BoneMatrix(local));
+            }),
+        JsRuntime::BoneMatrixSetter::make(
+            [&](owe::SceneNode*, uint32_t bone, JsRuntime::BoneMatrix matrix, double) {
+                world_bone = bone;
+                set_world  = matrix;
+            }),
+        JsRuntime::BoneMatrixSetter::make(
+            [&](owe::SceneNode*, uint32_t bone, JsRuntime::BoneMatrix matrix, double) {
+                local_bone = bone;
+                set_local  = matrix;
+            }));
+    rt.SetAttachmentResolvers(
+        JsRuntime::AttachmentIndexResolver::make(
+            [](owe::SceneNode*, ref<str> name) -> Option<uint32_t> {
+                if (name != "Head"_str) return None();
+                return Some(uint32_t(0));
+            }),
+        JsRuntime::AttachmentTransformResolver::make(
+            [](owe::SceneNode*, uint32_t, double) -> Option<AttachmentTransform> {
+                return Some(AttachmentTransform { .origin = { 7.0f, 8.0f, 9.0f } });
+            }));
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            export function update() {
+                const world = thisLayer.getBoneTransform('hand');
+                const local = thisLayer.getLocalBoneTransform(1);
+                const layer = thisLayer.getTransformMatrix();
+                const head = thisLayer.getAttachmentMatrix('Head');
+                thisLayer.setBoneTransform('hand', Mat4.fromTranslation(new Vec3(4, 5, 6)));
+                thisLayer.setLocalBoneTransform(1, Mat4.fromTranslation(new Vec3(-1, 0, 0)));
+                const checks = [
+                    world instanceof Mat4, local instanceof Mat4, layer instanceof Mat4,
+                    head instanceof Mat4, world.translation().x === 10, local.m[13] === 2,
+                    layer.m[12] === 5, head.translation().z === 9,
+                ];
+                return checks.every((ok) => ok) ? 1 : 0;
+            }
+        )JS"_str,
+        "test/bone_matrices"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+
+    rt.TickAll();
+
+    EXPECT_EQ(LastScalar(fs), 1.0);
+    EXPECT_EQ(world_bone, 2u);
+    EXPECT_FLOAT_EQ(set_world[usize(12)], 4.0f);
+    EXPECT_FLOAT_EQ(set_world[usize(14)], 6.0f);
+    EXPECT_EQ(local_bone, 2u);
+    EXPECT_FLOAT_EQ(set_local[usize(12)], -1.0f);
+}
+
 TEST(ScriptNodeSoftMutation, VisibleAndAlphaWrites) {
     owe::SceneNode node;
     JsRuntime      rt;

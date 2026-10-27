@@ -554,6 +554,10 @@ struct EngineHostState {
     Option<JsRuntime::BoneParentsResolver>       bone_parents_resolver;
     Option<JsRuntime::BoneLocalGetter>           bone_local_getter;
     Option<JsRuntime::BoneLocalSetter>           bone_local_setter;
+    Option<JsRuntime::BoneMatrixGetter>            bone_world_matrix;
+    Option<JsRuntime::BoneMatrixGetter>            bone_local_matrix;
+    Option<JsRuntime::BoneMatrixSetter>            set_bone_world_matrix;
+    Option<JsRuntime::BoneMatrixSetter>            set_bone_local_matrix;
     Option<JsRuntime::AttachmentIndexResolver>     attachment_index_resolver;
     Option<JsRuntime::AttachmentTransformResolver> attachment_transform_resolver;
     owe::SceneNode*                              scene_root { nullptr };
@@ -3058,25 +3062,18 @@ JSValue NodeGetParent(JSContext* ctx, JSValueConst this_val, int, JSValueConst*)
     return JS_UNDEFINED;
 }
 
+JSValue MakeMat4(JSContext* ctx, const float* elements);
+
+// getTransformMatrix: the layer in the scene, as a Mat4.
 JSValue NodeGetTransformMatrix(JSContext* ctx, JSValueConst this_val, int, JSValueConst*) {
-    auto*   n   = GetLayerNode(this_val);
-    JSValue m   = JS_NewArray(ctx);
-    JSValue obj = JS_NewObject(ctx);
+    auto* n          = GetLayerNode(this_val);
+    float elements[] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
     if (n) {
         n->UpdateTrans();
         const auto& mat = n->ModelTrans(); // Eigen Matrix4d column-major
-        for (int i = 0; i < 16; ++i) {
-            JS_DefinePropertyValueUint32(
-                ctx, m, i, JS_NewFloat64(ctx, mat.data()[i]), JS_PROP_C_W_E);
-        }
-    } else {
-        constexpr double id[16] { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
-        for (int i = 0; i < 16; ++i) {
-            JS_DefinePropertyValueUint32(ctx, m, i, JS_NewFloat64(ctx, id[i]), JS_PROP_C_W_E);
-        }
+        for (int i = 0; i < 16; ++i) elements[i] = static_cast<float>(mat.data()[i]);
     }
-    JS_DefinePropertyValueStr(ctx, obj, "m", m, JS_PROP_C_W_E);
-    return obj;
+    return MakeMat4(ctx, elements);
 }
 
 JSValue NodeRotateObjectSpace(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
@@ -3304,6 +3301,111 @@ JSValue NodeGetAttachmentAngles(JSContext* ctx, JSValueConst this_val, int argc,
 
     constexpr double kDegrees = 180.0 / 3.14159265358979;
     return MakeVecValue(ctx, x * kDegrees, y * kDegrees, z * kDegrees, 3);
+}
+
+// A Mat4 of the scripts (#Mat4.__from) from its column-major elements.
+JSValue MakeMat4(JSContext* ctx, const float* elements) {
+    JSValue global  = JS_GetGlobalObject(ctx);
+    JSValue mat4    = JS_GetPropertyStr(ctx, global, "Mat4");
+    JSValue from    = JS_GetPropertyStr(ctx, mat4, "__from");
+    JSValue numbers = JS_NewArray(ctx);
+    for (int i = 0; i < 16; ++i)
+        JS_DefinePropertyValueUint32(
+            ctx, numbers, i, JS_NewFloat64(ctx, elements[i]), JS_PROP_C_W_E);
+    JSValue result =
+        JS_IsFunction(ctx, from) ? JS_Call(ctx, from, mat4, 1, &numbers) : JS_UNDEFINED;
+    JS_FreeValue(ctx, numbers);
+    JS_FreeValue(ctx, from);
+    JS_FreeValue(ctx, mat4);
+    JS_FreeValue(ctx, global);
+    return result;
+}
+
+JsRuntime::BoneMatrix IdentityMatrix() {
+    JsRuntime::BoneMatrix matrix {};
+    for (usize i {}; i < usize(4); ++i) matrix[i * usize(5)] = 1.0f;
+    return matrix;
+}
+
+// A Mat4's (or any object's `m`) sixteen column-major elements.
+bool ReadMat4(JSContext* ctx, JSValueConst value, JsRuntime::BoneMatrix& out) {
+    JSValue m  = JS_GetPropertyStr(ctx, value, "m");
+    bool    ok = JS_IsObject(m);
+    for (uint32_t i = 0; ok && i < 16; ++i) {
+        JSValue element = JS_GetPropertyUint32(ctx, m, i);
+        double  number {};
+        ok            = JS_ToFloat64(ctx, &number, element) == 0;
+        out[usize(i)] = static_cast<float>(number);
+        JS_FreeValue(ctx, element);
+    }
+    JS_FreeValue(ctx, m);
+    return ok;
+}
+
+JSValue BoneMatrixOf(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv,
+                     Option<JsRuntime::BoneMatrixGetter>& getter) {
+    auto*         host   = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    auto*         n      = GetLayerNode(this_val);
+    const int32_t index  = argc > 0 ? ScriptBoneIndex(ctx, this_val, argv[0]) : -1;
+    auto          matrix = IdentityMatrix();
+    if (n && index >= 0 && getter) {
+        auto found = (*getter)->operator()(n, uint32_t(index) + 1, host->inputs.runtime);
+        if (found.is_some()) matrix = *found;
+    }
+    return MakeMat4(ctx, &matrix[usize()]);
+}
+
+JSValue SetBoneMatrix(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv,
+                      Option<JsRuntime::BoneMatrixSetter>& setter) {
+    auto*                 host  = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    auto*                 n     = GetLayerNode(this_val);
+    const int32_t         index = argc > 0 ? ScriptBoneIndex(ctx, this_val, argv[0]) : -1;
+    JsRuntime::BoneMatrix matrix {};
+    if (! n || index < 0 || argc < 2 || ! setter || ! ReadMat4(ctx, argv[1], matrix))
+        return JS_UNDEFINED;
+    (*setter)->operator()(n, uint32_t(index) + 1, matrix, host->inputs.runtime);
+    return JS_UNDEFINED;
+}
+
+// getBoneTransform: the bone in the scene, as a Mat4 (the translation alone without a puppet's
+// matrices).
+JSValue NodeGetBoneMatrix(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    if (! host->bone_world_matrix) return NodeGetBoneTransform(ctx, this_val, argc, argv);
+    return BoneMatrixOf(ctx, this_val, argc, argv, host->bone_world_matrix);
+}
+
+JSValue NodeGetLocalBoneTransform(JSContext* ctx, JSValueConst this_val, int argc,
+                                  JSValueConst* argv) {
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    return BoneMatrixOf(ctx, this_val, argc, argv, host->bone_local_matrix);
+}
+
+JSValue NodeSetBoneTransform(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    return SetBoneMatrix(ctx, this_val, argc, argv, host->set_bone_world_matrix);
+}
+
+JSValue NodeSetLocalBoneTransform(JSContext* ctx, JSValueConst this_val, int argc,
+                                  JSValueConst* argv) {
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    return SetBoneMatrix(ctx, this_val, argc, argv, host->set_bone_local_matrix);
+}
+
+// getAttachmentMatrix: the attachment in the scene, as a Mat4 (the identity for one the layer
+// doesn't have).
+JSValue NodeGetAttachmentMatrix(JSContext* ctx, JSValueConst this_val, int argc,
+                                JSValueConst* argv) {
+    auto       matrix     = IdentityMatrix();
+    const auto attachment = AttachmentOf(ctx, this_val, argc, argv);
+    if (attachment.is_some()) {
+        for (usize column {}; column < usize(3); ++column) {
+            for (usize row {}; row < usize(3); ++row)
+                matrix[column * usize(4) + row] = attachment->rotation[column * usize(3) + row];
+            matrix[usize(12) + column] = attachment->origin[column];
+        }
+    }
+    return MakeMat4(ctx, &matrix[usize()]);
 }
 
 JSValue NodeGetChildren(JSContext* ctx, JSValueConst this_val, int, JSValueConst*) {
@@ -4160,7 +4262,11 @@ const JSCFunctionListEntry s_layer_proto_funcs[] = {
     JS_CFUNC_DEF("getCameraTransforms", 0, NodeSceneGetCameraTransforms),
     JS_CFUNC_DEF("setCameraTransforms", 1, NodeSceneSetCameraTransforms),
     JS_CFUNC_DEF("getBoneIndex", 1, NodeGetBoneIndex),
-    JS_CFUNC_DEF("getBoneTransform", 1, NodeGetBoneTransform),
+    JS_CFUNC_DEF("getBoneTransform", 1, NodeGetBoneMatrix),
+    JS_CFUNC_DEF("setBoneTransform", 2, NodeSetBoneTransform),
+    JS_CFUNC_DEF("getLocalBoneTransform", 1, NodeGetLocalBoneTransform),
+    JS_CFUNC_DEF("setLocalBoneTransform", 2, NodeSetLocalBoneTransform),
+    JS_CFUNC_DEF("getAttachmentMatrix", 1, NodeGetAttachmentMatrix),
     JS_CFUNC_DEF("getBoneCount", 0, NodeGetBoneCount),
     JS_CFUNC_DEF("getBoneParentIndex", 1, NodeGetBoneParentIndex),
     JS_CFUNC_DEF("getLocalBoneOrigin", 1, NodeGetLocalBoneOrigin),
@@ -4564,6 +4670,14 @@ void JsRuntime::SetBoneResolvers(BoneIndexResolver     index_resolver,
 
 void JsRuntime::SetBoneParentsResolver(BoneParentsResolver resolver) {
     m_impl->host.bone_parents_resolver = Some(rstd::move(resolver));
+}
+
+void JsRuntime::SetBoneMatrixResolvers(BoneMatrixGetter world, BoneMatrixGetter local,
+                                       BoneMatrixSetter set_world, BoneMatrixSetter set_local) {
+    m_impl->host.bone_world_matrix     = Some(rstd::move(world));
+    m_impl->host.bone_local_matrix     = Some(rstd::move(local));
+    m_impl->host.set_bone_world_matrix = Some(rstd::move(set_world));
+    m_impl->host.set_bone_local_matrix = Some(rstd::move(set_local));
 }
 
 void JsRuntime::SetBoneLocalResolvers(BoneLocalGetter getter, BoneLocalSetter setter) {

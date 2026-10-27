@@ -264,6 +264,14 @@ public:
         Box<dyn<FnMut<Option<BoneLocalPose>(owe::SceneNode*, uint32_t, double)>>>;
     using BoneLocalSetter = Box<dyn<FnMut<void(owe::SceneNode*, uint32_t, BoneLocalPose, double)>>>;
     void SetBoneLocalResolvers(BoneLocalGetter getter, BoneLocalSetter setter);
+    // A bone's place as a column-major 4x4 matrix, numbered as the bone index resolver numbers
+    // bones: in the scene (world), or relative to its parent (local). The setters place it for
+    // the frame at the scripts' time.
+    using BoneMatrix       = array<float, 16>;
+    using BoneMatrixGetter = Box<dyn<FnMut<Option<BoneMatrix>(owe::SceneNode*, uint32_t, double)>>>;
+    using BoneMatrixSetter = Box<dyn<FnMut<void(owe::SceneNode*, uint32_t, BoneMatrix, double)>>>;
+    void SetBoneMatrixResolvers(BoneMatrixGetter world, BoneMatrixGetter local,
+                                BoneMatrixSetter set_world, BoneMatrixSetter set_local);
 
     // A node's attachments, numbered from 0: the index of a name, and an
     // attachment's transform in the scene at a time.
