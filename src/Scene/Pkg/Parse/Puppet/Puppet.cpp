@@ -182,13 +182,13 @@ slice<Eigen::Affine3f> PuppetLayer::genFrame(double time) noexcept {
 
         const Puppet::BoneFrame* replace_base_frame { nullptr };
         for (const auto& layer : m_layers) {
-            if (! additive_uses_first_frame || layer.anim == nullptr ||
-                ! layer.anim_layer.visible || layer.IsAdditiveTransform())
+            if (! additive_uses_first_frame || layer.anim == nullptr || ! layer.Visible() ||
+                layer.IsAdditiveTransform())
                 continue;
             if (i >= layer.anim->bone_tracks.len()) continue;
             const auto& track = layer.anim->bone_tracks[i];
             if (! track.HasTransformSamples() || ! HasAuthoredTrack(track)) continue;
-            const double blend = rstd::cmp::max(layer.anim_layer.blend, 0.0);
+            const double blend = rstd::cmp::max(layer.Blend(), 0.0);
             if (blend <= 0.0) continue;
             replace_base_frame = rstd::addressof(track.frames.first().unwrap().get());
             break;
@@ -216,8 +216,7 @@ slice<Eigen::Affine3f> PuppetLayer::genFrame(double time) noexcept {
         const Quaterniond ident { Quaterniond::Identity() };
 
         for (auto& layer : m_layers) {
-            auto& alayer = layer.anim_layer;
-            if (layer.anim == nullptr || ! alayer.visible) continue;
+            if (layer.anim == nullptr || ! layer.Visible()) continue;
             if (i >= layer.anim->bone_tracks.len()) continue;
 
             auto& info  = layer.interp_info;
@@ -233,7 +232,7 @@ slice<Eigen::Affine3f> PuppetLayer::genFrame(double time) noexcept {
             double t     = info.t;
             double one_t = 1.0 - info.t;
             // Per-bone scalar curves do not mask TRS, including zero-scale eyelid poses.
-            double blend = rstd::cmp::max(alayer.blend, 0.0);
+            double blend = rstd::cmp::max(layer.Blend(), 0.0);
             if (blend <= 0.0) continue;
 
             if (! additive_uses_first_frame && ! layer.IsAdditiveTransform()) {
@@ -444,6 +443,8 @@ void PuppetLayer::prepared(slice<AnimationLayer> alayers) {
             });
             auto value = Arc<SceneAnimationPlayback>::make(rstd::move(clip), out_layer.rate <= 0.0);
             if (out_layer.rate > 0.0) value->SetRate(static_cast<float>(out_layer.rate));
+            value->SetBlend(static_cast<float>(out_layer.blend));
+            value->SetVisible(out_layer.visible);
             playback = Some(rstd::move(value));
         }
 
@@ -479,7 +480,9 @@ auto PuppetLayer::AnimationPlayback(i32 layer_id) const -> Option<Arc<SceneAnima
 
 void PuppetLayer::SetAnimationVisible(i32 layer_id, bool visible) {
     for (auto& layer : m_layers) {
-        if (i32(layer.anim_layer.layer_id) == layer_id) layer.anim_layer.visible = visible;
+        if (i32(layer.anim_layer.layer_id) != layer_id) continue;
+        layer.anim_layer.visible = visible;
+        if (layer.playback) (*layer.playback)->SetVisible(visible);
     }
 }
 
@@ -514,8 +517,7 @@ auto PuppetLayer::TextureChannelBlendMap(double time) noexcept -> slice<float> {
     for (auto& value : m_texture_channel_blend_map) value = 0.0f;
 
     for (const auto& layer : m_layers) {
-        if (layer.anim == nullptr || ! layer.anim_layer.visible || layer.anim->trans.is_none())
-            continue;
+        if (layer.anim == nullptr || ! layer.Visible() || layer.anim->trans.is_none()) continue;
 
         const auto& animation = *layer.anim;
         const auto& trans     = *animation.trans;
@@ -525,7 +527,7 @@ auto PuppetLayer::TextureChannelBlendMap(double time) noexcept -> slice<float> {
             if (channel >= m_texture_channel_blend_map.len()) return;
 
             const float sample = SampleTextureChannelTrack(track, layer.interp_info);
-            const float blend  = static_cast<float>(rstd::cmp::max(layer.anim_layer.blend, 0.0));
+            const float blend  = static_cast<float>(rstd::cmp::max(layer.Blend(), 0.0));
             auto&       value  = m_texture_channel_blend_map[channel];
             if (layer.anim_layer.additive) {
                 value += sample * blend;
@@ -564,8 +566,8 @@ auto PuppetLayer::DrawOrder(slice<PartOrder> parts) const -> Vec<usize> {
     values.reserve(m_puppet->bones.len());
     for (const auto& bone : m_puppet->bones) values.emplace_back(bone.draw_order);
     for (const auto& layer : m_layers) {
-        if (! layer.anim || ! layer.anim_layer.visible) continue;
-        const double weight = rstd::cmp::min(1.0, rstd::cmp::max(0.0, layer.anim_layer.blend));
+        if (! layer.anim || ! layer.Visible()) continue;
+        const double weight = rstd::cmp::min(1.0, rstd::cmp::max(0.0, layer.Blend()));
         if (weight == 0.0) continue;
         double     position = layer.playback.is_some() ? (*layer.playback)->PositionSeconds()
                                                        : layer.anim_layer.cur_time;
