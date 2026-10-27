@@ -141,11 +141,12 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
 
     bool hasEffect = ! wpimgobj.effects.is_empty() || is_linked_source;
 
-    // No-effect fullscreen / compose layers contribute nothing on their own
-    // (they just sample `_rt_default` and write it back). Mark as elidable
-    // so the render-graph builder drops them when unreferenced, or routes
-    // them to `_rt_link_<id>` when another layer reads their composite.
-    if (! hasEffect && wpimgobj.visible && (wpimgobj.fullscreen || isPassthrough)) {
+    // No-effect passthrough (fullscreen / compose) layers contribute nothing
+    // on their own (they just sample `_rt_default` and write it back). Mark as
+    // elidable so the render-graph builder drops them when unreferenced, or
+    // routes them to `_rt_link_<id>` when another layer reads their composite.
+    // A fullscreen layer with a material of its own draws, so it stays.
+    if (! hasEffect && wpimgobj.visible && isPassthrough) {
         context.scene->MarkLayerStaticElidable(WallpaperLayerId { .value = wpimgobj.id });
     }
     if (! hasEffect && wpimgobj.visible && wpimgobj.alpha <= 0.0f && ! alpha_can_change) {
