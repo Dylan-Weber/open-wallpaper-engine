@@ -1,6 +1,7 @@
 module;
 
 export module wescene.pkg.puppet;
+export import :bone_physics;
 import eigen;
 import wescene.core;
 import wescene.scene;
@@ -48,12 +49,15 @@ public:
         rstd::uint32_t file_parent { NO_PARENT };
 
         // Per-bone WE bone_simulation JSON (spring/damping/gravity for
-        // hair/cloth). Captured raw; evaluation hook is TBD.
+        // hair/cloth).
         String simulation_json;
 
         // prepared
         Eigen::Affine3f world_bind { Eigen::Affine3f::Identity() };
         Eigen::Affine3f inv_bind { Eigen::Affine3f::Identity() };
+
+        // prepared from simulation_json; None when the bone has no physics
+        Option<BoneSimulation> simulation;
 
         // Mean position of vertices weighted to this bone, expressed as an
         // offset from local_bind.translation(). Used to bake frame.scale into
@@ -310,6 +314,7 @@ private:
     Vec<Arc<SceneAnimationPlayback>> m_playbacks;
     Vec<float>                       m_texture_channel_blend_map;
     Vec<Eigen::Affine3f>             m_final_affines;
+    BonePhysics                      m_physics;
     Arc<Puppet>                      m_puppet;
 };
 
