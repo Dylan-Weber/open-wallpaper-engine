@@ -136,6 +136,10 @@ void ParseCameraObj(SceneParseContext& context, wpscene::CameraObject& cam) {
     double   default_width     = camera_owner->Width();
     double   default_height    = camera_owner->Height();
     double   default_fov       = camera_owner->Fov();
+    // A 3D scene's camera looks from the scene's eye at its center: hiding the layer gives it
+    // that view back, not the place of the camera's node.
+    const bool default_lookat     = camera_owner->IsLookAt();
+    const auto default_transforms = camera_owner->Transforms();
     Vector3f default_translate = default_node->Translate();
     Vector3f default_rotation  = default_node->Rotation();
     Vector3f origin { cam.origin[usize(0)], cam.origin[usize(1)], cam.origin[usize(2)] };
@@ -171,6 +175,10 @@ void ParseCameraObj(SceneParseContext& context, wpscene::CameraObject& cam) {
     path->default_width       = default_width;
     path->default_height      = default_height;
     path->default_fov         = default_fov;
+    path->default_lookat      = default_lookat;
+    path->default_eye         = default_transforms.eye.cast<float>();
+    path->default_center      = default_transforms.center.cast<float>();
+    path->default_up          = default_transforms.up.cast<float>();
     path->origin_base         = origin;
     path->rotation_base       = angles;
     path->zoom_base           = cam.zoom;
