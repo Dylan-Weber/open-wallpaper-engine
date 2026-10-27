@@ -1431,6 +1431,7 @@ enum class SceneNodeAnimationTarget
     Scale,
     Rotation,
     Alpha,
+    Color,
 };
 
 struct SceneNodeFieldAnimation {
@@ -1727,6 +1728,7 @@ public:
     void SetScaleAnimation(SceneAnimationTrack track);
     void SetRotationAnimation(SceneAnimationTrack track);
     void SetAlphaAnimation(SceneAnimationTrack track);
+    void SetColorAnimation(SceneAnimationTrack track);
     void RegisterAnimation(Arc<SceneAnimationPlayback> playback);
     void BindFieldAnimation(String field, Arc<SceneAnimationPlayback> playback);
     auto FieldAnimation(ref<str> field) const -> Option<Arc<SceneAnimationPlayback>>;
