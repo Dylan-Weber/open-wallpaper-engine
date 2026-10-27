@@ -279,6 +279,7 @@ public:
     rstd::uint32_t          boneIndex(ref<str> name) const noexcept;
     Option<Eigen::Affine3f> boneTransform(rstd::uint32_t index, double time) noexcept;
     Option<Eigen::Affine3f> attachmentTransform(usize index, double time) noexcept;
+    Option<usize>           attachmentIndex(ref<str> name) const noexcept;
     auto AnimationPlaybacks() const noexcept -> slice<Arc<SceneAnimationPlayback>>;
     auto AnimationPlayback(i32 layer_id) const -> Option<Arc<SceneAnimationPlayback>>;
     void SetAnimationVisible(i32 layer_id, bool visible);
