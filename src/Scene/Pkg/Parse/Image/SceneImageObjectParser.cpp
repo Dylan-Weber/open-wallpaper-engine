@@ -678,7 +678,9 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
             imgEffectLayer->SetIntermediateSourceBlend(BlendMode::Normal);
             imgEffectLayer->SetFullscreen(wpimgobj.fullscreen);
             imgEffectLayer->SetFinalMaterialState(finalMaterialState);
-            imgEffectLayer->SetSkipWhenNoRuntimeEffect(wpimgobj.fullscreen || isPassthrough);
+            // Only a passthrough layer has nothing to draw once its effects are all off; a
+            // fullscreen layer with a material of its own still draws.
+            imgEffectLayer->SetSkipWhenNoRuntimeEffect(isPassthrough);
             imgEffectLayer->FinalMesh().ChangeMeshDataFrom(effct_final_mesh);
             spImgNode->AttachLayer(imgEffectLayer.clone());
         }
