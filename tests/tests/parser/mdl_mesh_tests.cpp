@@ -1185,4 +1185,3 @@ TEST(Puppet, LayerFindsAttachmentsByName) {
     EXPECT_EQ(layer.attachmentIndex("Head"_str)->to_primitive(), 0u);
     EXPECT_TRUE(layer.attachmentIndex("missing"_str).is_none());
 }
-

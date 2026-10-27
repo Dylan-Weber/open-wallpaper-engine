@@ -238,8 +238,8 @@ script::ScriptScene& EnsureScriptScene(SceneParseContext& context) {
             ->runtime()
             .SetAttachmentResolvers(
                 script::JsRuntime::AttachmentIndexResolver::make(
-                    [layers = layers.clone()](SceneNode* node,
-                                              ref<str>   name) -> Option<rstd::uint32_t> {
+                    [layers =
+                         layers.clone()](SceneNode* node, ref<str> name) -> Option<rstd::uint32_t> {
                         auto layer = LookupPuppetLayer(layers, node);
                         if (layer.is_none()) return None();
                         auto index = (*layer)->attachmentIndex(name);
@@ -256,10 +256,10 @@ script::ScriptScene& EnsureScriptScene(SceneParseContext& context) {
                         if (attachment.is_none()) return None();
 
                         node->UpdateTrans();
-                        const Eigen::Matrix4f model = node->ModelTrans().cast<float>();
-                        const Eigen::Affine3f world(model * attachment->matrix());
-                        const Eigen::Vector3f origin   = world.translation();
-                        const Eigen::Matrix3f rotation = world.rotation();
+                        const Eigen::Matrix4f       model = node->ModelTrans().cast<float>();
+                        const Eigen::Affine3f       world(model * attachment->matrix());
+                        const Eigen::Vector3f       origin   = world.translation();
+                        const Eigen::Matrix3f       rotation = world.rotation();
                         script::AttachmentTransform transform {
                             .origin = { origin.x(), origin.y(), origin.z() },
                         };
