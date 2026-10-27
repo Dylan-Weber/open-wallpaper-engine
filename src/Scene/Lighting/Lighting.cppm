@@ -44,6 +44,8 @@ public:
         // The old kind of light ("point"), which the old four-light arrays get; the newer
         // kinds ("lpoint", "lspot", ...) light only through Lighting V1.
         bool old_kind { false };
+        // A spot light projecting the scene's light cookie over its cone.
+        bool cookie { false };
     };
 
     explicit SceneLight(const Desc& d)

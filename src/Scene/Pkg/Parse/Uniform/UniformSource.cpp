@@ -885,6 +885,7 @@ auto LightUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
         cones_exponent[index * usize(4)]             = light.desc().inner_cone_cos;
         cones_exponent[index * usize(4) + usize(1)]  = light.desc().outer_cone_cos;
         cones_exponent[index * usize(4) + usize(2)]  = light.desc().exponent;
+        cones_exponent[index * usize(4) + usize(3)]  = light.desc().cookie ? 1.0f : 0.0f;
         cast_shadow[index]                           = light.desc().cast_shadow ? 1.0f : 0.0f;
         if (index < usize(3) && light.desc().old_kind) {
             const auto premultiplied = color * light.radius() * light.radius();

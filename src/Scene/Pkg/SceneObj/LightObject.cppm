@@ -55,6 +55,9 @@ public:
     float density { 1.0f };             // PKGV0021+
     float volumetricsexponent { 1.0f }; // PKGV0021+
     float lightsourcesize { 0.0f };     // PKGV0022+
+    // A spot light's usecookie projects the cookie texture over its cone.
+    bool   usecookie { false };
+    String cookie { "cookie/flashlight1"_Str };
     float mindistance { 0.0f };         // PKGV0023+
     float cascadedistance0 { 0.0f };    // PKGV0021+
     float cascadedistance1 { 0.0f };

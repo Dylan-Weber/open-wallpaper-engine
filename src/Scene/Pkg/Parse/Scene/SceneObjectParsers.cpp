@@ -361,6 +361,7 @@ void ParseLightObj(SceneParseContext& context, wpscene::LightObject& light_obj) 
         desc.type = SceneLightType::Point; // default + point/lpoint
     }
     desc.old_kind    = light_obj.light == "point"_str;
+    desc.cookie      = context.light_cookie_ids.contains(i32(light_obj.id));
     desc.color       = Vector3f(light_obj.color.data());
     desc.radius      = light_obj.radius;
     desc.intensity   = light_obj.intensity;
@@ -621,6 +622,20 @@ void IndexSceneDocument(SceneParseContext& context, ref<wpscene::SceneDocument> 
     context.scene_has_scripts       = SceneHasScripts(objects);
     context.scene_layer_text_writes = SceneWritesLayerText(objects);
     HashSet<String> layer_names;
+    // Cookie lights are known before any material is built: their texture and LIGHTS_COOKIE
+    // reach every lit material.
+    auto           cookie_slots = document->metadata.general.lightconfig.spotcookie;
+    Option<String> cookie_texture;
+    for (const auto& object : objects) {
+        if (! object.is_Light() || cookie_slots == u32()) continue;
+        const auto& light = object.as_Light().value;
+        if (! light.usecookie || (light.light != "spot"_str && light.light != "lspot"_str))
+            continue;
+        (void)context.light_cookie_ids.insert(i32(light.id));
+        cookie_texture = Some(light.cookie.clone());
+        cookie_slots   = cookie_slots - u32(1);
+    }
+    context.scene->SetLightCookieTexture(rstd::move(cookie_texture));
     for (const auto& record : document->objects) {
         const auto& metadata = record.metadata;
         if (metadata.kind == wpscene::SceneObjectKind::Unknown || ! metadata.has_id) continue;
