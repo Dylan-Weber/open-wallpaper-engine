@@ -796,3 +796,61 @@ TEST(SceneRenderGraph, RejectsMissingOutputWithoutInstallingPartialProgram) {
     ASSERT_TRUE(result.is_err());
     EXPECT_EQ(result.unwrap_err().kind, vrento::fg::ErrorKind::MissingResource);
 }
+
+// With the scene's transparentsorting, models draw opaque first and then the translucent ones,
+// the farthest first (model-translucent-order-sorted: the blue cube, listed last, shows through
+// the glass in front of it). Without it they draw in the scene's order.
+TEST(SceneRenderGraph, TransparentSortingDrawsOpaqueModelsFirstAndTranslucentFarthestFirst) {
+    for (bool sorting : { true, false }) {
+        owe::Scene scene;
+        scene.RegisterRenderTarget(String::make("_rt_default"_str),
+                                   owe::SceneRenderTarget { .width = i32(64), .height = i32(64) });
+        auto camera =
+            Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 100.0, 50.0));
+        camera->SetLookAt({ 0.0, 0.0, 10.0 }, { 0.0, 0.0, 0.0 }, { 0.0, 1.0, 0.0 });
+        camera->Update();
+        scene.RegisterCamera(String::make("global_perspective"_str), camera.clone());
+        (void)scene.SetActiveCamera("global_perspective"_str);
+        scene.SetTransparentSorting(sorting);
+
+        auto model = [&](ref<str> name, float z, bool translucent) {
+            auto node = Arc<owe::SceneNode>::make();
+            node->SetTranslate({ 0.0f, 0.0f, z });
+            node->SetDrawsAsModel(true);
+            auto mesh     = Arc<owe::SceneMesh>::make();
+            auto material = GraphMaterial();
+            material.name = String::make(name);
+            auto pipeline = material.Pipeline();
+            if (translucent) pipeline.blend_mode = owe::BlendMode::Translucent;
+            material.SetPipeline(rstd::move(pipeline));
+            mesh->AddMaterial(rstd::move(material));
+            mesh->Submeshes().push(owe::SceneMesh::Submesh {});
+            node->AddMesh(rstd::move(mesh));
+            scene.RootMut()->AppendChild(node.clone());
+        };
+        model("near red"_str, 2.0f, true);
+        model("far green"_str, -1.0f, true);
+        model("behind blue"_str, -4.0f, false);
+
+        auto snapshot = owe::ExtractRenderSceneSnapshot(scene);
+        auto graph    = owe::BuildSceneRenderState(scene, snapshot);
+        ASSERT_TRUE(graph.is_ok());
+        ASSERT_TRUE(graph->graph.compile().is_ok());
+        Vec<String> names;
+        for (auto index : graph->graph.inspect().order.clone()) {
+            auto name = graph->graph.passes()[usize(index)].name.as_str();
+            if (name == "near red"_str || name == "far green"_str || name == "behind blue"_str)
+                names.push(String::make(name));
+        }
+        ASSERT_EQ(names.len(), usize(3));
+        if (sorting) {
+            EXPECT_EQ(names[usize(0)], "behind blue"_str);
+            EXPECT_EQ(names[usize(1)], "far green"_str);
+            EXPECT_EQ(names[usize(2)], "near red"_str);
+        } else {
+            EXPECT_EQ(names[usize(0)], "near red"_str);
+            EXPECT_EQ(names[usize(1)], "far green"_str);
+            EXPECT_EQ(names[usize(2)], "behind blue"_str);
+        }
+    }
+}
