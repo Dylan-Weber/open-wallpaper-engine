@@ -215,8 +215,8 @@ auto BonePhysics::Apply(usize bone, const BoneSimulation& simulation, const Affi
     return Translation3f(state.position_offset) * local * state.rotation_offset;
 }
 
-void BonePhysics::Impulse(usize bone, const BoneSimulation& simulation,
-                          const Vector3f& directional, const Vector3f& angular) {
+void BonePhysics::Impulse(usize bone, const BoneSimulation& simulation, const Vector3f& directional,
+                          const Vector3f& angular) {
     auto& state = m_states[bone];
     if (simulation.translation) state.velocity += directional;
     if (simulation.rotation) state.spin = state.spin * TurnOf(angular * kDegrees);
