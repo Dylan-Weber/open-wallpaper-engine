@@ -254,7 +254,7 @@ __SHADER_PLACEHOLD__
 
 static constexpr ref<str> lighting_v1_source = R"(
 uniform vec3 g_LightsPosition[4];
-uniform vec4 g_LightsColorRadius[4];
+uniform vec4 g_OweLightsColorRadius[4];
 uniform vec4 g_LightsDirectionType[4];
 uniform vec4 g_LightsConeExponent[4];
 uniform float g_LightsCastShadow[4];
@@ -268,7 +268,7 @@ float3 PerformLighting_V1(float3 worldPos, float3 albedo, float3 normal, float3 
     float3 light = float3(0.0, 0.0, 0.0);
     for (int i = 0; i < 4; ++i) {
         float type = g_LightsDirectionType[i].w;
-        float3 color = g_LightsColorRadius[i].rgb;
+        float3 color = g_OweLightsColorRadius[i].rgb;
         float shadowFactor = 1.0;
 #if !LIGHTS_SHADOW_MAPPING && OWE_IMAGE_LAYER && SCENE_ORTHO
         // Shadow-atlas rendering is not available yet. Suppress shadow-casting
@@ -309,7 +309,7 @@ float3 PerformLighting_V1(float3 worldPos, float3 albedo, float3 normal, float3 
         }
         light += ComputePBRLightShadow(
             normal, toLight, viewVector, albedo, color,
-            max(g_LightsColorRadius[i].w, 0.0001),
+            max(g_OweLightsColorRadius[i].w, 0.0001),
             max(g_LightsConeExponent[i].z, 0.0), specularTint, f0,
             roughness, metallic, shadowFactor);
     }
