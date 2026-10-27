@@ -13,6 +13,15 @@ export import wescene.pkg.scene_obj;
 export namespace owe
 
 {
+// The range rotationrandom draws from (radians): numbers turn the particle in its plane only,
+// as the z of a vector; vectors turn it about each axis. Without a range, any turn in the plane.
+struct ParticleRotationRange {
+    array<float, 3> min { 0.0f, 0.0f, 0.0f };
+    array<float, 3> max { 0.0f, 0.0f, 0.0f };
+    float           exponent { 1.0f };
+};
+ParticleRotationRange ReadRotationRandom(const Json& initializer);
+
 class ParticleParser {
 public:
     static ParticleSpawnInstruction GenInitializer(const Json&, u32 implicit_sequence_count);
