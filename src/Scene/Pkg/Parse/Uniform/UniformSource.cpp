@@ -875,8 +875,13 @@ auto LightUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
         colors_radius[index * usize(4) + usize(3)] = light.radius();
         Eigen::Vector3d local_direction            = Eigen::Vector3d::UnitX();
         if (light.type() != SceneLightType::Spot) local_direction = -local_direction;
-        const auto direction =
+        Eigen::Vector3f direction =
             (transform.block<3, 3>(0, 0) * local_direction).normalized().cast<float>();
+        // A tube light publishes its segment, scaled and turned with the light, in place of a
+        // direction.
+        if (light.type() == SceneLightType::Tube)
+            direction =
+                (transform.block<3, 3>(0, 0) * (2.0 * Eigen::Vector3d::UnitX())).cast<float>();
         directions_type[index * usize(4)]            = direction.x();
         directions_type[index * usize(4) + usize(1)] = direction.y();
         directions_type[index * usize(4) + usize(2)] = direction.z();

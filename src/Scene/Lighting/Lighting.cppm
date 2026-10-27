@@ -19,7 +19,9 @@ enum class SceneLightType : rstd::uint8_t
 {
     Point       = 0,
     Spot        = 1,
-    Directional = 2
+    Directional = 2,
+    // A segment: from the light's origin 2 units along its x axis, scaled and turned with it.
+    Tube = 3
 };
 
 class SceneLight {
