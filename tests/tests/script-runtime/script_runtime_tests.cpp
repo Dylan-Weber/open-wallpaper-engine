@@ -131,6 +131,44 @@ TEST(ScriptInitialization, UsesSceneOwnerOrderInsteadOfRegistrationOrder) {
     EXPECT_EQ(LastScalar(consumer), 7.0);
 }
 
+TEST(ScriptVector, StringsAndShorterOperandsBehaveAsInWallpaperEngine) {
+    // Measured in Wallpaper Engine: vectors are built from "x y z" strings; the
+    // arguments after a vector are ignored; and arithmetic with a shorter vector
+    // leaves the components it lacks as they are.
+    JsRuntime rt;
+    auto*     script = rt.MakeFieldScript(
+        R"JS(
+            const same = (v, ...c) => c.every((x, i) => v[['x', 'y', 'z', 'w'][i]] === x);
+            const checks = [
+                ['string3', () => same(new Vec3('600 900 0'), 600, 900, 0)],
+                ['string2', () => same(new Vec2('3 4'), 3, 4)],
+                ['string4', () => same(new Vec4('1 2 3 4'), 1, 2, 3, 4)],
+                ['vec2then', () => same(new Vec4(new Vec2(1, 2), 3, 4), 1, 2, 0, 0)],
+                ['vec2z', () => same(new Vec3(new Vec2(1, 2), 7), 1, 2, 0)],
+                ['add', () => same(new Vec3(500, 500, 0).add(new Vec2(100, 0)), 600, 500, 0)],
+                ['subtract', () => same(new Vec3(5, 5, 5).subtract(new Vec2(1, 1)), 4, 4, 5)],
+                ['multiply', () => same(new Vec3(5, 5, 5).multiply(new Vec2(2, 2)), 10, 10, 5)],
+                ['divide', () => same(new Vec3(5, 5, 10).divide(new Vec2(1, 1)), 5, 5, 10)],
+                ['vec4', () => same(new Vec4(1, 2, 3, 4).multiply(new Vec3(2, 2, 2)), 2, 4, 6, 4)],
+            ];
+            const failed = checks.filter(([name, check]) => {
+                try { return check() !== true; } catch (e) { return true; }
+            }).map(([name]) => name);
+            export function update() { return failed.join(' '); }
+        )JS"_str,
+        "test/vector_operands"_str,
+        FieldKind::String,
+        owe::MakeObject(),
+        owe::IntoJson(""));
+    ASSERT_NE(script, nullptr);
+
+    rt.TickAll();
+
+    ASSERT_TRUE(script->last_value().is_String());
+    const auto failed = script->last_value().as_String().value.s.as_str();
+    EXPECT_EQ(failed, ""_str) << "failed: " << rstd::cppstd::as_string_view(failed);
+}
+
 TEST(ScriptValueCoercion, PreservesVec4InitialAndReturnValues) {
     JsRuntime rt;
     auto*     script = rt.MakeFieldScript(
