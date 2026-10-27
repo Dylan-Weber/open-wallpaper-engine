@@ -40,6 +40,10 @@ struct SceneShaderEnvironment {
     bool fog_distance { false };
     bool fog_height { false };
     bool directional_shadow { false };
+    // The scene's light config: how many lights of each kind the newer light interface gets.
+    u32 point_lights {};
+    u32 spot_lights {};
+    u32 directional_lights {};
 };
 
 struct GeometryShaderLimits {
