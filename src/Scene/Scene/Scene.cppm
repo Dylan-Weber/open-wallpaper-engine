@@ -1420,6 +1420,11 @@ struct SceneAnimationTrack {
     bool            Empty() const { return curve->Empty(); }
     float           EvaluateScalar(float base) const;
     Eigen::Vector3f EvaluateVec3(const Eigen::Vector3f& base) const;
+    // A layer property's animation, as Wallpaper Engine applies it whatever the curve's
+    // `relative`: a vector (origin, scale, angles, color) is added to the property's value, a
+    // number (alpha) takes the place of it.
+    float           EvaluateLayerScalar(float value) const;
+    Eigen::Vector3f EvaluateLayerVec3(const Eigen::Vector3f& value) const;
     auto            Share() const -> SceneAnimationTrack {
         return { .curve = curve.clone(), .playback = playback.clone() };
     }
