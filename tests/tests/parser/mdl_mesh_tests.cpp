@@ -1171,3 +1171,21 @@ TEST(MdlMesh, NativeMaterialPathsShareResolutionAndPreserveDefaults) {
     EXPECT_EQ(short_ref->textures[usize()], "diffuse"_str);
     EXPECT_TRUE(owe::MdlParser::ParseMaterial("missing"_str, vfs).is_none());
 }
+
+TEST(Puppet, BoneParentsUseBoneIndexNumbering) {
+    auto puppet = Arc<owe::Puppet>::make();
+    for (rstd::uint32_t parent : { owe::Puppet::NO_PARENT, 0u, 0u }) {
+        auto& bone       = puppet->bones.emplace_back();
+        bone.file_parent = parent;
+        bone.bind_parent = parent;
+        bone.anim_parent = parent;
+    }
+    puppet->prepared();
+    owe::PuppetLayer layer(puppet.clone());
+
+    const auto parents = layer.boneParents();
+    ASSERT_EQ(parents.len(), usize(3));
+    EXPECT_EQ(parents[usize(0)], 0u);
+    EXPECT_EQ(parents[usize(1)], 1u);
+    EXPECT_EQ(parents[usize(2)], 1u);
+}
