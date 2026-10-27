@@ -1001,6 +1001,16 @@ Eigen::Vector3f SceneAnimationTrack::EvaluateVec3(const Eigen::Vector3f& base) c
     return curve->EvaluateVec3(base, playback->Sample());
 }
 
+float SceneAnimationTrack::EvaluateLayerScalar(float value) const {
+    if (curve->c0.is_empty()) return value;
+    // From a base of zero, relative and absolute curves both give the animated value itself.
+    return curve->EvaluateScalar(0.0f, playback->Sample());
+}
+
+Eigen::Vector3f SceneAnimationTrack::EvaluateLayerVec3(const Eigen::Vector3f& value) const {
+    return value + curve->EvaluateVec3(Eigen::Vector3f::Zero(), playback->Sample());
+}
+
 SceneAnimationPlayback::SceneAnimationPlayback(Arc<SceneAnimationClip> clip, bool start_paused)
     : m_clip(rstd::move(clip)) {
     m_start_paused = start_paused;
@@ -1268,19 +1278,19 @@ void SceneNode::TickFieldAnimations(double runtime, Vec<SceneAnimationEventDispa
     for (const auto& binding : m_field_animation_tracks) {
         switch (binding.target) {
         case SceneNodeAnimationTarget::Origin:
-            SetTranslate(binding.track.EvaluateVec3(binding.vector_base));
+            SetTranslate(binding.track.EvaluateLayerVec3(binding.vector_base));
             break;
         case SceneNodeAnimationTarget::Scale:
-            SetScale(binding.track.EvaluateVec3(binding.vector_base));
+            SetScale(binding.track.EvaluateLayerVec3(binding.vector_base));
             break;
         case SceneNodeAnimationTarget::Rotation:
-            SetRotation(binding.track.EvaluateVec3(binding.vector_base));
+            SetRotation(binding.track.EvaluateLayerVec3(binding.vector_base));
             break;
         case SceneNodeAnimationTarget::Alpha:
-            SetUserAlpha(binding.track.EvaluateScalar(binding.scalar_base));
+            SetUserAlpha(binding.track.EvaluateLayerScalar(binding.scalar_base));
             break;
         case SceneNodeAnimationTarget::Color:
-            SetColor(binding.track.EvaluateVec3(binding.vector_base));
+            SetColor(binding.track.EvaluateLayerVec3(binding.vector_base));
             break;
         }
     }
