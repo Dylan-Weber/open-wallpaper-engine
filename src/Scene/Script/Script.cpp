@@ -3376,21 +3376,23 @@ JSValue PropertyObjectGetAnimation(JSContext* ctx, JSValueConst, int argc, JSVal
     return WrapAnimation(ctx, ActivePropertyAnimation(ctx, argc, argv));
 }
 
+// An animation layer (IAnimationLayer): its playback's controls (play, pause, stop, isPlaying,
+// getFrame, setFrame, rate, ...) and getAnimation, which gives that same animation.
 JSValue WrapAnimationLayer(JSContext* ctx, Option<Arc<owe::SceneAnimationPlayback>> playback) {
-    JSValue object    = JS_NewObject(ctx);
-    JSValue animation = WrapAnimation(ctx, rstd::move(playback));
-    JSValue getter    = JS_NewCFunctionData(
+    JSValue layer = WrapAnimation(ctx, rstd::move(playback));
+    if (JS_IsException(layer)) return layer;
+    JSValue getter = JS_NewCFunctionData(
         ctx,
-        [](JSContext* context, JSValueConst, int, JSValueConst*, int, JSValue* data) -> JSValue {
-            return JS_DupValue(context, data[0]);
+        [](JSContext* context, JSValueConst this_val, int, JSValueConst*, int, JSValue*)
+            -> JSValue {
+            return JS_DupValue(context, this_val);
         },
         0,
         0,
-        1,
-        &animation);
-    JS_SetPropertyStr(ctx, object, "getAnimation", getter);
-    JS_FreeValue(ctx, animation);
-    return object;
+        0,
+        nullptr);
+    JS_SetPropertyStr(ctx, layer, "getAnimation", getter);
+    return layer;
 }
 
 JSValue NodeGetAnimation(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
@@ -3410,6 +3412,18 @@ JSValue NodeGetAnimation(JSContext* ctx, JSValueConst this_val, int argc, JSValu
     auto playback = node->NamedAnimation(rstd::cppstd::as_str(name).unwrap());
     JS_FreeCString(ctx, name);
     return WrapAnimation(ctx, rstd::move(playback));
+}
+
+JSValue NodeGetAnimationLayer(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+    auto* handle = GetLayerHandle(this_val);
+    auto* node   = handle != nullptr ? ResolveLayerNode(handle) : nullptr;
+    if (node == nullptr || argc == 0 || ! JS_IsString(argv[0]))
+        return WrapAnimationLayer(ctx, None<Arc<owe::SceneAnimationPlayback>>());
+    const char* name = JS_ToCString(ctx, argv[0]);
+    if (name == nullptr) return JS_EXCEPTION;
+    auto playback = node->NamedAnimation(rstd::cppstd::as_str(name).unwrap());
+    JS_FreeCString(ctx, name);
+    return WrapAnimationLayer(ctx, rstd::move(playback));
 }
 
 static JSClassID s_video_texture_class_id = 0;
@@ -3572,7 +3586,7 @@ const JSCFunctionListEntry s_layer_proto_funcs[] = {
     JS_CFUNC_DEF("getVideoTexture", 0, NodeGetVideoTexture),
     JS_CFUNC_DEF("emitParticles", 1, NodeEmitParticles),
     JS_CFUNC_DEF("getAnimation", 1, NodeGetAnimation),
-    JS_CFUNC_DEF("getAnimationLayer", 1, NodeGetAnimation),
+    JS_CFUNC_DEF("getAnimationLayer", 1, NodeGetAnimationLayer),
     JS_CFUNC_DEF("createLayer", 1, NodeSceneCreateLayer),
     JS_CFUNC_DEF("destroyLayer", 1, NodeSceneDestroyLayer),
     JS_CFUNC_DEF("getLayerIndex", 1, NodeSceneGetLayerIndex),
