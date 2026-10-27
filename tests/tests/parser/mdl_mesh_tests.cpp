@@ -1172,8 +1172,8 @@ TEST(MdlMesh, NativeMaterialPathsShareResolutionAndPreserveDefaults) {
     EXPECT_TRUE(owe::MdlParser::ParseMaterial("missing"_str, vfs).is_none());
 }
 
-// LittleBigPlanet (3081593255) has animations of no length (a single frame); looping or mirroring one
-// divided by its length of 0.
+// LittleBigPlanet (3081593255) has animations of no length (a single frame); looping or mirroring
+// one divided by its length of 0.
 TEST(Puppet, AnimationsOfNoLengthHoldTheirOnlyFrame) {
     for (auto mode : { owe::Puppet::PlayMode::Loop, owe::Puppet::PlayMode::Mirror }) {
         auto  puppet     = Arc<owe::Puppet>::make();
@@ -1194,7 +1194,8 @@ TEST(Puppet, AnimationsOfNoLengthHoldTheirOnlyFrame) {
 
         owe::PuppetLayer                 layer(puppet.clone());
         owe::PuppetLayer::AnimationLayer authored { .id = 1 };
-        layer.prepared(slice<owe::PuppetLayer::AnimationLayer>::from_raw_parts(&authored, usize(1)));
+        layer.prepared(
+            slice<owe::PuppetLayer::AnimationLayer>::from_raw_parts(&authored, usize(1)));
         for (double time : { 0.0, 0.5, 2.0 }) {
             EXPECT_FLOAT_EQ(layer.boneTransform(1, time)->translation().x(), 7.0f);
         }
