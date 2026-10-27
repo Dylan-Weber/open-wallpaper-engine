@@ -644,6 +644,18 @@ void WireCameraFieldScripts(SceneParseContext& context, const Arc<SceneNode>& no
                           camera_owner->Update();
                       }
                   } });
+        } else if (field == "visible"_str) {
+            auto path = camera_path.clone();
+            ss.AddActuator({ fs, [node, path = path.clone()](const script::ScriptValue& value) {
+                                auto visible = ScriptValueAsFloat(value);
+                                if (visible.is_none()) return;
+                                // The layer drives the camera while it and its parents are shown.
+                                bool shown = *visible >= 0.5f;
+                                for (auto* parent = node->Parent(); shown && parent != nullptr;
+                                     parent       = parent->Parent())
+                                    shown = parent->Visible();
+                                path->SetEnabled(shown);
+                            } });
         } else if (field == "angles"_str) {
             auto path         = camera_path.clone();
             auto camera_owner = camera.clone();
