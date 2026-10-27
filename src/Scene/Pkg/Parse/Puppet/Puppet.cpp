@@ -368,6 +368,7 @@ auto PuppetLayer::AnimationLayer::Clone() const -> AnimationLayer {
         .blendin   = blendin,
         .blendout  = blendout,
         .blendtime = blendtime,
+        .single    = single,
     };
 }
 
@@ -437,7 +438,8 @@ void PuppetLayer::prepared(slice<AnimationLayer> alayers) {
             auto clip  = Arc<SceneAnimationClip>::make(SceneAnimationClipSpec {
                 .name =
                     ! out_layer.name.is_empty() ? out_layer.name.clone() : matched->name.clone(),
-                .mode = String::make(PuppetAnimationMode(matched->mode)),
+                .mode = String::make(out_layer.single ? "single"_str
+                                                      : PuppetAnimationMode(matched->mode)),
                 .fps  = static_cast<float>(matched->fps),
                 .end  = i32(matched->length),
             });
@@ -476,6 +478,61 @@ auto PuppetLayer::AnimationPlayback(i32 layer_id) const -> Option<Arc<SceneAnima
             return Some((*layer.playback).clone());
     }
     return None();
+}
+
+auto PuppetLayer::AnimationIdNamed(ref<str> name) const -> Option<rstd::int32_t> {
+    for (const auto& animation : m_puppet->anims) {
+        if (animation.name == name) return Some(rstd::int32_t(animation.id));
+    }
+    return None();
+}
+
+void PuppetLayer::prepareKeeping(slice<AnimationLayer>                    layers,
+                                 Vec<Option<Arc<SceneAnimationPlayback>>> kept) {
+    prepared(layers);
+    m_playbacks.clear();
+    for (usize index {}; index < m_layers.len(); ++index) {
+        auto& layer = m_layers[index];
+        if (index < kept.len() && kept[index].is_some() && layer.playback.is_some())
+            (void)layer.playback.insert((*kept[index]).clone());
+        if (layer.playback.is_some()) m_playbacks.push((*layer.playback).clone());
+    }
+}
+
+auto PuppetLayer::AddAnimationLayer(AnimationLayer layer, bool single)
+    -> Option<Arc<SceneAnimationPlayback>> {
+    bool known = false;
+    for (const auto& animation : m_puppet->anims) known = known || animation.id == layer.id;
+    if (! known) return None();
+    layer.single = single;
+    Vec<AnimationLayer>                      layers;
+    Vec<Option<Arc<SceneAnimationPlayback>>> kept;
+    for (const auto& current : m_layers) {
+        layers.push(current.anim_layer.Clone());
+        kept.push(current.playback.is_some() ? Some((*current.playback).clone()) : None());
+    }
+    layers.push(rstd::move(layer));
+    prepareKeeping(layers.as_slice(), rstd::move(kept));
+    const auto& added = m_layers[m_layers.len() - usize(1)];
+    return added.playback.is_some() ? Some((*added.playback).clone()) : None();
+}
+
+bool PuppetLayer::RemoveAnimationLayer(const SceneAnimationPlayback& playback) {
+    Vec<AnimationLayer>                      layers;
+    Vec<Option<Arc<SceneAnimationPlayback>>> kept;
+    bool                                     found = false;
+    for (const auto& current : m_layers) {
+        if (current.playback.is_some() &&
+            (*current.playback).as_ptr() == rstd::addressof(playback)) {
+            found = true;
+            continue;
+        }
+        layers.push(current.anim_layer.Clone());
+        kept.push(current.playback.is_some() ? Some((*current.playback).clone()) : None());
+    }
+    if (! found) return false;
+    prepareKeeping(layers.as_slice(), rstd::move(kept));
+    return true;
 }
 
 void PuppetLayer::SetAnimationVisible(i32 layer_id, bool visible) {

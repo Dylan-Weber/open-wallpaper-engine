@@ -239,6 +239,26 @@ public:
     using BoneIndexResolver = Box<dyn<FnMut<uint32_t(owe::SceneNode*, ref<str>)>>>;
     using BoneTransformResolver =
         Box<dyn<FnMut<Option<BoneTranslation>(owe::SceneNode*, uint32_t, double)>>>;
+    // createAnimationLayer / playSingleAnimation: the animation by name or id, and the new layer's
+    // settings; the creator adds the layer to the node and gives its playback, or None.
+    struct AnimationLayerRequest {
+        String                animation;
+        Option<rstd::int32_t> animation_id;
+        String                name;
+        double                rate { 1.0 };
+        double                blend { 1.0 };
+        bool                  visible { true };
+        bool                  additive { false };
+        bool                  single { false };
+    };
+    using AnimationLayerCreator = Box<dyn<
+        FnMut<Option<Arc<owe::SceneAnimationPlayback>>(owe::SceneNode*, AnimationLayerRequest)>>>;
+    // destroyAnimationLayer: false when the playback isn't one of the node's animation layers.
+    using AnimationLayerDestroyer =
+        Box<dyn<FnMut<bool(owe::SceneNode*, const owe::SceneAnimationPlayback&)>>>;
+    void SetAnimationLayerResolvers(AnimationLayerCreator   creator,
+                                    AnimationLayerDestroyer destroyer);
+
     void SetBoneResolvers(BoneIndexResolver     index_resolver,
                           BoneTransformResolver transform_resolver);
 

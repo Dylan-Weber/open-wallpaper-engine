@@ -268,6 +268,8 @@ public:
         bool          blendin { false };  // PKGV0021+
         bool          blendout { false }; // PKGV0021+
         double        blendtime { 0.0 };  // PKGV0021+
+        // A single play (playSingleAnimation), whatever the animation's own mode.
+        bool single { false };
 
         auto Clone() const -> AnimationLayer;
     };
@@ -282,6 +284,11 @@ public:
     auto AnimationPlaybacks() const noexcept -> slice<Arc<SceneAnimationPlayback>>;
     auto AnimationPlayback(i32 layer_id) const -> Option<Arc<SceneAnimationPlayback>>;
     void SetAnimationVisible(i32 layer_id, bool visible);
+    // Scripts' createAnimationLayer / destroyAnimationLayer. The other layers keep their playbacks.
+    auto AnimationIdNamed(ref<str> name) const -> Option<rstd::int32_t>;
+    auto AddAnimationLayer(AnimationLayer layer, bool single)
+        -> Option<Arc<SceneAnimationPlayback>>;
+    bool RemoveAnimationLayer(const SceneAnimationPlayback& playback);
     auto TextureChannelBlendMap(double time) noexcept -> slice<float>;
 
     struct PartOrder {
@@ -308,6 +315,10 @@ private:
 
         operator bool() const noexcept { return anim != nullptr; };
     };
+
+    // Prepares these layers, giving back the playbacks kept for them.
+    void prepareKeeping(slice<AnimationLayer>                    layers,
+                        Vec<Option<Arc<SceneAnimationPlayback>>> kept);
 
     Vec<Layer>                       m_layers;
     Vec<Arc<SceneAnimationPlayback>> m_playbacks;
