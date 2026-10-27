@@ -120,7 +120,7 @@ Arc<PuppetLayer> MakePuppetLayer(Arc<Puppet> puppet, slice<wpscene::PuppetAnimat
 void RegisterPuppetLayer(SceneParseContext& context, SceneNode* node, Arc<PuppetLayer> layer) {
     if (! node) return;
     for (const auto& playback : layer->AnimationPlaybacks())
-        node->RegisterAnimation(playback.clone());
+        node->RegisterAnimationLayer(playback.clone());
     (void)context.puppet_layers->by_node.insert(node, rstd::move(layer));
 }
 

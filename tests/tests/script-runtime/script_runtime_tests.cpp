@@ -1129,6 +1129,45 @@ TEST(ScriptAnimationLayer, LayerControlsAndGetsItsAnimation) {
     EXPECT_EQ(fs->last_value().as_Scalar().value.v, 1.0);
 }
 
+// A layer's animation layers by index, in the scene's order, and how many it has. Other animations
+// of the layer (a material's, its values') aren't animation layers.
+TEST(ScriptAnimationLayer, ByIndexAndCount) {
+    owe::SceneNode node;
+    auto           make = [](ref<str> name) {
+        return Arc<owe::SceneAnimationPlayback>::make(
+            Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {
+                .name = String::make(name),
+                .mode = String::make("loop"_str),
+                .fps  = 30.0f,
+                .end  = i32(60),
+            }));
+    };
+    node.RegisterAnimation(make("material"_str));
+    node.RegisterAnimationLayer(make("Idle"_str));
+    node.RegisterAnimationLayer(make("Wave"_str));
+
+    JsRuntime rt;
+    rt.SetFrameInputs(MakeFi());
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            export function update() {
+                thisLayer.getAnimationLayer(1).pause();
+                const idle = thisLayer.getAnimationLayer("Idle").isPlaying();
+                const wave = thisLayer.getAnimationLayer("Wave").isPlaying();
+                return thisLayer.getAnimationLayerCount() * 100 + (idle ? 10 : 0) + (wave ? 1 : 0);
+            }
+        )JS"_str,
+        "test/animation_layer_by_index"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+    rt.TickAll();
+    ASSERT_TRUE(fs->last_value().is_Scalar());
+    EXPECT_EQ(fs->last_value().as_Scalar().value.v, 210.0);
+}
+
 TEST(ScriptCursor, ClickRestartsNamedAnimationLayer) {
     owe::SceneNode node;
     node.SetTranslate({ 500.0f, 500.0f, 0.0f });

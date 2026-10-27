@@ -1729,6 +1729,10 @@ public:
     auto FieldAnimation(ref<str> field) const -> Option<Arc<SceneAnimationPlayback>>;
     bool HasFieldAnimationTrack(ref<str> field) const;
     auto NamedAnimation(ref<str> name) const -> Option<Arc<SceneAnimationPlayback>>;
+    // Its animation layers (a puppet's, in the scene's order), for scripts' getAnimationLayer.
+    void RegisterAnimationLayer(Arc<SceneAnimationPlayback> playback);
+    auto AnimationLayer(usize index) const -> Option<Arc<SceneAnimationPlayback>>;
+    auto AnimationLayerCount() const -> usize { return m_animation_layers.len(); }
     void TickFieldAnimations(double runtime, Vec<SceneAnimationEventDispatch>& events);
     void SetAlphaSource(SceneNode* node) { m_alpha_source = node; }
 
@@ -1924,6 +1928,7 @@ private:
     SceneNode*                             m_alpha_source { nullptr };
     Vec<SceneNodeFieldAnimation>           m_field_animation_tracks;
     SceneAnimationSet                      m_animations;
+    Vec<Arc<SceneAnimationPlayback>>       m_animation_layers;
     float                                  m_brightness { 1.0f };
     bool                                   m_brightness_overridden { false };
     Eigen::Vector3f                        m_color { 1.0f, 1.0f, 1.0f };

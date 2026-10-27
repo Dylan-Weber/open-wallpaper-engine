@@ -1258,6 +1258,16 @@ auto SceneNode::NamedAnimation(ref<str> name) const -> Option<Arc<SceneAnimation
     return m_animations.Named(name);
 }
 
+void SceneNode::RegisterAnimationLayer(Arc<SceneAnimationPlayback> playback) {
+    RegisterAnimation(playback.clone());
+    m_animation_layers.push(rstd::move(playback));
+}
+
+auto SceneNode::AnimationLayer(usize index) const -> Option<Arc<SceneAnimationPlayback>> {
+    if (index >= m_animation_layers.len()) return None();
+    return Some(m_animation_layers[index].clone());
+}
+
 void SceneNode::TickFieldAnimations(double runtime, Vec<SceneAnimationEventDispatch>& events) {
     m_animations.Advance(*this, runtime, events);
     for (const auto& binding : m_field_animation_tracks) {

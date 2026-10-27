@@ -1691,6 +1691,7 @@ function __wwCreateNodeStub() {
             if (key === 'getVideoTexture')     return () => __wwCreateVideoTextureStub();
             if (key === 'getAnimation')        return ()   => __wwCreateAnimationStub();
             if (key === 'getAnimationLayer')   return (_n) => __wwCreateAnimationStub();
+            if (key === 'getAnimationLayerCount') return () => 0;
             if (key === 'destroyLayer')        return (_layer) => undefined;
             if (key in target) return target[key];
             return undefined;
@@ -3375,9 +3376,18 @@ JSValue NodeGetAnimation(JSContext* ctx, JSValueConst this_val, int argc, JSValu
     return WrapAnimation(ctx, rstd::move(playback));
 }
 
+// getAnimationLayer(name or index): the index counts the layer's animation layers in the scene's
+// order.
 JSValue NodeGetAnimationLayer(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
     auto* handle = GetLayerHandle(this_val);
     auto* node   = handle != nullptr ? ResolveLayerNode(handle) : nullptr;
+    if (node != nullptr && argc > 0 && JS_IsNumber(argv[0])) {
+        rstd::int64_t index {};
+        if (JS_ToInt64(ctx, &index, argv[0]) != 0) return JS_EXCEPTION;
+        auto playback = index >= 0 ? node->AnimationLayer(usize(static_cast<rstd::size_t>(index)))
+                                   : None<Arc<owe::SceneAnimationPlayback>>();
+        return WrapAnimationLayer(ctx, rstd::move(playback));
+    }
     if (node == nullptr || argc == 0 || ! JS_IsString(argv[0]))
         return WrapAnimationLayer(ctx, None<Arc<owe::SceneAnimationPlayback>>());
     const char* name = JS_ToCString(ctx, argv[0]);
@@ -3385,6 +3395,13 @@ JSValue NodeGetAnimationLayer(JSContext* ctx, JSValueConst this_val, int argc, J
     auto playback = node->NamedAnimation(rstd::cppstd::as_str(name).unwrap());
     JS_FreeCString(ctx, name);
     return WrapAnimationLayer(ctx, rstd::move(playback));
+}
+
+JSValue NodeGetAnimationLayerCount(JSContext* ctx, JSValueConst this_val, int, JSValueConst*) {
+    auto* handle = GetLayerHandle(this_val);
+    auto* node   = handle != nullptr ? ResolveLayerNode(handle) : nullptr;
+    auto  count  = node != nullptr ? node->AnimationLayerCount().to_primitive() : 0;
+    return JS_NewInt64(ctx, static_cast<rstd::int64_t>(count));
 }
 
 static JSClassID s_video_texture_class_id = 0;
@@ -3548,6 +3565,7 @@ const JSCFunctionListEntry s_layer_proto_funcs[] = {
     JS_CFUNC_DEF("emitParticles", 1, NodeEmitParticles),
     JS_CFUNC_DEF("getAnimation", 1, NodeGetAnimation),
     JS_CFUNC_DEF("getAnimationLayer", 1, NodeGetAnimationLayer),
+    JS_CFUNC_DEF("getAnimationLayerCount", 0, NodeGetAnimationLayerCount),
     JS_CFUNC_DEF("createLayer", 1, NodeSceneCreateLayer),
     JS_CFUNC_DEF("destroyLayer", 1, NodeSceneDestroyLayer),
     JS_CFUNC_DEF("getLayerIndex", 1, NodeSceneGetLayerIndex),
