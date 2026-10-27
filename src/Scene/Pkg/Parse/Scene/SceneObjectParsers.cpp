@@ -355,6 +355,8 @@ void ParseLightObj(SceneParseContext& context, wpscene::LightObject& light_obj) 
         desc.type = SceneLightType::Spot;
     } else if (light_obj.light == "directional"_str || light_obj.light == "ldirectional"_str) {
         desc.type = SceneLightType::Directional;
+    } else if (light_obj.light == "tube"_str || light_obj.light == "ltube"_str) {
+        desc.type = SceneLightType::Tube;
     } else {
         desc.type = SceneLightType::Point; // default + point/lpoint
     }

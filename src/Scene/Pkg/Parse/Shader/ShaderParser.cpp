@@ -278,7 +278,7 @@ float3 PerformLighting_V1(float3 worldPos, float3 albedo, float3 normal, float3 
         if (type < -0.5 || dot(color, color) <= 0.0)
             continue;
 
-        if (type > 1.5) {
+        if (type > 1.5 && type < 2.5) {
 #if LIGHTS_SHADOW_MAPPING
             if (g_LightsCastShadow[i] > 0.5) {
                 float selectedCascade = 0.0;
@@ -300,7 +300,13 @@ float3 PerformLighting_V1(float3 worldPos, float3 albedo, float3 normal, float3 
         }
 
         float3 toLight = g_LightsPosition[i] - worldPos;
-        if (type > 0.5) {
+        if (type > 2.5) {
+            // A tube: light from the nearest point of the segment its direction holds.
+            float3 segment = g_LightsDirectionType[i].xyz;
+            float  length2 = dot(segment, segment);
+            float  along   = length2 > 0.0 ? saturate(dot(-toLight, segment) / length2) : 0.0;
+            toLight += segment * along;
+        } else if (type > 0.5) {
             float3 lightToSurface = -normalize(toLight);
             float cone = smoothstep(g_LightsConeExponent[i].y,
                                     g_LightsConeExponent[i].x,
