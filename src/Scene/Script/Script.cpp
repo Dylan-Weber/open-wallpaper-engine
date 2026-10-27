@@ -535,6 +535,8 @@ struct EngineHostState {
     HashSet<owe::SceneNode*>          script_layers;
     // Keep registered queries enabled even when the scene has no wallpaper layers.
     bool registered_layer_queries { false };
+    // Set by the scene parser: see JsRuntime::SetAuthoredLayerNames.
+    Option<HashSet<String>> authored_layer_names;
     // engine.setTimeout / setInterval queue. Swept once per frame in
     // JsRuntime::TickAll before the script update loop runs.
     Vec<DeferredCb> deferred;
@@ -2789,7 +2791,11 @@ JSValue NodeGetLayer(JSContext* ctx, JSValueConst this_val, int argc, JSValueCon
     String          layer_name = rstd::into(rstd::cppstd::as_str(name).unwrap());
     owe::SceneNode* hit        = n->FindByName(layer_name.as_str());
     JS_FreeCString(ctx, name);
-    return hit ? WrapLayerNode(ctx, hit) : WrapLayerName(ctx, rstd::move(layer_name));
+    if (hit) return WrapLayerNode(ctx, hit);
+    if (host->authored_layer_names.is_some() &&
+        ! host->authored_layer_names->contains(layer_name.as_str()))
+        return JS_NULL;
+    return WrapLayerName(ctx, rstd::move(layer_name));
 }
 
 JSValue NodeGetEffect(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
@@ -3981,6 +3987,10 @@ void JsRuntime::RegisterInitialLayerConfig(owe::SceneNode* node, Json config) {
     (void)m_impl->host.initial_layer_configs.insert(node, rstd::move(config));
     (void)m_impl->host.script_layers.insert(node);
     m_impl->host.registered_layer_queries = true;
+}
+
+void JsRuntime::SetAuthoredLayerNames(HashSet<String> names) {
+    m_impl->host.authored_layer_names = Some(rstd::move(names));
 }
 
 void JsRuntime::SetSceneRoot(owe::SceneNode* root) {
