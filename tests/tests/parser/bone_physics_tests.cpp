@@ -86,12 +86,14 @@ TEST(BoneSimulation, NeedsAMovementAndASimulation) {
 }
 
 TEST(BonePhysics, AngularImpulseTurnsTheBoneAndTheSpringBringsItBack) {
-    const std::vector<float> frames = { 0.061f, 0.088f, 0.073f, 0.060f, 0.070f,
-                                        0.058f, 0.092f, 0.038f, 0.040f, 0.049f };
-    const auto places = Run(Parse(Settings(true, false)), frames, Eigen::Vector3f::Zero(),
-                            Eigen::Vector3f(0.0f, 0.0f, 10.0f));
-    const float measured[] = { 0.0f, 3.908f, 2.423f, 1.663f, 1.055f,
-                               0.734f, 0.381f, 0.305f, 0.223f, 0.149f };
+    const std::vector<float> frames     = { 0.061f, 0.088f, 0.073f, 0.060f, 0.070f,
+                                            0.058f, 0.092f, 0.038f, 0.040f, 0.049f };
+    const auto               places     = Run(Parse(Settings(true, false)),
+                                              frames,
+                                              Eigen::Vector3f::Zero(),
+                                              Eigen::Vector3f(0.0f, 0.0f, 10.0f));
+    const float              measured[] = { 0.0f,   3.908f, 2.423f, 1.663f, 1.055f,
+                                            0.734f, 0.381f, 0.305f, 0.223f, 0.149f };
     for (size_t i = 0; i < frames.size(); ++i) {
         EXPECT_NEAR(places[i].x() - 0.5f, measured[i], 0.03f) << "frame " << i;
     }
@@ -99,19 +101,23 @@ TEST(BonePhysics, AngularImpulseTurnsTheBoneAndTheSpringBringsItBack) {
 
 TEST(BonePhysics, DirectionalImpulseMovesTheBoneWhichSwingsBack) {
     const std::vector<float> frames = { 0.074f, 0.066f, 0.082f, 0.082f, 0.061f, 0.072f, 0.066f };
-    const auto places = Run(Parse(Settings(false, true)), frames,
-                            Eigen::Vector3f(10.0f, 0.0f, 0.0f), Eigen::Vector3f::Zero());
-    const float measured[] = { 0.0f, 0.662f, -0.670f, 0.678f, -0.082f, 0.045f, -0.014f };
+    const auto               places = Run(Parse(Settings(false, true)),
+                                          frames,
+                                          Eigen::Vector3f(10.0f, 0.0f, 0.0f),
+                                          Eigen::Vector3f::Zero());
+    const float measured[]          = { 0.0f, 0.662f, -0.670f, 0.678f, -0.082f, 0.045f, -0.014f };
     for (size_t i = 0; i < frames.size(); ++i) {
         EXPECT_NEAR(places[i].x() - 0.5f, measured[i], 0.01f) << "frame " << i;
     }
 }
 
 TEST(BonePhysics, BoneGoesNoFurtherThanItsLargestDistance) {
-    const std::vector<float> frames = { 0.093f, 0.081f, 0.072f, 0.092f, 0.055f };
-    const auto places = Run(Parse(Settings(false, true)), frames,
-                            Eigen::Vector3f(100.0f, 0.0f, 0.0f), Eigen::Vector3f::Zero());
-    const float measured[] = { 0.0f, 2.000f, -1.108f, 1.703f, 0.157f };
+    const std::vector<float> frames     = { 0.093f, 0.081f, 0.072f, 0.092f, 0.055f };
+    const auto               places     = Run(Parse(Settings(false, true)),
+                                              frames,
+                                              Eigen::Vector3f(100.0f, 0.0f, 0.0f),
+                                              Eigen::Vector3f::Zero());
+    const float              measured[] = { 0.0f, 2.000f, -1.108f, 1.703f, 0.157f };
     for (size_t i = 0; i < frames.size(); ++i) {
         EXPECT_NEAR(places[i].x() - 0.5f, measured[i], 0.01f) << "frame " << i;
     }
@@ -121,22 +127,26 @@ TEST(BonePhysics, RigidBoneKeepsWhatAnImpulseGivesIt) {
     auto simulation  = Parse(Settings(true, true));
     simulation.rigid = true;
     // turned 10 degrees and left there
-    const auto turned = Run(simulation, { 0.067f, 0.087f, 0.062f, 0.075f, 0.078f },
-                            Eigen::Vector3f::Zero(), Eigen::Vector3f(0.0f, 0.0f, 10.0f));
+    const auto turned = Run(simulation,
+                            { 0.067f, 0.087f, 0.062f, 0.075f, 0.078f },
+                            Eigen::Vector3f::Zero(),
+                            Eigen::Vector3f(0.0f, 0.0f, 10.0f));
     for (size_t i = 1; i < turned.size(); ++i) {
         EXPECT_NEAR(turned[i].x() - 0.5f, 3.908f, 0.01f) << "frame " << i;
     }
     // moved for one frame (dt x 10) and left there
     simulation.rotation = false;
-    const auto moved    = Run(simulation, { 0.089f, 0.088f, 0.062f, 0.067f },
-                           Eigen::Vector3f(10.0f, 0.0f, 0.0f), Eigen::Vector3f::Zero());
+    const auto moved    = Run(simulation,
+                              { 0.089f, 0.088f, 0.062f, 0.067f },
+                              Eigen::Vector3f(10.0f, 0.0f, 0.0f),
+                              Eigen::Vector3f::Zero());
     for (size_t i = 1; i < moved.size(); ++i) {
         EXPECT_NEAR(moved[i].x() - 0.5f, 0.879f, 0.01f) << "frame " << i;
     }
 }
 
 TEST(BonePhysics, RestingBoneStaysWhereItIsPosed) {
-    const auto      simulation = Parse(Settings(true, true));
+    const auto       simulation = Parse(Settings(true, true));
     owe::BonePhysics physics;
     physics.Resize(usize(1));
     const Eigen::Affine3f posed(Eigen::Translation3f(3.0f, 4.0f, 0.0f));

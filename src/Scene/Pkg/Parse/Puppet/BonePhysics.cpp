@@ -95,18 +95,20 @@ auto BoneSimulation::Parse(ref<str> text) -> Option<BoneSimulation> {
     simulation.rotation_inertia      = 1.0f - number("ri"_str, 30.0f) / 100.0f;
     simulation.mass                  = number("m"_str, simulation.mass);
     simulation.gravity               = flag("ge"_str, false);
-    simulation.gravity_direction = ReadVector(json, "gd"_str, simulation.gravity_direction);
-    simulation.tip               = ReadVector(json, "tp"_str, simulation.tip);
-    simulation.max_distance      = number("tm"_str, simulation.max_distance);
-    simulation.limit_angles      = flag("la"_str, false);
-    simulation.angle_min         = ReadVector(json, "lamin"_str, simulation.angle_min);
-    simulation.angle_max         = ReadVector(json, "lamax"_str, simulation.angle_max);
-    simulation.limit_torque      = flag("lt"_str, false);
-    simulation.max_torque        = number("ltmax"_str, simulation.max_torque);
-    simulation.translation_axes  = { flag("tax"_str, true), flag("tay"_str, true),
-                                     flag("taz"_str, true) };
-    simulation.rotation_axes     = { flag("rax"_str, true), flag("ray"_str, true),
-                                     flag("raz"_str, true) };
+    simulation.gravity_direction     = ReadVector(json, "gd"_str, simulation.gravity_direction);
+    simulation.tip                   = ReadVector(json, "tp"_str, simulation.tip);
+    simulation.max_distance          = number("tm"_str, simulation.max_distance);
+    simulation.limit_angles          = flag("la"_str, false);
+    simulation.angle_min             = ReadVector(json, "lamin"_str, simulation.angle_min);
+    simulation.angle_max             = ReadVector(json, "lamax"_str, simulation.angle_max);
+    simulation.limit_torque          = flag("lt"_str, false);
+    simulation.max_torque            = number("ltmax"_str, simulation.max_torque);
+    simulation.translation_axes      = { flag("tax"_str, true),
+                                         flag("tay"_str, true),
+                                         flag("taz"_str, true) };
+    simulation.rotation_axes         = { flag("rax"_str, true),
+                                         flag("ray"_str, true),
+                                         flag("raz"_str, true) };
     return Some(rstd::move(simulation));
 }
 
@@ -175,15 +177,16 @@ auto BonePhysics::Apply(usize bone, const BoneSimulation& simulation, const Affi
                 const Quaternionf back =
                     TurnBetween(direction.normalized(), last_direction.normalized());
                 const Quaternionf turn(animated.rotation());
-                const Quaternionf own = turn.conjugate() * back * turn;
-                state.spin            = state.spin * Towards(Quaternionf::Identity(),
-                                                  own,
-                                                  moved * simulation.rotation_inertia * kDegrees);
+                const Quaternionf own     = turn.conjugate() * back * turn;
+                const float       inertia = moved * simulation.rotation_inertia * kDegrees;
+
+                state.spin = state.spin * Towards(Quaternionf::Identity(), own, inertia);
             }
             if (! simulation.rigid) {
-                state.spin = state.spin * Towards(Quaternionf::Identity(),
-                                                  TurnOf(-state.angles),
-                                                  simulation.rotation_stiffness * kDegrees * dt);
+                const Quaternionf pose   = TurnOf(-state.angles);
+                const float       spring = simulation.rotation_stiffness * kDegrees * dt;
+
+                state.spin = state.spin * Towards(Quaternionf::Identity(), pose, spring);
             }
             if (simulation.limit_torque) {
                 const Vector3f most = Vector3f::Constant(simulation.max_torque * kDegrees);
@@ -200,10 +203,9 @@ auto BonePhysics::Apply(usize bone, const BoneSimulation& simulation, const Affi
                 state.spin = TurnOf(angles - limited).conjugate() * state.spin;
                 angles     = limited;
             }
+            const float friction  = dt * simulation.rotation_friction;
             state.angles          = angles;
-            state.spin            = Towards(state.spin,
-                                 Quaternionf::Identity(),
-                                 dt * simulation.rotation_friction);
+            state.spin            = Towards(state.spin, Quaternionf::Identity(), friction);
             state.rotation_offset = TurnOf(state.angles);
         }
 
@@ -213,8 +215,8 @@ auto BonePhysics::Apply(usize bone, const BoneSimulation& simulation, const Affi
     return Translation3f(state.position_offset) * local * state.rotation_offset;
 }
 
-void BonePhysics::Impulse(usize bone, const BoneSimulation& simulation,
-                          const Vector3f& directional, const Vector3f& angular) {
+void BonePhysics::Impulse(usize bone, const BoneSimulation& simulation, const Vector3f& directional,
+                          const Vector3f& angular) {
     auto& state = m_states[bone];
     if (simulation.translation) state.velocity += directional;
     if (simulation.rotation) state.spin = state.spin * TurnOf(angular * kDegrees);
