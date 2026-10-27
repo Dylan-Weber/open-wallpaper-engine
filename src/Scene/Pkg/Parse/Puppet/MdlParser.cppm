@@ -46,7 +46,9 @@ struct Mdl {
         Vec<array<float, 3>>          positions;
         Vec<array<float, 3>>          normals;
         Vec<array<float, 4>>          tangents; // tangent[3] + tangent_sign
-        Vec<array<uint8_t, 4>>        extra4;
+        // The fourth position float (vertex flag 0x10000): the vertex's blend shape index, 1..V
+        // for the vertices the mesh's blend shapes move, 0 for the others.
+        Vec<float>                    morph_indices;
         Vec<array<rstd::uint32_t, 4>> blend_indices;
         Vec<array<float, 4>>          blend_weights;
         Vec<array<float, 2>>          texcoords;
