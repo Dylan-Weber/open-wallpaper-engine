@@ -286,6 +286,8 @@ public:
     // float); its children move with it. False for a bone the puppet doesn't have.
     bool setLocalBoneTransform(rstd::uint32_t index, const Eigen::Affine3f& local,
                                double time) noexcept;
+    // Places a bone in the puppet's space for the frame at `time`, as boneTransform gives it.
+    bool setBoneTransform(rstd::uint32_t index, const Eigen::Affine3f& pose, double time) noexcept;
     Option<Eigen::Affine3f> attachmentTransform(usize index, double time) noexcept;
     Option<usize>           attachmentIndex(ref<str> name) const noexcept;
     auto AnimationPlaybacks() const noexcept -> slice<Arc<SceneAnimationPlayback>>;

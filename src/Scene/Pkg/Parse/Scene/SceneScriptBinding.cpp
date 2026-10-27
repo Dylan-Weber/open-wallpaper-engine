@@ -340,6 +340,65 @@ script::ScriptScene& EnsureScriptScene(SceneParseContext& context) {
                         }
                         return Some(rstd::move(transform));
                     }));
+        auto to_matrix = [](const Eigen::Matrix4f& from) {
+            script::JsRuntime::BoneMatrix out {};
+            for (usize i {}; i < usize(16); ++i) out[i] = from.data()[i.to_primitive()];
+            return out;
+        };
+        auto from_matrix = [](const script::JsRuntime::BoneMatrix& from) {
+            Eigen::Affine3f out = Eigen::Affine3f::Identity();
+            for (usize i {}; i < usize(16); ++i) out.matrix().data()[i.to_primitive()] = from[i];
+            return out;
+        };
+        auto layer_world = [](SceneNode* node) {
+            node->UpdateTrans();
+            return Eigen::Affine3f(node->ModelTrans().cast<float>());
+        };
+        (*context.script_scene)
+            ->runtime()
+            .SetBoneMatrixResolvers(
+                script::JsRuntime::BoneMatrixGetter::make(
+                    [layers = layers.clone(), to_matrix, layer_world](
+                        SceneNode*     node,
+                        rstd::uint32_t index,
+                        double         time) -> Option<script::JsRuntime::BoneMatrix> {
+                        auto layer = LookupPuppetLayer(layers, node);
+                        if (layer.is_none()) return None();
+                        auto bone = (*layer)->boneTransform(index, time);
+                        if (bone.is_none()) return None();
+                        return Some(to_matrix((layer_world(node) * *bone).matrix()));
+                    }),
+                script::JsRuntime::BoneMatrixGetter::make(
+                    [layers = layers.clone(),
+                     to_matrix](SceneNode*     node,
+                                rstd::uint32_t index,
+                                double         time) -> Option<script::JsRuntime::BoneMatrix> {
+                        auto layer = LookupPuppetLayer(layers, node);
+                        if (layer.is_none()) return None();
+                        auto local = (*layer)->localBoneTransform(index, time);
+                        if (local.is_none()) return None();
+                        return Some(to_matrix(local->matrix()));
+                    }),
+                script::JsRuntime::BoneMatrixSetter::make(
+                    [layers = layers.clone(), from_matrix, layer_world](
+                        SceneNode*                    node,
+                        rstd::uint32_t                index,
+                        script::JsRuntime::BoneMatrix world,
+                        double                        time) {
+                        auto layer = LookupPuppetLayer(layers, node);
+                        if (layer.is_none()) return;
+                        (void)(*layer)->setBoneTransform(
+                            index, layer_world(node).inverse() * from_matrix(world), time);
+                    }),
+                script::JsRuntime::BoneMatrixSetter::make(
+                    [layers = layers.clone(), from_matrix](SceneNode*                    node,
+                                                           rstd::uint32_t                index,
+                                                           script::JsRuntime::BoneMatrix local,
+                                                           double                        time) {
+                        auto layer = LookupPuppetLayer(layers, node);
+                        if (layer.is_none()) return;
+                        (void)(*layer)->setLocalBoneTransform(index, from_matrix(local), time);
+                    }));
         if (context.user_properties.is_some())
             (*context.user_properties)->iter().for_each([&](auto entry) {
                 auto [entry_key, entry_value] = entry;
