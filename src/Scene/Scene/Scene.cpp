@@ -1086,6 +1086,15 @@ void SceneAnimationPlayback::Advance(double runtime, Vec<SceneAnimationEvent>& o
             }
         }
     }
+    if (end > 0.0 && now > m_previous_frame) {
+        if (! m_loop && ! m_mirror) {
+            if (m_previous_frame < end && now >= end) m_ended += u64(1);
+        } else {
+            const double from = rstd::cmp::max(m_previous_frame, 0.0);
+            const auto   ends = f64(now / period).floor() - f64(from / period).floor();
+            m_ended += u64(static_cast<rstd::uint64_t>(ends.to_primitive()));
+        }
+    }
     m_previous_frame = now;
     if (passed.is_empty()) return;
     rstd::slice_::sort_unstable_by(passed.as_mut_slice().as_mut_ref(),
