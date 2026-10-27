@@ -293,6 +293,14 @@ slice<Eigen::Affine3f> PuppetLayer::genFrame(double time) noexcept {
 
 static constexpr void genInterpolationInfo(Puppet::Animation::InterpolationInfo& info, double& cur,
                                            usize length, double frame_time, double max_time) {
+    // an animation of a single frame (no intervals) holds it
+    if (length == usize() || frame_time <= 0.0 || max_time <= 0.0) {
+        cur          = 0.0;
+        info.frame_a = usize();
+        info.frame_b = usize();
+        info.t       = 0.0;
+        return;
+    }
     cur          = (f64(cur) % f64(max_time)).to_primitive();
     double _rate = cur / frame_time;
 
