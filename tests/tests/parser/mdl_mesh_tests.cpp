@@ -1075,9 +1075,17 @@ TEST(MdlPuppet, Mdlv23ReadsMultiCurveMorphEvents) {
         EXPECT_FLOAT_EQ(curve.values.first().unwrap().get(), 1.0f);
     }
 
-    ASSERT_EQ(mdl.morph_sections.len(), usize(1));
-    EXPECT_FLOAT_EQ(mdl.morph_sections[usize()].event_time, event.time);
-    EXPECT_EQ(mdl.morph_sections[usize()].sections.len(), event.curves.len());
+    // the sheet's blend shapes: six, moving 179 vertices (its blink is shape 1457), and each
+    // animation's weight curves come with the same scale
+    ASSERT_EQ(mdl.meshes.len(), usize(1));
+    const auto& sheet = mdl.meshes[usize()];
+    EXPECT_FLOAT_EQ(sheet.morph_scale, event.time);
+    EXPECT_EQ(sheet.morph_vertex_count, 179u);
+    ASSERT_EQ(sheet.morph_shapes.len(), event.curves.len());
+    EXPECT_EQ(sheet.morph_shapes[usize(2)].id, 1457u);
+    EXPECT_EQ(sheet.morph_shapes[usize(2)].name.as_str(), "Shape 1457"_str);
+    EXPECT_EQ(sheet.morph_shapes[usize(2)].offsets.len(), usize(179));
+    EXPECT_EQ(sheet.morph_shapes[usize(2)].alpha.len(), usize(179));
 }
 
 TEST(MdlMesh, BlockVersionsUseBoundedDecimalPrefixes) {
@@ -1199,6 +1207,78 @@ TEST(MdlMesh, FourFloatPositionsKeepTheirMorphIndex) {
     EXPECT_FLOAT_EQ(mesh.normals[usize(1)][usize(2)], 1.0f);
     EXPECT_FLOAT_EQ(mesh.normals[usize(1)][usize(0)], 0.0f);
     EXPECT_FLOAT_EQ(mesh.texcoords[usize(1)][usize(0)], 0.75f);
+}
+
+// The MDMP section holds each mesh's blend shapes (as wallpaper64.exe's MDL loader reads it): a
+// shape count, the offsets' scale and how many vertices they move, then each shape's id, name and
+// length-prefixed offsets (three int16 a vertex, over 32767), and the blocks the mesh's flag_a
+// names (0x1000: an int16 alpha a vertex).
+TEST(MdlMesh, BlendShapesAreReadPerMesh) {
+    auto    temporary = rstd::fs::TempDir::make("owe-mdl-mdmp"_str).unwrap();
+    auto    root      = rstd::path::PathBuf::from(temporary.path().as_os_str().to_os_string());
+    Vec<u8> bytes;
+    auto    append = [&](ref<str> text) {
+        for (auto byte : text.as_bytes()) bytes.push(rstd::move(byte));
+    };
+    auto put = [&](auto value) {
+        const auto* raw = reinterpret_cast<const unsigned char*>(&value);
+        for (usize i {}; i < usize(sizeof value); ++i) bytes.push(u8(raw[i.to_primitive()]));
+    };
+    const std::uint32_t flag = 0x10000 | 0x8;
+    append("MDLV0017\0"_str);
+    put(std::int32_t(flag));
+    put(std::int32_t(1));
+    put(std::uint32_t(1));
+    append("materials/a.json\0"_str);
+    put(std::uint32_t(0x1000)); // flag_a: the shapes have an alpha
+    for (float bound : { 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f }) put(bound);
+    put(flag);
+    const float vertices[3][6] = { { 0, 0, 0, 0, 0, 0 },
+                                   { 1, 0, 0, 1, 1, 0 },
+                                   { 0, 1, 0, 2, 0, 1 } };
+    put(std::uint32_t(sizeof vertices));
+    for (const auto& vertex : vertices)
+        for (float value : vertex) put(value);
+    put(std::uint32_t(6));
+    for (std::uint16_t index : { 0, 1, 2 }) put(index);
+
+    append("MDMP0001\0"_str);
+    const usize end_at = bytes.len();
+    put(std::uint32_t(0));
+    put(std::uint16_t(1));
+    put(10.0f);
+    put(std::uint32_t(2));
+    put(std::uint32_t(7));
+    put(std::uint32_t(0));
+    append("Shape 7\0"_str);
+    put(std::uint32_t(12));
+    for (std::int16_t value : { 100, -200, 300, 0, 0, 32767 }) put(value);
+    put(std::uint32_t(4));
+    for (std::int16_t value : { 32767, 16384 }) put(value);
+    const auto end = static_cast<std::uint32_t>(bytes.len().to_primitive());
+    for (usize i {}; i < usize(4); ++i)
+        bytes[end_at + i] = u8((end >> (8 * i.to_primitive())) & 255);
+
+    ASSERT_TRUE(rstd::fs::write(root.join("shapes.mdl"_str).as_path(), bytes.as_slice()).is_ok());
+    owe::fs::VFS vfs;
+    auto         mount = owe::fs::make_physical_fs(temporary.path());
+    ASSERT_TRUE(mount.is_ok());
+    ASSERT_TRUE(vfs.mount("/assets"_str, rstd::move(mount).unwrap()).is_ok());
+    owe::Mdl mdl;
+    ASSERT_TRUE(owe::MdlParser::Parse("shapes.mdl"_str, vfs, mdl));
+    ASSERT_EQ(mdl.meshes.len(), usize(1));
+    const auto& mesh = mdl.meshes[usize()];
+    EXPECT_FLOAT_EQ(mesh.morph_scale, 10.0f);
+    EXPECT_EQ(mesh.morph_vertex_count, 2u);
+    ASSERT_EQ(mesh.morph_shapes.len(), usize(1));
+    const auto& shape = mesh.morph_shapes[usize()];
+    EXPECT_EQ(shape.id, 7u);
+    EXPECT_EQ(shape.name.as_str(), "Shape 7"_str);
+    ASSERT_EQ(shape.offsets.len(), usize(2));
+    EXPECT_EQ(shape.offsets[usize()][usize(1)], -200);
+    EXPECT_EQ(shape.offsets[usize(1)][usize(2)], 32767);
+    ASSERT_EQ(shape.alpha.len(), usize(2));
+    EXPECT_EQ(shape.alpha[usize(1)], 16384);
 }
 
 TEST(MdlMesh, NativeMaterialPathsShareResolutionAndPreserveDefaults) {
