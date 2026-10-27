@@ -1583,3 +1583,42 @@ TEST(SceneAssetPaths, ModelCameraAndClipRetainTheirReparseSemantics) {
     EXPECT_EQ(camera.path, "motion.json"_str);
     EXPECT_TRUE(clip.name.is_empty());
 }
+
+// A spot light's usecookie projects its cookie over its cone, for as many lights as the light
+// config counts under spotcookie; there is one cookie sampler, so all of them use the last such
+// light's texture (model-light-cookie, model-light-cookies).
+TEST(LightParsing, CookieLightsTakeTheSpotCookieSlots) {
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {"center": "0 0 0", "eye": "0 0 12", "up": "0 1 0"},
+            "general": {"orthogonalprojection": null,
+                        "lightconfig": {"point": 0, "spot": 3, "tube": 0, "directional": 0,
+                                        "spotcookie": 1}},
+            "objects": [
+                {"id": 1, "name": "First", "light": "lspot", "outercone": 30, "innercone": 10,
+                 "usecookie": true, "cookie": "cookie/flashlight3"},
+                {"id": 2, "name": "Second", "light": "lspot", "outercone": 30, "innercone": 10,
+                 "usecookie": true},
+                {"id": 3, "name": "Plain", "light": "lspot", "outercone": 30, "innercone": 10}
+            ]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    owe::fs::VFS                vfs;
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "light-cookies"_str,
+        rstd::ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        rstd::mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        rstd::mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene  = rstd::move(parsed).unwrap();
+    auto lights = scene.scene->Lights();
+    ASSERT_EQ(lights.len(), rstd::usize(3));
+    EXPECT_TRUE(lights[rstd::usize(0)]->desc().cookie);
+    EXPECT_FALSE(lights[rstd::usize(1)]->desc().cookie);
+    EXPECT_FALSE(lights[rstd::usize(2)]->desc().cookie);
+    ASSERT_TRUE(scene.scene->LightCookieTexture().is_some());
+    EXPECT_EQ(*scene.scene->LightCookieTexture(), "cookie/flashlight3"_str);
+}
