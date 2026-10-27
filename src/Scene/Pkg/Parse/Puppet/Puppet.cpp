@@ -488,6 +488,21 @@ void PuppetLayer::SetAnimationVisible(i32 layer_id, bool visible) {
     }
 }
 
+void PuppetLayer::ApplyBoneImpulse(uint32_t bone, const Vector3f& directional,
+                                   const Vector3f& angular) {
+    for (usize i {}; i < m_puppet->bones.len(); ++i) {
+        const auto& simulation = m_puppet->bones[i].simulation;
+        if (simulation.is_none() || (bone != 0 && usize(bone - 1) != i)) continue;
+        m_physics.Impulse(i, *simulation, directional, angular);
+    }
+}
+
+void PuppetLayer::ResetBonePhysics(uint32_t bone) {
+    for (usize i {}; i < m_puppet->bones.len(); ++i) {
+        if (bone == 0 || usize(bone - 1) == i) m_physics.Reset(i);
+    }
+}
+
 Option<Eigen::Affine3f> PuppetLayer::boneTransform(uint32_t index, double time) noexcept {
     if (index == 0) return None();
     const usize zero_based(index - 1);
