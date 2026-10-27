@@ -667,9 +667,10 @@ static bool SamplesPlanarReflection(SceneNode& node) {
     return false;
 }
 
-// Clears the reflection target to the scene's clear color, as the first reflected draw would. A
-// scene can sample the reflection without reflecting anything, and the target must still be written.
-static auto ClearPlanarReflection(ExtraInfo& extra, const Scene& scene) -> Result<empty, fg::Error> {
+// Clears the reflection target to the scene's clear color, as the first reflected draw would: a
+// scene can sample the reflection without reflecting anything, and it must still be written.
+static auto ClearPlanarReflection(ExtraInfo& extra, const Scene& scene)
+    -> Result<empty, fg::Error> {
     auto target = SelectTexture(extra, MakeTextureDesc(extra, WE_REFLECTION_PREFIX));
     if (extra.error) return Err(*extra.error);
     auto color   = scene.ClearColor();
