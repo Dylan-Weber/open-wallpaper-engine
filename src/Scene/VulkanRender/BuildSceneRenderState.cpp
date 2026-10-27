@@ -667,6 +667,28 @@ static bool SamplesPlanarReflection(SceneNode& node) {
     return false;
 }
 
+// Clears the reflection target to the scene's clear color, as the first reflected draw would: a
+// scene can sample the reflection without reflecting anything, and it must still be written.
+static auto ClearPlanarReflection(ExtraInfo& extra, const Scene& scene)
+    -> Result<empty, fg::Error> {
+    auto target = SelectTexture(extra, MakeTextureDesc(extra, WE_REFLECTION_PREFIX));
+    if (extra.error) return Err(*extra.error);
+    auto color   = scene.ClearColor();
+    auto cleared = vrento::vulkan::declare_graphics_clear(
+        extra.graph,
+        fg::PassId { extra.next_pass++ },
+        target,
+        { color[usize()], color[usize(1)], color[usize(2)], 1.0f },
+        1,
+        "frame/clear-reflection"_Str);
+    if (cleared.is_err()) return Err(cleared.unwrap_err());
+    auto output = cleared->output.clone();
+    PublishTexture(extra, output);
+    (void)Use(extra, output);
+    extra.descriptions.push(rstd::move(cleared->description));
+    return Ok(empty {});
+}
+
 static void EmitPlanarReflectionNode(SceneNode* node, ExtraInfo& extra,
                                      const HashSet<const SceneNode*>& emit_skip_subtrees) {
     if (node == nullptr || emit_skip_subtrees.contains(node)) return;
@@ -815,6 +837,8 @@ auto owe::BuildSceneRenderState(Scene& scene, const RenderSceneSnapshot& render_
     EmitShadowPasses(extra);
 
     if (scene.PlanarReflectionEnabled()) {
+        auto cleared = ClearPlanarReflection(extra, scene);
+        if (cleared.is_err()) return Err(cleared.unwrap_err());
         EmitPlanarReflectionNode(scene.RootMut().as_raw_ptr(), extra, emit_skip_subtrees);
     }
 

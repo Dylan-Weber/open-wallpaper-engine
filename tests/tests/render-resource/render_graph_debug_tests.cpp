@@ -796,3 +796,39 @@ TEST(SceneRenderGraph, RejectsMissingOutputWithoutInstallingPartialProgram) {
     ASSERT_TRUE(result.is_err());
     EXPECT_EQ(result.unwrap_err().kind, vrento::fg::ErrorKind::MissingResource);
 }
+
+// Arsenal's planks sample _rt_Reflection, but no object of the scene is reflected: the target must
+// still be cleared before the floor reads it, or the frame fails to bind it.
+TEST(SceneRenderGraph, ClearsThePlanarReflectionWhenNothingIsReflected) {
+    owe::Scene scene;
+    scene.RegisterRenderTarget(String::make("_rt_default"_str),
+                               owe::SceneRenderTarget { .width = i32(64), .height = i32(64) });
+    scene.EnablePlanarReflection();
+
+    auto floor          = Arc<owe::SceneNode>::make();
+    auto floor_mesh     = Arc<owe::SceneMesh>::make();
+    auto floor_material = GraphMaterial(usize(1));
+    floor_material.name = "floor"_Str;
+    floor_material.textures.push("_rt_Reflection"_Str);
+    floor_mesh->AddMaterial(rstd::move(floor_material));
+    floor_mesh->Submeshes().push(owe::SceneMesh::Submesh {});
+    floor->AddMesh(rstd::move(floor_mesh));
+    scene.RootMut()->AppendChild(floor.clone());
+
+    auto snapshot = owe::ExtractRenderSceneSnapshot(scene);
+    auto graph    = owe::BuildSceneRenderState(scene, snapshot);
+    ASSERT_TRUE(graph.is_ok());
+    ASSERT_TRUE(graph->graph.compile().is_ok());
+    auto order = graph->graph.inspect().order.clone();
+
+    Option<usize> clear_index;
+    Option<usize> floor_index;
+    for (usize index {}; index < order.len(); ++index) {
+        auto pass = &graph->graph.passes()[usize(order[index])];
+        if (pass->name == "frame/clear-reflection"_str) clear_index = Some(index);
+        if (pass->name == "floor"_str) floor_index = Some(index);
+    }
+    ASSERT_TRUE(clear_index.is_some());
+    ASSERT_TRUE(floor_index.is_some());
+    EXPECT_LT(*clear_index, *floor_index);
+}
