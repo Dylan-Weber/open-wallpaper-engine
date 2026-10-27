@@ -509,6 +509,34 @@ auto PuppetLayer::AnimationPlaybacks() const noexcept -> slice<Arc<SceneAnimatio
     return m_playbacks.as_slice();
 }
 
+auto PuppetLayer::MorphWeights(double time) noexcept -> Vec<float> {
+    updateInterpolation(time);
+    Vec<float> weights;
+    for (const auto& layer : m_layers) {
+        if (layer.anim == nullptr || ! layer.anim_layer.visible || layer.anim->v4_events.is_empty())
+            continue;
+        const double blend = rstd::cmp::max(layer.anim_layer.blend, 0.0);
+        if (blend <= 0.0) continue;
+        const auto& info = layer.interp_info;
+        for (const auto& curve : layer.anim->v4_events[usize()].curves) {
+            const usize shape(curve.id);
+            while (weights.len() <= shape) weights.push(0.0f);
+            if (curve.values.is_empty()) continue;
+            const usize last  = curve.values.len() - usize(1);
+            const auto  value = [&](usize frame) {
+                return static_cast<double>(curve.values[rstd::cmp::min(frame, last)]);
+            };
+            const double sampled =
+                value(info.frame_a) * (1.0 - info.t) + value(info.frame_b) * info.t;
+            const double current = weights[shape];
+            weights[shape] = static_cast<float>(layer.anim_layer.additive
+                                                    ? current + blend * sampled
+                                                    : current * (1.0 - blend) + sampled * blend);
+        }
+    }
+    return weights;
+}
+
 auto PuppetLayer::TextureChannelBlendMap(double time) noexcept -> slice<float> {
     updateInterpolation(time);
     for (auto& value : m_texture_channel_blend_map) value = 0.0f;

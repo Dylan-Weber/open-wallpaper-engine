@@ -1343,6 +1343,71 @@ void MdlParser::GenMeshFromMdl(SceneMesh::Submesh& submesh, const Mdl::Mesh& src
     submesh.PublishGeometry();
 }
 
+auto MdlParser::MakeMorph(const Mdl::Mesh& src, array<float, 3> position_offset)
+    -> Option<Arc<MdlMorph>> {
+    if (src.morph_shapes.is_empty() || src.morph_indices.len() != src.positions.len())
+        return None();
+    auto morph = Arc<MdlMorph>::make();
+    for (const auto& position : src.positions) {
+        morph->rest.push(array<float, 3> { position[usize(0)] + position_offset[usize(0)],
+                                           position[usize(1)] + position_offset[usize(1)],
+                                           position[usize(2)] + position_offset[usize(2)] });
+    }
+    for (float index : src.morph_indices)
+        morph->index.push(index > 0.0f ? static_cast<rstd::uint32_t>(index) : 0u);
+    morph->scale        = src.morph_scale;
+    morph->vertex_count = src.morph_vertex_count;
+    for (const auto& shape : src.morph_shapes) morph->offsets.push(shape.offsets.clone());
+    return Some(rstd::move(morph));
+}
+
+// As the shaders' MORPHING does: the sum of each shape's offset (over 32767) times its weight,
+// times the mesh's scale, for the vertices with a morph index (1..vertex_count).
+auto MdlParser::MorphPositions(const MdlMorph& morph, slice<float> weights) -> Vec<float> {
+    Vec<float> positions;
+    positions.reserve(morph.rest.len() * usize(3));
+    for (usize vertex {}; vertex < morph.rest.len(); ++vertex) {
+        array<float, 3> position = morph.rest[vertex];
+        const auto      index    = morph.index[vertex];
+        if (index > 0 && index <= morph.vertex_count) {
+            const usize entry(index - 1);
+            for (usize shape {}; shape < rstd::cmp::min(weights.len(), morph.offsets.len());
+                 ++shape) {
+                const auto& offsets = morph.offsets[shape];
+                if (entry >= offsets.len() || weights[shape] == 0.0f) continue;
+                const float amount = weights[shape] * morph.scale / 32767.0f;
+                for (usize axis {}; axis < usize(3); ++axis)
+                    position[axis] += amount * static_cast<float>(offsets[entry][axis]);
+            }
+        }
+        for (float value : position) positions.push(float(value));
+    }
+    return positions;
+}
+
+void MdlParser::BindMorph(Scene& scene, SceneMesh& mesh, usize submesh, const Mdl::Mesh& src,
+                          Arc<PuppetLayer> layer, array<float, 3> position_offset) {
+    auto morph = MakeMorph(src, position_offset);
+    if (morph.is_none() || submesh >= mesh.Submeshes().len()) return;
+    scene.RegisterTransformUpdater(
+        Box<dyn<FnMut<void(f64)>>>::make([target = &mesh,
+                                          submesh,
+                                          layer = rstd::move(layer),
+                                          morph = rstd::move(*morph),
+                                          last  = Vec<float> {}](f64 time) mutable {
+            auto weights = layer->MorphWeights(time.to_primitive());
+            bool same    = weights.len() == last.len();
+            for (usize i {}; same && i < weights.len(); ++i) same = weights[i] == last[i];
+            if (same) return;
+            auto  positions = MorphPositions(*morph, weights.as_slice());
+            auto& part      = target->Submeshes()[submesh];
+            (void)part.vertex_arrays[usize()].SetVertex(WE_IN_POSITION, positions.as_slice());
+            part.PublishGeometry();
+            target->SetDirty();
+            last = rstd::move(weights);
+        }));
+}
+
 void MdlParser::BindDrawOrder(SceneMesh::Submesh& submesh, const Mdl::Mesh& src,
                               Arc<PuppetLayer> layer) {
     if (submesh.draw_ranges.is_empty() || ! layer->HasDrawOrderAnimation()) return;
