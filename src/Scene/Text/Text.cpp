@@ -492,8 +492,8 @@ TextGeometry ResolveTextGeometry(const TextGeometryPolicy& policy,
         out.draw_height       = tight_bbox ? src_h : text_bbox_h;
         out.draw_offset_x     = tight_bbox ? src_cx : 0.0f;
         out.draw_offset_y     = tight_bbox ? src_cy : 0.0f;
-        out.uv_source_width   = tight_bbox ? src_w : src_bbox_w;
-        out.uv_source_height  = tight_bbox ? src_h : src_bbox_h;
+        out.uv_source_width   = tight_bbox ? src_w : text_bbox_w;
+        out.uv_source_height  = tight_bbox ? src_h : text_bbox_h;
         return out;
     }
 
