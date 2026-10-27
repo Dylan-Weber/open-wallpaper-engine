@@ -62,6 +62,7 @@ enum class LightUniformOutput : rstd::uint32_t
     DirectionType,
     ConeExponent,
     CastShadow,
+    LightingV1ColorRadius,
 };
 
 enum class ShadowUniformOutput : rstd::uint32_t

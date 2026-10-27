@@ -360,6 +360,7 @@ void ParseLightObj(SceneParseContext& context, wpscene::LightObject& light_obj) 
     } else {
         desc.type = SceneLightType::Point; // default + point/lpoint
     }
+    desc.old_kind    = light_obj.light == "point"_str;
     desc.color       = Vector3f(light_obj.color.data());
     desc.radius      = light_obj.radius;
     desc.intensity   = light_obj.intensity;
