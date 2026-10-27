@@ -533,6 +533,9 @@ void owe::AssignNodeFieldAnimations(SceneLayerBuildContext& context, SceneNode& 
     assign("alpha"_str, [&](SceneAnimationTrack track) {
         node.SetAlphaAnimation(rstd::move(track));
     });
+    assign("color"_str, [&](SceneAnimationTrack track) {
+        node.SetColorAnimation(rstd::move(track));
+    });
 }
 
 void owe::AssignCameraFieldAnimations(SceneLayerBuildContext& context, SceneNode& node,
