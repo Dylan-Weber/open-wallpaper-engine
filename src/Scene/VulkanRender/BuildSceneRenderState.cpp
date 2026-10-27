@@ -586,6 +586,58 @@ static void ConfigureNestedOutput(SceneNode* node, ref<str> output, ref<str> inh
     }
 }
 
+static bool DrawsBlended(const SceneNode& node) {
+    const auto* mesh = node.Mesh();
+    if (mesh == nullptr) return false;
+    for (const auto& material : mesh->MaterialSlots()) {
+        if (! material) continue;
+        const auto blend = material->Pipeline().blend_mode;
+        if (blend == BlendMode::Translucent || blend == BlendMode::Additive) return true;
+    }
+    return false;
+}
+
+// The order a node's children draw in. With the scene's transparent sorting, each run of model
+// layers (sorting stops at any other layer) draws its opaque models in scene order, then its
+// translucent ones from the farthest to the nearest.
+static auto DrawOrder(const Scene& scene, SceneNode& node) -> Vec<SceneNode*> {
+    Vec<SceneNode*> order;
+    for (auto& child : node.GetChildren()) {
+        SceneNode* pointer = child.as_ptr();
+        order.push(rstd::move(pointer));
+    }
+    auto camera = scene.ActiveCamera();
+    if (! scene.TransparentSorting() || camera.is_none()) return order;
+
+    const Eigen::Vector3d eye      = (**camera).GetPosition();
+    auto                  distance = [&](const SceneNode* model) {
+        return (model->ModelTrans().block<3, 1>(0, 3) - eye).norm();
+    };
+    for (usize start {}; start < order.len();) {
+        if (! order[start]->DrawsAsModel()) {
+            ++start;
+            continue;
+        }
+        usize end = start;
+        while (end < order.len() && order[end]->DrawsAsModel()) ++end;
+        Vec<SceneNode*> opaque;
+        Vec<SceneNode*> blended;
+        for (usize index = start; index < end; ++index) {
+            SceneNode* model = order[index];
+            (DrawsBlended(*model) ? blended : opaque).push(rstd::move(model));
+        }
+        rstd::slice_::sort_unstable_by(blended.as_mut_slice().as_mut_ref(),
+                                       [&](SceneNode* a, SceneNode* b) {
+                                           return distance(a) > distance(b);
+                                       });
+        usize index = start;
+        for (auto* model : opaque) order[index++] = model;
+        for (auto* model : blended) order[index++] = model;
+        start = end;
+    }
+    return order;
+}
+
 static void EmitSceneNode(SceneNode* node, ref<str> inherited_output, ref<str> inherited_camera,
                           ExtraInfo& extra, const HashSet<const SceneNode*>& emit_skip_subtrees,
                           const BTreeSet<i32>& linked_ids) {
@@ -631,9 +683,9 @@ static void EmitSceneNode(SceneNode* node, ref<str> inherited_output, ref<str> i
         }
         const ref<str> child_output =
             effect_layer == nullptr ? node_output : effect_layer->CompositeTarget();
-        for (auto& child : node->GetChildren()) {
+        for (auto* child : DrawOrder(scene, *node)) {
             EmitSceneNode(
-                child.as_ptr(), child_output, *group_camera, extra, emit_skip_subtrees, linked_ids);
+                child, child_output, *group_camera, extra, emit_skip_subtrees, linked_ids);
         }
         if (effect_layer != nullptr && effect_layer->HasRenderEffects()) {
             LoadGraphEffects(effect_layer, extra);
@@ -645,13 +697,9 @@ static void EmitSceneNode(SceneNode* node, ref<str> inherited_output, ref<str> i
         ConfigureNestedOutput(node, node_output, inherited_camera);
         ToGraphPass(node, node_output, extra);
     }
-    for (auto& child : node->GetChildren()) {
-        EmitSceneNode(child.as_ptr(),
-                      inherited_output,
-                      inherited_camera,
-                      extra,
-                      emit_skip_subtrees,
-                      linked_ids);
+    for (auto* child : DrawOrder(scene, *node)) {
+        EmitSceneNode(
+            child, inherited_output, inherited_camera, extra, emit_skip_subtrees, linked_ids);
     }
 }
 

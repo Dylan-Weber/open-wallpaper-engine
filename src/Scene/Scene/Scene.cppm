@@ -1650,6 +1650,9 @@ public:
     void            SetPerspective(bool value) { m_perspective = value; }
     bool            Reflected() const { return m_reflected; }
     void            SetReflected(bool value) { m_reflected = value; }
+    // A model layer: with the scene's transparent sorting, models are ordered by depth.
+    bool            DrawsAsModel() const { return m_draws_as_model; }
+    void            SetDrawsAsModel(bool value) { m_draws_as_model = value; }
     void            AddMesh(Arc<SceneMesh> mesh) { m_mesh = Some(rstd::move(mesh)); }
     bool            AppendChild(Arc<SceneNode> sub) { return m_node.AppendChild(rstd::move(sub)); }
     bool            RemoveChild(SceneNode& child) { return m_node.RemoveChild(child); }
@@ -1952,6 +1955,7 @@ private:
     String m_cameraName;
     bool   m_perspective { false };
     bool   m_reflected { false };
+    bool   m_draws_as_model { false };
 
     Option<Arc<SceneNodeLayer>> m_layer;
 };
@@ -2845,6 +2849,9 @@ public:
     bool SetImageEffectRuntimeVisible(const SceneImageEffectRef& ref, bool visible);
     void EnablePlanarReflection();
     bool PlanarReflectionEnabled() const { return m_planar_reflection_enabled; }
+    // general.transparentsorting: models draw opaque first, then translucent from far to near.
+    bool TransparentSorting() const { return m_transparent_sorting; }
+    void SetTransparentSorting(bool value) { m_transparent_sorting = value; }
     bool ConsumeRenderGraphDirty();
     bool ApplyUserNodeVisibilityBindings(ref<str> key, const Json& property);
     bool ApplyUserImageEffectVisibilityBindings(ref<str> key, const Json& property);
@@ -3141,6 +3148,7 @@ private:
     SceneResourceIndex                           m_resource_index;
     bool                                         m_render_graph_dirty { false };
     bool                                         m_planar_reflection_enabled { false };
+    bool                                         m_transparent_sorting { false };
     HashMap<i32, String>                         m_render_group_cameras;
     HashMap<String, Vec<String>>                 m_linked_cameras;
     HashMap<i32, SceneNodeId>                    m_layer_link_source_ids;
