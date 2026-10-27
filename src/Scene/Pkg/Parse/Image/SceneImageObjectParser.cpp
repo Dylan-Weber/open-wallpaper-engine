@@ -235,9 +235,9 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
                                   ShaderValue(array<float, 3> { wpimgobj.color[usize(0)],
                                                                 wpimgobj.color[usize(1)],
                                                                 wpimgobj.color[usize(2)] }));
+        // g_UserAlpha and g_Brightness are material settings ("Alpha", "Brightness"): the
+        // layer's own alpha and brightness don't reach them, as in Wallpaper Engine.
         (void)baseConstSvs.insert(rstd::into(G_ALPHA), ShaderValue(wpimgobj.alpha));
-        (void)baseConstSvs.insert(rstd::into(G_USERALPHA), ShaderValue(wpimgobj.alpha));
-        (void)baseConstSvs.insert(rstd::into(G_BRIGHTNESS), ShaderValue(wpimgobj.brightness));
 
         shaderInfo.baseConstSvs = baseConstSvs.clone();
 
