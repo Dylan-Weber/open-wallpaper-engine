@@ -611,18 +611,20 @@ TEST(ScriptBonePhysics, ImpulsesAndResetsReachTheLayersBones) {
     // a bone that is not there is left out; no bone means every bone with physics
     ASSERT_EQ(requests.len(), usize(4));
     const auto& hair = requests[usize(0)];
-    EXPECT_EQ(hair.bone, 5u);
+    ASSERT_TRUE(hair.bone.is_some());
+    EXPECT_EQ(*hair.bone, 5u);
     EXPECT_FALSE(hair.reset);
     EXPECT_FLOAT_EQ(hair.directional[usize(1)], 2.0f);
     EXPECT_FLOAT_EQ(hair.angular[usize(2)], 10.0f);
     const auto& every = requests[usize(1)];
-    EXPECT_EQ(every.bone, 0u);
+    EXPECT_TRUE(every.bone.is_none());
     EXPECT_FLOAT_EQ(every.directional[usize(0)], 4.0f);
     EXPECT_FLOAT_EQ(every.angular[usize(2)], -5.0f);
     EXPECT_TRUE(requests[usize(2)].reset);
-    EXPECT_EQ(requests[usize(2)].bone, 5u);
+    ASSERT_TRUE(requests[usize(2)].bone.is_some());
+    EXPECT_EQ(*requests[usize(2)].bone, 5u);
     EXPECT_TRUE(requests[usize(3)].reset);
-    EXPECT_EQ(requests[usize(3)].bone, 0u);
+    EXPECT_TRUE(requests[usize(3)].bone.is_none());
 }
 
 TEST(ScriptNodeSoftMutation, VisibleAndAlphaWrites) {

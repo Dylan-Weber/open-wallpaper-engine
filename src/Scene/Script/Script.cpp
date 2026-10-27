@@ -2688,25 +2688,28 @@ array<float, 3> ReadVec3Argument(JSContext* ctx, JSValueConst value) {
     return out;
 }
 
-// The bone a physics call names: a name (as getBoneIndex resolves it) or an
-// index; 0 when it names none, so every bone with physics. None when it names a
-// bone the layer does not have.
-Option<uint32_t> PhysicsBoneArgument(JSContext* ctx, EngineHostState* host, owe::SceneNode* node,
-                                     JSValueConst value) {
-    if (JS_IsUndefined(value) || JS_IsNull(value)) return Some(uint32_t(0));
+// Reads the bone a physics call names, a name or an index as getBoneIndex
+// returns them, into `bone` in the bone index resolver's numbering (None when
+// no bone is named: every bone with physics). False when the layer has no such
+// bone.
+bool ReadPhysicsBone(JSContext* ctx, EngineHostState* host, owe::SceneNode* node,
+                     JSValueConst value, Option<uint32_t>& bone) {
+    if (JS_IsUndefined(value) || JS_IsNull(value)) return true;
+    uint32_t index = 0;
     if (JS_IsString(value)) {
-        if (! host->bone_index_resolver) return None();
+        if (! host->bone_index_resolver) return false;
         const char* name = JS_ToCString(ctx, value);
-        if (! name) return None();
-        const uint32_t index =
-            (*host->bone_index_resolver)->operator()(node, rstd::cppstd::as_str(name).unwrap());
+        if (! name) return false;
+        index = (*host->bone_index_resolver)->operator()(node, rstd::cppstd::as_str(name).unwrap());
         JS_FreeCString(ctx, name);
-        if (index == 0) return None();
-        return Some(uint32_t(index));
+    } else {
+        int32_t number = 0;
+        if (JS_ToInt32(ctx, &number, value) != 0 || number <= 0) return false;
+        index = uint32_t(number);
     }
-    int32_t index = 0;
-    if (JS_ToInt32(ctx, &index, value) != 0 || index <= 0) return None();
-    return Some(uint32_t(index));
+    if (index == 0) return false;
+    bone = Some(uint32_t(index));
+    return true;
 }
 
 // applyBonePhysicsImpulse([bone], directionalImpulse, angularImpulse): without
@@ -2716,10 +2719,10 @@ JSValue NodeApplyBonePhysicsImpulse(JSContext* ctx, JSValueConst this_val, int a
     auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
     auto* n    = GetLayerNode(this_val);
     if (! n || ! host->bone_physics_handler) return JS_UNDEFINED;
-    const bool named = argc >= 3;
-    const auto bone  = PhysicsBoneArgument(ctx, host, n, named ? argv[0] : JS_UNDEFINED);
-    if (bone.is_none()) return JS_UNDEFINED;
-    BonePhysicsRequest request { .bone = *bone };
+    const bool         named = argc >= 3;
+    BonePhysicsRequest request;
+    if (! ReadPhysicsBone(ctx, host, n, named ? argv[0] : JS_UNDEFINED, request.bone))
+        return JS_UNDEFINED;
     if (argc > (named ? 1 : 0)) request.directional = ReadVec3Argument(ctx, argv[named ? 1 : 0]);
     if (argc > (named ? 2 : 1)) request.angular = ReadVec3Argument(ctx, argv[named ? 2 : 1]);
     (*host->bone_physics_handler)->operator()(n, request);
@@ -2732,9 +2735,9 @@ JSValue NodeResetBonePhysicsSimulation(JSContext* ctx, JSValueConst this_val, in
     auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
     auto* n    = GetLayerNode(this_val);
     if (! n || ! host->bone_physics_handler) return JS_UNDEFINED;
-    const auto bone = PhysicsBoneArgument(ctx, host, n, argc > 0 ? argv[0] : JS_UNDEFINED);
-    if (bone.is_none()) return JS_UNDEFINED;
-    const BonePhysicsRequest request { .bone = *bone, .reset = true };
+    BonePhysicsRequest request { .reset = true };
+    if (! ReadPhysicsBone(ctx, host, n, argc > 0 ? argv[0] : JS_UNDEFINED, request.bone))
+        return JS_UNDEFINED;
     (*host->bone_physics_handler)->operator()(n, request);
     return JS_UNDEFINED;
 }

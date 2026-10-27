@@ -182,12 +182,13 @@ TEST(Puppet, LayerImpulseMovesTheBoneAndResetPutsItBack) {
     owe::PuppetLayer layer(puppet.clone());
     layer.prepared({});
     (void)layer.genFrame(0.0);
-    // bone 1 as getBoneIndex numbers it; 0 would be every bone with physics
-    layer.ApplyBoneImpulse(1, Eigen::Vector3f(10.0f, 0.0f, 0.0f), Eigen::Vector3f::Zero());
+    // bone 1 as boneIndex numbers it; None would be every bone with physics
+    layer.ApplyBoneImpulse(
+        Some(rstd::uint32_t(1)), Eigen::Vector3f(10.0f, 0.0f, 0.0f), Eigen::Vector3f::Zero());
     (void)layer.genFrame(0.066);
     EXPECT_GT(layer.boneTransform(1, 0.066)->translation().x(), 0.1f);
 
-    layer.ResetBonePhysics(0);
+    layer.ResetBonePhysics(None());
     (void)layer.genFrame(0.132);
     EXPECT_NEAR(layer.boneTransform(1, 0.132)->translation().x(), 0.0f, 1e-5f);
 }

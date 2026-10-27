@@ -63,9 +63,10 @@ struct BoneTranslation {
 
 // A layer script's applyBonePhysicsImpulse or resetBonePhysicsSimulation.
 struct BonePhysicsRequest {
-    // the bone as getBoneIndex numbers it; 0 for every bone with physics
-    uint32_t bone { 0 };
-    bool     reset { false };
+    // the bone as the bone index resolver numbers it; None for every bone
+    // with physics
+    Option<uint32_t> bone;
+    bool             reset { false };
     // the impulse: a movement (units a second) and a turn (degrees a sixtieth
     // of a second)
     array<float, 3> directional {};
