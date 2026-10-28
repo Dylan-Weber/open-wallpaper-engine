@@ -374,9 +374,20 @@ private:
     Arc<SceneNode> m_node;
 };
 
+// How many lights of each kind the newer light interface (Lighting V1) gets: the scene's
+// general.lightconfig, all 0 without one.
+struct LightKindLimits {
+    u32 point {};
+    u32 spot {};
+    u32 directional {};
+};
+
 class LightUniformSource {
 public:
-    explicit LightUniformSource(Vec<ref<SceneLight>> lights): m_lights(rstd::move(lights)) {}
+    // Without limits, every light shows through the newer interface too.
+    explicit LightUniformSource(Vec<ref<SceneLight>>    lights,
+                                Option<LightKindLimits> limits = None())
+        : m_lights(rstd::move(lights)), m_limits(rstd::move(limits)) {}
 
     auto Describe(mut_ref<dyn<UniformBindingSink>>) const -> Result<empty, UniformError>;
     auto Version(ref<dyn<UniformUpdateContext>>) const -> u64;
@@ -385,7 +396,8 @@ public:
     auto AcquireBindingLease() const -> Option<Box<dyn<UniformBindingLease>>> { return None(); }
 
 private:
-    Vec<ref<SceneLight>> m_lights;
+    Vec<ref<SceneLight>>    m_lights;
+    Option<LightKindLimits> m_limits;
 };
 
 class ShadowUniformSource {

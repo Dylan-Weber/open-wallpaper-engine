@@ -677,6 +677,9 @@ BuildContext(fs::VFS& vfs, ref<str> scene_id, const wpscene::SceneMetadata& sc,
     context.geometry_shader_supported = geometry_shader_supported;
     context.shader_environment.directional_shadow =
         directional_shadow && sc.general.lightconfig.directionalshadow > u32();
+    context.shader_environment.point_lights       = sc.general.lightconfig.point;
+    context.shader_environment.spot_lights        = sc.general.lightconfig.spot;
+    context.shader_environment.directional_lights = sc.general.lightconfig.directional;
 
     context.scene->RegisterRenderTarget(String::make(SpecTex_Default),
                                         SceneRenderTarget {
