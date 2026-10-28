@@ -575,6 +575,49 @@ TEST(ShadowUniformSource, UsesAuthoredCascadeExtentAndLightObjectFrame) {
 
 // Every shadowed light's views sit at its own place in one list, which each light slot points into
 // (-1: no shadow map).
+// A light's shadow views sit in the slot the light takes, and the slots go to the lights that
+// light: Ocarina of Time's sun comes after four torch lights in a hidden layer.
+TEST(ShadowUniformSource, HiddenLightsLeaveTheirSlotsToTheOthers) {
+    auto camera =
+        Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000.0, 50.0));
+    camera->SetLookAt(Eigen::Vector3d::Zero(), -Eigen::Vector3d::UnitZ(), Eigen::Vector3d::UnitY());
+
+    auto torches = Arc<owe::SceneNode>::make();
+    torches->SetVisible(false);
+    Vec<Arc<owe::SceneNode>>  torch_nodes;
+    Vec<Box<owe::SceneLight>> torch_lights;
+    owe::SceneLight::Desc     torch;
+    torch.type = owe::SceneLightType::Point;
+    for (int index = 0; index < 4; ++index) {
+        torch_nodes.push(Arc<owe::SceneNode>::make());
+        torches->AppendChild(torch_nodes.last_mut().unwrap()->clone());
+        torch_lights.push(Box<owe::SceneLight>::make(torch));
+        (*torch_lights.last_mut().unwrap())->setNode(torch_nodes.last_mut().unwrap()->as_ptr());
+    }
+    auto                  sun_node = Arc<owe::SceneNode>::make();
+    owe::SceneLight::Desc sun_desc;
+    sun_desc.type                 = owe::SceneLightType::Directional;
+    sun_desc.cast_shadow          = true;
+    sun_desc.cascade_distances[0] = 10.0f;
+    sun_desc.shadow_view          = i32(0);
+    owe::SceneLight sun(sun_desc);
+    sun.setNode(sun_node.as_ptr());
+    auto lights = Vec<ref<owe::SceneLight>>::make();
+    for (auto& light : torch_lights)
+        lights.push(ref<owe::SceneLight>::from_raw_parts(light.as_ptr()));
+    lights.push(ref<owe::SceneLight>::from_raw_parts(rstd::addressof(sun)));
+    auto transforms = Vec<float>::make();
+    for (int value = 0; value < 12; ++value) transforms.push(float(value) / 12.0f);
+    owe::ShadowUniformSource source(rstd::move(camera), rstd::move(lights), rstd::move(transforms));
+
+    owe::SceneFrame frame;
+    auto slots = scene_test::Capture(frame, source, owe::ShadowUniformOutput::LightViews);
+    ASSERT_EQ(slots.size(), usize(4));
+    EXPECT_FLOAT_EQ(slots[usize()], 0.0f);
+    for (usize slot { 1 }; slot < usize(4); ++slot)
+        EXPECT_FLOAT_EQ(slots[slot], -1.0f) << "slot " << slot.to_primitive();
+}
+
 TEST(ShadowUniformSource, EachShadowedLightHasItsViews) {
     auto camera =
         Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000.0, 50.0));

@@ -1146,10 +1146,12 @@ auto ShadowUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
     if (camera_ok) forward.normalize();
 
     bool have_cascades {};
-    for (usize slot {}; slot < rstd::cmp::min(max_lights, m_lights.len()); ++slot) {
-        const auto& light = *m_lights[slot];
+    // a light's views go in the slot it takes in LightUniformSource
+    const auto lighting = LightingSlots(m_lights.as_slice(), max_lights);
+    for (usize slot {}; slot < lighting.len(); ++slot) {
+        const auto& light = *m_lights[lighting[slot]];
         const auto  first = light.desc().shadow_view;
-        if (first < i32() || ! light.runtimeVisible()) continue;
+        if (first < i32()) continue;
         const auto view = usize(rstd::as_cast<rstd::size_t>(first.to_primitive()));
         if (light.type() == SceneLightType::Point) {
             if (view + usize(6) > kShadowViewCount) continue;
