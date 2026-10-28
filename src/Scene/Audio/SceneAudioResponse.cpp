@@ -8,11 +8,13 @@ module owe.scene_audio_response;
 
 import owe.audio_response;
 import rstd;
+import wescene.json;
 
 namespace owe::scene_audio
 {
 
 using namespace rstd::prelude;
+using namespace rstd::literals;
 
 namespace
 {
@@ -76,7 +78,81 @@ void BuildBuffers(const rstd::array<float, audio::kResponseBins * 2>& values, Bu
     MaxPool(output.bands32.average, output.bands16.average);
 }
 
+template<size_t N, size_t SourceN>
+void Repeat(const rstd::array<float, SourceN>& source, rstd::array<float, N>& output) {
+    static_assert(N % SourceN == 0);
+    constexpr size_t ratio = N / SourceN;
+    for (size_t index = 0; index < N; ++index) output.data()[index] = source.data()[index / ratio];
+}
+
+template<size_t N, size_t SourceN>
+void PoolAll(const ResolutionBuffers<SourceN>& source, ResolutionBuffers<N>& output) {
+    MaxPool(source.left, output.left);
+    MaxPool(source.right, output.right);
+    MaxPool(source.average, output.average);
+}
+
+template<size_t N, size_t SourceN>
+void RepeatAll(const ResolutionBuffers<SourceN>& source, ResolutionBuffers<N>& output) {
+    Repeat(source.left, output.left);
+    Repeat(source.right, output.right);
+    Repeat(source.average, output.average);
+}
+
+template<size_t N>
+bool ReadSide(const owe::Json& entry, ref<str> side, rstd::array<float, N>& output) {
+    auto values = entry.get(side);
+    if (values.is_none()) return false;
+    auto array = (*values)->as_array();
+    if (array.is_none() || (*array)->len() != usize(N)) return false;
+    size_t index {};
+    for (const auto& value : **array) {
+        auto number = value.as_f64();
+        if (number.is_none()) return false;
+        output.data()[index++] = static_cast<float>(number->to_primitive());
+    }
+    return true;
+}
+
+template<size_t N>
+bool ReadResolution(const owe::Json& entry, ResolutionBuffers<N>& output) {
+    if (! ReadSide(entry, "left"_str, output.left) || ! ReadSide(entry, "right"_str, output.right))
+        return false;
+    for (size_t index = 0; index < N; ++index)
+        output.average.data()[index] =
+            (output.left.data()[index] + output.right.data()[index]) * 0.5f;
+    return true;
+}
+
 } // namespace
+
+auto ParseFixedSpectrum(ref<str> source) -> Result<Buffers, String> {
+    auto parsed = owe::ParseJson(source);
+    if (parsed.is_err() || ! parsed->is_object())
+        return Err("the spectrum is not a JSON object"_Str);
+    Buffers buffers {};
+    bool    given16 {}, given32 {}, given64 {}, readable { true };
+    auto    object = parsed->as_object();
+    (*object)->iter().for_each([&](auto entry) {
+        auto [key, value] = entry;
+        bool read {};
+        if (key->as_str() == "16"_str)
+            read = given16 = ReadResolution(*value, buffers.bands16);
+        else if (key->as_str() == "32"_str)
+            read = given32 = ReadResolution(*value, buffers.bands32);
+        else if (key->as_str() == "64"_str)
+            read = given64 = ReadResolution(*value, buffers.bands64);
+        if (! read) readable = false;
+    });
+    if (! readable || (! given16 && ! given32 && ! given64))
+        return Err("the spectrum needs 16, 32 or 64 left and right bands"_Str);
+
+    if (! given32 && given64) PoolAll(buffers.bands64, buffers.bands32);
+    if (! given16) PoolAll(buffers.bands32, buffers.bands16);
+    if (! given32 && ! given64) RepeatAll(buffers.bands16, buffers.bands32);
+    if (! given64) RepeatAll(buffers.bands32, buffers.bands64);
+    return Ok(rstd::move(buffers));
+}
 
 float Buffers::value(Channel channel, rstd::uint32_t resolution, rstd::uint32_t index) const {
     const auto position = usize(index);

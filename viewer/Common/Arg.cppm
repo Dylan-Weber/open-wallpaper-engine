@@ -22,6 +22,7 @@ struct SceneViewerArgs {
     PathBuf     scene_path;
     PathBuf     cache_path;
     PathBuf     user_properties_path;
+    PathBuf     audio_spectrum_path;
     String      mouse_position;
     String      load_bench_output;
     String      texture_memory_output;
@@ -145,6 +146,12 @@ SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
             .help(
                 "Path to a JSON file mapping project.json property keys to user-edited values"_str)
             .default_value(""_str));
+    auto audio_spectrum = command.add_arg(
+        Arg<String>::value("audio-spectrum"_str, string_parser())
+            .long_name("audio-spectrum"_str)
+            .help("Hold the audio spectrum still instead of listening: a JSON file of bands, "
+                  "{\"16\": {\"left\": [...], \"right\": [...]}} (16, 32 and/or 64)"_str)
+            .default_value(""_str));
     auto mouse_position =
         command.add_arg(Arg<String>::value("mouse-position"_str, string_parser())
                             .long_name("mouse-position"_str)
@@ -215,6 +222,7 @@ SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
         .scene_path            = PathBuf::from(Value(matches, scene).as_str()),
         .cache_path            = PathBuf::from(Value(matches, cache_path).as_str()),
         .user_properties_path  = PathBuf::from(Value(matches, user_properties).as_str()),
+        .audio_spectrum_path   = PathBuf::from(Value(matches, audio_spectrum).as_str()),
         .mouse_position        = Value(matches, mouse_position).clone(),
         .load_bench_output     = Value(matches, load_bench_output).clone(),
         .texture_memory_output = Value(matches, texture_memory_output).clone(),
