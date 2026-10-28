@@ -1578,8 +1578,20 @@ globalThis.engine.isScreensaver     = function() { return false; };
 // .multiply / .add / .subtract / .divide as Vec3 instance methods (used
 // by every audio-response script binding scale), so a simple class with
 // these methods covers the audio-responsive cluster (1023 instances).
+//
+// As in Wallpaper Engine, a vector may be built from text ("x y z"), the
+// arguments after a vector are ignored, and arithmetic with a shorter vector
+// leaves the components it lacks as they are.
+function __wwParseVector(text, n) {
+  const numbers = text.trim().split(/\s+/).map(Number);
+  return Array.from({ length: n }, (_, i) => (Number.isFinite(numbers[i]) ? numbers[i] : 0));
+}
+// One component of an arithmetic operand: a number applies to every component;
+// `keep` (0 to add, 1 to multiply) for a component the operand lacks.
+function __wwOperand(o, key, keep) { return typeof o === 'number' ? o : (o[key] ?? keep); }
 class Vec2 {
   constructor(x, y) {
+    if (typeof x === 'string') [x, y] = __wwParseVector(x, 2);
     if (typeof x === 'object' && x !== null) {
       this.x = x.x ?? 0; this.y = x.y ?? 0; return;
     }
@@ -1610,6 +1622,7 @@ class Vec2 {
 }
 class Vec3 {
   constructor(x, y, z) {
+    if (typeof x === 'string') [x, y, z] = __wwParseVector(x, 3);
     if (typeof x === 'object' && x !== null) {
       this.x = x.x ?? 0; this.y = x.y ?? 0; this.z = x.z ?? 0;
     } else if (typeof x === 'number' && y === undefined && z === undefined) {
@@ -1622,10 +1635,30 @@ class Vec3 {
       this.z = (typeof z === 'number') ? z : 0;
     }
   }
-  add(o)      { return new Vec3(this.x + (o.x ?? o), this.y + (o.y ?? o), this.z + (o.z ?? o)); }
-  subtract(o) { return new Vec3(this.x - (o.x ?? o), this.y - (o.y ?? o), this.z - (o.z ?? o)); }
-  multiply(o) { return new Vec3(this.x * (o.x ?? o), this.y * (o.y ?? o), this.z * (o.z ?? o)); }
-  divide(o)   { return new Vec3(this.x / (o.x ?? o), this.y / (o.y ?? o), this.z / (o.z ?? o)); }
+  add(o) {
+    return new Vec3(
+      this.x + __wwOperand(o, 'x', 0),
+      this.y + __wwOperand(o, 'y', 0),
+      this.z + __wwOperand(o, 'z', 0));
+  }
+  subtract(o) {
+    return new Vec3(
+      this.x - __wwOperand(o, 'x', 0),
+      this.y - __wwOperand(o, 'y', 0),
+      this.z - __wwOperand(o, 'z', 0));
+  }
+  multiply(o) {
+    return new Vec3(
+      this.x * __wwOperand(o, 'x', 1),
+      this.y * __wwOperand(o, 'y', 1),
+      this.z * __wwOperand(o, 'z', 1));
+  }
+  divide(o) {
+    return new Vec3(
+      this.x / __wwOperand(o, 'x', 1),
+      this.y / __wwOperand(o, 'y', 1),
+      this.z / __wwOperand(o, 'z', 1));
+  }
   mix(o, t)    {
     return new Vec3(
       this.x + ((o.x ?? o) - this.x) * t,
@@ -1644,6 +1677,7 @@ class Vec3 {
 }
 class Vec4 {
   constructor(x, y, z, w) {
+    if (typeof x === 'string') [x, y, z, w] = __wwParseVector(x, 4);
     if (typeof x === 'object' && x !== null) {
       this.x = x.x ?? 0; this.y = x.y ?? 0; this.z = x.z ?? 0; this.w = x.w ?? 0;
     } else if (typeof x === 'number' && y === undefined && z === undefined && w === undefined) {
@@ -1655,10 +1689,34 @@ class Vec4 {
       this.w = (typeof w === 'number') ? w : 0;
     }
   }
-  add(o)      { return new Vec4(this.x + (o.x ?? o), this.y + (o.y ?? o), this.z + (o.z ?? o), this.w + (o.w ?? o)); }
-  subtract(o) { return new Vec4(this.x - (o.x ?? o), this.y - (o.y ?? o), this.z - (o.z ?? o), this.w - (o.w ?? o)); }
-  multiply(o) { return new Vec4(this.x * (o.x ?? o), this.y * (o.y ?? o), this.z * (o.z ?? o), this.w * (o.w ?? o)); }
-  divide(o)   { return new Vec4(this.x / (o.x ?? o), this.y / (o.y ?? o), this.z / (o.z ?? o), this.w / (o.w ?? o)); }
+  add(o) {
+    return new Vec4(
+      this.x + __wwOperand(o, 'x', 0),
+      this.y + __wwOperand(o, 'y', 0),
+      this.z + __wwOperand(o, 'z', 0),
+      this.w + __wwOperand(o, 'w', 0));
+  }
+  subtract(o) {
+    return new Vec4(
+      this.x - __wwOperand(o, 'x', 0),
+      this.y - __wwOperand(o, 'y', 0),
+      this.z - __wwOperand(o, 'z', 0),
+      this.w - __wwOperand(o, 'w', 0));
+  }
+  multiply(o) {
+    return new Vec4(
+      this.x * __wwOperand(o, 'x', 1),
+      this.y * __wwOperand(o, 'y', 1),
+      this.z * __wwOperand(o, 'z', 1),
+      this.w * __wwOperand(o, 'w', 1));
+  }
+  divide(o) {
+    return new Vec4(
+      this.x / __wwOperand(o, 'x', 1),
+      this.y / __wwOperand(o, 'y', 1),
+      this.z / __wwOperand(o, 'z', 1),
+      this.w / __wwOperand(o, 'w', 1));
+  }
   mix(o, t)   {
     return new Vec4(
       this.x + ((o.x ?? o) - this.x) * t,
