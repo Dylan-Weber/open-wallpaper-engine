@@ -665,11 +665,11 @@ BuildContext(fs::VFS& vfs, ref<str> scene_id, const wpscene::SceneMetadata& sc,
         });
 
     if (context.shader_environment.shadow_mapping) {
-        // Wallpaper Engine's "ultra" shadows: a 1024-pixel square of the atlas for each cascade
-        // (512 at "high", 256 below), in rows of a near square.
+        // Wallpaper Engine's "ultra" shadows: a 1024-pixel square of the atlas for each spot light
+        // and each cascade (512 at "high", 256 below), in rows of a near square: the spots' first.
         constexpr int tile       = 1024;
         const auto    squares_of = [](SceneLightType type) {
-            return type == SceneLightType::Directional ? 3 : 0;
+            return type == SceneLightType::Directional ? 3 : type == SceneLightType::Spot ? 1 : 0;
         };
         int squares {};
         for (const auto& light : shadow_lights) squares += squares_of(light.type);
@@ -717,10 +717,21 @@ BuildContext(fs::VFS& vfs, ref<str> scene_id, const wpscene::SceneMetadata& sc,
                 .scissor_height = u32(static_cast<unsigned>(height)),
             };
         };
-        int next_view {};
-        for (const auto& light : shadow_lights) {
+        int        next_view {};
+        const auto by_kind = [&](SceneLightType kind) {
+            auto lights = Vec<SceneShadowLight>::make();
+            for (const auto& light : shadow_lights)
+                if (light.type == kind) lights.push(SceneShadowLight(light));
+            return lights;
+        };
+        auto ordered = by_kind(SceneLightType::Spot);
+        for (auto& light : by_kind(SceneLightType::Directional)) ordered.push(rstd::move(light));
+        for (const auto& light : ordered) {
             auto viewports = Vec<SceneShadowViewport>::make();
-            if (light.type == SceneLightType::Directional) {
+            if (light.type == SceneLightType::Spot) {
+                const auto [x, y] = place();
+                viewports.push(viewport(x, y, tile, tile));
+            } else if (light.type == SceneLightType::Directional) {
                 for (int cascade = 0; cascade < 3; ++cascade) {
                     const auto [x, y] = place();
                     viewports.push(viewport(x, y, tile, tile));

@@ -573,6 +573,57 @@ TEST(ShadowUniformSource, EachShadowedLightHasItsViews) {
     EXPECT_FLOAT_EQ(atlas[usize(20)], 0.0f);
 }
 
+// A spot light's view looks along it and sees its outer cone, from 0.05 to its radius; nearer is
+// deeper, as the casters keep the greater depth.
+TEST(ShadowUniformSource, SpotLightSeesItsConeFromNearToRadius) {
+    auto camera =
+        Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000.0, 50.0));
+    camera->SetLookAt(Eigen::Vector3d::Zero(), -Eigen::Vector3d::UnitZ(), Eigen::Vector3d::UnitY());
+    auto spot_node = Arc<owe::SceneNode>::make(Eigen::Vector3f(1.0f, 2.0f, 5.0f),
+                                               Eigen::Vector3f::Ones(),
+                                               Eigen::Vector3f(0.3f, 1.2f, 0.0f),
+                                               "spot"_str);
+    owe::SceneLight::Desc desc;
+    desc.type           = owe::SceneLightType::Spot;
+    desc.cast_shadow    = true;
+    desc.radius         = 10.0f;
+    desc.outer_cone_cos = std::cos(30.0f * 3.14159265f / 180.0f);
+    desc.shadow_view    = i32();
+    owe::SceneLight spot(desc);
+    spot.setNode(spot_node.as_ptr());
+    auto lights = Vec<ref<owe::SceneLight>>::make();
+    lights.push(ref<owe::SceneLight>::from_raw_parts(rstd::addressof(spot)));
+    owe::ShadowUniformSource source(rstd::move(camera), rstd::move(lights), Vec<float>::make());
+
+    owe::SceneFrame frame;
+    auto slots = scene_test::Capture(frame, source, owe::ShadowUniformOutput::LightViews);
+    EXPECT_FLOAT_EQ(slots[usize()], 0.0f);
+    auto views = scene_test::Capture(frame, source, owe::ShadowUniformOutput::Views);
+    Eigen::Matrix4f view_projection;
+    for (int value = 0; value < 16; ++value) view_projection.data()[value] = views[usize(value)];
+
+    spot_node->UpdateTrans();
+    const Eigen::Matrix4d model    = spot_node->ModelTrans();
+    const Eigen::Vector3f position = model.block<3, 1>(0, 3).cast<float>();
+    const Eigen::Vector3f forward =
+        (model.block<3, 3>(0, 0) * Eigen::Vector3d::UnitX()).normalized().cast<float>();
+    const Eigen::Vector3f side = forward.cross(Eigen::Vector3f::UnitY()).normalized();
+    const auto            project = [&](const Eigen::Vector3f& point) {
+        const Eigen::Vector4f clip = view_projection * point.homogeneous();
+        return Eigen::Vector3f(clip.x() / clip.w(), clip.y() / clip.w(), clip.z() / clip.w());
+    };
+    const auto ahead = project(position + forward * 5.0f);
+    EXPECT_NEAR(ahead.x(), 0.0f, 1e-4f);
+    EXPECT_NEAR(ahead.y(), 0.0f, 1e-4f);
+    EXPECT_NEAR(ahead.z(), 0.05f * 5.0f / (5.0f * 9.95f), 1e-5f);
+    EXPECT_NEAR(project(position + forward * 0.05f).z(), 1.0f, 1e-4f);
+    EXPECT_NEAR(project(position + forward * 10.0f).z(), 0.0f, 1e-4f);
+    // the cone's edge is the view's edge
+    const auto edge = project(position + forward * 5.0f + side * (5.0f * std::tan(30.0f * 3.14159265f / 180.0f)));
+    EXPECT_NEAR(std::abs(edge.x()), 1.0f, 1e-4f);
+    EXPECT_NEAR(edge.y(), 0.0f, 1e-4f);
+}
+
 TEST(TextureUniformSource, PublishesUnreducedTextureScale) {
     owe::TextureUniformSource source;
     scene_test::ShapeSink     binding_sink;

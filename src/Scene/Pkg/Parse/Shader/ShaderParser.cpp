@@ -311,6 +311,13 @@ float3 PerformLighting_V1(float3 worldPos, float3 albedo, float3 normal, float3 
                                     g_LightsConeExponent[i].x,
                                     dot(lightToSurface, g_LightsDirectionType[i].xyz));
             color *= cone;
+#if LIGHTS_SHADOW_MAPPING
+            if (g_OweLightsShadowView[i] > -0.5) {
+                shadowFactor = PerformShadowMapping(
+                    CalculateProjectedCoords(worldPos, g_OweShadowViewProjections[shadowView]),
+                    g_OweShadowAtlasTransforms[shadowView]);
+            }
+#endif
         }
         light += ComputePBRLightShadow(
             normal, toLight, viewVector, albedo, color,
@@ -1916,7 +1923,7 @@ constexpr array<rstd::uint8_t, 8> kShaderCacheMagic { rstd::uint8_t('O'), rstd::
                                                       rstd::uint8_t('P'), rstd::uint8_t('V'),
                                                       rstd::uint8_t('3'), rstd::uint8_t(0) };
 constexpr rstd::uint32_t          kShaderCacheFormatVersion = 3;
-constexpr rstd::uint32_t          kShaderCacheAbiVersion    = 21;
+constexpr rstd::uint32_t          kShaderCacheAbiVersion    = 22;
 // 8-byte magic, six u32 fields, and four SHA-1 digests total 112 bytes.
 constexpr rstd::uint32_t kShaderCacheHeaderSize = static_cast<rstd::uint32_t>(
     kShaderCacheMagic.len().to_primitive() + 6 * sizeof(rstd::uint32_t) +

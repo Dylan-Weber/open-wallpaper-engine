@@ -962,6 +962,60 @@ auto CascadeMatrices(const SceneLight& light, const SceneCamera& camera, const V
     }
     return Some(rstd::move(matrix_values));
 }
+
+// The nearest a light's shadow view sees (Wallpaper Engine's 0.05).
+constexpr double kShadowNear = 0.05;
+
+// A view from `position` along `forward`, sideways and upwards as Wallpaper Engine turns its
+// shadow views.
+auto ShadowView(const Vector3d& position, const Vector3d& forward) -> Matrix4d {
+    const Vector3d world = std::abs(forward.y()) > 0.99 ? Vector3d::UnitZ() : Vector3d::UnitY();
+    const Vector3d side  = forward.cross(world).normalized();
+    const Vector3d up    = side.cross(forward);
+    Matrix4d       view  = Matrix4d::Identity();
+    view.block<1, 3>(0, 0) = side.transpose();
+    view.block<1, 3>(1, 0) = up.transpose();
+    view.block<1, 3>(2, 0) = (-forward).transpose();
+    view(0, 3)             = -side.dot(position);
+    view(1, 3)             = -up.dot(position);
+    view(2, 3)             = forward.dot(position);
+    return view;
+}
+
+// A square perspective of `fov` radians, nearer deeper: depth 1 at `nearz`, 0 at `farz` (the
+// casters keep the greater depth).
+auto ShadowPerspective(double fov, double nearz, double farz) -> Matrix4d {
+    const double focal      = 1.0 / std::tan(fov * 0.5);
+    Matrix4d     projection = Matrix4d::Zero();
+    projection(0, 0)        = focal;
+    projection(1, 1)        = focal;
+    projection(2, 2)        = nearz / (farz - nearz);
+    projection(2, 3)        = nearz * farz / (farz - nearz);
+    projection(3, 2)        = -1.0;
+    return projection;
+}
+
+// A spot light's view of its outer cone, from kShadowNear to its radius.
+auto SpotMatrix(const SceneLight& light) -> Option<array<float, 16>> {
+    auto* node = light.node();
+    if (node == nullptr) return None();
+    node->UpdateTrans();
+    const Matrix4d transform = node->ModelTrans();
+    const Vector3d position  = transform.block<3, 1>(0, 3);
+    Vector3d       forward   = transform.block<3, 3>(0, 0) * Vector3d::UnitX();
+    if (! forward.allFinite() || forward.squaredNorm() <= 1e-12) return None();
+    forward.normalize();
+    const double farz = rstd::cmp::max(static_cast<double>(light.radius()), kShadowNear + 0.01);
+    const double cone = std::acos(std::clamp(static_cast<double>(light.desc().outer_cone_cos), -1.0, 1.0));
+    const double degree = 3.14159265358979323846 / 180.0;
+    const double fov    = std::clamp(2.0 * cone, 1.0 * degree, 179.0 * degree);
+    const Eigen::Matrix4f matrix =
+        (ShadowPerspective(fov, kShadowNear, farz) * ShadowView(position, forward)).cast<float>();
+    array<float, 16> values {};
+    for (usize value {}; value < usize(16); ++value)
+        values[value] = matrix.data()[value.to_primitive()];
+    return Some(rstd::move(values));
+}
 } // namespace
 
 auto ShadowUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
@@ -993,6 +1047,15 @@ auto ShadowUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
         const auto  first = light.desc().shadow_view;
         if (first < i32() || ! light.runtimeVisible()) continue;
         const auto view = usize(rstd::as_cast<rstd::size_t>(first.to_primitive()));
+        if (light.type() == SceneLightType::Spot) {
+            if (view >= kShadowViewCount) continue;
+            auto matrix = SpotMatrix(light);
+            if (matrix.is_none()) continue;
+            for (usize value {}; value < usize(16); ++value)
+                views[view * usize(16) + value] = (*matrix)[value];
+            slots[slot] = static_cast<float>(first.to_primitive());
+            continue;
+        }
         if (light.type() != SceneLightType::Directional || ! camera_ok) continue;
         if (view + usize(3) > kShadowViewCount) continue;
         auto matrices = CascadeMatrices(light, *m_camera, camera_transform.eye, forward);
