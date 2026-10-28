@@ -343,6 +343,80 @@ TEST(TextGeometry, BackgroundTextSamplesTheBoxItDraws) {
     EXPECT_FLOAT_EQ(geometry.draw_height, 221.0f);
     EXPECT_FLOAT_EQ(geometry.uv_source_width, geometry.draw_width);
     EXPECT_FLOAT_EQ(geometry.uv_source_height, geometry.draw_height);
+    // and the render target holds that whole box (its ink alone is smaller)
+    EXPECT_FLOAT_EQ(geometry.rt_width, geometry.draw_width);
+    EXPECT_FLOAT_EQ(geometry.rt_height, geometry.draw_height);
+}
+
+// Wallpaper Engine's background box reaches one line gap further below the text than above it,
+// whatever the alignment and however many lines (text-box-height: 4.8 units at 36 points, Arial's
+// gap is 4.9); the text itself does not move.
+TEST(TextLayouter, BackgroundKeepsTheLastLineGapBelow) {
+    auto source      = rstd::path::PathBuf::from(__FILE__ ""_str);
+    auto root        = source.as_path().parent().unwrap().parent().unwrap().parent().unwrap();
+    auto path        = rstd::path::PathBuf::from(root).join("fixtures/fonts/LineGap.ttf"_str);
+    auto bytes       = rstd::fs::read(path.as_path()).unwrap();
+    auto resources   = TextResources();
+    auto font_source = resources->RegisterFont(bytes.as_slice()).unwrap();
+    const rstd::initializer_list<owe::SceneVertexArray::SceneVertexAttribute> attributes {
+        { .name = "a_Position"_Str, .type = owe::VertexType::FLOAT3 },
+        { .name = "a_TexCoord"_Str, .type = owe::VertexType::FLOAT2 },
+        { .name = "a_Color"_Str, .type = owe::VertexType::FLOAT4 },
+    };
+    for (bool background : { true, false }) {
+        auto mesh = Arc<owe::SceneMesh>::make();
+        mesh->AddVertexArray(owe::SceneVertexArray(attributes, rstd::usize(8 * 4)));
+        mesh->AddIndexArray(owe::SceneIndexArray(rstd::usize(8 * 6)));
+        owe::text::TextLayoutStyle style;
+        style.mesh_origin      = owe::text::TextMeshOrigin::Layout;
+        style.padding          = 10;
+        style.opaquebackground = background;
+        owe::text::TextLayouter layouter(resources.clone(),
+                                         { .source = Some(font_source), .size = 100 },
+                                         mesh.clone(),
+                                         rstd::move(style),
+                                         8);
+        ASSERT_TRUE(layouter.SetText("A"_str).is_ok());
+        const auto& layout = *layouter.Layout();
+        // LineGap.ttf keeps 100 pixels of line gap after a line at 100 pixels
+        const float gap =
+            float(layout.logical_bounds().height - layout.typographic_bounds().height);
+        EXPECT_NEAR(gap, 100, 0.01);
+        const auto metrics = layouter.Metrics();
+        EXPECT_FLOAT_EQ(metrics.text_height, float(layout.typographic_bounds().height));
+        EXPECT_FLOAT_EQ(metrics.background_gap, background ? gap : 0.0f);
+        if (! background) continue;
+        const auto& vertices = mesh->GetVertexArray(rstd::usize());
+        const auto  stride   = vertices.OneSize().to_primitive();
+        EXPECT_FLOAT_EQ(vertices.Data()[1], metrics.text_height / 2 + 10);
+        EXPECT_FLOAT_EQ(vertices.Data()[2 * stride + 1], -metrics.text_height / 2 - 10 - gap);
+    }
+}
+
+// The render target of background text is centred on the text, so it holds the box's gap below
+// by reaching as far above (where the box leaves it clear).
+TEST(TextGeometry, BackgroundTextHoldsTheGapBelowItsBox) {
+    const owe::text::TextGeometryPolicy policy {
+        .frame_width        = 500.0f,
+        .frame_height       = 200.0f,
+        .preserve_text_bbox = true,
+    };
+    const owe::text::TextLayoutMetrics metrics {
+        .text_width     = 607.0f,
+        .text_height    = 157.0f,
+        .source_width   = 563.0f,
+        .source_height  = 143.0f,
+        .padding        = 32.0f,
+        .background_gap = 9.0f,
+    };
+
+    const auto geometry = owe::text::ResolveTextGeometry(policy, metrics);
+
+    EXPECT_FLOAT_EQ(geometry.draw_width, 671.0f);
+    EXPECT_FLOAT_EQ(geometry.draw_height, 157.0f + 64.0f + 18.0f);
+    EXPECT_FLOAT_EQ(geometry.draw_offset_y, 0.0f);
+    EXPECT_FLOAT_EQ(geometry.uv_source_height, geometry.draw_height);
+    EXPECT_FLOAT_EQ(geometry.rt_height, geometry.draw_height);
 }
 
 TEST(TextLayouter, FailedUpdatesKeepAcceptedStateAndRetry) {
