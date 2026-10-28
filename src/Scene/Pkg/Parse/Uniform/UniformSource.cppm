@@ -78,6 +78,11 @@ enum class ShadowUniformOutput : rstd::uint32_t
 
 inline constexpr usize kShadowViewCount { 24 };
 
+// Each shadow view's square of the atlas: Wallpaper Engine's "medium" shadows (1024 pixels at
+// "ultra", 512 at "high"), the quality owe compiles (LIGHTS_SHADOW_MAPPING_QUALITY 2) and the one
+// the reference pictures are taken at.
+inline constexpr int kShadowTileSize { 256 };
+
 enum class ColorUniformOutput : rstd::uint32_t
 {
     UserAlpha,
