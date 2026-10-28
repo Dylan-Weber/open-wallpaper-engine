@@ -734,9 +734,9 @@ BuildContext(fs::VFS& vfs, ref<str> scene_id, const wpscene::SceneMetadata& sc,
                 }
             } else {
                 // +x -x, +y -y, +z -z in two columns and three rows
-                const auto [x, y]  = place();
-                const int  width   = tile / 2;
-                const int  height  = tile / 3;
+                const auto [x, y] = place();
+                const int width   = tile / 2;
+                const int height  = tile / 3;
                 for (int face = 0; face < 6; ++face)
                     viewports.push(
                         viewport(x + (face % 2) * width, y + (face / 2) * height, width, height));

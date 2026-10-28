@@ -164,9 +164,9 @@ void FinalizeUniformSources(SceneParseContext& context) {
             for (const auto& viewport : definition.viewports) {
                 // a point light's lookup picks its face itself, from its faces' two columns and
                 // three rows
-                const auto& corner = definition.type == SceneLightType::Point
-                                         ? definition.viewports[usize()]
-                                         : viewport;
+                const auto& corner  = definition.type == SceneLightType::Point
+                                          ? definition.viewports[usize()]
+                                          : viewport;
                 const float columns = definition.type == SceneLightType::Point ? 2.0f : 1.0f;
                 const float rows    = definition.type == SceneLightType::Point ? 3.0f : 1.0f;
                 transforms.push(static_cast<float>(corner.scissor_x.to_primitive()) / width);

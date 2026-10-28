@@ -2548,8 +2548,8 @@ export namespace owe
 {
 
 // How shadow casters draw: keeping the depth nearest the light (the greater: the atlas clears to
-// 0), unclipped, and moved away from the light by its slope (Wallpaper Engine's slope-scaled bias of
-// 4) and by a few steps of the depth, for surfaces that face a light square on (a point light's
+// 0), unclipped, and moved away from the light by its slope (Wallpaper Engine's slope-scaled bias
+// of 4) and by a few steps of the depth, for surfaces that face a light square on (a point light's
 // face looking straight at a wall), whose slope is nothing.
 inline auto ShadowCasterPipeline(vrento::MaterialPipelineDesc pipeline)
     -> vrento::MaterialPipelineDesc {

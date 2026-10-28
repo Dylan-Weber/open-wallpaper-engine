@@ -1051,8 +1051,7 @@ auto PointMatrices(const SceneLight& light) -> Option<array<float, 96>> {
     };
     const auto     depths     = PointDepths(light);
     const double   degree     = 3.14159265358979323846 / 180.0;
-    const Matrix4d projection =
-        ShadowPerspective(94.0 * degree, depths[usize()], depths[usize(1)]);
+    const Matrix4d projection = ShadowPerspective(94.0 * degree, depths[usize()], depths[usize(1)]);
     array<float, 96> values {};
     for (int face = 0; face < 6; ++face) {
         Matrix4d view = Matrix4d::Identity();
@@ -1106,9 +1105,9 @@ auto ShadowUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
             for (usize value {}; value < usize(96); ++value)
                 views[view * usize(16) + value] = (*matrices)[value];
             // the lookup's projection: depth = (z * x + y) / (z * z' + w), nearer deeper
-            const auto   depths              = PointDepths(light);
-            const double nearz               = depths[usize()];
-            const double farz                = depths[usize(1)];
+            const auto   depths                = PointDepths(light);
+            const double nearz                 = depths[usize()];
+            const double farz                  = depths[usize(1)];
             point_projections[slot * usize(4)] = static_cast<float>(nearz / (farz - nearz));
             point_projections[slot * usize(4) + usize(1)] =
                 static_cast<float>(nearz * farz / (farz - nearz));

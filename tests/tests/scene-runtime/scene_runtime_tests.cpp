@@ -633,10 +633,10 @@ TEST(ShadowUniformSource, PointLightSeesSixFacesFromItsSizeToRadius) {
     auto camera =
         Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000.0, 50.0));
     camera->SetLookAt(Eigen::Vector3d::Zero(), -Eigen::Vector3d::UnitZ(), Eigen::Vector3d::UnitY());
-    auto point_node = Arc<owe::SceneNode>::make(Eigen::Vector3f(1.0f, 2.0f, 3.0f),
-                                                Eigen::Vector3f::Ones(),
-                                                Eigen::Vector3f::Zero(),
-                                                "point"_str);
+    auto                  point_node = Arc<owe::SceneNode>::make(Eigen::Vector3f(1.0f, 2.0f, 3.0f),
+                                                                 Eigen::Vector3f::Ones(),
+                                                                 Eigen::Vector3f::Zero(),
+                                                                 "point"_str);
     owe::SceneLight::Desc desc;
     desc.type              = owe::SceneLightType::Point;
     desc.cast_shadow       = true;
@@ -653,20 +653,21 @@ TEST(ShadowUniformSource, PointLightSeesSixFacesFromItsSizeToRadius) {
     auto slots = scene_test::Capture(frame, source, owe::ShadowUniformOutput::LightViews);
     EXPECT_FLOAT_EQ(slots[usize()], 2.0f);
     const float nearz = 0.2f, farz = 10.0f;
-    auto projections = scene_test::Capture(frame, source, owe::ShadowUniformOutput::PointProjections);
+    auto        projections =
+        scene_test::Capture(frame, source, owe::ShadowUniformOutput::PointProjections);
     ASSERT_EQ(projections.size(), usize(16));
     EXPECT_NEAR(projections[usize()], nearz / (farz - nearz), 1e-6f);
     EXPECT_NEAR(projections[usize(1)], nearz * farz / (farz - nearz), 1e-6f);
     EXPECT_FLOAT_EQ(projections[usize(2)], -1.0f);
     EXPECT_FLOAT_EQ(projections[usize(3)], 0.0f);
 
-    auto                  views = scene_test::Capture(frame, source, owe::ShadowUniformOutput::Views);
+    auto views = scene_test::Capture(frame, source, owe::ShadowUniformOutput::Views);
     const Eigen::Vector3f light(1.0f, 2.0f, 3.0f);
     // each face's direction, sideways and upwards axes
     const float faces[6][3][3] = {
-        { { 1, 0, 0 }, { 0, 0, 1 }, { 0, 1, 0 } },   { { -1, 0, 0 }, { 0, 0, -1 }, { 0, 1, 0 } },
-        { { 0, 1, 0 }, { 1, 0, 0 }, { 0, 0, 1 } },   { { 0, -1, 0 }, { 1, 0, 0 }, { 0, 0, -1 } },
-        { { 0, 0, 1 }, { -1, 0, 0 }, { 0, 1, 0 } },  { { 0, 0, -1 }, { 1, 0, 0 }, { 0, 1, 0 } },
+        { { 1, 0, 0 }, { 0, 0, 1 }, { 0, 1, 0 } },  { { -1, 0, 0 }, { 0, 0, -1 }, { 0, 1, 0 } },
+        { { 0, 1, 0 }, { 1, 0, 0 }, { 0, 0, 1 } },  { { 0, -1, 0 }, { 1, 0, 0 }, { 0, 0, -1 } },
+        { { 0, 0, 1 }, { -1, 0, 0 }, { 0, 1, 0 } }, { { 0, 0, -1 }, { 1, 0, 0 }, { 0, 1, 0 } },
     };
     const float focal = 1.0f / std::tan(47.0f * 3.14159265f / 180.0f);
     for (int face = 0; face < 6; ++face) {
