@@ -1360,6 +1360,7 @@ bool SceneCameraPath::ApplyQueueClip(float frame) {
 bool SceneCameraPath::TickQueue(double runtime) {
     if (queue.is_empty()) return false;
     if (queue_last_runtime.is_none() || runtime < *queue_last_runtime) {
+        if (own_fov.is_some() && camera.is_some()) (**camera).SetFov(*own_fov);
         SelectQueueClip(true);
         queue_last_runtime = Some(runtime);
         return ApplyQueueClip(0.0f);

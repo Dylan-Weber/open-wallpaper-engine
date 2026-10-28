@@ -154,7 +154,8 @@ void ParseCameraObj(SceneParseContext& context, wpscene::CameraObject& cam) {
 
     if (cam.visible) camera_owner->AttatchNode(node.as_ptr());
     if (use_perspective) {
-        if (cam.fov > 0.0f) camera_owner->SetFov(cam.fov);
+        // the layer's field of view is the camera's only while the layer drives it (its path
+        // sets it): until then the scene's stays
         camera_owner->SetAspect(rstd::as_cast<double>(context.ortho_w) /
                                 rstd::as_cast<double>(context.ortho_h));
         (void)scene.SetActiveCamera(camera_name);
@@ -175,6 +176,7 @@ void ParseCameraObj(SceneParseContext& context, wpscene::CameraObject& cam) {
     path->rotation_base       = angles;
     path->zoom_base           = cam.zoom;
     path->fov_base            = cam.fov;
+    if (use_perspective && cam.fov > 0.0f) path->own_fov = Some(cam.fov);
     path->perspective         = use_perspective;
     path->enabled             = cam.visible;
     if (! cam.visible_user.empty())
