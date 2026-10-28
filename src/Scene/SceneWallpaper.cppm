@@ -87,6 +87,9 @@ struct SceneWallpaperConfig {
     // the moment (milliseconds since 1970) the scripts' Date reads when the scene starts; None: the
     // system clock
     Option<double> script_clock;
+    // a file each drawn frame adds the scene's clock and the camera's eye to ("t x y z"); empty:
+    // none
+    PathBuf camera_eye_log;
 };
 
 class SceneRuntimeController;

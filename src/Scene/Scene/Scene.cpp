@@ -1936,6 +1936,14 @@ auto Scene::ScreenToWorld(array<float, 2> position) -> Eigen::Vector3d {
     return world.allFinite() ? world : fallback;
 }
 
+auto CameraEyeLogEntry(const Scene& scene) -> Option<array<double, 4>> {
+    auto camera = scene.ActiveCamera();
+    if (camera.is_none()) return None();
+    const auto eye = (*camera)->GetPosition();
+    return Some(array<double, 4> {
+        scene.Runtime().Frame().elapsed.to_primitive(), eye.x(), eye.y(), eye.z() });
+}
+
 auto Scene::ActiveCameraTransforms() const -> Option<SceneCameraTransforms> {
     auto camera = ActiveCamera();
     if (camera.is_none()) return None();

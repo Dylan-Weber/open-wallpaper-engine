@@ -1841,6 +1841,26 @@ TEST(ShadowUniformSource, CascadeCentersUseFinalCameraPosition) {
         EXPECT_FLOAT_EQ(translated[index], explicit_camera[index]);
 }
 
+TEST(SceneCameraPath, EyeLogGivesTheClockAndTheEye) {
+    // SceneViewer --camera-eye-log: Wallpaper Engine's camera paths run behind its clock, so a
+    // reference's eye (the clock probe's) is matched against owe's eye frame by frame
+    owe::Scene scene;
+    EXPECT_TRUE(owe::CameraEyeLogEntry(scene).is_none());
+    auto camera = Arc<owe::SceneCamera>::make(
+        owe::SceneCamera::MakePerspective(16.0 / 9.0, 0.01, 1000.0, 45.0));
+    camera->SetLookAt({ 1.5, -2.0, 5.25 }, { 0.0, 0.0, 0.0 }, { 0.0, 1.0, 0.0 });
+    camera->Update();
+    scene.RegisterCamera(String::make("global"_str), camera.clone());
+    ASSERT_TRUE(scene.SetActiveCamera("global"_str));
+    scene.PassFrameTime(0.5);
+    auto entry = owe::CameraEyeLogEntry(scene);
+    ASSERT_TRUE(entry.is_some());
+    EXPECT_NEAR((*entry)[usize()], 0.5, 1.0e-9);
+    EXPECT_NEAR((*entry)[usize(1)], 1.5, 1.0e-9);
+    EXPECT_NEAR((*entry)[usize(2)], -2.0, 1.0e-9);
+    EXPECT_NEAR((*entry)[usize(3)], 5.25, 1.0e-9);
+}
+
 TEST(SceneCameraPath, UserBindingMutatesRegisteredArc) {
     owe::Scene scene;
     auto       path                = Arc<owe::SceneCameraPath>::make();
