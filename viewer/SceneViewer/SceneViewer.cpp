@@ -206,6 +206,7 @@ int main(int argc, char** argv) {
     if (args.random_seed.is_some()) {
         config.random_seed = Some(*args.random_seed);
     }
+    config.camera_eye_log = args.camera_eye_log.clone();
 
     config.cache_dir = args.cache_path.is_empty() ? viewer::DefaultCacheDir("wescene-renderer"_str)
                                                   : rstd::move(args.cache_path);

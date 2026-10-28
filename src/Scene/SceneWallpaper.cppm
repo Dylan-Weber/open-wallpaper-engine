@@ -73,6 +73,9 @@ struct SceneWallpaperConfig {
     bool                                mouse_parallax { true };
     bool                                graphviz { false };
     Option<u64>                         random_seed;
+    // a file each drawn frame adds the scene's clock and the camera's eye to ("t x y z"); empty:
+    // none
+    PathBuf camera_eye_log;
 };
 
 class SceneRuntimeController;

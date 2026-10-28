@@ -3151,6 +3151,10 @@ private:
     HashSet<rstd::uint64_t> m_render_graph_hidden_scene_node_ids;
 };
 
+// SceneViewer --camera-eye-log: the scene's clock and its active camera's eye (t, x, y, z), None
+// without a camera
+auto CameraEyeLogEntry(const Scene& scene) -> Option<array<double, 4>>;
+
 } // namespace owe
 
 export namespace rstd
