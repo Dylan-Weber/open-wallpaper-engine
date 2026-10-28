@@ -29,6 +29,8 @@ sources = [
   "src/Scene/Pkg/Parse/Particle/SceneParticleObjectParser.cpp",
   "src/Scene/Pkg/Parse/Puppet/MdlParser.cppm",
   "src/Scene/Pkg/Parse/Puppet/MdlParser.cpp",
+  "src/Scene/Pkg/Parse/Puppet/BonePhysics.cppm",
+  "src/Scene/Pkg/Parse/Puppet/BonePhysics.cpp",
   "src/Scene/Pkg/Parse/Puppet/Puppet.cppm",
   "src/Scene/Pkg/Parse/Puppet/Puppet.cpp",
   "src/Scene/Pkg/Parse/Puppet/PuppetCompat.cppm",

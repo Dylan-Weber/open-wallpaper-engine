@@ -238,6 +238,23 @@ script::ScriptScene& EnsureScriptScene(SceneParseContext& context) {
                         Eigen::Vector3f t     = (world * *bone).translation();
                         return Some(script::BoneTranslation { t.x(), t.y(), t.z() });
                     }));
+        (*context.script_scene)
+            ->runtime()
+            .SetBonePhysicsHandler(script::JsRuntime::BonePhysicsHandler::make(
+                [layers = layers.clone()](SceneNode*                        node,
+                                          const script::BonePhysicsRequest& request) {
+                    auto layer = LookupPuppetLayer(layers, node);
+                    if (layer.is_none()) return;
+                    if (request.reset) {
+                        (*layer)->ResetBonePhysics(request.bone);
+                        return;
+                    }
+                    const auto&           d = request.directional;
+                    const auto&           a = request.angular;
+                    const Eigen::Vector3f directional(d[usize(0)], d[usize(1)], d[usize(2)]);
+                    const Eigen::Vector3f angular(a[usize(0)], a[usize(1)], a[usize(2)]);
+                    (*layer)->ApplyBoneImpulse(request.bone, directional, angular);
+                }));
         if (context.user_properties.is_some())
             (*context.user_properties)->iter().for_each([&](auto entry) {
                 auto [entry_key, entry_value] = entry;

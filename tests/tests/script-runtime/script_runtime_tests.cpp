@@ -652,6 +652,58 @@ TEST(ScriptNodeParent, DefaultLayerParentIsUndefined) {
     EXPECT_EQ(LastScalar(fs), 1.0);
 }
 
+TEST(ScriptBonePhysics, ImpulsesAndResetsReachTheLayersBones) {
+    owe::SceneNode          node;
+    JsRuntime               rt;
+    Vec<BonePhysicsRequest> requests;
+    rt.SetBoneResolvers(
+        JsRuntime::BoneIndexResolver::make([](owe::SceneNode*, ref<str> name) -> uint32_t {
+            return name == "hair"_str ? 5 : 0;
+        }),
+        JsRuntime::BoneTransformResolver::make(
+            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTranslation> {
+                return None();
+            }));
+    rt.SetBonePhysicsHandler(JsRuntime::BonePhysicsHandler::make(
+        [&requests](owe::SceneNode* target, const BonePhysicsRequest& request) {
+            EXPECT_NE(target, nullptr);
+            requests.push(BonePhysicsRequest(request));
+        }));
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            thisLayer.applyBonePhysicsImpulse('hair', new Vec3(1, 2, 3), new Vec3(0, 0, 10));
+            thisLayer.applyBonePhysicsImpulse(new Vec3(4, 0, 0), new Vec3(0, 0, -5));
+            thisLayer.applyBonePhysicsImpulse('missing', new Vec3(1, 0, 0), new Vec3());
+            thisLayer.resetBonePhysicsSimulation(5);
+            thisLayer.resetBonePhysicsSimulation();
+            export function update() {}
+        )JS"_str,
+        "test/bone_physics_requests"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+
+    // a bone that is not there is left out; no bone means every bone with physics
+    ASSERT_EQ(requests.len(), usize(4));
+    const auto& hair = requests[usize(0)];
+    ASSERT_TRUE(hair.bone.is_some());
+    EXPECT_EQ(*hair.bone, 5u);
+    EXPECT_FALSE(hair.reset);
+    EXPECT_FLOAT_EQ(hair.directional[usize(1)], 2.0f);
+    EXPECT_FLOAT_EQ(hair.angular[usize(2)], 10.0f);
+    const auto& every = requests[usize(1)];
+    EXPECT_TRUE(every.bone.is_none());
+    EXPECT_FLOAT_EQ(every.directional[usize(0)], 4.0f);
+    EXPECT_FLOAT_EQ(every.angular[usize(2)], -5.0f);
+    EXPECT_TRUE(requests[usize(2)].reset);
+    ASSERT_TRUE(requests[usize(2)].bone.is_some());
+    EXPECT_EQ(*requests[usize(2)].bone, 5u);
+    EXPECT_TRUE(requests[usize(3)].reset);
+    EXPECT_TRUE(requests[usize(3)].bone.is_none());
+}
+
 TEST(ScriptNodeSoftMutation, VisibleAndAlphaWrites) {
     owe::SceneNode node;
     JsRuntime      rt;
