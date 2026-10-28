@@ -978,10 +978,10 @@ constexpr double kShadowNear = 0.05;
 // A view from `position` along `forward`, sideways and upwards as Wallpaper Engine turns its
 // shadow views.
 auto ShadowView(const Vector3d& position, const Vector3d& forward) -> Matrix4d {
-    const Vector3d world = std::abs(forward.y()) > 0.99 ? Vector3d::UnitZ() : Vector3d::UnitY();
-    const Vector3d side  = forward.cross(world).normalized();
-    const Vector3d up    = side.cross(forward);
-    Matrix4d       view  = Matrix4d::Identity();
+    const Vector3d world   = std::abs(forward.y()) > 0.99 ? Vector3d::UnitZ() : Vector3d::UnitY();
+    const Vector3d side    = forward.cross(world).normalized();
+    const Vector3d up      = side.cross(forward);
+    Matrix4d       view    = Matrix4d::Identity();
     view.block<1, 3>(0, 0) = side.transpose();
     view.block<1, 3>(1, 0) = up.transpose();
     view.block<1, 3>(2, 0) = (-forward).transpose();
@@ -1015,9 +1015,10 @@ auto SpotMatrix(const SceneLight& light) -> Option<array<float, 16>> {
     if (! forward.allFinite() || forward.squaredNorm() <= 1e-12) return None();
     forward.normalize();
     const double farz = rstd::cmp::max(static_cast<double>(light.radius()), kShadowNear + 0.01);
-    const double cone = std::acos(std::clamp(static_cast<double>(light.desc().outer_cone_cos), -1.0, 1.0));
-    const double degree = 3.14159265358979323846 / 180.0;
-    const double fov    = std::clamp(2.0 * cone, 1.0 * degree, 179.0 * degree);
+    const double cone =
+        std::acos(std::clamp(static_cast<double>(light.desc().outer_cone_cos), -1.0, 1.0));
+    const double          degree = 3.14159265358979323846 / 180.0;
+    const double          fov    = std::clamp(2.0 * cone, 1.0 * degree, 179.0 * degree);
     const Eigen::Matrix4f matrix =
         (ShadowPerspective(fov, kShadowNear, farz) * ShadowView(position, forward)).cast<float>();
     array<float, 16> values {};

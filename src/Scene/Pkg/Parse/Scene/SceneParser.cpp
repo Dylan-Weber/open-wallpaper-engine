@@ -54,7 +54,8 @@ auto owe::SceneParser::Parse(ref<str> scene_id, ref<wpscene::SceneDocument> docu
             } else if ((light.light == "spot"_str || light.light == "lspot"_str) &&
                        spot_left > u32()) {
                 --spot_left;
-                shadow_lights.push(SceneShadowLight { .id = light.id, .type = SceneLightType::Spot });
+                shadow_lights.push(
+                    SceneShadowLight { .id = light.id, .type = SceneLightType::Spot });
             }
         } else if (object.is_Model()) {
             has_shadow_caster = has_shadow_caster || object.as_Model().value.castshadow;
