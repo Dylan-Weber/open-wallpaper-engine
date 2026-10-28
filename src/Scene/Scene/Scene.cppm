@@ -2977,6 +2977,11 @@ public:
         return m_audio_response_demand.clone();
     }
 
+    // the moment (milliseconds since 1970) the scripts' Date reads when the scene starts; None: the
+    // system clock
+    void SetScriptClock(Option<double> epoch_ms) { m_script_clock = epoch_ms; }
+    auto ScriptClock() const -> Option<double> { return m_script_clock; }
+
     void SetImageParser(Arc<dyn<IImageParser>> parser) {
         m_image_parser  = Some(rstd::move(parser));
         m_parsed_images = Arc<rstd::sync::Mutex<SceneImageSource::ParsedImages>>::make(
@@ -3174,6 +3179,7 @@ private:
     Box<SceneNode>                m_scene_graph;
     Arc<AudioResponseDemand>      m_audio_response_demand { Arc<AudioResponseDemand>::make() };
     Arc<SceneAudioAverage>        m_audio_average { Arc<SceneAudioAverage>::make() };
+    Option<double>                m_script_clock;
     Vec<Box<SceneLight>>          m_lights;
     Vec<Box<ScenePostProcess>>    m_post_processes;
     Vec<SceneShadowDefinition>    m_shadow_definitions;

@@ -1225,6 +1225,7 @@ void SceneRuntimeController::loadScene() {
     auto parsed = rstd::move(result.parsed);
     parsed.scene->SetScriptStart(static_cast<double>(m_config.script_start));
     parsed.scene->SetCameraPathDelay(static_cast<double>(m_config.camera_path_delay));
+    parsed.scene->SetScriptClock(m_config.script_clock);
     auto rtx = m_render_controller->sender();
     if (rtx.send(RenderMsg::SetScene(scene_load.clone(),
                                      rstd::move(parsed.scene),

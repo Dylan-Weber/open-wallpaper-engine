@@ -1239,6 +1239,47 @@ TEST(SceneScripts, StartAtTheScriptStart) {
     EXPECT_FLOAT_EQ(mover->Translate().x(), 3.5f);
 }
 
+TEST(SceneScripts, DateFollowsTheScriptClock) {
+    // a reference's scripts saw the VM's clock: a scene can run its scripts' Date, and
+    // engine.timeOfDay, on a given clock that starts with the scene
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {},
+            "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+            "objects": [{
+                "id": 1,
+                "name": "Clock",
+                "origin": {
+                    "value": "0 0 0",
+                    "script": "export function update(value) { const now = new Date(); value.x = (Date.now() - 1793000000000) / 1000; value.y = (now.getTime() - 1793000000000) / 1000; value.z = engine.timeOfDay * 86400 - (now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds() + now.getMilliseconds() / 1000); return value; }"
+                },
+                "angles": "0 0 0",
+                "scale": "1 1 1"
+            }]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+
+    owe::fs::VFS                vfs;
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "script-clock"_str,
+        ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto  scene = rstd::move(parsed).unwrap();
+    auto* clock = scene.scene->RootMut()->FindByName("Clock"_str);
+    ASSERT_NE(clock, nullptr);
+    scene.scene->SetScriptClock(Some(1793000005000.0));
+
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs { .runtime = 2.5f });
+    EXPECT_NEAR(clock->Translate().x(), 7.5f, 1.0e-3f);
+    EXPECT_NEAR(clock->Translate().y(), 7.5f, 1.0e-3f);
+    EXPECT_NEAR(clock->Translate().z(), 0.0f, 0.05f);
+}
+
 TEST(SceneParserText, AlignmentDoesNotMoveChildFrames) {
     for (auto blend_mode : { "0"_str, "11"_str }) {
         auto document = owe::wpscene::ParseSceneDocumentJson(

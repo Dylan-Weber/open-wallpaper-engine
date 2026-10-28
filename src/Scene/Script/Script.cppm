@@ -111,6 +111,8 @@ struct FrameInputs {
     uint32_t mouse_buttons_down { 0 };
     uint32_t mouse_buttons_pressed { 0 };
     uint32_t mouse_buttons_released { 0 };
+    // the scripts' Date, in milliseconds since 1970 (Scene::SetScriptClock); None: the system clock
+    Option<double> clock_ms;
 };
 
 struct MediaStatus {

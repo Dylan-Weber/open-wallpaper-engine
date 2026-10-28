@@ -84,6 +84,9 @@ struct SceneWallpaperConfig {
     // a spectrum held still instead of what is heard, for shaders and scripts alike (a reference's
     // recorded bands: scene_audio::ParseFixedSpectrum)
     Option<scene_audio::Buffers> fixed_audio;
+    // the moment (milliseconds since 1970) the scripts' Date reads when the scene starts; None: the
+    // system clock
+    Option<double> script_clock;
 };
 
 class SceneRuntimeController;
