@@ -87,8 +87,9 @@ auto ParseMousePosition(ref<str> input) -> Option<array<double, 2>> {
     auto x        = rstd::from_str<f64>(xs);
     auto y        = rstd::from_str<f64>(ys);
     if (x.is_err() || y.is_err() || ! x->is_finite() || ! y->is_finite()) return None();
-    return Some(array<double, 2> { x->clamp(f64(0.0), f64(1.0)).to_primitive(),
-                                   y->clamp(f64(0.0), f64(1.0)).to_primitive() });
+    // not clamped: Wallpaper Engine follows the pointer outside its window too (a reference taken
+    // with the pointer parked in the screen's corner saw 1.19, 1.16)
+    return Some(array<double, 2> { x->to_primitive(), y->to_primitive() });
 }
 
 SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
@@ -140,11 +141,12 @@ SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
             .help(
                 "Path to a JSON file mapping project.json property keys to user-edited values"_str)
             .default_value(""_str));
-    auto mouse_position =
-        command.add_arg(Arg<String>::value("mouse-position"_str, string_parser())
-                            .long_name("mouse-position"_str)
-                            .help("Set initial normalized mouse position, e.g. 0,1"_str)
-                            .default_value(""_str));
+    auto mouse_position = command.add_arg(
+        Arg<String>::value("mouse-position"_str, string_parser())
+            .long_name("mouse-position"_str)
+            .help(
+                "Set initial normalized mouse position, e.g. 0,1 (outside 0..1: outside the window)"_str)
+            .default_value(""_str));
     auto random_seed = command.add_arg(Arg<u64>::value("random-seed"_str, from_str_parser<u64>())
                                            .long_name("random-seed"_str)
                                            .help("Set the scene random seed"_str));
