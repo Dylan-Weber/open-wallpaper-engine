@@ -281,6 +281,8 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
     // mesh
     auto      geometry_span = SceneLoadSpan(context.load_bench, &SceneLoadProbeIds::image_geometry);
     SceneMesh effct_final_mesh {};
+    // where the puppet's own geometry goes (in effct_final_mesh with effects), for its blend shapes
+    Option<usize>         puppet_submesh;
     auto      spMesh              = Arc<SceneMesh>::make();
     auto&     mesh                = *spMesh;
     const array<float, 2> mapRate = Texture0UvScale(material, wpimgobj.nopadding);
@@ -343,6 +345,7 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
                         mapRate,
                         source_alignment_offset);
             if (primary_puppet_mesh != nullptr) {
+                puppet_submesh = Some(effct_final_mesh.Submeshes().len());
                 effct_final_mesh.Submeshes().emplace_back();
                 MdlParser::GenMeshFromMdl(
                     effct_final_mesh.Submeshes().last_mut().unwrap().get_mut(),
@@ -366,6 +369,7 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
             mesh.SetGeometryTransform(
                 Affine3d(Translation3d(alignment_offset.cast<double>())).matrix());
             if (primary_puppet_mesh != nullptr) {
+                puppet_submesh = Some(mesh.Submeshes().len());
                 mesh.Submeshes().emplace_back();
                 MdlParser::GenMeshFromMdl(mesh.Submeshes().last_mut().unwrap().get_mut(),
                                           *primary_puppet_mesh,
@@ -607,6 +611,14 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
         }
     }
 
+    if (! hasEffect && image_puppet_layer.is_some() && primary_puppet_mesh != nullptr &&
+        puppet_submesh.is_some()) {
+        MdlParser::BindMorph(*context.scene,
+                             mesh,
+                             *puppet_submesh,
+                             *primary_puppet_mesh,
+                             (*image_puppet_layer).clone());
+    }
     if (image_puppet_layer.is_some() && primary_puppet_mesh != nullptr) {
         auto& ordered_mesh = hasEffect ? effct_final_mesh : mesh;
         for (auto& submesh : ordered_mesh.Submeshes())
@@ -676,6 +688,14 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
             // fullscreen layer with a material of its own still draws.
             imgEffectLayer->SetSkipWhenNoRuntimeEffect(isPassthrough);
             imgEffectLayer->FinalMesh().ChangeMeshDataFrom(effct_final_mesh);
+            if (image_puppet_layer.is_some() && primary_puppet_mesh != nullptr &&
+                puppet_submesh.is_some()) {
+                MdlParser::BindMorph(*context.scene,
+                                     imgEffectLayer->FinalMesh(),
+                                     *puppet_submesh,
+                                     *primary_puppet_mesh,
+                                     (*image_puppet_layer).clone());
+            }
             spImgNode->AttachLayer(imgEffectLayer.clone());
         }
         // set renderTarget for ping-pong operate

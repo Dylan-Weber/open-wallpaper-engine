@@ -299,6 +299,8 @@ public:
         -> Option<Arc<SceneAnimationPlayback>>;
     bool RemoveAnimationLayer(const SceneAnimationPlayback& playback);
     auto TextureChannelBlendMap(double time) noexcept -> slice<float>;
+    // Each blend shape's weight at `time` (its mesh's first), from the layers' weight curves.
+    auto MorphWeights(double time) noexcept -> Vec<float>;
 
     struct PartOrder {
         u32 bone;
