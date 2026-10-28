@@ -254,7 +254,9 @@ script::ScriptScene& EnsureScriptScene(SceneParseContext& context) {
                     const Eigen::Vector3f directional(d[usize(0)], d[usize(1)], d[usize(2)]);
                     const Eigen::Vector3f angular(a[usize(0)], a[usize(1)], a[usize(2)]);
                     (*layer)->ApplyBoneImpulse(request.bone, directional, angular);
-                }))
+                }));
+        (*context.script_scene)
+            ->runtime()
             .SetAnimationLayerResolvers(
                 script::JsRuntime::AnimationLayerCreator::make(
                     [layers = layers.clone()](SceneNode*                               node,
