@@ -658,9 +658,8 @@ BuildContext(fs::VFS& vfs, ref<str> scene_id, const wpscene::SceneMetadata& sc,
         });
 
     if (context.shader_environment.directional_shadow) {
-        // Wallpaper Engine's "ultra" shadows: a 1024-pixel square of the atlas for each cascade
-        // (512 at "high", 256 below).
-        constexpr float tile = 1024.0f;
+        // a square of the atlas for each cascade
+        constexpr float tile = static_cast<float>(kShadowTileSize);
         context.scene->RegisterRenderTarget(
             String::make(WE_SHADOW_ATLAS_PREFIX),
             SceneRenderTarget {
