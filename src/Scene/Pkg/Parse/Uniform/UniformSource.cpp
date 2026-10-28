@@ -834,6 +834,30 @@ auto ColorUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
     return writer.Finish();
 }
 
+namespace
+{
+
+// Whether a light lights now: shown by its user property, and shown with every layer it is in.
+bool LightsNow(const SceneLight& light) {
+    if (light.node() == nullptr || ! light.runtimeVisible()) return false;
+    for (const SceneNode* node = light.node(); node != nullptr; node = node->Parent()) {
+        if (! node->Visible()) return false;
+    }
+    return true;
+}
+
+// The lights that take the shaders' light slots, by index in `lights`: those that light now, in
+// order, up to `slots`.
+Vec<usize> LightingSlots(slice<ref<SceneLight>> lights, usize slots) {
+    auto lighting = Vec<usize>::make();
+    for (usize index {}; index < lights.len() && lighting.len() < slots; ++index) {
+        if (LightsNow(*lights[index])) lighting.push(usize(index));
+    }
+    return lighting;
+}
+
+} // namespace
+
 auto LightUniformSource::Describe(mut_ref<dyn<UniformBindingSink>> sink) const
     -> Result<empty, UniformError> {
     return BindGlobalProducer(sink, GlobalUniformProducer::Light);
@@ -869,9 +893,11 @@ auto LightUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
         *count = *count - u32(1);
         return true;
     };
-    for (usize index {}; index < rstd::cmp::min(max_lights, m_lights.len()); ++index) {
-        const auto& light = *m_lights[index];
-        if (light.node() == nullptr || ! light.runtimeVisible()) continue;
+    // the slots go to the lights that light now, in order: one hidden, or in a hidden layer, takes
+    // none (Ocarina of Time's four torch lights, in a hidden layer, took every slot from its sun)
+    const auto lighting = LightingSlots(m_lights.as_slice(), max_lights);
+    for (usize index {}; index < lighting.len(); ++index) {
+        const auto& light = *m_lights[lighting[index]];
         // The newer interface leaves the old kind of light out; it takes none of the counts.
         const bool lighting_v1 = ! light.desc().old_kind && lit(light.type());
         auto& node = *light.node();
