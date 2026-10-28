@@ -78,6 +78,8 @@ struct SceneWallpaperConfig {
     // some wallpapers, as they load. 0 by default.
     float script_start { 0.0f };
     float camera_path_delay { 0.0f };
+    // Wallpaper Engine's "shadows" setting (low, medium, high, ultra)
+    ShadowQuality shadow_quality { ShadowQuality::Medium };
 };
 
 class SceneRuntimeController;

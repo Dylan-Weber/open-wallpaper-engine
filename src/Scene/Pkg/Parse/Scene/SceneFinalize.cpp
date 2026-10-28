@@ -184,7 +184,10 @@ void FinalizeUniformSources(SceneParseContext& context) {
         }
         const auto shadow_source =
             registrar->Register(Box<dyn<UniformSource>>::make(ShadowUniformSource {
-                (*active_camera).clone(), rstd::move(shadow_lights), rstd::move(transforms) }));
+                (*active_camera).clone(),
+                rstd::move(shadow_lights),
+                rstd::move(transforms),
+                context.shader_environment.shadow_quality }));
         lighting_sources.push(UniformSourceAttachment { .source = shadow_source });
     }
     (void)scene.RegisterUniformBlock(UniformBlockDefinition {

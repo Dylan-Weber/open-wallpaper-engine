@@ -30,6 +30,7 @@ struct SceneViewerArgs {
     Option<u64> random_seed;
     Option<f32> script_start;
     Option<f32> camera_path_delay;
+    String      shadow_quality;
     Resolution  resolution;
     i32         fps;
     u32         msaa_samples;
@@ -164,6 +165,11 @@ SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
             .help("Start camera paths SECONDS after the scene's clock and run them that much "
                   "behind it (as Wallpaper Engine does after loading)"_str)
             .value_name("SECONDS"_str));
+    auto shadow_quality =
+        command.add_arg(Arg<String>::value("shadow-quality"_str, string_parser())
+                            .long_name("shadow-quality"_str)
+                            .help("Shadows as Wallpaper Engine's setting: low, medium, high, ultra"_str)
+                            .default_value("medium"_str));
     auto load_bench_output =
         command.add_arg(Arg<String>::value("load-bench-output"_str, string_parser())
                             .long_name("load-bench-output"_str)
@@ -217,6 +223,7 @@ SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
         .random_seed           = OptionalValue(matches, random_seed),
         .script_start          = OptionalValue(matches, script_start),
         .camera_path_delay     = OptionalValue(matches, camera_path_delay),
+        .shadow_quality        = Value(matches, shadow_quality).clone(),
         .resolution            = Value(matches, resolution),
         .fps                   = Value(matches, fps),
         .msaa_samples          = Value(matches, msaa),

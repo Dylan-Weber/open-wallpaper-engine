@@ -83,6 +83,7 @@ auto owe::SceneParser::Parse(ref<str> scene_id, ref<wpscene::SceneDocument> docu
                              options.capabilities.max_geometry_total_output_components,
                      },
                      shadow_lights.as_slice(),
+                     options.shadow_quality,
                      options.capabilities.geometry_shader_supported,
                      rstd::move(options.image_ready),
                      rstd::move(options.texture_memory));

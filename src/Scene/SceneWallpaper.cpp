@@ -1199,6 +1199,7 @@ void SceneRuntimeController::loadScene() {
             .max_geometry_output_vertices = u32(m_render_capabilities->max_geometry_output_vertices),
             .max_geometry_total_output_components = u32(m_render_capabilities->max_geometry_total_output_components),
         },
+        .shadow_quality = m_config.shadow_quality,
         .load_bench = loadBenchView(),
         .texture_memory = m_texture_memory.clone(),
     }, mut_ref<wavsen::audio::SoundManager>::from_raw_parts(m_sound_manager.get()));
