@@ -73,6 +73,11 @@ struct SceneWallpaperConfig {
     bool                                mouse_parallax { true };
     bool                                graphviz { false };
     Option<u64>                         random_seed;
+    // Seconds of the scene's clock before scripts start (they read the scene's clock), and before
+    // camera paths start (they then run that much behind it); Wallpaper Engine starts both later in
+    // some wallpapers, as they load. 0 by default.
+    float script_start { 0.0f };
+    float camera_path_delay { 0.0f };
 };
 
 class SceneRuntimeController;

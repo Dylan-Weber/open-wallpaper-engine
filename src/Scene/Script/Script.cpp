@@ -5220,6 +5220,8 @@ void TickSceneScripts(owe::Scene& scene, const FrameInputs& fi) {
     auto script_scene = scene.ExtensionMut<ScriptScene>();
     if (script_scene.is_none()) return;
     auto events = scene.ConsumeAnimationEvents();
+    // Scripts start at the scene's script start, on the scene's clock.
+    if (static_cast<double>(fi.runtime) < scene.ScriptStart()) return;
     (**script_scene).Tick(fi, events.as_slice());
 }
 
