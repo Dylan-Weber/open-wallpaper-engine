@@ -911,21 +911,13 @@ auto ShadowUniformSource::Version(ref<dyn<UniformUpdateContext>> context) const 
     return context->Frame()->revision;
 }
 
-auto ShadowUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
-                                   mut_ref<dyn<UniformValueSink>> sink) const
-    -> Result<empty, UniformError> {
-    using Output = ShadowUniformOutput;
-    UniformWriter writer(sink);
-
-    const auto      camera_transform = m_camera->RenderTransforms();
-    Eigen::Vector3d forward          = camera_transform.center - camera_transform.eye;
-    if (! forward.allFinite() || forward.squaredNorm() <= 1e-12) {
-        return writer.Finish();
-    }
-    forward.normalize();
-
-    auto* light_node = m_light->node();
-    if (light_node == nullptr) return writer.Finish();
+namespace
+{
+// A directional light's three cascades, ahead of the camera (`forward`, normalized).
+auto CascadeMatrices(const SceneLight& light, const Vector3d& eye, const Vector3d& forward)
+    -> Option<array<float, 48>> {
+    auto* light_node = light.node();
+    if (light_node == nullptr) return None();
     light_node->UpdateTrans();
     const Matrix3d  light_frame = light_node->ModelTrans().block<3, 3>(0, 0);
     Eigen::Vector3d view_x      = light_frame.col(2);
@@ -934,7 +926,7 @@ auto ShadowUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
     if (! view_x.allFinite() || ! view_y.allFinite() || ! view_z.allFinite() ||
         view_x.squaredNorm() <= 1e-12 || view_y.squaredNorm() <= 1e-12 ||
         view_z.squaredNorm() <= 1e-12) {
-        return writer.Finish();
+        return None();
     }
     view_x.normalize();
     view_y.normalize();
@@ -943,11 +935,11 @@ auto ShadowUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
     // Wallpaper Engine's cascades: as wide as the light's cascade distances (3, 10 and 100 by
     // default), centred half their width ahead of the camera (less so along the light), moved
     // in whole texels of their squares, and as deep as four times the second distance.
-    array<float, 96> matrix_values {};
+    array<float, 48> matrix_values {};
     constexpr double defaults[3] { 3.0, 10.0, 100.0 };
     double           widths[3] {};
     for (int cascade = 0; cascade < 3; ++cascade) {
-        const float authored = m_light->desc().cascade_distances[cascade];
+        const float authored = light.desc().cascade_distances[cascade];
         widths[cascade]      = authored > 0.0f ? static_cast<double>(authored) : defaults[cascade];
     }
     const double   depths[3] { widths[1] * 4.0,
@@ -958,7 +950,7 @@ auto ShadowUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
     for (usize cascade {}; cascade < usize(3); ++cascade) {
         const double half   = widths[cascade.to_primitive()] * 0.5;
         const double texel  = widths[cascade.to_primitive()] / static_cast<double>(kShadowTileSize);
-        Vector3d     center = camera_transform.eye + ahead * half;
+        Vector3d     center = eye + ahead * half;
         center -= view_x * std::fmod(view_x.dot(center), texel);
         center -= view_y * std::fmod(view_y.dot(center), texel);
         Eigen::Matrix4d view   = Eigen::Matrix4d::Identity();
@@ -977,23 +969,64 @@ auto ShadowUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
             matrix_values[cascade * usize(16) + value] = matrix.data()[value.to_primitive()];
         }
     }
+    return Some(rstd::move(matrix_values));
+}
+} // namespace
 
-    auto matrices = UniformValue::fromMatrixArray(
-        matrix_values.data(), u32(4), u32(4), usize(6), UniformMatrixStorage::ColumnMajor);
-    writer.Write(ToUniformOutput(Output::ViewProjectionMatrices), matrices);
-    writer.Write(Output::AtlasTransforms,
-                 array<float, 12> { 0.0f,
-                                    0.0f,
-                                    1.0f / 3.0f,
-                                    1.0f,
-                                    1.0f / 3.0f,
-                                    0.0f,
-                                    1.0f / 3.0f,
-                                    1.0f,
-                                    2.0f / 3.0f,
-                                    0.0f,
-                                    1.0f / 3.0f,
-                                    1.0f });
+auto ShadowUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
+                                   mut_ref<dyn<UniformValueSink>> sink) const
+    -> Result<empty, UniformError> {
+    using Output = ShadowUniformOutput;
+    UniformWriter writer(sink);
+
+    constexpr usize max_lights { 4 };
+    // kShadowViewCount views
+    array<float, 24 * 16> views {};
+    array<float, 24 * 4>  atlas {};
+    array<float, 96>      cascades {};
+    array<float, 12>      cascade_atlas {};
+    array<float, 4>       slots { -1.0f, -1.0f, -1.0f, -1.0f };
+    for (usize value {};
+         value < rstd::cmp::min(kShadowViewCount * usize(4), m_atlas_transforms.len());
+         ++value)
+        atlas[value] = m_atlas_transforms[value];
+
+    const auto      camera_transform = m_camera->RenderTransforms();
+    Eigen::Vector3d forward          = camera_transform.center - camera_transform.eye;
+    const bool      camera_ok        = forward.allFinite() && forward.squaredNorm() > 1e-12;
+    if (camera_ok) forward.normalize();
+
+    bool have_cascades {};
+    for (usize slot {}; slot < rstd::cmp::min(max_lights, m_lights.len()); ++slot) {
+        const auto& light = *m_lights[slot];
+        const auto  first = light.desc().shadow_view;
+        if (first < i32() || ! light.runtimeVisible()) continue;
+        const auto view = usize(rstd::as_cast<rstd::size_t>(first.to_primitive()));
+        if (light.type() != SceneLightType::Directional || ! camera_ok) continue;
+        if (view + usize(3) > kShadowViewCount) continue;
+        auto matrices = CascadeMatrices(light, camera_transform.eye, forward);
+        if (matrices.is_none()) continue;
+        for (usize value {}; value < usize(48); ++value)
+            views[view * usize(16) + value] = (*matrices)[value];
+        slots[slot] = static_cast<float>(first.to_primitive());
+        if (! have_cascades) {
+            for (usize value {}; value < usize(48); ++value) cascades[value] = (*matrices)[value];
+            for (usize value {}; value < usize(12); ++value)
+                cascade_atlas[value] = atlas[view * usize(4) + value];
+            have_cascades = true;
+        }
+    }
+
+    writer.Write(ToUniformOutput(Output::ViewProjectionMatrices),
+                 UniformValue::fromMatrixArray(
+                     cascades.data(), u32(4), u32(4), usize(6), UniformMatrixStorage::ColumnMajor));
+    writer.Write(Output::AtlasTransforms, cascade_atlas);
+    writer.Write(
+        ToUniformOutput(Output::Views),
+        UniformValue::fromMatrixArray(
+            views.data(), u32(4), u32(4), kShadowViewCount, UniformMatrixStorage::ColumnMajor));
+    writer.Write(Output::ViewAtlasTransforms, atlas);
+    writer.Write(Output::LightViews, slots);
     return writer.Finish();
 }
 
