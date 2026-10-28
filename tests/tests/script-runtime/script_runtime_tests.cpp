@@ -131,6 +131,87 @@ TEST(ScriptInitialization, UsesSceneOwnerOrderInsteadOfRegistrationOrder) {
     EXPECT_EQ(LastScalar(consumer), 7.0);
 }
 
+TEST(ScriptVector, MethodsFollowTheSceneScriptReference) {
+    JsRuntime rt;
+    auto*     script = rt.MakeFieldScript(
+        R"JS(
+            function near(a, b, e) { return Math.abs(a - b) < (e === undefined ? 1e-4 : e); }
+            function nearV(v, ...c) {
+                const k = [v.x, v.y, v.z, v.w];
+                return c.every((x, i) => near(k[i], x));
+            }
+            const checks = [
+                ["Vec.dot", () => { return (typeof new Vec3(1, 2, 3).dot(new Vec3(4, 5, 6)) === 'number' && new Vec3(1, 2, 3).dot(new Vec3(4, 5, 6)) === 32 && new Vec2(1, 2).dot(new Vec2(3, 4)) === 11); }],
+                ["Vec.cross", () => { return (nearV(new Vec3(1, 0, 0).cross(new Vec3(0, 1, 0)), 0, 0, 1) && nearV(new Vec3(0, 0, -1).cross(new Vec3(0, 1, 0)), 1, 0, 0)); }],
+                ["Vec.length", () => { return (new Vec3(3, 4, 0).length() === 5 && new Vec3(1, 2, 2).lengthSqr() === 9 && new Vec2(3, 4).length() === 5); }],
+                ["Vec.normalize", () => { return (nearV(new Vec3(0, 0, -5).normalize(), 0, 0, -1) && nearV(new Vec2(3, 4).normalize(), 0.6, 0.8)); }],
+                ["Vec.subtract", () => { return (nearV(new Vec3(5, 5, 5).subtract(new Vec3(1, 2, 3)), 4, 3, 2) && nearV(new Vec2(5, 5).subtract(1), 4, 4)); }],
+                ["Vec.divide", () => { return (nearV(new Vec3(8, 6, 4).divide(new Vec3(2, 3, 4)), 4, 2, 1)); }],
+                ["Vec.minMax", () => { return (nearV(new Vec3(1, 5, 3).min(new Vec3(2, 2, 2)), 1, 2, 2) && nearV(new Vec3(1, 5, 3).max(new Vec3(2, 2, 2)), 2, 5, 3)); }],
+                ["Vec.rounding", () => { return (nearV(new Vec3(-1.5, 2.4, 2.6).abs(), 1.5, 2.4, 2.6) && nearV(new Vec3(-1.5, 0, 2).sign(), -1, 0, 1) && nearV(new Vec3(1.4, 1.6, -1.4).round(), 1, 2, -1) && nearV(new Vec3(1.5, -1.5, 2).floor(), 1, -2, 2) && nearV(new Vec3(1.5, -1.5, 2).ceil(), 2, -1, 2)); }],
+                ["Vec.mix", () => { return (nearV(new Vec3(0, 0, 0).mix(new Vec3(10, 20, 30), 0.5), 5, 10, 15)); }],
+                ["Vec.equalsCopy", () => { return (new Vec3(1, 2, 3).equals(new Vec3(1, 2, 3)) && !new Vec3(1, 2, 3).equals(new Vec3(1, 2, 4)) && nearV(new Vec3(1, 2, 3).copy(), 1, 2, 3)); }],
+                ["Vec2.distance", () => { return (new Vec2(0, 0).distance(new Vec2(3, 4)) === 5); }],
+                ["Vec2.distanceSqr", () => { return (new Vec2(0, 0).distanceSqr(new Vec2(3, 4)) === 25); }],
+                ["Vec2.isFinite", () => { return (new Vec2(1, 2).isFinite() === true && new Vec2(1, Infinity).isFinite() === false); }],
+                ["Vec2.negate", () => { return (nearV(new Vec2(1, -2).negate(), -1, 2)); }],
+                ["Vec2.reflect", () => { return (nearV(new Vec2(1, -1).reflect(new Vec2(0, 1)), 1, 1)); }],
+                ["Vec2.perpendicular", () => { return (nearV(new Vec2(1, 0).perpendicular(), 0, 1)); }],
+                ["Vec2.project", () => { return (nearV(new Vec2(2, 2).project(new Vec2(1, 0)), 2, 0)); }],
+                ["Vec2.angle", () => { return (near(new Vec2(0, 1).angle(), 90)); }],
+                ["Vec2.angleBetween", () => { return (near(new Vec2(1, 0).angleBetween(new Vec2(0, 1)), 90) && near(new Vec2(0, 1).angleBetween(new Vec2(1, 0)), -90)); }],
+                ["Vec2.rotate", () => { return (nearV(new Vec2(1, 0).rotate(90), 0, 1)); }],
+                ["Vec2.mix.vector", () => { return (nearV(new Vec2(0, 0).mix(new Vec2(10, 10), new Vec2(0.5, 1)), 5, 10)); }],
+                ["Vec2.mix.number", () => { return (nearV(new Vec2(0, 0).mix(new Vec2(10, 10), 0.5), 5, 5)); }],
+                ["Vec2.clamp", () => { return (nearV(new Vec2(-1, 5).clamp(0, 2), 0, 2) && nearV(new Vec2(-1, 5).clamp(new Vec2(0, 0), new Vec2(1, 9)), 0, 5)); }],
+                ["Vec2.fract", () => { return (nearV(new Vec2(1.25, -0.25).fract(), 0.25, 0.75)); }],
+                ["Vec2.mod", () => { return (nearV(new Vec2(5.5, -1).mod(2), 1.5, 1) && nearV(new Vec2(5, 5).mod(new Vec2(2, 3)), 1, 2)); }],
+                ["Vec2.step", () => { return (nearV(new Vec2(0.2, 0.8).step(0.5), 0, 1)); }],
+                ["Vec2.smoothStep", () => { return (nearV(new Vec2(0.5, 2).smoothStep(0, 1), 0.5, 1)); }],
+                ["Vec2.ctor.empty", () => { return (nearV(new Vec2(), 0, 0)); }],
+                ["Vec2.ctor.number", () => { return (nearV(new Vec2(4), 4, 4)); }],
+                ["Vec2.ctor.xy", () => { return (nearV(new Vec2(1, 2), 1, 2)); }],
+                ["Vec2.ctor.vec3", () => { return (nearV(new Vec2(new Vec3(1, 2, 3)), 1, 2)); }],
+                ["Vec2.arithmetic", () => { return (nearV(new Vec2(1, 2).add(1), 2, 3) && nearV(new Vec2(1, 2).multiply(new Vec2(2, 3)), 2, 6) && nearV(new Vec2(4, 6).divide(2), 2, 3)); }],
+                ["Vec3.distance", () => { return (new Vec3(1, 1, 1).distance(new Vec3(1, 1, 4)) === 3 && new Vec3(1, 1, 1).distanceSqr(new Vec3(1, 1, 4)) === 9); }],
+                ["Vec3.isFinite", () => { return (new Vec3(1, 2, 3).isFinite() && !new Vec3(NaN, 0, 0).isFinite()); }],
+                ["Vec3.negate", () => { return (nearV(new Vec3(1, -2, 3).negate(), -1, 2, -3)); }],
+                ["Vec3.reflect", () => { return (nearV(new Vec3(1, -1, 0).reflect(new Vec3(0, 1, 0)), 1, 1, 0)); }],
+                ["Vec3.refract", () => { return (nearV(new Vec3(0, -1, 0).refract(new Vec3(0, 1, 0), 1), 0, -1, 0) && nearV(new Vec3(0.9, -0.1, 0).normalize().refract(new Vec3(0, 1, 0), 1.5), 0, 0, 0)); }],
+                ["Vec3.project", () => { return (nearV(new Vec3(2, 3, 4).project(new Vec3(0, 0, 1)), 0, 0, 4)); }],
+                ["Vec3.angleBetween", () => { return (near(new Vec3(1, 0, 0).angleBetween(new Vec3(0, 1, 0)), 90) && near(new Vec3(1, 0, 0).angleBetween(new Vec3(-1, 0, 0)), 180)); }],
+                ["Vec3.fromSpherical", () => { return (nearV(Vec3.fromSpherical(2, 90, 0), 2, 0, 0) && nearV(Vec3.fromSpherical(3, 0, 0), 0, 3, 0) && nearV(Vec3.fromSpherical(1, 90, 90), 0, 0, 1)); }],
+                ["Vec3.toSpherical", () => { const s = new Vec3(0, 0, 5).toSpherical(); return nearV(s, 5, 90, 90); }],
+                ["Vec3.mix.vector", () => { return (nearV(new Vec3(0, 0, 0).mix(new Vec3(10, 10, 10), new Vec3(0.5, 1, 0)), 5, 10, 0)); }],
+                ["Vec3.clamp", () => { return (nearV(new Vec3(-1, 5, 1).clamp(0, 2), 0, 2, 1)); }],
+                ["Vec3.fract", () => { return (nearV(new Vec3(1.5, 2.25, -0.5).fract(), 0.5, 0.25, 0.5)); }],
+                ["Vec3.mod", () => { return (nearV(new Vec3(5, 5, 5).mod(new Vec3(2, 3, 4)), 1, 2, 1)); }],
+                ["Vec3.step", () => { return (nearV(new Vec3(0.2, 0.8, 0.5).step(0.5), 0, 1, 1)); }],
+                ["Vec3.smoothStep", () => { return (nearV(new Vec3(0, 0.5, 1).smoothStep(0, 1), 0, 0.5, 1)); }],
+                ["Vec3.ctor.number", () => { return (nearV(new Vec3(7), 7, 7, 7)); }],
+                ["Vec3.ctor.xy", () => { return (nearV(new Vec3(1, 2), 1, 2, 0)); }],
+                ["Vec3.ctor.vec2", () => { return (nearV(new Vec3(new Vec2(1, 2)), 1, 2, 0)); }],
+                ["Vec4.methods", () => { return (nearV(new Vec4(1, 2, 3, 4).negate(), -1, -2, -3, -4) && near(new Vec4(0, 0, 0, 0).distance(new Vec4(1, 2, 2, 0)), 3) && nearV(new Vec4(-1, 5, 1, 9).clamp(0, 2), 0, 2, 1, 2)); }],
+                ["Vec4.ctor.vec3", () => { return (nearV(new Vec4(new Vec3(1, 2, 3)), 1, 2, 3, 0)); }],
+            ];
+            const failed = checks.filter(([name, check]) => {
+                try { return check() !== true; } catch (e) { return true; }
+            }).map(([name]) => name);
+            export function update() { return failed.join(' '); }
+        )JS"_str,
+        "test/vector_methods"_str,
+        FieldKind::String,
+        owe::MakeObject(),
+        owe::IntoJson(""));
+    ASSERT_NE(script, nullptr);
+
+    rt.TickAll();
+
+    ASSERT_TRUE(script->last_value().is_String());
+    const auto failed = script->last_value().as_String().value.s.as_str();
+    EXPECT_EQ(failed, ""_str) << "failed: " << rstd::cppstd::as_string_view(failed);
+}
+
 TEST(ScriptValueCoercion, PreservesVec4InitialAndReturnValues) {
     JsRuntime rt;
     auto*     script = rt.MakeFieldScript(
