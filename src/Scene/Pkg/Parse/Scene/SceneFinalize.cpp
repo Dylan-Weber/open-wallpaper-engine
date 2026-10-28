@@ -141,25 +141,37 @@ void FinalizeUniformSources(SceneParseContext& context) {
         .sources  = rstd::move(audio_sources),
     });
 
-    Vec<ref<SceneLight>>    lights;
-    Option<ref<SceneLight>> shadow_light;
-    auto                    owned_lights = scene.Lights();
+    Vec<ref<SceneLight>> lights;
+    auto                 owned_lights = scene.Lights();
     lights.reserve(owned_lights.len());
-    for (usize index {}; index < owned_lights.len(); ++index) {
+    for (usize index {}; index < owned_lights.len(); ++index)
         lights.push(owned_lights[index].as_ref());
-        const auto& light = *owned_lights[index];
-        if (shadow_light.is_none() && light.type() == SceneLightType::Directional &&
-            light.desc().cast_shadow) {
-            shadow_light = Some(owned_lights[index].as_ref());
-        }
-    }
+    auto       shadow_lights = lights.clone();
     const auto light_source = registrar->Register(
         Box<dyn<UniformSource>>::make(LightUniformSource { rstd::move(lights) }));
     auto lighting_sources = Vec<UniformSourceAttachment>::make();
     lighting_sources.push(UniformSourceAttachment { .source = light_source });
-    if (context.shader_environment.directional_shadow && shadow_light.is_some()) {
-        const auto shadow_source = registrar->Register(Box<dyn<UniformSource>>::make(
-            ShadowUniformSource { (*active_camera).clone(), *shadow_light }));
+    auto atlas = scene.RenderTarget(WE_SHADOW_ATLAS_PREFIX);
+    if (context.shader_environment.shadow_mapping && atlas.is_some()) {
+        // each view's square of the atlas, in its texture coordinates
+        const float width =
+            static_cast<float>(rstd::cmp::max((**atlas).width, i32(1)).to_primitive());
+        const float height =
+            static_cast<float>(rstd::cmp::max((**atlas).height, i32(1)).to_primitive());
+        auto transforms = Vec<float>::make();
+        for (const auto& definition : scene.ShadowDefinitions()) {
+            transforms.resize(usize(definition.view_offset.to_primitive() * 4), 0.0f);
+            for (const auto& viewport : definition.viewports) {
+                transforms.push(static_cast<float>(viewport.scissor_x.to_primitive()) / width);
+                transforms.push(static_cast<float>(viewport.scissor_y.to_primitive()) / height);
+                transforms.push(static_cast<float>(viewport.scissor_width.to_primitive()) / width);
+                transforms.push(static_cast<float>(viewport.scissor_height.to_primitive()) /
+                                height);
+            }
+        }
+        const auto shadow_source =
+            registrar->Register(Box<dyn<UniformSource>>::make(ShadowUniformSource {
+                (*active_camera).clone(), rstd::move(shadow_lights), rstd::move(transforms) }));
         lighting_sources.push(UniformSourceAttachment { .source = shadow_source });
     }
     (void)scene.RegisterUniformBlock(UniformBlockDefinition {

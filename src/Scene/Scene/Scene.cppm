@@ -873,7 +873,8 @@ public:
     bool hasSprite { false };
 
     SceneMaterialCustomShader  customShader;
-    Option<Arc<SceneMaterial>> shadow_variant;
+    // its shadow casters, one for each of the scene's shadow definitions
+    Vec<Arc<SceneMaterial>> shadow_variants;
 
 private:
     ShaderValue ShapeShaderValue(ref<str> uniform_name, const ShaderValue& value) const {
@@ -909,7 +910,7 @@ private:
         hasSprite        = other.hasSprite;
         customShader     = other.customShader.Clone();
         (void)SetPipeline(other.Pipeline());
-        shadow_variant = other.shadow_variant.clone();
+        shadow_variants = other.shadow_variants.clone();
         m_dirty_flags.fetch_or(other.m_dirty_flags.load());
     }
     void moveFrom(SceneMaterial&& other) {
@@ -921,7 +922,7 @@ private:
         hasSprite        = other.hasSprite;
         customShader     = rstd::move(other.customShader);
         (void)SetPipeline(other.Pipeline());
-        shadow_variant = rstd::move(other.shadow_variant);
+        shadow_variants = rstd::move(other.shadow_variants);
         m_dirty_flags.fetch_or(other.m_dirty_flags.load());
     }
 
@@ -2546,14 +2547,20 @@ struct Impl<Copy, owe::SceneShadowViewport> {};
 export namespace owe
 {
 
+// One shadowed light's views of the shadow atlas.
 struct SceneShadowDefinition {
     String                   target;
     Vec<SceneShadowViewport> viewports;
+    i32                      light_id { i32(-1) };
+    // its first view in the scene's list of shadow views
+    u32 view_offset { 0 };
 
     auto Clone() const -> SceneShadowDefinition {
         return {
-            .target    = target.clone(),
-            .viewports = viewports.clone(),
+            .target      = target.clone(),
+            .viewports   = viewports.clone(),
+            .light_id    = light_id,
+            .view_offset = view_offset,
         };
     }
 };
@@ -2562,6 +2569,8 @@ struct RenderShadowCasterRecord {
     RenderItemId       render_item;
     Arc<SceneMaterial> material;
     u32                instance_count { 1 };
+    // the shadow definition it is drawn into
+    usize definition {};
 };
 
 struct SceneMeshDirtyEvent {

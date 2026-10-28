@@ -1223,16 +1223,33 @@ TEST(SceneShadowParsing, RequiresRendererCapabilityBeforeRegisteringDerivedResou
     EXPECT_FLOAT_EQ((**atlas).depth_clear_value, 0.0f);
     EXPECT_TRUE((**atlas).sample.compare_enable);
     EXPECT_EQ((**atlas).sample.compare_op, owe::CompareOp::Greater);
-    // Wallpaper Engine's "ultra" shadows: a 1024-pixel square for each cascade
-    EXPECT_EQ((**atlas).width, rstd::i32(3072));
-    EXPECT_EQ((**atlas).height, rstd::i32(1024));
-    const auto& viewports = supported_scene.scene->ShadowDefinitions()[rstd::usize()].viewports;
+    // Wallpaper Engine's "ultra" shadows: a 1024-pixel square for each cascade, in rows of a near
+    // square (two columns for three squares)
+    EXPECT_EQ((**atlas).width, rstd::i32(2048));
+    EXPECT_EQ((**atlas).height, rstd::i32(2048));
+    const auto& definition = supported_scene.scene->ShadowDefinitions()[rstd::usize()];
+    EXPECT_EQ(definition.light_id, rstd::i32(1));
+    EXPECT_EQ(definition.view_offset, rstd::u32());
+    const auto& viewports = definition.viewports;
     ASSERT_EQ(viewports.len(), rstd::usize(3));
-    for (const auto& viewport : viewports) {
+    const float corners[3][2] { { 0, 0 }, { 1024, 0 }, { 0, 1024 } };
+    for (rstd::usize index {}; index < viewports.len(); ++index) {
+        const auto& viewport = viewports[index];
+        const auto  corner   = corners[index.to_primitive()];
         EXPECT_FLOAT_EQ(viewport.width.to_primitive(), 1024.0f);
+        EXPECT_FLOAT_EQ(viewport.height.to_primitive(), -1024.0f);
+        EXPECT_FLOAT_EQ(viewport.x.to_primitive(), corner[0]);
+        EXPECT_FLOAT_EQ(viewport.y.to_primitive(), corner[1] + 1024.0f);
+        EXPECT_EQ(viewport.scissor_x, rstd::i32(static_cast<int>(corner[0])));
+        EXPECT_EQ(viewport.scissor_y, rstd::i32(static_cast<int>(corner[1])));
+        EXPECT_EQ(viewport.scissor_width, rstd::u32(1024));
         EXPECT_EQ(viewport.scissor_height, rstd::u32(1024));
     }
-    EXPECT_FLOAT_EQ(viewports[rstd::usize(2)].x.to_primitive(), 2048.0f);
+    // the light knows where its views start
+    auto lights = supported_scene.scene->Lights();
+    ASSERT_EQ(lights.len(), rstd::usize(1));
+    EXPECT_EQ(lights[rstd::usize()]->desc().shadow_view, rstd::i32());
+    EXPECT_EQ(unsupported_scene.scene->Lights()[rstd::usize()]->desc().shadow_view, rstd::i32(-1));
 }
 
 TEST(ModelObjectJson, ReadsMaterialSkin) {

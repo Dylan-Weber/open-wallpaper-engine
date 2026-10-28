@@ -489,10 +489,16 @@ TEST(ShadowUniformSource, UsesAuthoredCascadeExtentAndLightObjectFrame) {
     desc.cascade_distances[0] = 10.0f;
     desc.cascade_distances[1] = 20.0f;
     desc.cascade_distances[2] = 40.0f;
+    desc.shadow_view          = i32();
     owe::SceneLight light(desc);
     light.setNode(light_node.as_ptr());
-    owe::ShadowUniformSource source(rstd::move(camera),
-                                    ref<owe::SceneLight>::from_raw_parts(rstd::addressof(light)));
+    auto lights = Vec<ref<owe::SceneLight>>::make();
+    lights.push(ref<owe::SceneLight>::from_raw_parts(rstd::addressof(light)));
+    // the cascades' squares in a two-column atlas
+    auto transforms = Vec<float>::make();
+    for (float value : { 0.0f, 0.0f, 0.5f, 0.5f, 0.5f, 0.0f, 0.5f, 0.5f, 0.0f, 0.5f, 0.5f, 0.5f })
+        transforms.push(float(value));
+    owe::ShadowUniformSource source(rstd::move(camera), rstd::move(lights), rstd::move(transforms));
 
     owe::SceneFrame frame;
     auto            matrices =
@@ -510,9 +516,61 @@ TEST(ShadowUniformSource, UsesAuthoredCascadeExtentAndLightObjectFrame) {
     auto atlas = scene_test::Capture(frame, source, owe::ShadowUniformOutput::AtlasTransforms);
     ASSERT_EQ(atlas.size(), usize(12));
     EXPECT_FLOAT_EQ(atlas[usize()], 0.0f);
-    EXPECT_FLOAT_EQ(atlas[usize(2)], 1.0f / 3.0f);
-    EXPECT_FLOAT_EQ(atlas[usize(4)], 1.0f / 3.0f);
-    EXPECT_FLOAT_EQ(atlas[usize(8)], 2.0f / 3.0f);
+    EXPECT_FLOAT_EQ(atlas[usize(2)], 0.5f);
+    EXPECT_FLOAT_EQ(atlas[usize(4)], 0.5f);
+    EXPECT_FLOAT_EQ(atlas[usize(8)], 0.0f);
+    EXPECT_FLOAT_EQ(atlas[usize(9)], 0.5f);
+}
+
+// Every shadowed light's views sit at its own place in one list, which each light slot points into
+// (-1: no shadow map).
+TEST(ShadowUniformSource, EachShadowedLightHasItsViews) {
+    auto camera =
+        Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000.0, 50.0));
+    camera->SetLookAt(Eigen::Vector3d::Zero(), -Eigen::Vector3d::UnitZ(), Eigen::Vector3d::UnitY());
+
+    auto                  point_node = Arc<owe::SceneNode>::make();
+    owe::SceneLight::Desc point_desc;
+    point_desc.type = owe::SceneLightType::Point;
+    owe::SceneLight point(point_desc);
+    point.setNode(point_node.as_ptr());
+    auto                  sun_node = Arc<owe::SceneNode>::make();
+    owe::SceneLight::Desc sun_desc;
+    sun_desc.type                 = owe::SceneLightType::Directional;
+    sun_desc.cast_shadow          = true;
+    sun_desc.cascade_distances[0] = 10.0f;
+    sun_desc.shadow_view          = i32(2);
+    owe::SceneLight sun(sun_desc);
+    sun.setNode(sun_node.as_ptr());
+    auto lights = Vec<ref<owe::SceneLight>>::make();
+    lights.push(ref<owe::SceneLight>::from_raw_parts(rstd::addressof(point)));
+    lights.push(ref<owe::SceneLight>::from_raw_parts(rstd::addressof(sun)));
+    auto transforms = Vec<float>::make();
+    for (int value = 0; value < 20; ++value) transforms.push(float(value) / 20.0f);
+    owe::ShadowUniformSource source(rstd::move(camera), rstd::move(lights), rstd::move(transforms));
+
+    owe::SceneFrame frame;
+    auto slots = scene_test::Capture(frame, source, owe::ShadowUniformOutput::LightViews);
+    ASSERT_EQ(slots.size(), usize(4));
+    EXPECT_FLOAT_EQ(slots[usize()], -1.0f);
+    EXPECT_FLOAT_EQ(slots[usize(1)], 2.0f);
+    EXPECT_FLOAT_EQ(slots[usize(2)], -1.0f);
+    EXPECT_FLOAT_EQ(slots[usize(3)], -1.0f);
+
+    auto cascades =
+        scene_test::Capture(frame, source, owe::ShadowUniformOutput::ViewProjectionMatrices);
+    auto views = scene_test::Capture(frame, source, owe::ShadowUniformOutput::Views);
+    ASSERT_EQ(views.size(), usize(24 * 16));
+    for (usize value {}; value < usize(32); ++value) EXPECT_FLOAT_EQ(views[value], 0.0f);
+    for (usize value {}; value < usize(48); ++value)
+        EXPECT_FLOAT_EQ(views[usize(32) + value], cascades[value]);
+    EXPECT_FLOAT_EQ(views[usize(80)], 0.0f);
+
+    auto atlas = scene_test::Capture(frame, source, owe::ShadowUniformOutput::ViewAtlasTransforms);
+    ASSERT_EQ(atlas.size(), usize(24 * 4));
+    for (usize value {}; value < usize(20); ++value)
+        EXPECT_FLOAT_EQ(atlas[value], float(value.to_primitive()) / 20.0f);
+    EXPECT_FLOAT_EQ(atlas[usize(20)], 0.0f);
 }
 
 TEST(TextureUniformSource, PublishesUnreducedTextureScale) {
@@ -1513,9 +1571,12 @@ TEST(ShadowUniformSource, CascadeCentersUseFinalCameraPosition) {
     owe::SceneLight::Desc desc;
     desc.type        = owe::SceneLightType::Directional;
     desc.cast_shadow = true;
+    desc.shadow_view = i32();
     owe::SceneLight light(desc);
     light.setNode(light_node.as_ptr());
-    owe::ShadowUniformSource source(camera.clone(), ref<owe::SceneLight>::from_raw_parts(&light));
+    auto lights = Vec<ref<owe::SceneLight>>::make();
+    lights.push(ref<owe::SceneLight>::from_raw_parts(&light));
+    owe::ShadowUniformSource source(camera.clone(), rstd::move(lights), Vec<float>::make());
     auto                     translated = scene_test::Capture(
         owe::SceneFrame {}, source, owe::ShadowUniformOutput::ViewProjectionMatrices);
     camera->SetViewOffset(Eigen::Vector3d::Zero());
