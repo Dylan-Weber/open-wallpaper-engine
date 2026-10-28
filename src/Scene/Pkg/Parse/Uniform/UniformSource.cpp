@@ -914,7 +914,7 @@ auto ShadowUniformSource::Version(ref<dyn<UniformUpdateContext>> context) const 
 namespace
 {
 // A directional light's three cascades, ahead of the camera (`forward`, normalized).
-auto CascadeMatrices(const SceneLight& light, const Vector3d& eye, const Vector3d& forward)
+auto CascadeMatrices(const SceneLight& light, const Vector3d& eye, const Vector3d& forward, int tile)
     -> Option<array<float, 48>> {
     auto* light_node = light.node();
     if (light_node == nullptr) return None();
@@ -949,7 +949,7 @@ auto CascadeMatrices(const SceneLight& light, const Vector3d& eye, const Vector3
     const Vector3d ahead = forward - shine * (forward.dot(shine) * 0.5);
     for (usize cascade {}; cascade < usize(3); ++cascade) {
         const double half   = widths[cascade.to_primitive()] * 0.5;
-        const double texel  = widths[cascade.to_primitive()] / static_cast<double>(kShadowTileSize);
+        const double texel  = widths[cascade.to_primitive()] / static_cast<double>(tile);
         Vector3d     center = eye + ahead * half;
         center -= view_x * std::fmod(view_x.dot(center), texel);
         center -= view_y * std::fmod(view_y.dot(center), texel);
@@ -1036,9 +1036,8 @@ auto PointDepths(const SceneLight& light) -> array<double, 2> {
 }
 
 // A point light's six views, +x -x, +y -y, +z -z, turned as the stock point lookup
-// (CalculateProjectedCoordsPoint) reads them. Medium shadows draw them 94 degrees wide, which the
-// lookup's 0.47 compensation (LIGHTS_SHADOW_MAPPING_QUALITY 2) undoes.
-auto PointMatrices(const SceneLight& light) -> Option<array<float, 96>> {
+// (CalculateProjectedCoordsPoint) reads them, `fov` degrees wide (see PointShadowFieldOfView).
+auto PointMatrices(const SceneLight& light, double fov) -> Option<array<float, 96>> {
     auto* node = light.node();
     if (node == nullptr) return None();
     node->UpdateTrans();
@@ -1051,7 +1050,7 @@ auto PointMatrices(const SceneLight& light) -> Option<array<float, 96>> {
     };
     const auto     depths     = PointDepths(light);
     const double   degree     = 3.14159265358979323846 / 180.0;
-    const Matrix4d projection = ShadowPerspective(94.0 * degree, depths[usize()], depths[usize(1)]);
+    const Matrix4d projection = ShadowPerspective(fov * degree, depths[usize()], depths[usize(1)]);
     array<float, 96> values {};
     for (int face = 0; face < 6; ++face) {
         Matrix4d view = Matrix4d::Identity();
@@ -1100,7 +1099,7 @@ auto ShadowUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
         const auto view = usize(rstd::as_cast<rstd::size_t>(first.to_primitive()));
         if (light.type() == SceneLightType::Point) {
             if (view + usize(6) > kShadowViewCount) continue;
-            auto matrices = PointMatrices(light);
+            auto matrices = PointMatrices(light, PointShadowFieldOfView(m_quality));
             if (matrices.is_none()) continue;
             for (usize value {}; value < usize(96); ++value)
                 views[view * usize(16) + value] = (*matrices)[value];
@@ -1126,7 +1125,7 @@ auto ShadowUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
         }
         if (light.type() != SceneLightType::Directional || ! camera_ok) continue;
         if (view + usize(3) > kShadowViewCount) continue;
-        auto matrices = CascadeMatrices(light, camera_transform.eye, forward);
+        auto matrices = CascadeMatrices(light, camera_transform.eye, forward, ShadowTileSize(m_quality));
         if (matrices.is_none()) continue;
         for (usize value {}; value < usize(48); ++value)
             views[view * usize(16) + value] = (*matrices)[value];

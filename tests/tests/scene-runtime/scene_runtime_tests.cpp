@@ -630,6 +630,14 @@ TEST(ShadowUniformSource, SpotLightSeesItsConeFromNearToRadius) {
 // compensation); its light slot carries the depth terms the lookup projects with, from
 // `lightsourcesize` (at least 0.05) to its radius, nearer deeper.
 TEST(ShadowUniformSource, PointLightSeesSixFacesFromItsSizeToRadius) {
+    struct Case {
+        owe::ShadowQuality quality;
+        float              degrees; // half the faces' width
+    };
+    const Case cases[] { { owe::ShadowQuality::Medium, 47.0f },
+                         { owe::ShadowQuality::High, 46.0f },
+                         { owe::ShadowQuality::Ultra, 45.6f } };
+    for (const auto& [quality, degrees] : cases) {
     auto camera =
         Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000.0, 50.0));
     camera->SetLookAt(Eigen::Vector3d::Zero(), -Eigen::Vector3d::UnitZ(), Eigen::Vector3d::UnitY());
@@ -647,7 +655,8 @@ TEST(ShadowUniformSource, PointLightSeesSixFacesFromItsSizeToRadius) {
     point.setNode(point_node.as_ptr());
     auto lights = Vec<ref<owe::SceneLight>>::make();
     lights.push(ref<owe::SceneLight>::from_raw_parts(rstd::addressof(point)));
-    owe::ShadowUniformSource source(rstd::move(camera), rstd::move(lights), Vec<float>::make());
+    owe::ShadowUniformSource source(
+        rstd::move(camera), rstd::move(lights), Vec<float>::make(), quality);
 
     owe::SceneFrame frame;
     auto slots = scene_test::Capture(frame, source, owe::ShadowUniformOutput::LightViews);
@@ -669,7 +678,9 @@ TEST(ShadowUniformSource, PointLightSeesSixFacesFromItsSizeToRadius) {
         { { 0, 1, 0 }, { 1, 0, 0 }, { 0, 0, 1 } },  { { 0, -1, 0 }, { 1, 0, 0 }, { 0, 0, -1 } },
         { { 0, 0, 1 }, { -1, 0, 0 }, { 0, 1, 0 } }, { { 0, 0, -1 }, { 1, 0, 0 }, { 0, 1, 0 } },
     };
-    const float focal = 1.0f / std::tan(47.0f * 3.14159265f / 180.0f);
+    // the faces are wider than a cube's (94, 92 and 91.2 degrees), as the lookup's 0.47, 0.48 and
+    // 0.49 compensation at medium, high and ultra shadows undoes
+    const float focal = 1.0f / std::tan(degrees * 3.14159265f / 180.0f);
     for (int face = 0; face < 6; ++face) {
         Eigen::Matrix4f view_projection;
         for (int value = 0; value < 16; ++value)
@@ -683,6 +694,7 @@ TEST(ShadowUniformSource, PointLightSeesSixFacesFromItsSizeToRadius) {
         EXPECT_NEAR(clip.y() / clip.w(), focal * 0.3f / 3.0f, 1e-4f) << face;
         EXPECT_NEAR(clip.z() / clip.w(), nearz * (farz - 3.0f) / (3.0f * (farz - nearz)), 1e-5f)
             << face;
+    }
     }
 }
 

@@ -203,6 +203,16 @@ int main(int argc, char** argv) {
     config.graphviz        = args.graphviz;
     config.load_bench      = load_bench.clone();
     config.fps             = static_cast<uint32_t>(args.fps.to_primitive());
+    {
+        const auto quality    = args.shadow_quality.as_str();
+        config.shadow_quality = quality == "low"_str    ? owe::ShadowQuality::Low
+                                : quality == "high"_str  ? owe::ShadowQuality::High
+                                : quality == "ultra"_str ? owe::ShadowQuality::Ultra
+                                                         : owe::ShadowQuality::Medium;
+        if (quality != "low"_str && quality != "medium"_str && quality != "high"_str &&
+            quality != "ultra"_str)
+            eprintln("--shadow-quality: '{}' isn't low, medium, high or ultra; medium", quality);
+    }
     if (args.random_seed.is_some()) {
         config.random_seed = Some(*args.random_seed);
     }

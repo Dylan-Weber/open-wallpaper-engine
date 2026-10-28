@@ -73,6 +73,8 @@ struct SceneWallpaperConfig {
     bool                                mouse_parallax { true };
     bool                                graphviz { false };
     Option<u64>                         random_seed;
+    // Wallpaper Engine's "shadows" setting (low, medium, high, ultra)
+    ShadowQuality shadow_quality { ShadowQuality::Medium };
 };
 
 class SceneRuntimeController;

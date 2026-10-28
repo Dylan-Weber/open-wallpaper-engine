@@ -40,7 +40,8 @@ struct SceneShaderEnvironment {
     bool fog_distance { false };
     bool fog_height { false };
     // some light casts a shadow map, and models cast their shadows into it
-    bool shadow_mapping { false };
+    bool          shadow_mapping { false };
+    ShadowQuality shadow_quality { ShadowQuality::Medium };
 };
 
 // A light that casts a shadow map (by its object id).
@@ -355,6 +356,7 @@ BuildContext(fs::VFS&, ref<str> scene_id, const wpscene::SceneMetadata&, array<i
              Option<ref<rstd::json::Map>> user_properties  = None(),
              Option<rstd::path::PathBuf>  shader_cache_dir = None(),
              GeometryShaderLimits geometry_limits = {}, slice<SceneShadowLight> shadow_lights = {},
+             ShadowQuality shadow_quality = ShadowQuality::Medium,
              bool geometry_shader_supported = true, Option<ImageReadyCallback> image_ready = None(),
              TextureMemoryOptions texture_memory = {});
 
