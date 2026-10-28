@@ -570,7 +570,51 @@ struct TextLayouter::Impl {
         Vec<Quad>         quads;
         TextLayoutMetrics measured;
         const auto        bounds = output.typographic_bounds();
-        measured.text_width      = float(bounds.width);
+        // Wallpaper Engine places text by its ink, not its advances: a line spans from its pen,
+        // or from ink that hangs left of it, to its ink's right edge; lines align against the
+        // widest span, and ink left of a pen moves every line right by that much. Wrapped text
+        // is no wider than its lines either.
+        // It also moves the pen by whole pixels, each letter's advance rounded down.
+        const auto glyphs = output.glyphs();
+        Vec<float> glyph_pen;  // each glyph's pen, from its line's start
+        Vec<float> line_shift; // how far that moves each line's last letter
+        glyph_pen.resize(glyphs.len(), 0.0f);
+        for (auto& line : output.lines()) {
+            float pen {}, shift {};
+            for (auto index = usize(line.glyph_start); index < usize(line.glyph_end); ++index) {
+                const auto& glyph = glyphs[index];
+                glyph_pen[index]  = pen;
+                if (glyph.drawable) shift = pen - float(glyph.position.x - line.logical.x);
+                pen += f32(float(glyph.advance)).floor().to_primitive();
+            }
+            line_shift.push(float(shift));
+        }
+        const auto span = [&](usize index) -> array<float, 2> {
+            const auto& line = output.lines()[index];
+            if (line.ink.width == 0) return { 0.0f, 0.0f };
+            const float left = float(line.ink.x - line.logical.x);
+            return { left, left + float(line.ink.width) + line_shift[index] };
+        };
+        Vec<float> line_pen; // where each line's pen starts, from the text's left edge
+        measured.text_width = float(bounds.width);
+        if (! output.lines().is_empty()) {
+            float hang {}, ink_right {}, widest {};
+            for (usize index {}; index < output.lines().len(); ++index) {
+                const auto [left, right] = span(index);
+                hang                     = rstd::cmp::min(hang, left);
+                ink_right                = rstd::cmp::max(ink_right, right);
+                widest = rstd::cmp::max(widest, right - rstd::cmp::min(left, 0.0f));
+            }
+            const float share = request.alignment == vectext::TextAlignment::Center  ? 0.5f
+                                : request.alignment == vectext::TextAlignment::Right ? 1.0f
+                                                                                     : 0.0f;
+            for (usize index {}; index < output.lines().len(); ++index) {
+                const auto [left, right] = span(index);
+                line_pen.push(
+                    float(share * (widest - (right - rstd::cmp::min(left, 0.0f))) - hang));
+            }
+            measured.text_width = ink_right - hang;
+        }
         measured.text_height     = float(bounds.height);
         measured.source_width    = measured.text_width;
         measured.source_height   = measured.text_height;
@@ -594,13 +638,15 @@ struct TextLayouter::Impl {
         }
         bool  have_bounds {};
         float minx {}, maxx {}, miny {}, maxy {};
-        for (auto& glyph : output.glyphs()) {
+        for (usize index {}; index < glyphs.len(); ++index) {
+            const auto& glyph = glyphs[index];
             if (! glyph.drawable) continue;
             auto raster = resources->Rasterize(output.fonts()[usize(glyph.font)], glyph.glyph);
             if (raster.is_err()) return Err(raster.unwrap_err());
             auto atlas = raster.unwrap();
             if (! atlas.width || ! atlas.height) continue;
-            float left = float(glyph.position.x + atlas.origin.x) - measured.text_width / 2;
+            float left = line_pen[usize(glyph.line)] + glyph_pen[index] + float(atlas.origin.x) -
+                         measured.text_width / 2;
             float top =
                 measured.text_height / 2 - float(glyph.position.y - bounds.y + atlas.origin.y);
             float right  = left + float(atlas.width / atlas.scale),
