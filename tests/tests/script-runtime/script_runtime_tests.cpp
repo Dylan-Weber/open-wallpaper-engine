@@ -1339,6 +1339,222 @@ TEST(ScriptAnimationLayer, LayerControlsAndGetsItsAnimation) {
     EXPECT_EQ(fs->last_value().as_Scalar().value.v, 1.0);
 }
 
+// A layer's animation layers by index, in the scene's order, and how many it has. Other animations
+// of the layer (a material's, its values') aren't animation layers.
+TEST(ScriptAnimationLayer, ByIndexAndCount) {
+    owe::SceneNode node;
+    auto           make = [](ref<str> name) {
+        return Arc<owe::SceneAnimationPlayback>::make(
+            Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {
+                .name = String::make(name),
+                .mode = String::make("loop"_str),
+                .fps  = 30.0f,
+                .end  = i32(60),
+            }));
+    };
+    node.RegisterAnimation(make("material"_str));
+    node.RegisterAnimationLayer(make("Idle"_str));
+    node.RegisterAnimationLayer(make("Wave"_str));
+
+    JsRuntime rt;
+    rt.SetFrameInputs(MakeFi());
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            export function update() {
+                thisLayer.getAnimationLayer(1).pause();
+                const idle = thisLayer.getAnimationLayer("Idle").isPlaying();
+                const wave = thisLayer.getAnimationLayer("Wave").isPlaying();
+                return thisLayer.getAnimationLayerCount() * 100 + (idle ? 10 : 0) + (wave ? 1 : 0);
+            }
+        )JS"_str,
+        "test/animation_layer_by_index"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+    rt.TickAll();
+    ASSERT_TRUE(fs->last_value().is_Scalar());
+    EXPECT_EQ(fs->last_value().as_Scalar().value.v, 210.0);
+}
+
+// An animation layer's blend and visible, as scripts read and set them.
+TEST(ScriptAnimationLayer, BlendAndVisible) {
+    owe::SceneNode node;
+    auto           playback = Arc<owe::SceneAnimationPlayback>::make(
+        Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {
+            .name = String::make("Wave"_str),
+            .mode = String::make("loop"_str),
+            .fps  = 30.0f,
+            .end  = i32(60),
+        }));
+    node.RegisterAnimationLayer(playback.clone());
+
+    JsRuntime rt;
+    rt.SetFrameInputs(MakeFi());
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            export function update() {
+                const layer = thisLayer.getAnimationLayer(0);
+                const before = layer.blend * 10 + (layer.visible ? 1 : 0);
+                layer.blend = 0.25;
+                layer.visible = false;
+                return before * 100 + layer.blend * 4 + (layer.visible ? 1 : 0);
+            }
+        )JS"_str,
+        "test/animation_layer_blend_visible"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+    rt.TickAll();
+    ASSERT_TRUE(fs->last_value().is_Scalar());
+    EXPECT_EQ(fs->last_value().as_Scalar().value.v, 1101.0);
+    EXPECT_FLOAT_EQ(playback->Blend(), 0.25f);
+    EXPECT_FALSE(playback->Visible());
+}
+
+// The times an animation gets to its end: every loop, or the end of a single play.
+TEST(SceneAnimationPlayback, CountsEachEnd) {
+    auto make = [](ref<str> mode) {
+        return Arc<owe::SceneAnimationPlayback>::make(
+            Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {
+                .name = String::make("Wave"_str),
+                .mode = String::make(mode),
+                .fps  = 30.0f,
+                .end  = i32(30),
+            }));
+    };
+    Vec<owe::SceneAnimationEvent> events;
+    auto                          loop = make("loop"_str);
+    loop->Advance(0.0, events);
+    loop->Advance(0.5, events);
+    EXPECT_EQ(loop->EndedCount(), u64(0));
+    loop->Advance(2.5, events);
+    EXPECT_EQ(loop->EndedCount(), u64(2));
+
+    auto single = make("single"_str);
+    single->Advance(0.0, events);
+    single->Advance(1.5, events);
+    single->Advance(3.0, events);
+    EXPECT_EQ(single->EndedCount(), u64(1));
+}
+
+// addEndedCallback: called every time the animation layer gets to its end.
+TEST(ScriptAnimationLayer, EndedCallbacksFireEachTimeTheLayerEnds) {
+    owe::SceneNode node;
+    auto           playback = Arc<owe::SceneAnimationPlayback>::make(
+        Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {
+            .name = String::make("Wave"_str),
+            .mode = String::make("loop"_str),
+            .fps  = 30.0f,
+            .end  = i32(30),
+        }));
+    node.RegisterAnimationLayer(playback.clone());
+
+    JsRuntime rt;
+    rt.SetFrameInputs(MakeFi());
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            let ended = 0;
+            export function init() {
+                thisLayer.getAnimationLayer(0).addEndedCallback(() => { ended++; });
+            }
+            export function update() { return ended; }
+        )JS"_str,
+        "test/animation_layer_ended"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+    rt.SetSceneRoot(&node);
+    Vec<owe::SceneAnimationEvent> events;
+    playback->Advance(0.0, events);
+    rt.TickAll();
+    EXPECT_EQ(LastScalar(fs), 0.0);
+    playback->Advance(2.5, events);
+    rt.TickAll();
+    EXPECT_EQ(LastScalar(fs), 2.0);
+    rt.TickAll();
+    EXPECT_EQ(LastScalar(fs), 2.0);
+}
+
+// createAnimationLayer (an animation's name, or a layer's settings), destroyAnimationLayer (a
+// layer, its name or its index) and playSingleAnimation, whose layer goes once it has played.
+TEST(ScriptAnimationLayer, CreateDestroyAndPlaySingle) {
+    owe::SceneNode                        node;
+    Vec<JsRuntime::AnimationLayerRequest> requests;
+    usize                                 destroyed {};
+    JsRuntime                             rt;
+    rt.SetFrameInputs(MakeFi());
+    rt.SetAnimationLayerResolvers(
+        JsRuntime::AnimationLayerCreator::make(
+            [&](owe::SceneNode* owner, JsRuntime::AnimationLayerRequest request)
+                -> Option<Arc<owe::SceneAnimationPlayback>> {
+                if (request.animation != "wave"_str) return None();
+                auto playback = Arc<owe::SceneAnimationPlayback>::make(
+                    Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {
+                        .name = String::make("wave"_str),
+                        .mode = String::make(request.single ? "single"_str : "loop"_str),
+                        .fps  = 30.0f,
+                        .end  = i32(30),
+                    }));
+                owner->RegisterAnimationLayer(playback.clone());
+                requests.push(rstd::move(request));
+                return Some(rstd::move(playback));
+            }),
+        JsRuntime::AnimationLayerDestroyer::make(
+            [&](owe::SceneNode* owner, const owe::SceneAnimationPlayback& playback) {
+                destroyed += usize(1);
+                return owner->UnregisterAnimationLayer(playback);
+            }));
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            let single;
+            export function update() {
+                if (single) return 100 + thisLayer.getAnimationLayerCount();
+                const made = thisLayer.createAnimationLayer('wave');
+                const missing = thisLayer.createAnimationLayer('missing');
+                thisLayer.createAnimationLayer({ animation: 'wave', rate: 2, blend: 0.5, visible: false });
+                const count = thisLayer.getAnimationLayerCount();
+                const removed = thisLayer.destroyAnimationLayer(made);
+                const again = thisLayer.destroyAnimationLayer(made);
+                single = thisLayer.playSingleAnimation('wave');
+                const read = [made !== undefined, missing === undefined, count, removed, again,
+                              thisLayer.getAnimationLayerCount()].join(' ');
+                return read === 'true true 2 true false 2' ? 1 : 0;
+            }
+        )JS"_str,
+        "test/animation_layer_create"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+    rt.TickAll();
+    EXPECT_EQ(LastScalar(fs), 1.0);
+    ASSERT_EQ(requests.len(), usize(3));
+    EXPECT_FALSE(requests[usize(0)].single);
+    EXPECT_DOUBLE_EQ(requests[usize(1)].rate, 2.0);
+    EXPECT_DOUBLE_EQ(requests[usize(1)].blend, 0.5);
+    EXPECT_FALSE(requests[usize(1)].visible);
+    EXPECT_TRUE(requests[usize(2)].single);
+
+    // the single play's layer goes when it gets to its end
+    auto single = node.AnimationLayer(usize(1));
+    ASSERT_TRUE(single.is_some());
+    Vec<owe::SceneAnimationEvent> events;
+    (*single)->Advance(0.0, events);
+    rt.TickAll();
+    EXPECT_EQ(LastScalar(fs), 102.0);
+    (*single)->Advance(2.0, events);
+    rt.TickAll();
+    EXPECT_EQ(LastScalar(fs), 101.0);
+    EXPECT_EQ(destroyed, usize(3));
+}
+
 TEST(ScriptCursor, ClickRestartsNamedAnimationLayer) {
     owe::SceneNode node;
     node.SetTranslate({ 500.0f, 500.0f, 0.0f });

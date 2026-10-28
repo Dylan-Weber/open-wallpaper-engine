@@ -540,6 +540,22 @@ struct EngineHostState {
     // engine.setTimeout / setInterval queue. Swept once per frame in
     // JsRuntime::TickAll before the script update loop runs.
     Vec<DeferredCb> deferred;
+    // addEndedCallback: called each time the playback gets to its end.
+    struct EndedCallback {
+        Arc<owe::SceneAnimationPlayback> playback;
+        u64                              seen;
+        JSValue                          fn; // owned
+        FieldScript*                     owner { nullptr };
+    };
+    Vec<EndedCallback> ended_callbacks;
+    Option<JsRuntime::AnimationLayerCreator>   animation_layer_creator;
+    Option<JsRuntime::AnimationLayerDestroyer> animation_layer_destroyer;
+    // playSingleAnimation's layers, removed once they get to their end.
+    struct SinglePlay {
+        owe::SceneNode*                  node;
+        Arc<owe::SceneAnimationPlayback> playback;
+    };
+    Vec<SinglePlay> single_plays;
     rstd::uint32_t  next_handle { 1 };
     // localStorage backing. Values are JSON-serialised strings so we can
     // round-trip arbitrary script values through the persistence file.
@@ -1924,6 +1940,10 @@ function __wwCreateNodeStub() {
             if (key === 'getVideoTexture')     return () => __wwCreateVideoTextureStub();
             if (key === 'getAnimation')        return ()   => __wwCreateAnimationStub();
             if (key === 'getAnimationLayer')   return (_n) => __wwCreateAnimationStub();
+            if (key === 'getAnimationLayerCount') return () => 0;
+            if (key === 'createAnimationLayer')   return (_a) => undefined;
+            if (key === 'playSingleAnimation')    return (_a, _c) => undefined;
+            if (key === 'destroyAnimationLayer')  return (_a) => false;
             if (key === 'destroyLayer')        return (_layer) => undefined;
             if (key in target) return target[key];
             return undefined;
@@ -1974,6 +1994,8 @@ function __wwCreateAnimationStub() {
     let frame = 0, playing = false;
     const o = {
         rate: 1,
+        blend: 1,
+        visible: true,
         frameCount: 1,
         play()     { playing = true;  },
         stop()     { playing = false; },
@@ -1981,6 +2003,7 @@ function __wwCreateAnimationStub() {
         setFrame(n){ frame = Math.max(0, n | 0); },
         getFrame() { return frame;    },
         isPlaying(){ return playing;  },
+        addEndedCallback(_fn) {},
     };
     return o;
 }
@@ -3584,6 +3607,32 @@ JSValue AnimationGetRate(JSContext* ctx, JSValueConst value) {
     return JS_NewFloat64(ctx, playback != nullptr ? playback->Rate() : 1.0);
 }
 
+JSValue AnimationGetBlend(JSContext* ctx, JSValueConst value) {
+    auto* playback = GetAnimationPlayback(value);
+    return JS_NewFloat64(ctx, playback != nullptr ? playback->Blend() : 1.0);
+}
+
+JSValue AnimationSetBlend(JSContext* ctx, JSValueConst value, JSValueConst next) {
+    double blend = 1.0;
+    if (JS_ToFloat64(ctx, &blend, next) == 0) {
+        if (auto* playback = GetAnimationPlayback(value))
+            playback->SetBlend(static_cast<float>(blend));
+    }
+    return JS_UNDEFINED;
+}
+
+JSValue AnimationGetVisible(JSContext* ctx, JSValueConst value) {
+    auto* playback = GetAnimationPlayback(value);
+    return JS_NewBool(ctx, playback == nullptr || playback->Visible());
+}
+
+JSValue AnimationSetVisible(JSContext* ctx, JSValueConst value, JSValueConst next) {
+    const int visible = JS_ToBool(ctx, next);
+    if (visible < 0) return JS_EXCEPTION;
+    if (auto* playback = GetAnimationPlayback(value)) playback->SetVisible(visible != 0);
+    return JS_UNDEFINED;
+}
+
 JSValue AnimationSetRate(JSContext* ctx, JSValueConst value, JSValueConst next) {
     double rate = 1.0;
     if (JS_ToFloat64(ctx, &rate, next) == 0) {
@@ -3623,6 +3672,49 @@ JSValue AnimationGetFrame(JSContext* ctx, JSValueConst value, int, JSValueConst*
     return JS_NewInt32(ctx, playback != nullptr ? playback->Frame().to_primitive() : 0);
 }
 
+JSValue AnimationAddEndedCallback(JSContext* ctx, JSValueConst value, int argc,
+                                  JSValueConst* argv) {
+    auto* host   = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    auto* handle = static_cast<AnimationHandle*>(JS_GetOpaque(value, s_animation_class_id));
+    if (host == nullptr || handle == nullptr || argc < 1 || ! JS_IsFunction(ctx, argv[0]))
+        return JS_UNDEFINED;
+    host->ended_callbacks.push(EngineHostState::EndedCallback {
+        .playback = handle->playback.clone(),
+        .seen     = handle->playback->EndedCount(),
+        .fn       = JS_DupValue(ctx, argv[0]),
+        .owner    = host->active_field_script,
+    });
+    return JS_UNDEFINED;
+}
+
+// Calls each ended callback once for every time its playback got to its end since the last call.
+void CallEndedCallbacks(JSContext* ctx, EngineHostState* host) {
+    // Iterate by index; callbacks may add more.
+    for (usize i {}; i < host->ended_callbacks.len(); ++i) {
+        while (host->ended_callbacks[i].seen < host->ended_callbacks[i].playback->EndedCount()) {
+            host->ended_callbacks[i].seen += u64(1);
+            auto* previous = host->active_field_script;
+            auto* owner    = host->ended_callbacks[i].owner;
+            if (owner != nullptr && owner->m_impl->alive) {
+                BindFieldScriptContext(ctx, *owner->m_impl, host->default_layer);
+                host->active_field_script = owner;
+            }
+            JSValue fn  = JS_DupValue(ctx, host->ended_callbacks[i].fn);
+            JSValue ret = JS_Call(ctx, fn, JS_UNDEFINED, 0, nullptr);
+            JS_FreeValue(ctx, fn);
+            host->active_field_script = previous;
+            if (JS_IsException(ret)) {
+                JSValue     exc = JS_GetException(ctx);
+                const char* msg = JS_ToCString(ctx, exc);
+                rstd_error("animation ended callback threw: {}", msg ? msg : "<no message>");
+                if (msg) JS_FreeCString(ctx, msg);
+                JS_FreeValue(ctx, exc);
+            }
+            JS_FreeValue(ctx, ret);
+        }
+    }
+}
+
 JSValue AnimationIsPlaying(JSContext* ctx, JSValueConst value, int, JSValueConst*) {
     auto* playback = GetAnimationPlayback(value);
     return JS_NewBool(ctx, playback != nullptr && playback->IsPlaying());
@@ -3634,12 +3726,15 @@ const JSCFunctionListEntry s_animation_proto_funcs[] = {
     JS_CGETSET_DEF("duration", AnimationGetDuration, NodeSetIgnore),
     JS_CGETSET_DEF("name", AnimationGetName, NodeSetIgnore),
     JS_CGETSET_DEF("rate", AnimationGetRate, AnimationSetRate),
+    JS_CGETSET_DEF("blend", AnimationGetBlend, AnimationSetBlend),
+    JS_CGETSET_DEF("visible", AnimationGetVisible, AnimationSetVisible),
     JS_CFUNC_DEF("play", 0, AnimationPlay),
     JS_CFUNC_DEF("stop", 0, AnimationStop),
     JS_CFUNC_DEF("pause", 0, AnimationPause),
     JS_CFUNC_DEF("setFrame", 1, AnimationSetFrame),
     JS_CFUNC_DEF("getFrame", 0, AnimationGetFrame),
     JS_CFUNC_DEF("isPlaying", 0, AnimationIsPlaying),
+    JS_CFUNC_DEF("addEndedCallback", 1, AnimationAddEndedCallback),
 };
 
 void InitAnimationClass(JSContext* ctx, JSRuntime* rt) {
@@ -3726,9 +3821,18 @@ JSValue NodeGetAnimation(JSContext* ctx, JSValueConst this_val, int argc, JSValu
     return WrapAnimation(ctx, rstd::move(playback));
 }
 
+// getAnimationLayer(name or index): the index counts the layer's animation layers in the scene's
+// order.
 JSValue NodeGetAnimationLayer(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
     auto* handle = GetLayerHandle(this_val);
     auto* node   = handle != nullptr ? ResolveLayerNode(handle) : nullptr;
+    if (node != nullptr && argc > 0 && JS_IsNumber(argv[0])) {
+        rstd::int64_t index {};
+        if (JS_ToInt64(ctx, &index, argv[0]) != 0) return JS_EXCEPTION;
+        auto playback = index >= 0 ? node->AnimationLayer(usize(static_cast<rstd::size_t>(index)))
+                                   : None<Arc<owe::SceneAnimationPlayback>>();
+        return WrapAnimationLayer(ctx, rstd::move(playback));
+    }
     if (node == nullptr || argc == 0 || ! JS_IsString(argv[0]))
         return WrapAnimationLayer(ctx, None<Arc<owe::SceneAnimationPlayback>>());
     const char* name = JS_ToCString(ctx, argv[0]);
@@ -3736,6 +3840,130 @@ JSValue NodeGetAnimationLayer(JSContext* ctx, JSValueConst this_val, int argc, J
     auto playback = node->NamedAnimation(rstd::cppstd::as_str(name).unwrap());
     JS_FreeCString(ctx, name);
     return WrapAnimationLayer(ctx, rstd::move(playback));
+}
+
+// The settings of a layer to make: an animation's name, or an object as the scene file has it
+// ({animation: name or id, name, rate, blend, visible, additive}).
+void ReadAnimationLayerRequest(JSContext* ctx, JSValueConst value,
+                               JsRuntime::AnimationLayerRequest& request) {
+    auto read_string = [&](JSValueConst string, String& out) {
+        const char* text = JS_ToCString(ctx, string);
+        if (text == nullptr) return;
+        out = String::make(rstd::cppstd::as_str(text).unwrap());
+        JS_FreeCString(ctx, text);
+    };
+    if (JS_IsString(value)) {
+        read_string(value, request.animation);
+        return;
+    }
+    if (! JS_IsObject(value)) return;
+    JSValue animation = JS_GetPropertyStr(ctx, value, "animation");
+    if (JS_IsNumber(animation)) {
+        rstd::int32_t id {};
+        if (JS_ToInt32(ctx, &id, animation) == 0) request.animation_id = Some(id);
+    } else if (JS_IsString(animation)) {
+        read_string(animation, request.animation);
+    }
+    JS_FreeValue(ctx, animation);
+    JSValue name = JS_GetPropertyStr(ctx, value, "name");
+    if (JS_IsString(name)) read_string(name, request.name);
+    JS_FreeValue(ctx, name);
+    auto read_number = [&](const char* key, double& out) {
+        JSValue number = JS_GetPropertyStr(ctx, value, key);
+        if (JS_IsNumber(number)) (void)JS_ToFloat64(ctx, &out, number);
+        JS_FreeValue(ctx, number);
+    };
+    auto read_flag = [&](const char* key, bool& out) {
+        JSValue flag = JS_GetPropertyStr(ctx, value, key);
+        if (! JS_IsUndefined(flag)) out = JS_ToBool(ctx, flag) > 0;
+        JS_FreeValue(ctx, flag);
+    };
+    read_number("rate", request.rate);
+    read_number("blend", request.blend);
+    read_flag("visible", request.visible);
+    read_flag("additive", request.additive);
+}
+
+JSValue MakeAnimationLayer(JSContext* ctx, JSValueConst this_val,
+                           JsRuntime::AnimationLayerRequest request) {
+    auto* host   = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    auto* handle = GetLayerHandle(this_val);
+    auto* node   = handle != nullptr ? ResolveLayerNode(handle) : nullptr;
+    if (node == nullptr || host == nullptr || ! host->animation_layer_creator) return JS_UNDEFINED;
+    const bool single   = request.single;
+    auto       playback = (*host->animation_layer_creator)->operator()(node, rstd::move(request));
+    if (playback.is_none()) return JS_UNDEFINED;
+    if (single)
+        host->single_plays.push(
+            EngineHostState::SinglePlay { .node = node, .playback = (*playback).clone() });
+    return WrapAnimationLayer(ctx, rstd::move(playback));
+}
+
+JSValue NodeCreateAnimationLayer(JSContext* ctx, JSValueConst this_val, int argc,
+                                 JSValueConst* argv) {
+    JsRuntime::AnimationLayerRequest request;
+    if (argc > 0) ReadAnimationLayerRequest(ctx, argv[0], request);
+    return MakeAnimationLayer(ctx, this_val, rstd::move(request));
+}
+
+// playSingleAnimation(animation, config): the layer plays once, then goes.
+JSValue NodePlaySingleAnimation(JSContext* ctx, JSValueConst this_val, int argc,
+                                JSValueConst* argv) {
+    JsRuntime::AnimationLayerRequest request;
+    if (argc > 0) ReadAnimationLayerRequest(ctx, argv[0], request);
+    if (argc > 1 && JS_IsObject(argv[1])) ReadAnimationLayerRequest(ctx, argv[1], request);
+    request.single = true;
+    return MakeAnimationLayer(ctx, this_val, rstd::move(request));
+}
+
+// destroyAnimationLayer(layer, its name or its index): whether it was one of the layer's.
+JSValue NodeDestroyAnimationLayer(JSContext* ctx, JSValueConst this_val, int argc,
+                                  JSValueConst* argv) {
+    auto* host   = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    auto* handle = GetLayerHandle(this_val);
+    auto* node   = handle != nullptr ? ResolveLayerNode(handle) : nullptr;
+    if (node == nullptr || argc < 1 || ! host->animation_layer_destroyer) return JS_FALSE;
+    Option<Arc<owe::SceneAnimationPlayback>> playback;
+    if (auto* animation =
+            static_cast<AnimationHandle*>(JS_GetOpaque(argv[0], s_animation_class_id))) {
+        playback = Some(animation->playback.clone());
+    } else if (JS_IsNumber(argv[0])) {
+        rstd::int64_t index {};
+        if (JS_ToInt64(ctx, &index, argv[0]) == 0 && index >= 0)
+            playback = node->AnimationLayer(usize(static_cast<rstd::size_t>(index)));
+    } else if (JS_IsString(argv[0])) {
+        const char* name = JS_ToCString(ctx, argv[0]);
+        if (name == nullptr) return JS_EXCEPTION;
+        playback = node->NamedAnimation(rstd::cppstd::as_str(name).unwrap());
+        JS_FreeCString(ctx, name);
+    }
+    if (playback.is_none()) return JS_FALSE;
+    const auto* pointer = (*playback).as_ptr().as_raw_ptr();
+    host->single_plays.retain([pointer](const EngineHostState::SinglePlay& play) {
+        return play.playback.as_ptr().as_raw_ptr() != pointer;
+    });
+    return JS_NewBool(ctx, (*host->animation_layer_destroyer)->operator()(node, **playback));
+}
+
+// Removes playSingleAnimation's layers that got to their end.
+void RemoveFinishedSinglePlays(EngineHostState* host) {
+    if (! host->animation_layer_destroyer) return;
+    Vec<EngineHostState::SinglePlay> finished;
+    host->single_plays.retain([&](const EngineHostState::SinglePlay& play) {
+        if (play.playback->EndedCount() == u64()) return true;
+        finished.push(
+            EngineHostState::SinglePlay { .node = play.node, .playback = play.playback.clone() });
+        return false;
+    });
+    for (const auto& play : finished)
+        (void)(*host->animation_layer_destroyer)->operator()(play.node, *play.playback);
+}
+
+JSValue NodeGetAnimationLayerCount(JSContext* ctx, JSValueConst this_val, int, JSValueConst*) {
+    auto* handle = GetLayerHandle(this_val);
+    auto* node   = handle != nullptr ? ResolveLayerNode(handle) : nullptr;
+    auto  count  = node != nullptr ? node->AnimationLayerCount().to_primitive() : 0;
+    return JS_NewInt64(ctx, static_cast<rstd::int64_t>(count));
 }
 
 static JSClassID s_video_texture_class_id = 0;
@@ -3904,6 +4132,10 @@ const JSCFunctionListEntry s_layer_proto_funcs[] = {
     JS_CFUNC_DEF("emitParticles", 1, NodeEmitParticles),
     JS_CFUNC_DEF("getAnimation", 1, NodeGetAnimation),
     JS_CFUNC_DEF("getAnimationLayer", 1, NodeGetAnimationLayer),
+    JS_CFUNC_DEF("getAnimationLayerCount", 0, NodeGetAnimationLayerCount),
+    JS_CFUNC_DEF("createAnimationLayer", 1, NodeCreateAnimationLayer),
+    JS_CFUNC_DEF("playSingleAnimation", 2, NodePlaySingleAnimation),
+    JS_CFUNC_DEF("destroyAnimationLayer", 1, NodeDestroyAnimationLayer),
     JS_CFUNC_DEF("createLayer", 1, NodeSceneCreateLayer),
     JS_CFUNC_DEF("destroyLayer", 1, NodeSceneDestroyLayer),
     JS_CFUNC_DEF("getLayerIndex", 1, NodeSceneGetLayerIndex),
@@ -4172,6 +4404,8 @@ JsRuntime::~JsRuntime() {
         if (! JS_IsUndefined(d.fn)) JS_FreeValue(m_impl->ctx, d.fn);
     }
     m_impl->host.deferred.clear();
+    for (auto& callback : m_impl->host.ended_callbacks) JS_FreeValue(m_impl->ctx, callback.fn);
+    m_impl->host.ended_callbacks.clear();
     PruneSceneLayerBindings(m_impl->ctx, m_impl->host, nullptr);
     if (m_impl->ctx) JS_FreeContext(m_impl->ctx);
     if (m_impl->rt) JS_FreeRuntime(m_impl->rt);
@@ -4285,6 +4519,12 @@ void JsRuntime::SetMediaStatus(const MediaStatus& status) {
     m_impl->host.active_field_script = nullptr;
 }
 
+void JsRuntime::SetAnimationLayerResolvers(AnimationLayerCreator   creator,
+                                           AnimationLayerDestroyer destroyer) {
+    m_impl->host.animation_layer_creator   = Some(rstd::move(creator));
+    m_impl->host.animation_layer_destroyer = Some(rstd::move(destroyer));
+}
+
 void JsRuntime::SetBoneResolvers(BoneIndexResolver     index_resolver,
                                  BoneTransformResolver transform_resolver) {
     m_impl->host.bone_index_resolver     = Some(rstd::move(index_resolver));
@@ -4358,6 +4598,8 @@ void JsRuntime::SetSceneRoot(owe::SceneNode* root) {
 void JsRuntime::TickAll(slice<owe::SceneAnimationEventDispatch> animation_events) {
     JSContext* ctx = m_impl->ctx;
     SweepDeferred(ctx, &m_impl->host);
+    CallEndedCallbacks(ctx, &m_impl->host);
+    RemoveFinishedSinglePlays(&m_impl->host);
     const auto script_count = usize(m_impl->scripts.len().to_primitive());
 
     // Node animations run before scripts; cached script returns must not erase their values.

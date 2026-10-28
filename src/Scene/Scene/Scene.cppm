@@ -1395,6 +1395,13 @@ public:
     float    Fps() const { return m_clip->Fps(); }
     float    Rate() const { return m_rate; }
     bool     StartsPaused() const { return m_start_paused; }
+    // As an animation layer: how much it weighs, and whether it applies at all.
+    float    Blend() const { return m_blend; }
+    void     SetBlend(float blend) { m_blend = blend; }
+    bool     Visible() const { return m_visible; }
+    void     SetVisible(bool visible) { m_visible = visible; }
+    // How many times it has got to its end: every loop, or a single play's end.
+    u64      EndedCount() const { return m_ended; }
     double   Duration() const;
     double   PositionSeconds() const { return m_position_seconds; }
     ref<str> Name() const { return m_clip->Name(); }
@@ -1408,6 +1415,9 @@ private:
     bool                    m_mirror { false };
     bool                    m_playing { true };
     bool                    m_start_paused { false };
+    float                   m_blend { 1.0f };
+    bool                    m_visible { true };
+    u64                     m_ended {};
     Option<double>          m_last_runtime;
     double                  m_position_seconds { 0.0 };
     double                  m_previous_frame { -0.5 };
@@ -1456,6 +1466,7 @@ class SceneAnimationSet {
 public:
     void Register(Arc<SceneAnimationPlayback> playback);
     void Register(String property, Arc<SceneAnimationPlayback> playback);
+    void Unregister(const SceneAnimationPlayback& playback);
     auto ForProperty(ref<str> property) const -> Option<Arc<SceneAnimationPlayback>>;
     auto Named(ref<str> name) const -> Option<Arc<SceneAnimationPlayback>>;
     void Advance(SceneNode& owner, double runtime, Vec<SceneAnimationEventDispatch>& events);
@@ -1749,6 +1760,12 @@ public:
     auto FieldAnimation(ref<str> field) const -> Option<Arc<SceneAnimationPlayback>>;
     bool HasFieldAnimationTrack(ref<str> field) const;
     auto NamedAnimation(ref<str> name) const -> Option<Arc<SceneAnimationPlayback>>;
+    // Its animation layers (a puppet's, in the scene's order), for scripts' getAnimationLayer.
+    void RegisterAnimationLayer(Arc<SceneAnimationPlayback> playback);
+    // Scripts' destroyAnimationLayer: false for a playback that isn't one of its animation layers.
+    bool UnregisterAnimationLayer(const SceneAnimationPlayback& playback);
+    auto AnimationLayer(usize index) const -> Option<Arc<SceneAnimationPlayback>>;
+    auto AnimationLayerCount() const -> usize { return m_animation_layers.len(); }
     void TickFieldAnimations(double runtime, Vec<SceneAnimationEventDispatch>& events);
     void SetAlphaSource(SceneNode* node) { m_alpha_source = node; }
 
@@ -1946,6 +1963,7 @@ private:
     SceneNode*                             m_alpha_source { nullptr };
     Vec<SceneNodeFieldAnimation>           m_field_animation_tracks;
     SceneAnimationSet                      m_animations;
+    Vec<Arc<SceneAnimationPlayback>>       m_animation_layers;
     float                                  m_brightness { 1.0f };
     bool                                   m_brightness_overridden { false };
     Eigen::Vector3f                        m_color { 1.0f, 1.0f, 1.0f };

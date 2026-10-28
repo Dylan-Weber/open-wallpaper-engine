@@ -120,7 +120,7 @@ Arc<PuppetLayer> MakePuppetLayer(Arc<Puppet> puppet, slice<wpscene::PuppetAnimat
 void RegisterPuppetLayer(SceneParseContext& context, SceneNode* node, Arc<PuppetLayer> layer) {
     if (! node) return;
     for (const auto& playback : layer->AnimationPlaybacks())
-        node->RegisterAnimation(playback.clone());
+        node->RegisterAnimationLayer(playback.clone());
     (void)context.puppet_layers->by_node.insert(node, rstd::move(layer));
 }
 
@@ -254,7 +254,38 @@ script::ScriptScene& EnsureScriptScene(SceneParseContext& context) {
                     const Eigen::Vector3f directional(d[usize(0)], d[usize(1)], d[usize(2)]);
                     const Eigen::Vector3f angular(a[usize(0)], a[usize(1)], a[usize(2)]);
                     (*layer)->ApplyBoneImpulse(request.bone, directional, angular);
-                }));
+                }))
+            .SetAnimationLayerResolvers(
+                script::JsRuntime::AnimationLayerCreator::make(
+                    [layers = layers.clone()](SceneNode*                               node,
+                                              script::JsRuntime::AnimationLayerRequest request)
+                        -> Option<Arc<SceneAnimationPlayback>> {
+                        auto layer = LookupPuppetLayer(layers, node);
+                        if (layer.is_none()) return None();
+                        auto id = request.animation_id.is_some()
+                                      ? request.animation_id
+                                      : (*layer)->AnimationIdNamed(request.animation.as_str());
+                        if (id.is_none()) return None();
+                        auto playback = (*layer)->AddAnimationLayer(
+                            PuppetLayer::AnimationLayer {
+                                .id       = *id,
+                                .rate     = request.rate,
+                                .blend    = request.blend,
+                                .visible  = request.visible,
+                                .name     = rstd::move(request.name),
+                                .additive = request.additive,
+                            },
+                            request.single);
+                        if (playback.is_some()) node->RegisterAnimationLayer((*playback).clone());
+                        return playback;
+                    }),
+                script::JsRuntime::AnimationLayerDestroyer::make(
+                    [layers = layers.clone()](SceneNode*                    node,
+                                              const SceneAnimationPlayback& playback) {
+                        auto layer = LookupPuppetLayer(layers, node);
+                        if (layer.is_some()) (void)(*layer)->RemoveAnimationLayer(playback);
+                        return node->UnregisterAnimationLayer(playback);
+                    }));
         if (context.user_properties.is_some())
             (*context.user_properties)->iter().for_each([&](auto entry) {
                 auto [entry_key, entry_value] = entry;

@@ -272,6 +272,8 @@ public:
         bool          blendin { false };  // PKGV0021+
         bool          blendout { false }; // PKGV0021+
         double        blendtime { 0.0 };  // PKGV0021+
+        // A single play (playSingleAnimation), whatever the animation's own mode.
+        bool single { false };
 
         auto Clone() const -> AnimationLayer;
     };
@@ -291,6 +293,11 @@ public:
     void ApplyBoneImpulse(Option<rstd::uint32_t> bone, const Eigen::Vector3f& directional,
                           const Eigen::Vector3f& angular);
     void ResetBonePhysics(Option<rstd::uint32_t> bone);
+    // Scripts' createAnimationLayer / destroyAnimationLayer. The other layers keep their playbacks.
+    auto AnimationIdNamed(ref<str> name) const -> Option<rstd::int32_t>;
+    auto AddAnimationLayer(AnimationLayer layer, bool single)
+        -> Option<Arc<SceneAnimationPlayback>>;
+    bool RemoveAnimationLayer(const SceneAnimationPlayback& playback);
     auto TextureChannelBlendMap(double time) noexcept -> slice<float>;
 
     struct PartOrder {
@@ -311,9 +318,16 @@ private:
         Puppet::Animation::InterpolationInfo interp_info {};
 
         bool IsAdditiveTransform() const { return anim_layer.additive && ! legacy_absolute_base; }
+        // What scripts set on the playback, which starts with the scene's values.
+        bool   Visible() const { return playback ? (*playback)->Visible() : anim_layer.visible; }
+        double Blend() const { return playback ? (*playback)->Blend() : anim_layer.blend; }
 
         operator bool() const noexcept { return anim != nullptr; };
     };
+
+    // Prepares these layers, giving back the playbacks kept for them.
+    void prepareKeeping(slice<AnimationLayer>                    layers,
+                        Vec<Option<Arc<SceneAnimationPlayback>>> kept);
 
     Vec<Layer>                       m_layers;
     Vec<Arc<SceneAnimationPlayback>> m_playbacks;
