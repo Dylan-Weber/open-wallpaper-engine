@@ -52,7 +52,8 @@ class RenderMsg final {
               (BeginSceneLoad, (Arc<SceneLoadState> load;)),
               (SetScene,
                (Arc<SceneLoadState> load; Box<Scene> scene; Arc<UniformRuntimeInput> uniform_input;
-                Option<SceneLoadBenchHandle> load_bench; Option<u64> random_seed;)),
+                Option<SceneLoadBenchHandle> load_bench; Option<u64> random_seed;
+                Option<scene_audio::Buffers>                         fixed_audio;)),
               (SetFillMode, (FillMode mode;)), (SetSpeed, (f32 speed;)),
               (SetMouseParallax, (bool enabled;)), (SetUserProperty, (String key; Json property;)),
               (SetMediaStatus, (MediaStatus status;)),
@@ -344,6 +345,8 @@ private:
     bool                                m_audio_response_enabled { true };
     audio::ResponseEngine               m_audio_response_engine;
     scene_audio::ResponseProcessor      m_scene_audio_response;
+    // a spectrum held still instead of what is heard (SceneWallpaperConfig::fixed_audio)
+    Option<scene_audio::Buffers>        m_fixed_audio;
     bool                                m_first_frame_ok { false };
     double                              m_frame_delta {};
 
@@ -509,7 +512,10 @@ void SceneRenderController::onDraw() {
             fi.mouse_buttons_down     = buttonsDown().to_primitive();
             fi.mouse_buttons_pressed  = consumePressed().to_primitive();
             fi.mouse_buttons_released = consumeReleased().to_primitive();
-            (void)m_scene_audio_response.advance(fi.frametime, fi.audio);
+            if (m_fixed_audio)
+                fi.audio = *m_fixed_audio;
+            else
+                (void)m_scene_audio_response.advance(fi.frametime, fi.audio);
             return (*m_pipeline)->prepare(fi, load_bench);
         }();
         if (prepared.is_err() || *prepared != PrepareOutcome::Ready) {
@@ -590,6 +596,7 @@ void SceneRenderController::on(RenderMsg::SetScene_payload&& m) {
         using Seed = decltype(Random::max());
         Random::seed(static_cast<Seed>(m.random_seed->to_primitive()));
     }
+    m_fixed_audio = rstd::move(m.fixed_audio);
     detachSceneAudioResponseDemandCallback();
     m_pipeline            = None();
     m_scene               = nullptr;
@@ -1220,7 +1227,8 @@ void SceneRuntimeController::loadScene() {
                                      rstd::move(parsed.scene),
                                      rstd::move(parsed.runtime_input),
                                      m_config.load_bench.clone(),
-                                     m_config.random_seed))
+                                     m_config.random_seed,
+                                     m_config.fixed_audio))
             .is_err()) {
         abort_load();
         return;
