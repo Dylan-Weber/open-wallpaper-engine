@@ -67,9 +67,24 @@ enum class LightUniformOutput : rstd::uint32_t
 
 enum class ShadowUniformOutput : rstd::uint32_t
 {
+    // the first shadowed directional light's cascades, as Wallpaper Engine's casters read them
     ViewProjectionMatrices,
     AtlasTransforms,
+    // every shadowed light's views (kShadowViewCount), their atlas squares, and each light slot's
+    // first view (-1 without a shadow map)
+    Views,
+    ViewAtlasTransforms,
+    LightViews,
+    // each light slot's point light depth terms for the stock point lookup
+    PointProjections,
 };
+
+inline constexpr usize kShadowViewCount { 24 };
+
+// Each shadow view's square of the atlas: Wallpaper Engine's "medium" shadows (1024 pixels at
+// "ultra", 512 at "high"), the quality owe compiles (LIGHTS_SHADOW_MAPPING_QUALITY 2) and the one
+// the reference pictures are taken at.
+inline constexpr int kShadowTileSize { 256 };
 
 enum class ColorUniformOutput : rstd::uint32_t
 {
@@ -402,8 +417,13 @@ private:
 
 class ShadowUniformSource {
 public:
-    ShadowUniformSource(Arc<SceneCamera> camera, ref<SceneLight> light)
-        : m_camera(rstd::move(camera)), m_light(light) {}
+    // `lights` in the light slots' order; `atlas_transforms` holds each view's square of the atlas
+    // (x, y, width, height, in its texture coordinates).
+    ShadowUniformSource(Arc<SceneCamera> camera, Vec<ref<SceneLight>> lights,
+                        Vec<float> atlas_transforms)
+        : m_camera(rstd::move(camera)),
+          m_lights(rstd::move(lights)),
+          m_atlas_transforms(rstd::move(atlas_transforms)) {}
 
     auto Describe(mut_ref<dyn<UniformBindingSink>>) const -> Result<empty, UniformError>;
     auto Version(ref<dyn<UniformUpdateContext>>) const -> u64;
@@ -412,8 +432,9 @@ public:
     auto AcquireBindingLease() const -> Option<Box<dyn<UniformBindingLease>>> { return None(); }
 
 private:
-    Arc<SceneCamera> m_camera;
-    ref<SceneLight>  m_light;
+    Arc<SceneCamera>     m_camera;
+    Vec<ref<SceneLight>> m_lights;
+    Vec<float>           m_atlas_transforms;
 };
 
 class TextureUniformSource {

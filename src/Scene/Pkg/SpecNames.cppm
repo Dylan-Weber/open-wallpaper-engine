@@ -110,6 +110,11 @@ inline constexpr ref<str> G_MORPHWEIGHTS                   = "g_MorphWeights"_st
 inline constexpr ref<str> G_MORPHOFFSETS                   = "g_MorphOffsets"_str;
 inline constexpr ref<str> G_VIEWPORTVIEWPROJECTIONMATRICES = "g_ViewportViewProjectionMatrices"_str;
 inline constexpr ref<str> G_SHADOWATLASTRANSFORMS          = "g_ShadowAtlasTransforms"_str;
+// owe's own: every shadowed light's views in one list, and where each light slot's views start
+inline constexpr ref<str> G_OWESHADOWVIEWPROJECTIONS       = "g_OweShadowViewProjections"_str;
+inline constexpr ref<str> G_OWESHADOWATLASTRANSFORMS       = "g_OweShadowAtlasTransforms"_str;
+inline constexpr ref<str> G_OWELIGHTSSHADOWVIEW            = "g_OweLightsShadowView"_str;
+inline constexpr ref<str> G_OWELIGHTSSHADOWPROJECTION      = "g_OweLightsShadowProjection"_str;
 inline constexpr ref<str> G_VIEWUP                         = "g_ViewUp"_str;
 inline constexpr ref<str> G_VIEWRIGHT                      = "g_ViewRight"_str;
 inline constexpr ref<str> G_VIEWFORWARD                    = "g_ViewForward"_str;

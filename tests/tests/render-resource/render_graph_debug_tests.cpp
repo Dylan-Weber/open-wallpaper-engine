@@ -398,6 +398,19 @@ TEST(RenderGraphResources, PreservesFrameBoundaryTextureVersions) {
     }
 }
 
+// Casters keep the depth nearest the light (the greater: the atlas clears to 0), unclipped, moved
+// away from the light by its slope (Wallpaper Engine's bias of 4) and by a few steps of the depth:
+// a point light's -z face sees model-shadow-point's wall square on, where the slope is nothing
+// and the wall shadowed itself all over.
+TEST(SceneRenderGraph, ShadowCastersMoveTheirDepthAwayFromTheLight) {
+    const auto pipeline = owe::ShadowCasterPipeline({});
+    EXPECT_TRUE(pipeline.depth_clamp);
+    EXPECT_EQ(pipeline.depth_compare, owe::CompareOp::Greater);
+    EXPECT_TRUE(pipeline.depth_bias);
+    EXPECT_FLOAT_EQ(pipeline.depth_bias_slope, -4.0f);
+    EXPECT_FLOAT_EQ(pipeline.depth_bias_constant, -4.0f);
+}
+
 TEST(SceneRenderGraph, OrdersShadowAtlasWriterBeforeReceiver) {
     owe::Scene scene;
     scene.RegisterRenderTarget(String::make("_rt_default"_str),
@@ -415,16 +428,31 @@ TEST(SceneRenderGraph, OrdersShadowAtlasWriterBeforeReceiver) {
     });
     scene.RegisterShadowDefinition(owe::SceneShadowDefinition {
         .target    = String::make("_rt_shadowAtlas"_str),
-        .viewports = rstd::move(viewports),
+        .viewports = viewports.clone(),
+    });
+    // a second shadowed light, with two views of its own
+    viewports.push(owe::SceneShadowViewport {
+        .x      = rstd::f32(256.0f),
+        .width  = rstd::f32(256.0f),
+        .height = rstd::f32(256.0f),
+    });
+    scene.RegisterShadowDefinition(owe::SceneShadowDefinition {
+        .target      = String::make("_rt_shadowAtlas"_str),
+        .viewports   = rstd::move(viewports),
+        .light_id    = i32(7),
+        .view_offset = u32(1),
     });
 
-    auto caster                             = Arc<owe::SceneNode>::make();
-    caster->shadow.cast                     = true;
-    auto caster_mesh                        = Arc<owe::SceneMesh>::make();
-    auto caster_material                    = GraphMaterial();
-    caster_material.name                    = "caster-main"_Str;
-    caster_material.shadow_variant          = Some(Arc<owe::SceneMaterial>::make(GraphMaterial()));
-    (*caster_material.shadow_variant)->name = "caster-shadow"_Str;
+    auto caster          = Arc<owe::SceneNode>::make();
+    caster->shadow.cast  = true;
+    auto caster_mesh     = Arc<owe::SceneMesh>::make();
+    auto caster_material = GraphMaterial();
+    caster_material.name = "caster-main"_Str;
+    for (auto name : { "caster-shadow"_str, "caster-shadow-second"_str }) {
+        auto variant  = Arc<owe::SceneMaterial>::make(GraphMaterial());
+        variant->name = rstd::into(name);
+        caster_material.shadow_variants.push(rstd::move(variant));
+    }
     caster_mesh->AddMaterial(rstd::move(caster_material));
     caster_mesh->Submeshes().push(owe::SceneMesh::Submesh {});
     caster->AddMesh(rstd::move(caster_mesh));
@@ -442,7 +470,14 @@ TEST(SceneRenderGraph, OrdersShadowAtlasWriterBeforeReceiver) {
     scene.RootMut()->AppendChild(receiver.clone());
 
     auto snapshot = owe::ExtractRenderSceneSnapshot(scene);
-    ASSERT_EQ(snapshot.ShadowCasters().len(), usize(1));
+    // one caster draw for each light, with that light's views
+    ASSERT_EQ(snapshot.ShadowCasters().len(), usize(2));
+    EXPECT_EQ(snapshot.ShadowCasters()[usize()].definition, usize());
+    EXPECT_EQ(snapshot.ShadowCasters()[usize()].instance_count, u32(1));
+    EXPECT_EQ(snapshot.ShadowCasters()[usize(1)].definition, usize(1));
+    EXPECT_EQ(snapshot.ShadowCasters()[usize(1)].instance_count, u32(2));
+    EXPECT_EQ(snapshot.ShadowCasters()[usize(1)].material->name.as_str(),
+              "caster-shadow-second"_str);
     auto graph = owe::BuildSceneRenderState(scene, snapshot);
     ASSERT_TRUE(graph.is_ok());
     auto ordered = graph->graph.compile();

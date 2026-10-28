@@ -46,6 +46,8 @@ public:
         bool old_kind { false };
         // A spot light projecting the scene's light cookie over its cone.
         bool cookie { false };
+        // Its first view in the scene's list of shadow views (-1: it has no shadow map).
+        i32 shadow_view { i32(-1) };
     };
 
     explicit SceneLight(const Desc& d)

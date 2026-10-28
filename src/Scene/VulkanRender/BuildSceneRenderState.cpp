@@ -752,13 +752,15 @@ static void EmitShadowPasses(ExtraInfo& extra) {
     if (extra.render_scene == nullptr) return;
     auto definitions = extra.render_scene->ShadowDefinitions();
     if (definitions.is_empty()) return;
-    const auto& definition = definitions.first().unwrap().get();
-    const auto  target     = definition.target.as_str();
-    bool        first      = true;
+    // the first draw clears the whole atlas; every light's casters draw into its own squares
+    bool first = true;
 
     for (const auto& caster : extra.render_scene->ShadowCasters()) {
         const auto* item = extra.render_scene->renderItem(caster.render_item);
-        if (item == nullptr || ! caster.material) continue;
+        if (item == nullptr || ! caster.material || caster.definition >= definitions.len())
+            continue;
+        const auto& definition = definitions[caster.definition];
+        const auto  target     = definition.target.as_str();
         auto draw = extra.scene->ResourceIndex().resolve(item->scene_draw_item);
         if (draw.is_none() || draw->node == nullptr || draw->mesh == nullptr) continue;
         extra.scene->ResolveMaterialTextureSources(*caster.material);
