@@ -665,9 +665,9 @@ BuildContext(fs::VFS& vfs, ref<str> scene_id, const wpscene::SceneMetadata& sc,
         });
 
     if (context.shader_environment.shadow_mapping) {
-        // Wallpaper Engine's "ultra" shadows: a 1024-pixel square of the atlas for each spot light
-        // and each cascade (512 at "high", 256 below), in rows of a near square: the spots' first.
-        constexpr int tile       = 1024;
+        // a square of the atlas for each spot light and each cascade, in rows of a near square:
+        // the spots' first
+        constexpr int tile       = kShadowTileSize;
         const auto    squares_of = [](SceneLightType type) {
             return type == SceneLightType::Directional ? 3 : type == SceneLightType::Spot ? 1 : 0;
         };
