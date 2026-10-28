@@ -80,10 +80,27 @@ enum class ShadowUniformOutput : rstd::uint32_t
 
 inline constexpr usize kShadowViewCount { 24 };
 
-// Each shadow view's square of the atlas: Wallpaper Engine's "medium" shadows (1024 pixels at
-// "ultra", 512 at "high"), the quality owe compiles (LIGHTS_SHADOW_MAPPING_QUALITY 2) and the one
-// the reference pictures are taken at.
-inline constexpr int kShadowTileSize { 256 };
+// Wallpaper Engine's shadow quality setting, numbered as its shaders number it
+// (LIGHTS_SHADOW_MAPPING_QUALITY). Medium is owe's default.
+enum class ShadowQuality : rstd::uint8_t
+{
+    Low    = 1,
+    Medium = 2,
+    High   = 3,
+    Ultra  = 4,
+};
+
+// Each shadow view's square of the atlas: 256 pixels at low and medium shadows, 512 at high, 1024
+// at ultra.
+constexpr int ShadowTileSize(ShadowQuality quality) {
+    return quality == ShadowQuality::Ultra ? 1024 : quality == ShadowQuality::High ? 512 : 256;
+}
+
+// How wide a point light's six views are, in degrees: wider than a cube's faces by what the stock
+// lookup's compensation (0.47 at low and medium, 0.48 at high, 0.49 at ultra) undoes.
+constexpr double PointShadowFieldOfView(ShadowQuality quality) {
+    return quality == ShadowQuality::Ultra ? 91.2 : quality == ShadowQuality::High ? 92.0 : 94.0;
+}
 
 enum class ColorUniformOutput : rstd::uint32_t
 {
@@ -409,10 +426,11 @@ public:
     // `lights` in the light slots' order; `atlas_transforms` holds each view's square of the atlas
     // (x, y, width, height, in its texture coordinates).
     ShadowUniformSource(Arc<SceneCamera> camera, Vec<ref<SceneLight>> lights,
-                        Vec<float> atlas_transforms)
+                        Vec<float> atlas_transforms, ShadowQuality quality = ShadowQuality::Medium)
         : m_camera(rstd::move(camera)),
           m_lights(rstd::move(lights)),
-          m_atlas_transforms(rstd::move(atlas_transforms)) {}
+          m_atlas_transforms(rstd::move(atlas_transforms)),
+          m_quality(quality) {}
 
     auto Describe(mut_ref<dyn<UniformBindingSink>>) const -> Result<empty, UniformError>;
     auto Version(ref<dyn<UniformUpdateContext>>) const -> u64;
@@ -424,6 +442,7 @@ private:
     Arc<SceneCamera>     m_camera;
     Vec<ref<SceneLight>> m_lights;
     Vec<float>           m_atlas_transforms;
+    ShadowQuality        m_quality;
 };
 
 class TextureUniformSource {

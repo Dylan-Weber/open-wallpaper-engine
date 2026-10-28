@@ -630,59 +630,72 @@ TEST(ShadowUniformSource, SpotLightSeesItsConeFromNearToRadius) {
 // compensation); its light slot carries the depth terms the lookup projects with, from
 // `lightsourcesize` (at least 0.05) to its radius, nearer deeper.
 TEST(ShadowUniformSource, PointLightSeesSixFacesFromItsSizeToRadius) {
-    auto camera =
-        Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000.0, 50.0));
-    camera->SetLookAt(Eigen::Vector3d::Zero(), -Eigen::Vector3d::UnitZ(), Eigen::Vector3d::UnitY());
-    auto                  point_node = Arc<owe::SceneNode>::make(Eigen::Vector3f(1.0f, 2.0f, 3.0f),
-                                                                 Eigen::Vector3f::Ones(),
-                                                                 Eigen::Vector3f::Zero(),
-                                                                 "point"_str);
-    owe::SceneLight::Desc desc;
-    desc.type              = owe::SceneLightType::Point;
-    desc.cast_shadow       = true;
-    desc.radius            = 10.0f;
-    desc.light_source_size = 0.2f;
-    desc.shadow_view       = i32(2);
-    owe::SceneLight point(desc);
-    point.setNode(point_node.as_ptr());
-    auto lights = Vec<ref<owe::SceneLight>>::make();
-    lights.push(ref<owe::SceneLight>::from_raw_parts(rstd::addressof(point)));
-    owe::ShadowUniformSource source(rstd::move(camera), rstd::move(lights), Vec<float>::make());
-
-    owe::SceneFrame frame;
-    auto slots = scene_test::Capture(frame, source, owe::ShadowUniformOutput::LightViews);
-    EXPECT_FLOAT_EQ(slots[usize()], 2.0f);
-    const float nearz = 0.2f, farz = 10.0f;
-    auto        projections =
-        scene_test::Capture(frame, source, owe::ShadowUniformOutput::PointProjections);
-    ASSERT_EQ(projections.size(), usize(16));
-    EXPECT_NEAR(projections[usize()], nearz / (farz - nearz), 1e-6f);
-    EXPECT_NEAR(projections[usize(1)], nearz * farz / (farz - nearz), 1e-6f);
-    EXPECT_FLOAT_EQ(projections[usize(2)], -1.0f);
-    EXPECT_FLOAT_EQ(projections[usize(3)], 0.0f);
-
-    auto views = scene_test::Capture(frame, source, owe::ShadowUniformOutput::Views);
-    const Eigen::Vector3f light(1.0f, 2.0f, 3.0f);
-    // each face's direction, sideways and upwards axes
-    const float faces[6][3][3] = {
-        { { 1, 0, 0 }, { 0, 0, 1 }, { 0, 1, 0 } },  { { -1, 0, 0 }, { 0, 0, -1 }, { 0, 1, 0 } },
-        { { 0, 1, 0 }, { 1, 0, 0 }, { 0, 0, 1 } },  { { 0, -1, 0 }, { 1, 0, 0 }, { 0, 0, -1 } },
-        { { 0, 0, 1 }, { -1, 0, 0 }, { 0, 1, 0 } }, { { 0, 0, -1 }, { 1, 0, 0 }, { 0, 1, 0 } },
+    struct Case {
+        owe::ShadowQuality quality;
+        float              degrees; // half the faces' width
     };
-    const float focal = 1.0f / std::tan(47.0f * 3.14159265f / 180.0f);
-    for (int face = 0; face < 6; ++face) {
-        Eigen::Matrix4f view_projection;
-        for (int value = 0; value < 16; ++value)
-            view_projection.data()[value] = views[usize((2 + face) * 16 + value)];
-        const Eigen::Vector3f ahead(faces[face][0][0], faces[face][0][1], faces[face][0][2]);
-        const Eigen::Vector3f side(faces[face][1][0], faces[face][1][1], faces[face][1][2]);
-        const Eigen::Vector3f up(faces[face][2][0], faces[face][2][1], faces[face][2][2]);
-        const Eigen::Vector4f clip =
-            view_projection * (light + ahead * 3.0f + side * 0.6f + up * 0.3f).homogeneous();
-        EXPECT_NEAR(clip.x() / clip.w(), focal * 0.6f / 3.0f, 1e-4f) << face;
-        EXPECT_NEAR(clip.y() / clip.w(), focal * 0.3f / 3.0f, 1e-4f) << face;
-        EXPECT_NEAR(clip.z() / clip.w(), nearz * (farz - 3.0f) / (3.0f * (farz - nearz)), 1e-5f)
-            << face;
+    const Case cases[] { { owe::ShadowQuality::Medium, 47.0f },
+                         { owe::ShadowQuality::High, 46.0f },
+                         { owe::ShadowQuality::Ultra, 45.6f } };
+    for (const auto& [quality, degrees] : cases) {
+        auto camera =
+            Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000.0, 50.0));
+        camera->SetLookAt(
+            Eigen::Vector3d::Zero(), -Eigen::Vector3d::UnitZ(), Eigen::Vector3d::UnitY());
+        auto point_node = Arc<owe::SceneNode>::make(Eigen::Vector3f(1.0f, 2.0f, 3.0f),
+                                                    Eigen::Vector3f::Ones(),
+                                                    Eigen::Vector3f::Zero(),
+                                                    "point"_str);
+        owe::SceneLight::Desc desc;
+        desc.type              = owe::SceneLightType::Point;
+        desc.cast_shadow       = true;
+        desc.radius            = 10.0f;
+        desc.light_source_size = 0.2f;
+        desc.shadow_view       = i32(2);
+        owe::SceneLight point(desc);
+        point.setNode(point_node.as_ptr());
+        auto lights = Vec<ref<owe::SceneLight>>::make();
+        lights.push(ref<owe::SceneLight>::from_raw_parts(rstd::addressof(point)));
+        owe::ShadowUniformSource source(
+            rstd::move(camera), rstd::move(lights), Vec<float>::make(), quality);
+
+        owe::SceneFrame frame;
+        auto slots = scene_test::Capture(frame, source, owe::ShadowUniformOutput::LightViews);
+        EXPECT_FLOAT_EQ(slots[usize()], 2.0f);
+        const float nearz = 0.2f, farz = 10.0f;
+        auto        projections =
+            scene_test::Capture(frame, source, owe::ShadowUniformOutput::PointProjections);
+        ASSERT_EQ(projections.size(), usize(16));
+        EXPECT_NEAR(projections[usize()], nearz / (farz - nearz), 1e-6f);
+        EXPECT_NEAR(projections[usize(1)], nearz * farz / (farz - nearz), 1e-6f);
+        EXPECT_FLOAT_EQ(projections[usize(2)], -1.0f);
+        EXPECT_FLOAT_EQ(projections[usize(3)], 0.0f);
+
+        auto views = scene_test::Capture(frame, source, owe::ShadowUniformOutput::Views);
+        const Eigen::Vector3f light(1.0f, 2.0f, 3.0f);
+        // each face's direction, sideways and upwards axes
+        const float faces[6][3][3] = {
+            { { 1, 0, 0 }, { 0, 0, 1 }, { 0, 1, 0 } },  { { -1, 0, 0 }, { 0, 0, -1 }, { 0, 1, 0 } },
+            { { 0, 1, 0 }, { 1, 0, 0 }, { 0, 0, 1 } },  { { 0, -1, 0 }, { 1, 0, 0 }, { 0, 0, -1 } },
+            { { 0, 0, 1 }, { -1, 0, 0 }, { 0, 1, 0 } }, { { 0, 0, -1 }, { 1, 0, 0 }, { 0, 1, 0 } },
+        };
+        // the faces are wider than a cube's (94, 92 and 91.2 degrees), as the lookup's 0.47, 0.48
+        // and 0.49 compensation at medium, high and ultra shadows undoes
+        const float focal = 1.0f / std::tan(degrees * 3.14159265f / 180.0f);
+        for (int face = 0; face < 6; ++face) {
+            Eigen::Matrix4f view_projection;
+            for (int value = 0; value < 16; ++value)
+                view_projection.data()[value] = views[usize((2 + face) * 16 + value)];
+            const Eigen::Vector3f ahead(faces[face][0][0], faces[face][0][1], faces[face][0][2]);
+            const Eigen::Vector3f side(faces[face][1][0], faces[face][1][1], faces[face][1][2]);
+            const Eigen::Vector3f up(faces[face][2][0], faces[face][2][1], faces[face][2][2]);
+            const Eigen::Vector4f clip =
+                view_projection * (light + ahead * 3.0f + side * 0.6f + up * 0.3f).homogeneous();
+            EXPECT_NEAR(clip.x() / clip.w(), focal * 0.6f / 3.0f, 1e-4f) << face;
+            EXPECT_NEAR(clip.y() / clip.w(), focal * 0.3f / 3.0f, 1e-4f) << face;
+            EXPECT_NEAR(clip.z() / clip.w(), nearz * (farz - 3.0f) / (3.0f * (farz - nearz)), 1e-5f)
+                << face;
+        }
     }
 }
 
