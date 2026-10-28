@@ -475,10 +475,16 @@ TextGeometry ResolveTextGeometry(const TextGeometryPolicy& policy,
 
     const float dynamic_effect_w = rstd::cmp::max(text_bbox_w, frame_w);
     const float dynamic_effect_h = rstd::cmp::max(text_bbox_h, frame_h);
+    // Text drawn with its box keeps the whole box (layout and padding) in its render target, as
+    // it is drawn and sampled over that box.
+    const float static_w =
+        policy.preserve_text_bbox ? rstd::cmp::max(text_bbox_w, src_bbox_w) : src_bbox_w;
+    const float static_h =
+        policy.preserve_text_bbox ? rstd::cmp::max(text_bbox_h, src_bbox_h) : src_bbox_h;
     const float rt_max_w = policy.dynamic ? (! policy.has_effect ? dynamic_w : dynamic_effect_w)
-                                          : (policy.has_effect ? frame_w : src_bbox_w);
+                                          : (policy.has_effect ? frame_w : static_w);
     const float rt_max_h = policy.dynamic ? (! policy.has_effect ? dynamic_h : dynamic_effect_h)
-                                          : (policy.has_effect ? frame_h : src_bbox_h);
+                                          : (policy.has_effect ? frame_h : static_h);
 
     TextGeometry out;
     out.rt_width            = policy.frame_bound ? frame_w : rstd::cmp::max(rt_max_w, src_bbox_w);

@@ -343,6 +343,9 @@ TEST(TextGeometry, BackgroundTextSamplesTheBoxItDraws) {
     EXPECT_FLOAT_EQ(geometry.draw_height, 221.0f);
     EXPECT_FLOAT_EQ(geometry.uv_source_width, geometry.draw_width);
     EXPECT_FLOAT_EQ(geometry.uv_source_height, geometry.draw_height);
+    // and the render target holds that whole box (its ink alone is smaller)
+    EXPECT_FLOAT_EQ(geometry.rt_width, geometry.draw_width);
+    EXPECT_FLOAT_EQ(geometry.rt_height, geometry.draw_height);
 }
 
 TEST(TextLayouter, FailedUpdatesKeepAcceptedStateAndRetry) {
