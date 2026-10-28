@@ -518,14 +518,9 @@ void ParseModelObjImpl(SceneParseContext& context, wpscene::ModelObject& model_o
                               model_obj.name);
                     break;
                 }
-                auto shadow_build         = rstd::move(shadow_result).unwrap_unchecked();
-                auto pipeline             = shadow_build.material.Pipeline();
-                pipeline.depth_clamp      = true;
-                pipeline.depth_clip       = Some(true);
-                pipeline.depth_compare    = CompareOp::Greater;
-                pipeline.depth_bias       = true;
-                pipeline.depth_bias_slope = -4.0f;
-                shadow_build.material.SetPipeline(rstd::move(pipeline));
+                auto shadow_build = rstd::move(shadow_result).unwrap_unchecked();
+                shadow_build.material.SetPipeline(
+                    ShadowCasterPipeline(shadow_build.material.Pipeline()));
                 LoadConstvalue(
                     context, shadow_build.material, light_material, shadow_build.shader_info);
                 context.scene->ResolveMaterialTextureSources(shadow_build.material);
