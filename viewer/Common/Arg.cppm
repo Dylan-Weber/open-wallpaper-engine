@@ -26,6 +26,8 @@ struct SceneViewerArgs {
     String      load_bench_output;
     String      texture_memory_output;
     Option<u64> random_seed;
+    Option<f32> script_start;
+    Option<f32> camera_path_delay;
     Resolution  resolution;
     i32         fps;
     u32         msaa_samples;
@@ -148,6 +150,18 @@ SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
     auto random_seed = command.add_arg(Arg<u64>::value("random-seed"_str, from_str_parser<u64>())
                                            .long_name("random-seed"_str)
                                            .help("Set the scene random seed"_str));
+    auto script_start = command.add_arg(
+        Arg<f32>::value("script-start"_str, from_str_parser<f32>())
+            .long_name("script-start"_str)
+            .help("Start scripts at SECONDS of the scene's clock (Wallpaper Engine can start them "
+                  "late, as a wallpaper loads)"_str)
+            .value_name("SECONDS"_str));
+    auto camera_path_delay = command.add_arg(
+        Arg<f32>::value("camera-path-delay"_str, from_str_parser<f32>())
+            .long_name("camera-path-delay"_str)
+            .help("Start camera paths SECONDS after the scene's clock and run them that much "
+                  "behind it (as Wallpaper Engine does after loading)"_str)
+            .value_name("SECONDS"_str));
     auto load_bench_output =
         command.add_arg(Arg<String>::value("load-bench-output"_str, string_parser())
                             .long_name("load-bench-output"_str)
@@ -184,6 +198,8 @@ SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
         .load_bench_output     = Value(matches, load_bench_output).clone(),
         .texture_memory_output = Value(matches, texture_memory_output).clone(),
         .random_seed           = OptionalValue(matches, random_seed),
+        .script_start          = OptionalValue(matches, script_start),
+        .camera_path_delay     = OptionalValue(matches, camera_path_delay),
         .resolution            = Value(matches, resolution),
         .fps                   = Value(matches, fps),
         .msaa_samples          = Value(matches, msaa),
