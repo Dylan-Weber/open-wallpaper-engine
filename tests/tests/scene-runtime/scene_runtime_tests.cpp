@@ -1014,6 +1014,48 @@ TEST(SceneParserText, ScriptSceneExposesTextWritesWithoutSourceInspection) {
     EXPECT_NE(value->Mesh()->DirtyFlags(), owe::SceneMeshDirtyNone);
 }
 
+// Scripts can start later than the scene (Wallpaper Engine hadn't run Ocarina of Time's 2.6 s in),
+// but engine.runtime is the scene's clock all the same (its other wallpapers' scripts read g_Time).
+TEST(SceneScripts, StartAtTheScriptStart) {
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {},
+            "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+            "objects": [{
+                "id": 1,
+                "name": "Mover",
+                "origin": {
+                    "value": "5 0 0",
+                    "script": "export function update(value) { value.x = engine.runtime; return value; }"
+                },
+                "angles": "0 0 0",
+                "scale": "1 1 1"
+            }]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+
+    owe::fs::VFS                vfs;
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "script-delay"_str,
+        ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto  scene = rstd::move(parsed).unwrap();
+    auto* mover = scene.scene->RootMut()->FindByName("Mover"_str);
+    ASSERT_NE(mover, nullptr);
+    scene.scene->SetScriptStart(2.0);
+
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs { .runtime = 1.0f });
+    EXPECT_FLOAT_EQ(mover->Translate().x(), 5.0f);
+
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs { .runtime = 3.5f });
+    EXPECT_FLOAT_EQ(mover->Translate().x(), 3.5f);
+}
+
 TEST(SceneParserText, AlignmentDoesNotMoveChildFrames) {
     for (auto blend_mode : { "0"_str, "11"_str }) {
         auto document = owe::wpscene::ParseSceneDocumentJson(
