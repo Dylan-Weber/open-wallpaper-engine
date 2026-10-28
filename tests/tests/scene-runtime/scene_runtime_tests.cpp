@@ -1528,6 +1528,43 @@ TEST(ShadowUniformSource, CascadeCentersUseFinalCameraPosition) {
         EXPECT_FLOAT_EQ(translated[index], explicit_camera[index]);
 }
 
+// A camera layer's field of view is its own: one that doesn't drive the camera leaves the
+// scene's (Ocarina of Time has ten camera layers on the default camera, from 25 to 73 degrees;
+// before any drives it, Wallpaper Engine shows the scene's 50).
+TEST(SceneParserCameraLayer, OnlyADrivingLayerSetsTheFieldOfView) {
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": { "center": "0 0 0", "eye": "0 1 5", "up": "0 1 0" },
+            "general": { "orthogonalprojection": null, "fov": 50 },
+            "objects": [
+                { "id": 1, "name": "Events", "origin": "0 0 0", "visible": false },
+                { "id": 2, "name": "Cam Guest", "camera": "default", "origin": "1 2 3",
+                  "angles": "0 0 0", "fov": 30, "parent": 1,
+                  "visible": { "value": false,
+                               "script": "export function update(value) { return true; }" } },
+                { "id": 3, "name": "Cam Time", "camera": "default", "origin": "4 5 6",
+                  "angles": "0 0 0", "fov": 70, "visible": false }
+            ]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    owe::fs::VFS                vfs;
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "camera-layer-fov"_str,
+        ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene  = rstd::move(parsed).unwrap();
+    auto camera = scene.scene->ActiveCamera();
+    ASSERT_TRUE(camera.is_some());
+    EXPECT_DOUBLE_EQ((**camera).Fov(), 50.0);
+    scene.scene->TickCameraPaths();
+    EXPECT_DOUBLE_EQ((**camera).Fov(), 50.0);
+}
+
 TEST(SceneCameraPath, UserBindingMutatesRegisteredArc) {
     owe::Scene scene;
     auto       path                = Arc<owe::SceneCameraPath>::make();
