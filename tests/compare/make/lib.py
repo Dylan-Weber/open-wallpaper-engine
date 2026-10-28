@@ -429,6 +429,8 @@ def audio_wallpaper(name, title, sound):
                         '-ar', '48000', '-c:a', 'pcm_s16le', path], check=True)
     # made again from the line above whenever it is missing, so it is not committed
     write(name + '/.gitignore', 'audio.wav\n')
+    # the probe records the bands Wallpaper Engine heard, which the viewer is then given
+    clock_probe.stamp(os.path.join(HERE, name))
 
 
 # ---------------------------------------------------------------------------------------------------------------
