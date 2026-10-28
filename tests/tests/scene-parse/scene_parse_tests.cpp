@@ -14,6 +14,8 @@
 #include <rstd/test/gtest.hpp>
 
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 
 import rstd.cppstd;
 import rstd;
@@ -1924,4 +1926,82 @@ TEST(AnimationParsing, VectorAnimationsAddToTheValueAndAlphaReplacesIt) {
     EXPECT_FLOAT_EQ(node("origin relative"_str)->Translate().x(), 400.0f);
     EXPECT_FLOAT_EQ(node("alpha"_str)->EffectiveAlpha(), 0.25f);
     EXPECT_FLOAT_EQ(node("alpha relative"_str)->EffectiveAlpha(), 0.25f);
+}
+
+namespace
+{
+
+// A 2x2 texture of `format` (0: RGBA8888, 8: RG88), uncompressed.
+void WriteFormatTexture(const std::filesystem::path& path, std::uint32_t format) {
+    const std::uint32_t channels = format == 8 ? 2 : 4;
+    std::ofstream       output(path, std::ios::binary);
+    auto                u32 = [&](std::uint32_t value) {
+        output.write(reinterpret_cast<const char*>(&value), sizeof(value));
+    };
+    output.write("TEXV0005", 9);
+    output.write("TEXI0001", 9);
+    for (std::uint32_t value : { format, 0u, 2u, 2u, 2u, 2u, 0u }) u32(value);
+    output.write("TEXB0003", 9);
+    for (std::uint32_t value : { 1u, 0xffffffffu, 1u, 2u, 2u, 0u, 4 * channels, 4 * channels })
+        u32(value);
+    for (std::uint32_t byte = 0; byte < 4 * channels; ++byte) output.put(char(0x80));
+}
+
+} // namespace
+
+// Wallpaper Engine gives a shader every texture's format as TEXnFORMAT: generic4 decodes an RG88
+// normal map (g_Texture1) from .rg only when TEX1FORMAT says so, and otherwise from .wy, which is
+// 1 in an RG88 texture (LittleBigPlanet's clouds lit as if every normal leaned the same way).
+TEST(MaterialTextureFormats, EverySlotGetsItsFormat) {
+    auto root = std::filesystem::temp_directory_path() /
+                ("owe-texture-formats-" + std::to_string(rstd::process::id().to_primitive()));
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root / "models");
+    std::filesystem::create_directories(root / "materials");
+    std::ofstream(root / "models" / "cloud.json") << R"({"material": "materials/cloud.json"})";
+    std::ofstream(root / "materials" / "cloud.json")
+        << R"({"passes": [{"shader": "generic4", "textures": ["cloud_d", "cloud_n"]}]})";
+    WriteFormatTexture(root / "materials" / "cloud_d.tex", 0);
+    WriteFormatTexture(root / "materials" / "cloud_n.tex", 8);
+
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {},
+            "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+            "objects": [{"id": 1, "name": "Cloud", "image": "models/cloud.json", "visible": true}]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    auto own =
+        owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(root.string()).unwrap()));
+    ASSERT_TRUE(own.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, std::move(assets).unwrap_unchecked()).is_ok());
+    ASSERT_TRUE(vfs.mount("/assets"_str, std::move(own).unwrap_unchecked()).is_ok());
+
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "texture-formats"_str,
+        rstd::ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        rstd::mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        rstd::mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+    auto cloud = scene.scene->RootMut()->FindByName("Cloud"_str);
+    ASSERT_NE(cloud, nullptr);
+    ASSERT_NE(cloud->Mesh(), nullptr);
+    auto* material = cloud->Mesh()->Material();
+    ASSERT_NE(material, nullptr);
+    ASSERT_TRUE(material->customShader.variant.is_some());
+    const auto& combos = material->customShader.variant->Description().input_combos;
+    ASSERT_TRUE(combos.get("TEX1FORMAT"_str).is_some());
+    EXPECT_EQ(*combos.get("TEX1FORMAT"_str).unwrap(), "FORMAT_RG88"_str);
+    // an RGBA8888 colour map needs no combo (0, like a missing one)
+    EXPECT_TRUE(combos.get("TEX0FORMAT"_str).is_none());
+    std::filesystem::remove_all(root);
 }
