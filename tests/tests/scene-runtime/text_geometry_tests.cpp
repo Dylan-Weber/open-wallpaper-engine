@@ -44,6 +44,11 @@ auto AtlasFont() -> vectext::FontInstance {
         Box<vectext::FontRasterizer>::from_raw(
             rstd::move(raster).into_raw().cast<vectext::FontRasterizer>()));
 }
+auto WidestLine(const vectext::TextLayout& layout) -> float {
+    float widest {};
+    for (auto& line : layout.lines()) widest = rstd::cmp::max(widest, float(line.logical.width));
+    return widest;
+}
 } // namespace
 TEST(TextAtlas, ImageRetainsLivePixelsAfterCacheDestruction) {
     Option<Arc<owe::Image>> image;
@@ -275,7 +280,7 @@ TEST(TextLayouter, FontBoundsExcludeTrailingLeadingWithoutMovingBaselines) {
         ASSERT_TRUE(layouter.SetText(text).is_ok());
         const auto& layout = *layouter.Layout();
         const auto  bounds = layout.typographic_bounds();
-        EXPECT_FLOAT_EQ(layouter.TextWidth(), 300);
+        EXPECT_FLOAT_EQ(layouter.TextWidth(), WidestLine(layout));
         EXPECT_FLOAT_EQ(layouter.TextHeight(), float(bounds.height));
         EXPECT_FLOAT_EQ(float(layout.logical_bounds().height - bounds.height), 100);
         const auto& glyph    = layout.glyphs()[usize()];
@@ -291,7 +296,59 @@ TEST(TextLayouter, FontBoundsExcludeTrailingLeadingWithoutMovingBaselines) {
     EXPECT_FLOAT_EQ(layouter.TextHeight(), 50);
     ASSERT_TRUE(layouter.SetHorizontalAlign("right"_str).is_ok());
     EXPECT_FLOAT_EQ(layouter.TextHeight(), 50);
-    EXPECT_FLOAT_EQ(layouter.TextWidth(), 300);
+    EXPECT_FLOAT_EQ(layouter.TextWidth(), WidestLine(*layouter.Layout()));
+}
+
+// A layer that limits its width is only as wide as its widest wrapped line, and so is its
+// background: Wallpaper Engine draws text-layout's "wrapped" box 444 units wide, not maxwidth 450 +
+// padding = 490. Its lines keep their alignment inside that box.
+TEST(TextLayouter, WrappedTextIsAsWideAsItsWidestLine) {
+    auto                  resources  = TextResources();
+    constexpr std::size_t peak_quads = 16;
+    const rstd::initializer_list<owe::SceneVertexArray::SceneVertexAttribute> attributes {
+        { .name = "a_Position"_Str, .type = owe::VertexType::FLOAT3 },
+        { .name = "a_TexCoord"_Str, .type = owe::VertexType::FLOAT2 },
+        { .name = "a_Color"_Str, .type = owe::VertexType::FLOAT4 },
+    };
+    for (auto align : array<ref<str>, 3> { "left"_str, "center"_str, "right"_str }) {
+        auto mesh = Arc<owe::SceneMesh>::make();
+        mesh->AddVertexArray(owe::SceneVertexArray(attributes, rstd::usize(peak_quads * 4)));
+        mesh->AddIndexArray(owe::SceneIndexArray(rstd::usize(peak_quads * 6)));
+        owe::text::TextLayoutStyle style;
+        style.halign           = rstd::into(align);
+        style.wrap_width       = 400;
+        style.padding          = 10;
+        style.opaquebackground = true;
+        owe::text::TextLayouter layouter(
+            resources.clone(), TextFont(), mesh.clone(), rstd::move(style), peak_quads);
+        ASSERT_TRUE(layouter.SetText("AAA AAAAA A"_str).is_ok());
+        const auto& layout = *layouter.Layout();
+        ASSERT_EQ(layout.lines().len(), usize(2));
+        const float widest = WidestLine(layout);
+        ASSERT_LT(widest, 400.0f);
+        EXPECT_FLOAT_EQ(layouter.TextWidth(), widest);
+
+        // the background quad comes first: the box and its padding
+        const auto& vertices = mesh->GetVertexArray(rstd::usize());
+        const auto  stride   = vertices.OneSize().to_primitive();
+        const auto  x        = [&](std::size_t quad, std::size_t corner) {
+            return vertices.Data()[(quad * 4 + corner) * stride];
+        };
+        EXPECT_FLOAT_EQ(x(0, 0), -widest / 2 - 10);
+        EXPECT_FLOAT_EQ(x(0, 1), widest / 2 + 10);
+        const auto quads = mesh->GetIndexArray(rstd::usize()).RenderDataCount().to_primitive() / 6;
+        float      left = x(1, 0), right = x(1, 1);
+        for (std::size_t q = 1; q < quads; ++q) {
+            left  = rstd::cmp::min(left, x(q, 0));
+            right = rstd::cmp::max(right, x(q, 1));
+        }
+        // letters' ink sits a few pixels inside their advances
+        if (align == "left"_str) EXPECT_NEAR(left, -widest / 2, 10.0f);
+        if (align == "right"_str) EXPECT_NEAR(right, widest / 2, 10.0f);
+        if (align == "center"_str) EXPECT_NEAR(left + right, 0.0f, 2.0f);
+        EXPECT_GE(left, -widest / 2 - 1);
+        EXPECT_LE(right, widest / 2 + 1);
+    }
 }
 
 TEST(TextGeometry, DynamicEffectFollowsCurrentTextBounds) {
