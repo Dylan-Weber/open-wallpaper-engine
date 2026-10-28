@@ -481,6 +481,11 @@ void ParseModelObjImpl(SceneParseContext& context, wpscene::ModelObject& model_o
         }
         auto material_build = rstd::move(material_result).unwrap_unchecked();
         scene_mat           = rstd::move(material_build.material);
+        // With the scene's transparent sorting, translucent models draw far to near and write
+        // depth as their material says (materials otherwise write none when they blend).
+        if (context.scene->TransparentSorting() && wpmat->blending == "translucent"_str &&
+            wpmat->depthwrite == "enabled"_str)
+            (void)scene_mat.SetDepthWrite(true);
         shader_info         = rstd::move(material_build.shader_info);
         LoadConstvalue(context, scene_mat, *wpmat, shader_info);
 
