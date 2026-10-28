@@ -112,6 +112,7 @@ inline constexpr ref<str> G_SHADOWATLASTRANSFORMS          = "g_ShadowAtlasTrans
 inline constexpr ref<str> G_OWESHADOWVIEWPROJECTIONS       = "g_OweShadowViewProjections"_str;
 inline constexpr ref<str> G_OWESHADOWATLASTRANSFORMS       = "g_OweShadowAtlasTransforms"_str;
 inline constexpr ref<str> G_OWELIGHTSSHADOWVIEW            = "g_OweLightsShadowView"_str;
+inline constexpr ref<str> G_OWELIGHTSSHADOWPROJECTION      = "g_OweLightsShadowProjection"_str;
 inline constexpr ref<str> G_VIEWUP                         = "g_ViewUp"_str;
 inline constexpr ref<str> G_VIEWRIGHT                      = "g_ViewRight"_str;
 inline constexpr ref<str> G_VIEWFORWARD                    = "g_ViewForward"_str;

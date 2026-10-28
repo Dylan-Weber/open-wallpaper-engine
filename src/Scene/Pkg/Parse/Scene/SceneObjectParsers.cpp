@@ -665,11 +665,11 @@ BuildContext(fs::VFS& vfs, ref<str> scene_id, const wpscene::SceneMetadata& sc,
         });
 
     if (context.shader_environment.shadow_mapping) {
-        // a square of the atlas for each spot light and each cascade, in rows of a near square:
-        // the spots' first
+        // a square of the atlas for each spot light, each cascade and each point light, in rows
+        // of a near square: the spots' first, the points' last
         constexpr int tile       = kShadowTileSize;
         const auto    squares_of = [](SceneLightType type) {
-            return type == SceneLightType::Directional ? 3 : type == SceneLightType::Spot ? 1 : 0;
+            return type == SceneLightType::Directional ? 3 : 1;
         };
         int squares {};
         for (const auto& light : shadow_lights) squares += squares_of(light.type);
@@ -726,6 +726,7 @@ BuildContext(fs::VFS& vfs, ref<str> scene_id, const wpscene::SceneMetadata& sc,
         };
         auto ordered = by_kind(SceneLightType::Spot);
         for (auto& light : by_kind(SceneLightType::Directional)) ordered.push(rstd::move(light));
+        for (auto& light : by_kind(SceneLightType::Point)) ordered.push(rstd::move(light));
         for (const auto& light : ordered) {
             auto viewports = Vec<SceneShadowViewport>::make();
             if (light.type == SceneLightType::Spot) {
@@ -736,6 +737,14 @@ BuildContext(fs::VFS& vfs, ref<str> scene_id, const wpscene::SceneMetadata& sc,
                     const auto [x, y] = place();
                     viewports.push(viewport(x, y, tile, tile));
                 }
+            } else {
+                // +x -x, +y -y, +z -z in two columns and three rows
+                const auto [x, y]  = place();
+                const int  width   = tile / 2;
+                const int  height  = tile / 3;
+                for (int face = 0; face < 6; ++face)
+                    viewports.push(
+                        viewport(x + (face % 2) * width, y + (face / 2) * height, width, height));
             }
             const int views = static_cast<int>(viewports.len().to_primitive());
             if (views == 0 || next_view + views > static_cast<int>(kShadowViewCount.to_primitive()))
@@ -746,6 +755,7 @@ BuildContext(fs::VFS& vfs, ref<str> scene_id, const wpscene::SceneMetadata& sc,
                 .viewports   = rstd::move(viewports),
                 .light_id    = light.id,
                 .view_offset = u32(static_cast<unsigned>(next_view)),
+                .type        = light.type,
             });
             next_view += views;
         }

@@ -2553,7 +2553,8 @@ struct SceneShadowDefinition {
     Vec<SceneShadowViewport> viewports;
     i32                      light_id { i32(-1) };
     // its first view in the scene's list of shadow views
-    u32 view_offset { 0 };
+    u32            view_offset { 0 };
+    SceneLightType type { SceneLightType::Directional };
 
     auto Clone() const -> SceneShadowDefinition {
         return {
@@ -2561,6 +2562,7 @@ struct SceneShadowDefinition {
             .viewports   = viewports.clone(),
             .light_id    = light_id,
             .view_offset = view_offset,
+            .type        = type,
         };
     }
 };

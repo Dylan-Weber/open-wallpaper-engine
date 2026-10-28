@@ -40,6 +40,7 @@ auto owe::SceneParser::Parse(ref<str> scene_id, ref<wpscene::SceneDocument> docu
     const auto& config = metadata.general.lightconfig;
     u32         directional_left { rstd::cmp::min(config.directionalshadow, u32(1)) };
     u32         spot_left { config.spotshadow };
+    u32         point_left { config.pointshadow };
     auto        shadow_lights = Vec<SceneShadowLight>::make();
     bool        has_shadow_caster { false };
     for (const auto& object : objects) {
@@ -56,6 +57,11 @@ auto owe::SceneParser::Parse(ref<str> scene_id, ref<wpscene::SceneDocument> docu
                 --spot_left;
                 shadow_lights.push(
                     SceneShadowLight { .id = light.id, .type = SceneLightType::Spot });
+            } else if ((light.light == "point"_str || light.light == "lpoint"_str) &&
+                       point_left > u32()) {
+                --point_left;
+                shadow_lights.push(
+                    SceneShadowLight { .id = light.id, .type = SceneLightType::Point });
             }
         } else if (object.is_Model()) {
             has_shadow_caster = has_shadow_caster || object.as_Model().value.castshadow;

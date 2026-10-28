@@ -162,10 +162,18 @@ void FinalizeUniformSources(SceneParseContext& context) {
         for (const auto& definition : scene.ShadowDefinitions()) {
             transforms.resize(usize(definition.view_offset.to_primitive() * 4), 0.0f);
             for (const auto& viewport : definition.viewports) {
-                transforms.push(static_cast<float>(viewport.scissor_x.to_primitive()) / width);
-                transforms.push(static_cast<float>(viewport.scissor_y.to_primitive()) / height);
-                transforms.push(static_cast<float>(viewport.scissor_width.to_primitive()) / width);
-                transforms.push(static_cast<float>(viewport.scissor_height.to_primitive()) /
+                // a point light's lookup picks its face itself, from its faces' two columns and
+                // three rows
+                const auto& corner = definition.type == SceneLightType::Point
+                                         ? definition.viewports[usize()]
+                                         : viewport;
+                const float columns = definition.type == SceneLightType::Point ? 2.0f : 1.0f;
+                const float rows    = definition.type == SceneLightType::Point ? 3.0f : 1.0f;
+                transforms.push(static_cast<float>(corner.scissor_x.to_primitive()) / width);
+                transforms.push(static_cast<float>(corner.scissor_y.to_primitive()) / height);
+                transforms.push(columns *
+                                static_cast<float>(viewport.scissor_width.to_primitive()) / width);
+                transforms.push(rows * static_cast<float>(viewport.scissor_height.to_primitive()) /
                                 height);
             }
         }

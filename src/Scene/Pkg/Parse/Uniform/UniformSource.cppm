@@ -74,6 +74,8 @@ enum class ShadowUniformOutput : rstd::uint32_t
     Views,
     ViewAtlasTransforms,
     LightViews,
+    // each light slot's point light depth terms for the stock point lookup
+    PointProjections,
 };
 
 inline constexpr usize kShadowViewCount { 24 };
