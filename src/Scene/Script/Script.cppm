@@ -212,6 +212,11 @@ public:
     // The package parser supplies this snapshot before pending initializers run.
     void RegisterInitialLayerConfig(owe::SceneNode* node, Json config);
 
+    // The names of every layer the scene authors, including layers left out of the
+    // scene tree. With them, `getLayer(name)` returns null for a name no layer has;
+    // without them, a missing name returns a handle that resolves once such a layer appears.
+    void SetAuthoredLayerNames(rstd::collections::HashSet<String> names);
+
     // Install the Scene root that backs `thisScene`. `thisScene.getLayer(name)`
     // searches from this node. Call once per scene after parsing finishes.
     void SetScene(owe::Scene* scene);

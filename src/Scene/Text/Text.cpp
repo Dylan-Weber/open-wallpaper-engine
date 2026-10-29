@@ -462,8 +462,11 @@ TextGeometry ResolveTextGeometry(const TextGeometryPolicy& policy,
     const float src_cx  = f32(metrics.source_center_x).is_finite() ? metrics.source_center_x : 0.0f;
     const float src_cy  = f32(metrics.source_center_y).is_finite() ? metrics.source_center_y : 0.0f;
 
+    // The box reaches its background gap below the text; the render target is centred on the
+    // text, so it reaches as far above, where the box leaves it clear.
+    const float gap         = rstd::cmp::max(metrics.background_gap, 0.0f);
     const float text_bbox_w = text_w + 2.0f * pad;
-    const float text_bbox_h = text_h + 2.0f * pad;
+    const float text_bbox_h = text_h + 2.0f * pad + 2.0f * gap;
     const float src_bbox_w  = src_w + 2.0f * pad;
     const float src_bbox_h  = src_h + 2.0f * pad;
 
@@ -475,10 +478,16 @@ TextGeometry ResolveTextGeometry(const TextGeometryPolicy& policy,
 
     const float dynamic_effect_w = rstd::cmp::max(text_bbox_w, frame_w);
     const float dynamic_effect_h = rstd::cmp::max(text_bbox_h, frame_h);
+    // Text drawn with its box keeps the whole box (layout and padding) in its render target, as
+    // it is drawn and sampled over that box.
+    const float static_w =
+        policy.preserve_text_bbox ? rstd::cmp::max(text_bbox_w, src_bbox_w) : src_bbox_w;
+    const float static_h =
+        policy.preserve_text_bbox ? rstd::cmp::max(text_bbox_h, src_bbox_h) : src_bbox_h;
     const float rt_max_w = policy.dynamic ? (! policy.has_effect ? dynamic_w : dynamic_effect_w)
-                                          : (policy.has_effect ? frame_w : src_bbox_w);
+                                          : (policy.has_effect ? frame_w : static_w);
     const float rt_max_h = policy.dynamic ? (! policy.has_effect ? dynamic_h : dynamic_effect_h)
-                                          : (policy.has_effect ? frame_h : src_bbox_h);
+                                          : (policy.has_effect ? frame_h : static_h);
 
     TextGeometry out;
     out.rt_width            = policy.frame_bound ? frame_w : rstd::cmp::max(rt_max_w, src_bbox_w);
@@ -492,8 +501,8 @@ TextGeometry ResolveTextGeometry(const TextGeometryPolicy& policy,
         out.draw_height       = tight_bbox ? src_h : text_bbox_h;
         out.draw_offset_x     = tight_bbox ? src_cx : 0.0f;
         out.draw_offset_y     = tight_bbox ? src_cy : 0.0f;
-        out.uv_source_width   = tight_bbox ? src_w : src_bbox_w;
-        out.uv_source_height  = tight_bbox ? src_h : src_bbox_h;
+        out.uv_source_width   = tight_bbox ? src_w : text_bbox_w;
+        out.uv_source_height  = tight_bbox ? src_h : text_bbox_h;
         return out;
     }
 
@@ -610,6 +619,9 @@ struct TextLayouter::Impl {
         measured.source_width    = measured.text_width;
         measured.source_height   = measured.text_height;
         measured.padding         = style.padding;
+        if (style.opaquebackground)
+            measured.background_gap =
+                rstd::cmp::max(float(output.logical_bounds().height - bounds.height), 0.0f);
         auto pages               = resources->Pages();
         if (pages.is_empty()) return Err(vectext::TextError::Limit);
         if (style.opaquebackground) {
@@ -617,7 +629,7 @@ struct TextLayouter::Impl {
             quads.push(Quad { AtlasGlyph { .x = 1, .y = 1, .width = 2, .height = 2 },
                               -measured.text_width / 2 - pad,
                               measured.text_width / 2 + pad,
-                              -measured.text_height / 2 - pad,
+                              -measured.text_height / 2 - pad - measured.background_gap,
                               measured.text_height / 2 + pad,
                               { style.background_color[usize()] * style.background_brightness,
                                 style.background_color[usize(1)] * style.background_brightness,

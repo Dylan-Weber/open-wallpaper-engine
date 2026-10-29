@@ -153,6 +153,29 @@ TEST(ScriptValueCoercion, PreservesVec4InitialAndReturnValues) {
     EXPECT_DOUBLE_EQ(value.w, 7.5);
 }
 
+TEST(ScriptValueCoercion, InitReturnSetsTheValue) {
+    auto root = Arc<owe::SceneNode>::make();
+
+    JsRuntime rt;
+    auto*     script = rt.MakeFieldScript(
+        R"JS(
+            export function init(value) { return new Vec3(900, value.y, value.z); }
+            export function update(value) { return value; }
+        )JS"_str,
+        "test/init_return"_str,
+        FieldKind::Vec3,
+        owe::MakeObject(),
+        owe::IntoJson("300 200 0"));
+    ASSERT_NE(script, nullptr);
+
+    rt.SetSceneRoot(root.as_ptr());
+    rt.TickAll();
+
+    ASSERT_TRUE(script->last_value().is_Vec3());
+    EXPECT_DOUBLE_EQ(script->last_value().as_Vec3().value.x, 900.0);
+    EXPECT_DOUBLE_EQ(script->last_value().as_Vec3().value.y, 200.0);
+}
+
 TEST(ScriptValueCoercion, ParsesDecimalPrefixesWithoutCStringCopies) {
     struct Case {
         ref<str>  text;
@@ -572,6 +595,118 @@ TEST(ScriptNodeParent, DefaultLayerParentIsUndefined) {
     ASSERT_NE(fs, nullptr);
 
     rt.TickAll();
+    EXPECT_EQ(LastScalar(fs), 1.0);
+}
+
+// As measured in Wallpaper Engine (script-set-parent): setParent takes a layer, a name or the
+// layer's index in the scene; adjustTransforms keeps the layer where it was; the layers keep their
+// draw order.
+TEST(ScriptLayerParent, SetParentKeepsDrawOrder) {
+    owe::Scene scene;
+    auto       add = [&](ref<str> name, Eigen::Vector3f origin) {
+        auto node = Arc<owe::SceneNode>::make(
+            origin, Eigen::Vector3f::Ones(), Eigen::Vector3f::Zero(), name);
+        scene.RootMut()->AppendChild(node.clone());
+        return node;
+    };
+    auto kept   = add("kept"_str, { 1150.0f, 700.0f, 0.0f });
+    auto moved  = add("moved"_str, { 100.0f, 300.0f, 0.0f });
+    auto number = add("by index"_str, { -300.0f, -300.0f, 0.0f });
+    auto parent = add("parent"_str, { 1200.0f, 700.0f, 0.0f });
+    auto other  = add("other"_str, { 300.0f, 900.0f, 0.0f });
+
+    JsRuntime   rt;
+    FrameInputs fi {};
+    rt.SetScene(&scene);
+    rt.SetFrameInputs(fi);
+    // the scene's layers, as the scene parser registers them
+    for (const auto& layer : scene.RootMut()->GetChildren())
+        rt.RegisterInitialLayerConfig(layer.as_ptr(), owe::MakeObject());
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            export function update() {
+                const kept = thisScene.getLayer('kept');
+                const moved = thisScene.getLayer('moved');
+                const number = thisScene.getLayer('by index');
+                kept.setParent('parent', true);
+                moved.setParent(thisScene.getLayer('parent'), false);
+                number.setParent(4);
+                const f = (l) => [l.origin.x, l.origin.y, l.getParent().name].join(',');
+                const read = [f(kept), f(moved), f(number), thisScene.getLayerIndex('kept')].join(' ');
+                return read === '-50,0,parent 100,300,parent -300,-300,other 0' ? 1 : 0;
+            }
+        )JS"_str,
+        "test/set_parent"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        kept.as_ptr());
+    ASSERT_NE(fs, nullptr);
+    rt.SetSceneRoot(scene.RootMut().as_raw_ptr());
+    rt.TickAll();
+
+    EXPECT_EQ(LastScalar(fs), 1.0);
+    kept->UpdateTrans();
+    moved->UpdateTrans();
+    EXPECT_NEAR(kept->ModelTrans()(0, 3), 1150.0, 1e-3);
+    EXPECT_NEAR(moved->ModelTrans()(0, 3), 1300.0, 1e-3);
+    EXPECT_NEAR(moved->ModelTrans()(1, 3), 1000.0, 1e-3);
+    // drawn in the scene's order still, under the parent
+    const auto& layers = scene.RootMut()->GetChildren();
+    ASSERT_EQ(layers.len(), usize(5));
+    EXPECT_EQ(layers[usize(0)].as_ptr(), kept.as_ptr());
+    EXPECT_EQ(layers[usize(3)].as_ptr(), parent.as_ptr());
+    EXPECT_EQ(number->Parent(), other.as_ptr());
+}
+
+// As measured in Wallpaper Engine (script-set-parent): lookAt turns the layer's +z towards the
+// target (up (0, 1, 0) unless given), lookAtYaw turns it about the up axis only; the angles are the
+// layer's own, relative to its parent.
+TEST(ScriptLayerLookAt, TurnsForwardTowardsTheTarget) {
+    owe::Scene scene;
+    auto       add =
+        [&](owe::SceneNode& owner, ref<str> name, Eigen::Vector3f origin, Eigen::Vector3f angles) {
+            auto node = Arc<owe::SceneNode>::make(origin, Eigen::Vector3f::Ones(), angles, name);
+            owner.AppendChild(node.clone());
+            return node;
+        };
+    auto& root = *scene.RootMut();
+    auto  look = add(root, "look"_str, { 300.0f, 900.0f, 0.0f }, Eigen::Vector3f::Zero());
+    (void)add(root, "look up"_str, { 300.0f, 540.0f, 0.0f }, Eigen::Vector3f::Zero());
+    (void)add(root, "yaw"_str, { 300.0f, 420.0f, 0.0f }, Eigen::Vector3f::Zero());
+    auto turned = add(root, "turned"_str, Eigen::Vector3f::Zero(), { 0.0f, 1.5707964f, 0.0f });
+    (void)add(*turned, "child"_str, Eigen::Vector3f::Zero(), Eigen::Vector3f::Zero());
+
+    JsRuntime   rt;
+    FrameInputs fi {};
+    rt.SetScene(&scene);
+    rt.SetFrameInputs(fi);
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            export function update() {
+                const turn = (name, call) => {
+                    const layer = thisScene.getLayer(name);
+                    call(layer);
+                    return [layer.angles.x, layer.angles.y, layer.angles.z].map(Math.round).join(',');
+                };
+                const read = [
+                    turn('look', (l) => l.lookAt(new Vec3(800, 900, 0))),
+                    turn('look up', (l) => l.lookAt(new Vec3(800, 540, 0), new Vec3(0, 0, 1))),
+                    turn('yaw', (l) => l.lookAtYaw(new Vec3(800, 420, 500))),
+                    turn('child', (l) => l.lookAt(new Vec3(500, 0, 0))),
+                ].join(' ');
+                return read === '0,90,0 90,0,90 0,45,0 0,0,0' ? 1 : 0;
+            }
+        )JS"_str,
+        "test/look_at"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        look.as_ptr());
+    ASSERT_NE(fs, nullptr);
+    rt.SetSceneRoot(scene.RootMut().as_raw_ptr());
+    rt.TickAll();
+
     EXPECT_EQ(LastScalar(fs), 1.0);
 }
 
