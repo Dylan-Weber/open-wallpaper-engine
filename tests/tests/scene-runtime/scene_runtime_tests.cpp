@@ -1503,6 +1503,47 @@ TEST(CameraShake, RuntimeUpdatesLinkedViewAndClearsDisabledOrPreviousCamera) {
     EXPECT_TRUE(effect->GetPosition().isZero());
 }
 
+// Without authored distances the cascades are 3, 10 and 100 wide (Wallpaper Engine's defaults,
+// not the camera's far plane), as deep as four times the second; their centres move in whole
+// texels of their 256-pixel squares, so the shadow doesn't shimmer as the camera moves.
+TEST(ShadowUniformSource, CascadesDefaultToThreeTenAndAHundredInWholeTexels) {
+    auto camera =
+        Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000.0, 50.0));
+    const Eigen::Vector3d eye(0.013, -0.021, 0.0);
+    camera->SetLookAt(eye, eye - Eigen::Vector3d::UnitZ(), Eigen::Vector3d::UnitY());
+    auto                  light_node = Arc<owe::SceneNode>::make();
+    owe::SceneLight::Desc desc;
+    desc.type        = owe::SceneLightType::Directional;
+    desc.cast_shadow = true;
+    owe::SceneLight light(desc);
+    light.setNode(light_node.as_ptr());
+    owe::ShadowUniformSource source(camera.clone(), ref<owe::SceneLight>::from_raw_parts(&light));
+
+    auto matrices = scene_test::Capture(
+        owe::SceneFrame {}, source, owe::ShadowUniformOutput::ViewProjectionMatrices);
+    ASSERT_EQ(matrices.size(), usize(96));
+    // widths
+    EXPECT_NEAR(matrices[usize(8)], 2.0f / 3.0f, 1e-6f);
+    EXPECT_NEAR(matrices[usize(16 + 8)], 2.0f / 10.0f, 1e-6f);
+    EXPECT_NEAR(matrices[usize(32 + 8)], 2.0f / 100.0f, 1e-6f);
+    // depths: four times the second width (and 1.5 times the third, if more)
+    EXPECT_NEAR(matrices[usize(2)], -1.0f / 40.0f, 1e-6f);
+    EXPECT_NEAR(matrices[usize(32 + 2)], -1.0f / 150.0f, 1e-6f);
+    // the light's x and y axes see the eye's z and y: each centre is a whole number of texels
+    for (usize cascade {}; cascade < usize(3); ++cascade) {
+        const float width = cascade == usize() ? 3.0f : cascade == usize(1) ? 10.0f : 100.0f;
+        const float texel = width / 256.0f;
+        for (usize axis {}; axis < usize(2); ++axis) {
+            const float scale  = matrices[cascade * usize(16) + axis * usize(5) +
+                                          (axis == usize() ? usize(8) : usize())];
+            const float offset = matrices[cascade * usize(16) + usize(12) + axis];
+            const float centre = -offset / scale;
+            EXPECT_NEAR(centre / texel, std::round(centre / texel), 1e-3f)
+                << cascade.to_primitive();
+        }
+    }
+}
+
 TEST(ShadowUniformSource, CascadeCentersUseFinalCameraPosition) {
     auto camera =
         Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000, 50));
