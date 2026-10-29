@@ -1514,6 +1514,9 @@ public:
     float                       fov_base { 50.0f };
     bool                        perspective { false };
     bool                        enabled { true };
+    // Set when the path is disabled after driving the camera: the next tick gives the camera back
+    // its defaults. A path that was never enabled leaves the camera to others (scripts, paths).
+    bool                        restore_default { false };
     bool                        default_lookat { false };
     Eigen::Vector3f             default_eye { Eigen::Vector3f::Zero() };
     Eigen::Vector3f             default_center { -Eigen::Vector3f::UnitZ() };

@@ -1293,7 +1293,8 @@ void SceneCameraPath::ResetQueue() {
 
 void SceneCameraPath::SetEnabled(bool value) {
     if (enabled == value) return;
-    enabled = value;
+    enabled         = value;
+    restore_default = ! value;
     ResetQueue();
 }
 
@@ -2823,7 +2824,9 @@ void Scene::TickCameraPaths() {
             touched.insert(path->camera_name.clone());
     }
     for (const auto& path : m_camera_paths) {
-        if (path->enabled || has_enabled.contains(path->camera_name.as_str()) ||
+        if (path->enabled || ! path->restore_default) continue;
+        path->restore_default = false;
+        if (has_enabled.contains(path->camera_name.as_str()) ||
             reset.contains(path->camera_name.as_str()))
             continue;
         if (path->ApplyDefault()) touched.insert(path->camera_name.clone());
