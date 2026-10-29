@@ -57,7 +57,8 @@ def puppet_mdl(material, vertices, indices, bones, animations=(), shading=False,
     """A skinned mesh with its skeleton (MDLV0013, MDLS0001) and animations (MDLA0001).
 
     vertices: (x, y, z, u, v, [4 bone numbers], [4 weights]) each; indices: triangles' vertex numbers;
-    bones: (name, parent bone number or None, (x, y, z) the bone's place in its parent) each;
+    bones: (name, parent bone number or None, (x, y, z) the bone's place in its parent[, the bone's physics as
+    Wallpaper Engine writes it, a JSON string]) each;
     animations: (name, fps, [per bone: [per frame: (position, angle in radians, scale)]]) each, every bone with the
     same number of frames."""
     flags = 0x1 | 0x8 | 0x800000 | 0x1000000  # positions, texture coordinates, bone numbers and weights
@@ -78,10 +79,10 @@ def puppet_mdl(material, vertices, indices, bones, animations=(), shading=False,
         data += struct.pack('<3H', *triangle)
 
     skeleton = b''
-    for name, parent, (x, y, z) in bones:
+    for name, parent, (x, y, z), *simulation in bones:
         matrix = (1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1)  # columns, the translation last
         skeleton += name.encode() + b'\0' + struct.pack('<iII', sim_type, 0xFFFFFFFF if parent is None else parent, 64)
-        skeleton += struct.pack('<16f', *matrix) + b'\0'
+        skeleton += struct.pack('<16f', *matrix) + (simulation[0] if simulation else '').encode() + b'\0'
     head = b'MDLS0001\0'
     data += head + struct.pack('<IHH', len(data) + len(head) + 8 + len(skeleton), len(bones), 0) + skeleton
 
