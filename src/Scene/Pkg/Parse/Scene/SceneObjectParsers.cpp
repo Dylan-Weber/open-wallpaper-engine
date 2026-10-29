@@ -474,6 +474,7 @@ void ParseModelObjImpl(SceneParseContext& context, wpscene::ModelObject& model_o
         LoadConstvalue(context, scene_mat, *wpmat, shader_info);
 
         if (node->shadow.cast) {
+            scene_mat.shadow_silent = ! BlendingCastsShadow(wpmat->blending.as_str());
             wpscene::Material shadow_material;
             shadow_material.shader = shader_info.shadow_pass.is_empty()
                                          ? "shadowcaster"_Str
