@@ -1,0 +1,17 @@
+# 3. image-gradient: textures from the assets. Most layers are stretched with `scale` (relative to the texture's own
+# size, which both engines use); two use a `size` that differs from the texture to see whether the scene's size wins.
+w = Wallpaper('image-gradient', 'textures', clear='0 0 0')
+rainbow = w.texture_model('rainbow', 'gradient/gradient_rainbow')
+fire = w.texture_model('fire', 'gradient/gradient_fire')
+ice = w.texture_model('ice', 'gradient/gradient_ice')
+w.image('natural size', rainbow, 200, 950, 64, 2)
+w.image('rainbow wide', rainbow, 900, 950, 64, 2, scale='15 40 1')
+w.image('rainbow mirrored', rainbow, 900, 750, 64, 2, scale='-15 40 1')
+w.image('rainbow vertical', rainbow, 1650, 750, 64, 2, angle=90, scale='10 40 1')
+w.image('fire square', fire, 300, 400, 64, 2, scale='6 200 1')
+w.image('ice stretched', ice, 900, 400, 64, 2, scale='8 50 1')
+w.image('fire flipped', fire, 1500, 300, 64, 2, scale='6 -100 1')
+w.image('rainbow alpha', rainbow, 1000, 150, 64, 2, alpha=0.5, scale='8 50 1')
+w.image('size differs', rainbow, 400, 700, 300, 100)
+w.image('size differs small', fire, 700, 600, 100, 100)
+w.save()
