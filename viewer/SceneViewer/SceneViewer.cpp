@@ -247,6 +247,8 @@ int main(int argc, char** argv) {
     config.graphviz        = args.graphviz;
     config.load_bench      = load_bench.clone();
     config.fps             = static_cast<uint32_t>(args.fps.to_primitive());
+    // a capture's clock is frame-exact: no need to wait 1 / fps between frames (--capture-realtime does)
+    config.unpaced         = capture && ! args.capture_realtime;
     if (args.random_seed.is_some()) {
         config.random_seed = Some(*args.random_seed);
     }

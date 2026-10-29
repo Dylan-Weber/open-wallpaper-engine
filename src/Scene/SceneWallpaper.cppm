@@ -65,6 +65,8 @@ struct SceneWallpaperConfig {
     Option<SceneLoadBenchHandle>        load_bench;
     rstd::json::Map                     user_properties;
     uint32_t                            fps { 30 };
+    // draw as fast as frames finish, not every 1 / fps (a frame-exact capture; the scene still advances 1 / fps a frame)
+    bool                                unpaced { false };
     float                               volume { 1.0f };
     float                               volume_scale { 1.0f };
     bool                                muted { false };

@@ -10,7 +10,8 @@ FrameTimer::FrameTimer(Option<Callback> callback)
     : m_callback(rstd::move(callback)), m_timer(ThreadTimer::Callback::make([this] {
           const auto measured = m_frametime.load();
           const auto ideal    = m_ideatime.load();
-          m_timer.SetInterval(Duration::from_micros(measured > ideal ? measured / u64(2) : ideal));
+          m_timer.SetInterval(Duration::from_micros(
+              m_unpaced.load() ? u64(1) : (measured > ideal ? measured / u64(2) : ideal)));
           auto callback = m_callback.lock().unwrap();
           if (callback->is_some() && m_frame_busy_count.load() <= u32(3)) {
               m_frame_busy_count.fetch_add(u32(1));
@@ -38,8 +39,13 @@ void FrameTimer::SetRequiredFps(u16 value) {
     for (auto& sample : samples->values) sample = ideal;
     samples->next = usize();
     m_frametime.store(ideal);
-    m_timer.SetInterval(Duration::from_micros(ideal));
+    m_timer.SetInterval(Duration::from_micros(m_unpaced.load() ? u64(1) : ideal));
 }
+void FrameTimer::SetUnpaced(bool value) {
+    m_unpaced.store(value);
+    m_timer.SetInterval(Duration::from_micros(value ? u64(1) : m_ideatime.load()));
+}
+bool FrameTimer::Unpaced() const { return m_unpaced.load(); }
 void FrameTimer::FrameBegin() { m_clock = Instant::now(); }
 void FrameTimer::FrameEnd() {
     {
