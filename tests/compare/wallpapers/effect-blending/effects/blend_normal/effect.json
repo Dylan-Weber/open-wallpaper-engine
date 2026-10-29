@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "normal",
+  "passes": [
+    {
+      "material": "materials/effects/blend_normal.json"
+    }
+  ]
+}
