@@ -38,5 +38,5 @@ w.add({"name": "strip", "image": model, "origin": {"value": "960 540 0", "script
        "animationlayers": [{"animation": 1, "blend": 1.0, "rate": 1.0, "visible": True, "id": 1, "name": "idle"}]})
 w.save()
 with open(os.path.join(HERE, 'puppet-physics-impulse', 'compare.json'), 'w') as f:
-    json.dump({"shots": 90, "shot_interval_ms": 0}, f)
+    json.dump({"shots": 90, "shot_interval_ms": 0, "fps": 30}, f)
 clock_probe.stamp(os.path.join(HERE, 'puppet-physics-impulse'))
