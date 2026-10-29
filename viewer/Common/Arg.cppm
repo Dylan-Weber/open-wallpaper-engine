@@ -28,6 +28,7 @@ struct SceneViewerArgs {
     String      capture_output;
     u32         capture_frame;
     Option<u64> random_seed;
+    Option<f64> script_clock;
     Resolution  resolution;
     i32         fps;
     u32         msaa_samples;
@@ -147,6 +148,11 @@ SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
                             .long_name("mouse-position"_str)
                             .help("Set initial normalized mouse position, e.g. 0,1"_str)
                             .default_value(""_str));
+    auto script_clock = command.add_arg(
+        Arg<f64>::value("script-clock"_str, from_str_parser<f64>())
+            .long_name("script-clock"_str)
+            .help(
+                "Run the scripts' Date from this moment (milliseconds since 1970) as the scene starts"_str));
     auto random_seed = command.add_arg(Arg<u64>::value("random-seed"_str, from_str_parser<u64>())
                                            .long_name("random-seed"_str)
                                            .help("Set the scene random seed"_str));
@@ -201,6 +207,7 @@ SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
         .capture_output        = Value(matches, capture).clone(),
         .capture_frame         = Value(matches, capture_frame),
         .random_seed           = OptionalValue(matches, random_seed),
+        .script_clock          = OptionalValue(matches, script_clock),
         .resolution            = Value(matches, resolution),
         .fps                   = Value(matches, fps),
         .msaa_samples          = Value(matches, msaa),

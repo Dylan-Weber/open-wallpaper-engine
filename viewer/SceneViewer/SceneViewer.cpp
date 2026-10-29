@@ -250,6 +250,7 @@ int main(int argc, char** argv) {
     if (args.random_seed.is_some()) {
         config.random_seed = Some(*args.random_seed);
     }
+    if (args.script_clock.is_some()) config.script_clock = Some(args.script_clock->to_primitive());
 
     config.cache_dir = args.cache_path.is_empty() ? viewer::DefaultCacheDir("wescene-renderer"_str)
                                                   : rstd::move(args.cache_path);

@@ -3,6 +3,7 @@ module;
 #include <rstd/macro.hpp>
 #include <rstd/enum.hpp>
 #include "quickjs.h"
+#include <time.h>
 
 module wescene.script;
 import eigen;
@@ -772,6 +773,13 @@ JSValue EngineGetterRuntime(JSContext* ctx, JSValueConst, int, JSValueConst*) {
     auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
     return JS_NewFloat64(ctx, host->inputs.runtime);
 }
+// the scripts' clock for the Date wrapper: NaN when they run on the system clock
+JSValue EngineScriptClock(JSContext* ctx, JSValueConst, int, JSValueConst*) {
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    return JS_NewFloat64(
+        ctx, host->inputs.clock_ms.is_some() ? *host->inputs.clock_ms : __builtin_nan(""));
+}
+
 JSValue EngineGetterTimeOfDay(JSContext* ctx, JSValueConst, int, JSValueConst*) {
     auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
     return JS_NewFloat64(ctx, host->inputs.time_of_day);
@@ -1791,6 +1799,8 @@ if (! globalThis.shared) globalThis.shared = {};
 // optionally persist to a JSON file under cache_path keyed by scene_id.
 )JS";
 
+void InstallSceneDate(JSContext* ctx);
+
 void InstallEngineGlobal(JSContext* ctx) {
     // Run the bootstrap to create createScriptProperties + skeleton engine.
     JSValue r = JS_Eval(ctx,
@@ -1854,6 +1864,62 @@ void InstallEngineGlobal(JSContext* ctx) {
     // C++-backed localStorage. Replaces the in-memory JS Map; values
     // persist to a JSON file when JsRuntime::SetPersistence is called.
     InstallLocalStorage(ctx);
+    InstallSceneDate(ctx);
+}
+
+// Date reads the scripts' clock when the scene has one (Scene::SetScriptClock): `new Date()` and
+// Date.now() are that moment, everything else is the built-in Date.
+constexpr const char* kSceneDateJs = R"JS(
+(() => {
+    const SystemDate = Date;
+    const clock = globalThis.__oweScriptClock;
+    delete globalThis.__oweScriptClock;
+    const now = () => {
+        const time = clock();
+        return time === time ? time : SystemDate.now();
+    };
+    class SceneDate extends SystemDate {
+        constructor(...args) {
+            if (args.length === 0) super(now());
+            else super(...args);
+        }
+        static now() { return now(); }
+    }
+    // Date() called as a function gives the moment as a string
+    globalThis.Date = new Proxy(SceneDate, { apply() { return new SceneDate().toString(); } });
+})();
+)JS";
+
+void InstallSceneDate(JSContext* ctx) {
+    JSValue global = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(ctx,
+                      global,
+                      "__oweScriptClock",
+                      JS_NewCFunction(ctx, EngineScriptClock, "__oweScriptClock", 0));
+    JS_FreeValue(ctx, global);
+    JSValue r = JS_Eval(ctx,
+                        kSceneDateJs,
+                        CStr::from_ptr(kSceneDateJs).to_bytes().len().to_primitive(),
+                        "<wescene-date>",
+                        JS_EVAL_TYPE_GLOBAL);
+    if (JS_IsException(r)) {
+        JSValue     exc = JS_GetException(ctx);
+        const char* msg = JS_ToCString(ctx, exc);
+        rstd_error("script date: {}", msg ? msg : "<exc>");
+        if (msg) JS_FreeCString(ctx, msg);
+        JS_FreeValue(ctx, exc);
+    }
+    JS_FreeValue(ctx, r);
+}
+
+// the local time of day (0..1) at `epoch_ms`
+float LocalTimeOfDay(double epoch_ms) {
+    const auto seconds = static_cast<time_t>(epoch_ms / 1000.0);
+    tm         local {};
+    localtime_r(&seconds, &local);
+    const double into_day = local.tm_hour * 3600.0 + local.tm_min * 60.0 + local.tm_sec +
+                            (epoch_ms - static_cast<double>(seconds) * 1000.0) / 1000.0;
+    return static_cast<float>(into_day / 86400.0);
 }
 
 // --- Built-in ES modules ----------------------------------------------------
@@ -4589,6 +4655,14 @@ void TickSceneScripts(owe::Scene& scene, const FrameInputs& fi) {
     auto script_scene = scene.ExtensionMut<ScriptScene>();
     if (script_scene.is_none()) return;
     auto events = scene.ConsumeAnimationEvents();
+    if (auto start = scene.ScriptClock(); start.is_some()) {
+        // the scripts' clock started with the scene: Date and engine.timeOfDay read it
+        auto inputs        = fi;
+        inputs.clock_ms    = Some(*start + static_cast<double>(fi.runtime) * 1000.0);
+        inputs.time_of_day = LocalTimeOfDay(*inputs.clock_ms);
+        (**script_scene).Tick(inputs, events.as_slice());
+        return;
+    }
     (**script_scene).Tick(fi, events.as_slice());
 }
 
