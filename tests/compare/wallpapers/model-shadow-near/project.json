@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test sun light through a gap, near the camera",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}
