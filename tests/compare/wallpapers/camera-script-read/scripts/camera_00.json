@@ -1,0 +1,22 @@
+{
+  "paths": [
+    {
+      "duration": 60,
+      "name": "",
+      "transforms": [
+        {
+          "eye": "3 0 12",
+          "center": "3 0 0",
+          "up": "0 1 0",
+          "timestamp": 0
+        },
+        {
+          "eye": "3 0 12",
+          "center": "3 0 0",
+          "up": "0 1 0",
+          "timestamp": 60
+        }
+      ]
+    }
+  ]
+}

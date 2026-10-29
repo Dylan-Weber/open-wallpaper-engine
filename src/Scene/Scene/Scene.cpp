@@ -1875,6 +1875,11 @@ auto Scene::ActiveCameraTransforms() const -> Option<SceneCameraTransforms> {
     return Some((**camera).AuthoredTransforms());
 }
 
+auto Scene::ScriptCameraTransforms() const -> Option<SceneCameraTransforms> {
+    if (m_script_camera.is_some()) return Some(SceneCameraTransforms(*m_script_camera));
+    return ActiveCameraTransforms();
+}
+
 bool Scene::SetActiveCameraTransforms(const SceneCameraTransforms& transforms) {
     if (m_active_camera.is_none()) return false;
     auto name = (*m_active_camera).clone();

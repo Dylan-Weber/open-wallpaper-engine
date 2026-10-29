@@ -2825,6 +2825,13 @@ public:
     auto ActiveCameraHandle() const -> Option<Arc<SceneCamera>>;
     auto ActiveCameraTransforms() const -> Option<SceneCameraTransforms>;
     bool SetActiveCameraTransforms(const SceneCameraTransforms& transforms);
+    // The camera scripts see (thisScene.getCameraTransforms): the scene's own camera and what
+    // scripts set, not where a camera path has moved the view (Wallpaper Engine's); the active
+    // camera's without a scene camera recorded.
+    void SetScriptCameraTransforms(const SceneCameraTransforms& transforms) {
+        m_script_camera = Some(SceneCameraTransforms(transforms));
+    }
+    auto ScriptCameraTransforms() const -> Option<SceneCameraTransforms>;
 
     Option<SceneImageEffectRef> FindNodeImageEffect(const SceneNode& node, ref<str> name);
     Option<SceneImageEffectRef> FindNodeImageEffect(const SceneNode& node, usize index);
@@ -3118,6 +3125,7 @@ private:
     HashMap<String, Arc<SceneCamera>>          m_cameras;
     Vec<String>                                m_camera_names;
     Option<String>                             m_active_camera;
+    Option<SceneCameraTransforms> m_script_camera;
     Vec<Arc<SceneCameraPath>>                  m_camera_paths;
     HashMap<String, Vec<Arc<SceneCameraPath>>> m_camera_path_user_index;
 
