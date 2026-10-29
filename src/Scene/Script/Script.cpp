@@ -2739,13 +2739,19 @@ Option<owe::script::BoneLocalPose> ScriptBoneLocalPose(JSContext* ctx, JSValueCo
     return (*host->bone_local_getter)->operator()(n, bone, host->inputs.runtime);
 }
 
+bool InFieldInit(JSContext* ctx) {
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    return host != nullptr && host->in_field_init;
+}
+
 // get/setLocalBoneOrigin and get/setLocalBoneAngles (radians), relative to the bone's parent. A
 // bone the layer doesn't have reads as a zero vector.
 JSValue LocalBonePart(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv,
                       bool angles) {
     uint32_t bone = 0;
     auto     pose = ScriptBoneLocalPose(ctx, this_val, argc, argv, bone);
-    if (pose.is_none()) return MakeVec3(ctx, 0, 0, 0);
+    // in a script's init, bones read zero (Wallpaper Engine's)
+    if (pose.is_none() || InFieldInit(ctx)) return MakeVec3(ctx, 0, 0, 0);
     const auto& part = angles ? pose->angles : pose->origin;
     return MakeVec3(ctx, part.x, part.y, part.z);
 }
@@ -2753,6 +2759,8 @@ JSValue LocalBonePart(JSContext* ctx, JSValueConst this_val, int argc, JSValueCo
 JSValue SetLocalBonePart(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv,
                          bool angles) {
     auto*    host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    // and setting them does nothing there
+    if (InFieldInit(ctx)) return JS_UNDEFINED;
     uint32_t bone = 0;
     auto     pose = ScriptBoneLocalPose(ctx, this_val, argc, argv, bone);
     double   x = 0, y = 0, z = 0;

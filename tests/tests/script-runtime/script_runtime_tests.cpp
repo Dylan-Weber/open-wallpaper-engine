@@ -717,6 +717,56 @@ TEST(ScriptBones, LocalOriginAndAngles) {
     EXPECT_FLOAT_EQ(pose.angles.z, 1.5f);
 }
 
+TEST(ScriptBones, LocalBonesReadZeroAndTakeNothingInInit) {
+    // In a script's init Wallpaper Engine's bones read zero and setting them does nothing (puppet-bone-init); update sees them.
+    owe::SceneNode node;
+    JsRuntime      rt;
+    rt.SetBoneResolvers(
+        JsRuntime::BoneIndexResolver::make([](owe::SceneNode*, ref<str>) -> uint32_t { return 1; }),
+        JsRuntime::BoneTransformResolver::make(
+            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTranslation> {
+                return None();
+            }));
+    BoneLocalPose pose { .origin = { 1.0f, 2.0f, 3.0f }, .angles = { 0.0f, 0.0f, 0.3f } };
+    int           sets = 0;
+    rt.SetBoneLocalResolvers(
+        JsRuntime::BoneLocalGetter::make(
+            [&](owe::SceneNode*, uint32_t, double) -> Option<BoneLocalPose> { return Some(pose); }),
+        JsRuntime::BoneLocalSetter::make(
+            [&](owe::SceneNode*, uint32_t, BoneLocalPose value, double) {
+                ++sets;
+                pose = value;
+            }));
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            let atInit = 'unset';
+            export function init(value) {
+                const angles = thisLayer.getLocalBoneAngles('mid');
+                const origin = thisLayer.getLocalBoneOrigin(1);
+                atInit = [angles.z, origin.x, origin.y, origin.z].join(' ');
+                thisLayer.setLocalBoneAngles('mid', new Vec3(0, 0, 1.5));
+                return value;
+            }
+            export function update() {
+                const now = thisLayer.getLocalBoneAngles('mid').z;
+                return atInit === '0 0 0 0' && Math.abs(now - 0.3) < 1e-6 ? 1 : 0;
+            }
+        )JS"_str,
+        "test/bone_init"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+
+    rt.SetSceneRoot(&node);
+    rt.TickAll();
+
+    EXPECT_EQ(LastScalar(fs), 1.0);
+    EXPECT_EQ(sets, 0);
+    EXPECT_FLOAT_EQ(pose.angles.z, 0.3f);
+}
+
 TEST(ScriptNodeSoftMutation, VisibleAndAlphaWrites) {
     owe::SceneNode node;
     JsRuntime      rt;
