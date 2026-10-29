@@ -1,0 +1,68 @@
+{
+  "title": "wpe-test values bound to user properties",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {
+      "schemecolor": {
+        "order": 0,
+        "text": "Tint",
+        "type": "color",
+        "value": "0.2 0.8 0.4"
+      },
+      "opacity": {
+        "order": 1,
+        "text": "Opacity",
+        "type": "slider",
+        "value": 0.4,
+        "min": 0,
+        "max": 1,
+        "step": 0.05
+      },
+      "show": {
+        "order": 2,
+        "text": "Show the red square",
+        "type": "bool",
+        "value": false
+      },
+      "shown": {
+        "order": 3,
+        "text": "Show the blue square",
+        "type": "bool",
+        "value": true
+      },
+      "mode": {
+        "order": 4,
+        "text": "Mode",
+        "type": "combo",
+        "value": "2",
+        "options": [
+          {
+            "label": "One",
+            "value": "1"
+          },
+          {
+            "label": "Two",
+            "value": "2"
+          }
+        ]
+      },
+      "size": {
+        "order": 5,
+        "text": "Width",
+        "type": "slider",
+        "value": 300,
+        "min": 50,
+        "max": 600,
+        "step": 10
+      },
+      "label": {
+        "order": 6,
+        "text": "Label",
+        "type": "textinput",
+        "value": "from a property"
+      }
+    }
+  }
+}

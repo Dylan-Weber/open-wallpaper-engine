@@ -1,0 +1,85 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0 0 0",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "first",
+      "image": "models/util/solidlayer.json",
+      "size": "30 30",
+      "color": "1 1 1",
+      "alpha": 1,
+      "origin": {
+        "value": "300 540 0",
+        "script": "'use strict';\nexport function init(value) {\n    let found = 0;\n    for (const n of ['first','second','third','late']) { try { if (thisScene.getLayer(n)) found++; } catch (e) {} }\n    let count = -1;\n    try { count = thisScene.getLayerCount(); } catch (e) {}\n    return new Vec3(300 + 10 * count, 200 + 100 * found, 0);\n}\nexport function update(value) { return value; }\n",
+        "scriptproperties": {}
+      },
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 1,
+      "visible": true
+    },
+    {
+      "name": "second",
+      "image": "models/util/solidlayer.json",
+      "origin": "800 540 0",
+      "size": "20 20",
+      "color": "0.3 0.3 0.3",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 2,
+      "visible": true
+    },
+    {
+      "name": "third",
+      "image": "models/util/solidlayer.json",
+      "origin": "1000 540 0",
+      "size": "20 20",
+      "color": "0.3 0.3 0.3",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 3,
+      "visible": true
+    },
+    {
+      "name": "last",
+      "image": "models/util/solidlayer.json",
+      "size": "30 30",
+      "color": "1 1 1",
+      "alpha": 1,
+      "origin": {
+        "value": "1500 540 0",
+        "script": "'use strict';\nexport function init(value) {\n    let found = 0;\n    for (const n of ['first','second','third','last','nonexistent']) { try { if (thisScene.getLayer(n)) found++; } catch (e) {} }\n    let count = -1;\n    try { count = thisScene.getLayerCount(); } catch (e) {}\n    return new Vec3(1500 + 10 * count, 200 + 100 * found, 0);\n}\nexport function update(value) { return value; }\n",
+        "scriptproperties": {}
+      },
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 4,
+      "visible": true
+    }
+  ],
+  "version": 1
+}
