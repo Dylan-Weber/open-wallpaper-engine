@@ -1215,7 +1215,9 @@ void SceneRuntimeController::loadScene() {
                 CloneUserPropertyDiagnostics(result.parsed.scene->UserPropertyDiagnostics()));
     publishClearColor(result.parsed.scene->ClearColor());
     auto parsed = rstd::move(result.parsed);
-    auto rtx    = m_render_controller->sender();
+    parsed.scene->SetScriptStart(static_cast<double>(m_config.script_start));
+    parsed.scene->SetCameraPathDelay(static_cast<double>(m_config.camera_path_delay));
+    auto rtx = m_render_controller->sender();
     if (rtx.send(RenderMsg::SetScene(scene_load.clone(),
                                      rstd::move(parsed.scene),
                                      rstd::move(parsed.runtime_input),

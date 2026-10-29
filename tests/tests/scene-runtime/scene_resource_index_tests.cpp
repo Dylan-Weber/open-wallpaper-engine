@@ -1983,6 +1983,36 @@ TEST(SceneNodeFieldAnimation, AlphaAnimationTicksThroughScene) {
     EXPECT_FLOAT_EQ(node->EffectiveAlpha(), 0.0f);
 }
 
+// Wallpaper Engine starts camera paths later than the scene's clock (38 frames in Arsenal and
+// fantasticcar, 7 in a light test scene: what looks like the scene's loading): a scene's camera
+// path delay holds them back until it has passed, then plays them that much behind the clock.
+TEST(SceneCameraPath, WaitsForTheCameraPathDelay) {
+    owe::Scene scene;
+    auto       camera =
+        Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 100.0, 50.0));
+    camera->SetLookAt({ -5.0, 0.0, 10.0 }, { -5.0, 0.0, 0.0 }, { 0.0, 1.0, 0.0 });
+    camera->Update();
+    auto path         = Arc<owe::SceneCameraPath>::make();
+    path->camera_name = "global"_Str;
+    path->camera      = Some(camera.clone());
+    owe::SceneCameraLookAtTrack track { .duration = 10.0f };
+    track.keys.push(
+        { .frame = 0.0f, .eye = { 0.0f, 0.0f, 10.0f }, .center = { 0.0f, 0.0f, 0.0f } });
+    track.keys.push(
+        { .frame = 10.0f, .eye = { 10.0f, 0.0f, 10.0f }, .center = { 10.0f, 0.0f, 0.0f } });
+    path->lookat_tracks.push(rstd::move(track));
+    scene.RegisterCameraPath(path.clone());
+    scene.SetCameraPathDelay(2.0);
+
+    scene.Runtime().Advance(rstd::f64(1.0));
+    scene.TickCameraPaths();
+    EXPECT_NEAR(camera->RenderTransforms().eye.x(), -5.0, 1e-6);
+
+    scene.Runtime().Advance(rstd::f64(4.0));
+    scene.TickCameraPaths();
+    EXPECT_NEAR(camera->RenderTransforms().eye.x(), 3.0, 1e-5);
+}
+
 TEST(SceneNodeFieldAnimation, WrapLoopReturnsSmoothlyToFirstKey) {
     owe::SceneAnimationCurve curve;
     curve.c0.push({ .frame = i32(), .value = 0.0f });

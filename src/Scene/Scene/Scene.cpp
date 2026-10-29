@@ -2809,6 +2809,9 @@ Vec<SceneMaterialDirtyEvent> Scene::ConsumePreparedMaterialDirtyEvents() {
 
 void Scene::TickCameraPaths() {
     if (m_camera_paths.is_empty()) return;
+    // Camera paths start after the camera path delay, their clock that much behind the scene's.
+    const double runtime = m_runtime.Frame().elapsed.to_primitive() - m_camera_path_delay;
+    if (runtime < 0.0) return;
 
     HashSet<String> has_enabled;
     for (const auto& path : m_camera_paths) {
@@ -2819,8 +2822,7 @@ void Scene::TickCameraPaths() {
     HashSet<String> reset;
     for (const auto& path : m_camera_paths) {
         if (! path->enabled) continue;
-        if (path->Tick(m_runtime.Frame().elapsed.to_primitive()))
-            touched.insert(path->camera_name.clone());
+        if (path->Tick(runtime)) touched.insert(path->camera_name.clone());
     }
     for (const auto& path : m_camera_paths) {
         if (path->enabled || has_enabled.contains(path->camera_name.as_str()) ||
