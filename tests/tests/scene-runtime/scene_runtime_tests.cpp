@@ -1601,6 +1601,11 @@ TEST(SceneCameraPath, ALayerUnderAHiddenParentDoesNotDriveTheCamera) {
     EXPECT_FLOAT_EQ(static_cast<float>((**camera).GetPosition().x()), 0.0f);
     EXPECT_FLOAT_EQ(static_cast<float>((**camera).GetPosition().y()), 1.0f);
     EXPECT_FLOAT_EQ(static_cast<float>((**camera).GetPosition().z()), 5.0f);
+    const auto view = (**camera).Transforms();
+    EXPECT_NEAR(view.center.x(), 0.0, 1e-9);
+    EXPECT_NEAR(view.center.y(), 0.0, 1e-9);
+    EXPECT_NEAR(view.center.z(), 0.0, 1e-9);
+    EXPECT_NEAR(view.up.y(), 1.0, 1e-9);
 }
 
 TEST(SceneCameraPath, UserBindingMutatesRegisteredArc) {
