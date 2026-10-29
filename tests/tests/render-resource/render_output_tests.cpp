@@ -9,6 +9,7 @@ import wescene.types;
 import wescene.vulkan;
 import vrento;
 import wescene.vulkan_render;
+import wescene.capture_surface;
 import wescene.scene_render_pipeline;
 import wescene.pkg.parse;
 import wescene.json;
@@ -595,6 +596,70 @@ TEST(RenderOutput, IgnoresInactiveSamplerContentsAndFeedback) {
     }
     EXPECT_EQ(counts->submitted, 3u);
     EXPECT_EQ(counts->aborted, 0u);
+    renderer.destroy();
+    EXPECT_EQ(queue.session().validation_errors(), 0u);
+}
+
+// An offscreen renderer drawing into a capture surface hands over exactly the frame asked for,
+// counted from 0, as RGBA rows (SceneViewer --capture writes it to a file).
+TEST(RenderOutput, CaptureSurfaceKeepsTheRequestedFrame) {
+    auto         document = owe::wpscene::ParseSceneDocumentJson(R"({
+        "camera": {},
+        "general": {"orthogonalprojection": {"width": 64, "height": 64}, "clearcolor": "0 0 1"},
+        "objects": []
+    })"_str,
+                                                                 owe::wpscene::kSceneVersionUnknown)
+                                .unwrap();
+    owe::fs::VFS vfs;
+    vfs.mount("/assets"_str, owe::fs::make_physical_fs(owe::fs::Path("assets"_str)).unwrap())
+        .unwrap();
+    wavsen::audio::SoundManager sound;
+    owe::SceneParser            parser;
+    auto  parsed = parser
+                       .Parse("capture-surface"_str,
+                              ref<owe::wpscene::SceneDocument>::from_raw_parts(&document),
+                              mut_ref<owe::fs::VFS>::from_raw_parts(&vfs),
+                              mut_ref<wavsen::audio::SoundManager>::from_raw_parts(&sound))
+                       .unwrap();
+    auto& scene  = *parsed.scene;
+    Option<Vec<u8>>           captured;
+    unsigned                  captures {};
+    owe::vulkan::VulkanRender renderer;
+    owe::RenderInitInfo       info;
+    info.offscreen          = true;
+    info.enable_valid_layer = true;
+    info.width = info.height  = 64;
+    info.pipeline_preparation = vk::PipelinePreparationMode::Deferred;
+    info.ex_swapchain_factory = Some(owe::MakeCaptureSurfaceFactory(
+        owe::CaptureRequest { .frame = u32(1), .width = 64, .height = 64 },
+        owe::CaptureCallback::make([&](Option<Vec<u8>> pixels) {
+            ++captures;
+            captured = rstd::move(pixels);
+        })));
+    rstd_assert(renderer.init(rstd::move(info)));
+    auto queue = vk::TextureContext::create(renderer.deviceSession().unwrap()).unwrap();
+    owe::SceneRenderPipeline pipeline(scene, *parsed.runtime_input, renderer);
+    auto ready = [&](Result<owe::PrepareOutcome, owe::ScenePrepareError> result) {
+        for (unsigned i {}; result.is_ok() && *result == owe::PrepareOutcome::Pending && i < 2000;
+             ++i) {
+            ::usleep(1000);
+            result = pipeline.retryPreparation();
+        }
+        rstd_assert(result.is_ok());
+        rstd_assert(pipeline.ready());
+    };
+    ready(pipeline.rebuild());
+    for (unsigned frame = 0; frame < 3; ++frame) {
+        ready(pipeline.prepare({ .frametime = 1.0f / 30.0f, .runtime = frame / 30.0f }));
+        renderer.drawFrame(scene);
+        scene.PassFrameTime(1.0 / 30.0);
+        EXPECT_EQ(captures, frame >= 1 ? 1u : 0u) << "after frame " << frame;
+    }
+    ASSERT_TRUE(captured.is_some());
+    ASSERT_EQ(captured->len(), usize(64 * 64 * 4));
+    EXPECT_EQ((*captured)[usize(0)], u8(0));
+    EXPECT_EQ((*captured)[usize(1)], u8(0));
+    EXPECT_EQ((*captured)[usize(2)], u8(255));
     renderer.destroy();
     EXPECT_EQ(queue.session().validation_errors(), 0u);
 }
