@@ -34,7 +34,8 @@ and is "ok" with an ssim of at least --threshold and no region, or "near" when i
 reference as a second take of it (reference-2.png) taken within 3 frames of it: Wallpaper Engine's own randomness.
 Takes further apart are only reported (what moved between them counts too). Pictures go to output-owe/<name>/:
 reference.png, owe.png, diff.png and side-by-side.png (reference | owe | difference, changed pixels in red), with
-the viewer's log in engine/viewer.log; report.json has every score.
+the viewer's log in engine/viewer.log; report.json has every score. A wallpaper's compare.json "bar_jitter" (pixels)
+leaves out regions no wider than that: script-driven audio bars read the sound a moment after the probe recorded it.
 
 Needs: SceneViewer (--viewer, default the debug build: lito build -p owe-sceneviewer), Wallpaper Engine's assets
 (WPE_ASSETS, default tests/assets) and the venv of tests/compare/ (python3 -m venv .venv &&
@@ -230,6 +231,12 @@ def eye_camera_delay(name, size, viewer, frames, script_start, inputs, env, eye)
     return found[0]
 
 
+def without_bar_jitter(regions, bar_width):
+    """The regions wider than `bar_width` pixels (compare.json "bar_jitter"): a script-driven bar can read the audio
+    buffer a moment after the probe recorded it, so a region no wider than one bar is not a difference."""
+    return [r for r in regions if r['width'] > bar_width]
+
+
 def near_floor(ssim, floor, frames_apart=3):
     """Whether owe (`ssim`) is at least as close to the reference as a second take of it (`floor`: its 'ssim' and
     both takes' 'frames') taken at about the same moment: further apart, what moved between them counts too."""
@@ -406,6 +413,8 @@ def main():
                 floor = compare(reference, other, args.tolerance, masked)[0]
                 metrics['floor'] = {'ssim': floor['ssim'], 'mae': floor['mae'], 'regions': len(floor['regions']),
                                     'frames': [frames, clock_probe.read(other) if probe else None]}
+        if settings_of(name).get('bar_jitter'):
+            metrics['regions'] = without_bar_jitter(metrics['regions'], settings_of(name)['bar_jitter'])
         save_pictures(name, reference, owe, difference, changed)
         results[name] = metrics
         ok = metrics['ssim'] >= args.threshold and not metrics['regions']
