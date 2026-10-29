@@ -1,0 +1,65 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0 0 0",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "strip",
+      "image": "models/strip.json",
+      "origin": {
+        "value": "960 400 0",
+        "script": "'use strict';\nexport function update(value) {\n    thisLayer.setLocalBoneAngles('mid', new Vec3(0, 0, 0.5));\n    thisLayer.setLocalBoneAngles('tip', new Vec3(0, 0, 4));\n    const angles = thisLayer.getLocalBoneAngles('tip');\n    thisScene.getLayer('mark').origin = new Vec3(960 + 200 * angles.z, 800, 0);\n    return value;\n}\n",
+        "scriptproperties": {}
+      },
+      "size": "600 100",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "animationlayers": [
+        {
+          "animation": 1,
+          "blend": 1.0,
+          "rate": 1.0,
+          "visible": true,
+          "id": 1,
+          "name": "idle"
+        }
+      ],
+      "id": 1,
+      "visible": true
+    },
+    {
+      "name": "mark",
+      "image": "models/util/solidlayer.json",
+      "origin": "960 800 0",
+      "size": "40 40",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 2,
+      "visible": true
+    }
+  ],
+  "version": 1
+}
