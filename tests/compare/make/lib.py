@@ -268,8 +268,9 @@ class Scene3D(Wallpaper):
                 [('point', 'lpoint'), ('spot', 'lspot'), ('tube', 'ltube'), ('directional', 'ldirectional')]}
 
     def light(self, name, kind, x, y, z, color='1 1 1', intensity=2, radius=20, angles=(0, 0, 0), **extra):
+        angles = angles if isinstance(angles, dict) else vec(*angles)
         return self.add({"name": name, "light": kind, "origin": vec(x, y, z), "color": color, "intensity": intensity,
-                         "radius": radius, "angles": vec(*angles), "scale": "1 1 1", **extra})
+                         "radius": radius, "angles": angles, "scale": "1 1 1", **extra})
 
     def save(self):
         write(self.name + '/project.json', {
