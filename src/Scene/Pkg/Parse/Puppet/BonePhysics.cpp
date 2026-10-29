@@ -55,6 +55,12 @@ Quaternionf Towards(const Quaternionf& from, const Quaternionf& to, float amount
     return from.slerp(rstd::cmp::min(rstd::cmp::max(amount, 0.0f), 1.0f), to).normalized();
 }
 
+// A negative amount turns away from `to`: a negative rotation stiffness pushes the bone further from its pose
+// (puppet-physics-gun: Gun Girl's gun bone has -5).
+Quaternionf TowardsOrAway(const Quaternionf& from, const Quaternionf& to, float amount) {
+    return from.slerp(rstd::cmp::min(amount, 1.0f), to).normalized();
+}
+
 Vector3f ReadVector(const Json& json, ref<str> key, const Vector3f& fallback) {
     array<float, 3> value {};
     if (json.get(key).is_none() || ! GetJsonValue(json, key, value, false)) return fallback;
@@ -207,7 +213,7 @@ auto BonePhysics::Apply(usize bone, const BoneSimulation& simulation, const Affi
                 const Quaternionf pose   = TurnOf(-state.angles);
                 const float       spring = simulation.rotation_stiffness * kDegrees * dt;
 
-                state.spin = state.spin * Towards(Quaternionf::Identity(), pose, spring);
+                state.spin = state.spin * TowardsOrAway(Quaternionf::Identity(), pose, spring);
             }
             if (simulation.limit_torque) {
                 const Vector3f most = Vector3f::Constant(simulation.max_torque * kDegrees);
