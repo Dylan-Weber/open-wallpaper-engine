@@ -15,6 +15,13 @@ using rstd::sync::Arc;
 export namespace owe
 {
 
+// Measured in Wallpaper Engine: a model whose material is blended translucent or additive casts no shadow (a
+// ceiling of either over a lit floor leaves the floor lit); a normal one does.
+inline bool BlendingCastsShadow(ref<str> blending) {
+    using namespace rstd::literals;
+    return blending != "translucent"_str && blending != "additive"_str;
+}
+
 enum class SceneParseErrorKind
 {
     Document,
