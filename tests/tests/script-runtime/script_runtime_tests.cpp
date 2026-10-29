@@ -1092,6 +1092,43 @@ TEST(ScriptCursor, ClickAndDownUpInside) {
     EXPECT_EQ(fs->last_value().as_Scalar().value.v, 1'010'101);
 }
 
+// getAnimationLayer returns the animation layer: its playback controls, and getAnimation for its
+// animation (Ocarina of Time: getAnimationLayer("Surprise").getAnimation("surprise").isPlaying()).
+TEST(ScriptAnimationLayer, LayerControlsAndGetsItsAnimation) {
+    owe::SceneNode node;
+    auto           clip     = Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {
+        .name = String::make("Surprise"_str),
+        .mode = String::make("single"_str),
+        .fps  = 30.0f,
+        .end  = i32(60),
+    });
+    auto           playback = Arc<owe::SceneAnimationPlayback>::make(rstd::move(clip));
+    node.RegisterAnimation(playback.clone());
+
+    JsRuntime rt;
+    rt.SetFrameInputs(MakeFi());
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            export function update() {
+                const layer = thisLayer.getAnimationLayer("Surprise");
+                layer.pause();
+                const before = layer.getAnimation("surprise").isPlaying();
+                layer.play();
+                const after = layer.getAnimation("surprise").isPlaying();
+                return (before ? 10 : 0) + (after ? 1 : 0);
+            }
+        )JS"_str,
+        "test/animation_layer_get_animation"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+    rt.TickAll();
+    ASSERT_TRUE(fs->last_value().is_Scalar());
+    EXPECT_EQ(fs->last_value().as_Scalar().value.v, 1.0);
+}
+
 TEST(ScriptCursor, ClickRestartsNamedAnimationLayer) {
     owe::SceneNode node;
     node.SetTranslate({ 500.0f, 500.0f, 0.0f });
