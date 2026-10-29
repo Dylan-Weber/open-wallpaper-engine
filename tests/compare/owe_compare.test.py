@@ -141,5 +141,74 @@ class Render(unittest.TestCase):
         self.assertEqual(command[command.index('--shadow-quality') + 1], 'medium')
 
 
+class Shots(unittest.TestCase):
+    """A wallpaper whose reference is a series of pictures (reference-shot-01.png, ...), taken one after another: each
+    is compared at the frame its clock probe records, as the label "name#01"."""
+
+    def folder(self, shots, plain=True):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        root = os.path.join(folder.name, 'physics')
+        os.makedirs(root)
+        if plain:
+            open(os.path.join(root, 'reference.png'), 'w').close()
+        for shot in shots:
+            open(os.path.join(root, 'reference-shot-%02d.png' % shot), 'w').close()
+        return folder.name
+
+    def test_a_label_names_its_wallpaper_folder_and_its_picture(self):
+        self.assertEqual(owe_compare.folder_of('physics#07'), 'physics')
+        self.assertEqual(owe_compare.folder_of('physics'), 'physics')
+        with mock.patch.object(owe_compare, 'WALLPAPERS', '/w'):
+            self.assertEqual(owe_compare.reference_of('physics#07'), '/w/physics/reference-shot-07.png')
+            self.assertEqual(owe_compare.reference_of('physics'), '/w/physics/reference.png')
+
+    def test_a_wallpaper_expands_to_its_pictures_in_order(self):
+        with mock.patch.object(owe_compare, 'WALLPAPERS', self.folder([3, 1, 10, 2])):
+            self.assertEqual(owe_compare.labels_of(['physics']),
+                             ['physics', 'physics#01', 'physics#02', 'physics#03', 'physics#10'])
+
+    def test_a_wallpaper_with_only_shots_has_no_plain_picture(self):
+        with mock.patch.object(owe_compare, 'WALLPAPERS', self.folder([1, 2], plain=False)):
+            self.assertEqual(owe_compare.labels_of(['physics']), ['physics#01', 'physics#02'])
+
+    def test_one_shot_asked_for_is_the_only_one(self):
+        with mock.patch.object(owe_compare, 'WALLPAPERS', self.folder([1, 2])):
+            self.assertEqual(owe_compare.labels_of(['physics#02']), ['physics#02'])
+
+    def test_a_wallpaper_without_shots_is_itself(self):
+        with mock.patch.object(owe_compare, 'WALLPAPERS', self.folder([])):
+            self.assertEqual(owe_compare.labels_of(['physics']), ['physics'])
+
+    def test_settings_and_scene_are_the_wallpapers(self):
+        with tempfile.TemporaryDirectory() as root:
+            os.makedirs(os.path.join(root, 'physics'))
+            with open(os.path.join(root, 'physics', 'compare.json'), 'w') as f:
+                json.dump({'probe': True}, f)
+            with mock.patch.object(owe_compare, 'WALLPAPERS', root):
+                self.assertEqual(owe_compare.settings_of('physics#04'), {'probe': True})
+
+    def test_the_series_is_one_row_a_picture_in_frame_order(self):
+        results = {'physics': {'ssim': 1.0}, 'other#01': {'ssim': 0.5},
+                   'physics#02': {'ssim': 0.9, 'mae': 2.0, 'changed': 0.01, 'regions': [{}],
+                                  'probe': {'reference': 360, 'owe': 360}},
+                   'physics#01': {'ssim': 0.99, 'mae': 1.0, 'changed': 0.0, 'regions': [],
+                                  'probe': {'reference': 340, 'owe': 340}}}
+        rows = owe_compare.series_rows(results, 'physics')
+        self.assertEqual([row['shot'] for row in rows], [1, 2])
+        self.assertEqual([row['frame'] for row in rows], [340, 360])
+        self.assertEqual([row['regions'] for row in rows], [0, 1])
+        self.assertEqual(owe_compare.series_rows(results, 'missing'), [])
+
+    def test_the_series_is_written_as_a_csv(self):
+        rows = [{'shot': 1, 'frame': 340, 'ssim': 0.99, 'mae': 1.0, 'changed': 0.0, 'regions': 0}]
+        with tempfile.TemporaryDirectory() as folder:
+            path = owe_compare.write_series(folder, 'physics', rows)
+            with open(path) as f:
+                lines = f.read().splitlines()
+        self.assertEqual(lines[0], 'shot,frame,ssim,mae,changed,regions')
+        self.assertEqual(lines[1], '1,340,0.9900,1.00,0.0000,0')
+
+
 if __name__ == '__main__':
     unittest.main()
