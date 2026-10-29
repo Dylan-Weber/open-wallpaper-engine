@@ -114,6 +114,14 @@ def labels_of(names):
     return labels
 
 
+def cached(cache, key, make):
+    """make()'s result, made once for each key: the pictures of a series often show the same frame (the screen is
+    copied faster than the wallpaper draws), and owe renders it once."""
+    if key not in cache:
+        cache[key] = make()
+    return cache[key]
+
+
 def series_rows(results, name):
     """The series of the wallpaper `name` in `results` (label to metrics): a row for each picture, in order."""
     rows = []
@@ -386,6 +394,7 @@ def main():
         if os.path.exists(os.path.join(WALLPAPERS, n, 'reference.png')) or shots_of(n)))
     results, counts = {}, {'ok': 0, 'near': 0, 'differ': 0, 'failed': 0, 'skipped': 0}
     help_text = '' if args.no_render else viewer_help(args.viewer)
+    rendered = {}
     for name in names:
         why = skipped(name)
         if why:
@@ -443,8 +452,9 @@ def main():
                         name, reference, args.viewer, frames, script_start, args.tolerance, input_args, input_env,
                         probe_boxes(reference.size, inputs, bands, settings_of(name).get('probe_mirrored', False)))
                     stamp['camera_path_delay'] = round(camera_path_delay * 30)
-                frame = render(name, reference.size, args.viewer, frames, script_start, camera_path_delay,
-                               input_args, input_env)
+                frame = cached(rendered, (folder_of(name), frames, script_start, camera_path_delay, tuple(input_args)),
+                               lambda: render(name, reference.size, args.viewer, frames, script_start,
+                                              camera_path_delay, input_args, input_env))
             owe = Image.open(frame)
             if owe.size != reference.size:
                 raise RuntimeError('sizes differ: reference %s, owe %s' % (reference.size, owe.size))

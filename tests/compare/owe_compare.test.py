@@ -200,6 +200,18 @@ class Shots(unittest.TestCase):
         self.assertEqual([row['regions'] for row in rows], [0, 1])
         self.assertEqual(owe_compare.series_rows(results, 'missing'), [])
 
+    def test_a_frame_shown_twice_is_rendered_once(self):
+        calls = []
+        cache = {}
+
+        def render():
+            calls.append(1)
+            return 'frame.ppm'
+        for _ in range(3):
+            self.assertEqual(owe_compare.cached(cache, ('w', 340), render), 'frame.ppm')
+        self.assertEqual(owe_compare.cached(cache, ('w', 341), render), 'frame.ppm')
+        self.assertEqual(len(calls), 2)
+
     def test_the_series_is_written_as_a_csv(self):
         rows = [{'shot': 1, 'frame': 340, 'ssim': 0.99, 'mae': 1.0, 'changed': 0.0, 'regions': 0}]
         with tempfile.TemporaryDirectory() as folder:
