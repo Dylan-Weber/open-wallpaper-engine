@@ -429,6 +429,11 @@ def audio_wallpaper(name, title, sound):
                         '-ar', '48000', '-c:a', 'pcm_s16le', path], check=True)
     # made again from the line above whenever it is missing, so it is not committed
     write(name + '/.gitignore', 'audio.wav\n')
+    # the bars follow the script's reading of the sound, a moment after the probe's record of it: one bar's width
+    # of difference is not a difference
+    write(name + '/compare.json', {"bar_jitter": 20})
+    # the probe records the bands Wallpaper Engine heard, which the viewer is then given
+    clock_probe.stamp(os.path.join(HERE, name))
 
 
 # ---------------------------------------------------------------------------------------------------------------
