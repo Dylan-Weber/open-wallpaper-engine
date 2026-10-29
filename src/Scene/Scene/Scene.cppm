@@ -1420,6 +1420,11 @@ struct SceneAnimationTrack {
     bool            Empty() const { return curve->Empty(); }
     float           EvaluateScalar(float base) const;
     Eigen::Vector3f EvaluateVec3(const Eigen::Vector3f& base) const;
+    // A layer property's animation, as Wallpaper Engine applies it whatever the curve's
+    // `relative`: a vector (origin, scale, angles, color) is added to the property's value, a
+    // number (alpha) takes the place of it.
+    float           EvaluateLayerScalar(float value) const;
+    Eigen::Vector3f EvaluateLayerVec3(const Eigen::Vector3f& value) const;
     auto            Share() const -> SceneAnimationTrack {
         return { .curve = curve.clone(), .playback = playback.clone() };
     }
@@ -1726,6 +1731,9 @@ public:
     void SetRotationAnimation(SceneAnimationTrack track);
     void SetAlphaAnimation(SceneAnimationTrack track);
     void SetColorAnimation(SceneAnimationTrack track);
+    // A light's animations follow their curves' `relative`; a layer's add vectors and replace
+    // numbers whatever it says (SceneAnimationTrack::EvaluateLayerVec3).
+    void SetAnimationsFollowRelative(bool follow) { m_animations_follow_relative = follow; }
     void RegisterAnimation(Arc<SceneAnimationPlayback> playback);
     void BindFieldAnimation(String field, Arc<SceneAnimationPlayback> playback);
     auto FieldAnimation(ref<str> field) const -> Option<Arc<SceneAnimationPlayback>>;
@@ -1925,6 +1933,7 @@ private:
     bool                                   m_alpha_overridden { false };
     SceneNode*                             m_alpha_source { nullptr };
     Vec<SceneNodeFieldAnimation>           m_field_animation_tracks;
+    bool                                   m_animations_follow_relative { false };
     SceneAnimationSet                      m_animations;
     float                                  m_brightness { 1.0f };
     bool                                   m_brightness_overridden { false };
