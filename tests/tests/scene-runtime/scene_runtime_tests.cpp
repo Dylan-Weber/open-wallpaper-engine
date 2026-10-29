@@ -432,6 +432,49 @@ TEST(SceneNodeFramework, InvalidatesCachedWorldAfterParentDestruction) {
     EXPECT_DOUBLE_EQ(anchor.ModelTrans()(0, 3), 0.0);
 }
 
+// The shaders' four light slots go to the lights that light: Ocarina of Time's four torch lights
+// sit under a hidden layer, and took every slot from its sun.
+TEST(LightUniformSource, HiddenLightsLeaveTheirSlotsToTheOthers) {
+    auto torches = Arc<owe::SceneNode>::make();
+    torches->SetVisible(false);
+    Vec<Arc<owe::SceneNode>>  torch_nodes;
+    Vec<Box<owe::SceneLight>> torch_lights;
+    owe::SceneLight::Desc     torch;
+    torch.type      = owe::SceneLightType::Point;
+    torch.color     = { 1.0f, 0.7f, 0.0f };
+    torch.intensity = 1.5f;
+    for (int index = 0; index < 4; ++index) {
+        torch_nodes.push(Arc<owe::SceneNode>::make());
+        torches->AppendChild(torch_nodes.last_mut().unwrap()->clone());
+        torch_lights.push(Box<owe::SceneLight>::make(torch));
+        (*torch_lights.last_mut().unwrap())->setNode(torch_nodes.last_mut().unwrap()->as_ptr());
+    }
+    auto                  sun_node = Arc<owe::SceneNode>::make();
+    owe::SceneLight::Desc sun;
+    sun.type      = owe::SceneLightType::Directional;
+    sun.color     = { 1.0f, 1.0f, 1.0f };
+    sun.intensity = 3.0f;
+    owe::SceneLight sun_light(sun);
+    sun_light.setNode(sun_node.as_ptr());
+
+    auto lights = Vec<ref<owe::SceneLight>>::make();
+    for (auto& light : torch_lights)
+        lights.push(ref<owe::SceneLight>::from_raw_parts(light.as_ptr()));
+    lights.push(ref<owe::SceneLight>::from_raw_parts(rstd::addressof(sun_light)));
+    owe::LightUniformSource source(rstd::move(lights));
+    owe::SceneFrame         frame;
+
+    auto direction = scene_test::Capture(frame, source, owe::LightUniformOutput::DirectionType);
+    ASSERT_EQ(direction.size(), usize(16));
+    EXPECT_FLOAT_EQ(direction[usize(3)], static_cast<float>(owe::SceneLightType::Directional));
+    for (usize slot { 1 }; slot < usize(4); ++slot)
+        EXPECT_FLOAT_EQ(direction[slot * usize(4) + usize(3)], -1.0f)
+            << "slot " << slot.to_primitive();
+    auto color = scene_test::Capture(frame, source, owe::LightUniformOutput::ColorRadius);
+    ASSERT_EQ(color.size(), usize(16));
+    EXPECT_FLOAT_EQ(color[usize()], 3.0f);
+}
+
 TEST(LightUniformSource, PublishesWorldDirectionAndType) {
     auto parent = Arc<owe::SceneNode>::make();
     parent->SetTranslate({ 10.0f, 20.0f, 30.0f });
