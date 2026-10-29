@@ -685,6 +685,7 @@ BuildContext(fs::VFS& vfs, ref<str> scene_id, const wpscene::SceneMetadata& sc,
     context.shader_environment.point_lights       = sc.general.lightconfig.point;
     context.shader_environment.spot_lights        = sc.general.lightconfig.spot;
     context.shader_environment.directional_lights = sc.general.lightconfig.directional;
+    context.shader_environment.tube_lights        = sc.general.lightconfig.tube;
     context.shader_environment.shadow_quality     = shadow_quality;
 
     context.scene->RegisterRenderTarget(String::make(SpecTex_Default),

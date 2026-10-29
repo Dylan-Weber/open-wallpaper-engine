@@ -528,6 +528,30 @@ TEST(LightUniformSource, PublishesWorldDirectionAndType) {
     EXPECT_FLOAT_EQ(cast_shadow[usize()], 1.0f);
 }
 
+// A tube light takes the light config's tube count, not the point lights': a scene with one tube light and no
+// point lights still lights through the newer interface.
+TEST(LightUniformSource, ATubeLightTakesTheTubeCount) {
+    auto node = Arc<owe::SceneNode>::make();
+
+    owe::SceneLight::Desc desc;
+    desc.type      = owe::SceneLightType::Tube;
+    desc.color     = { 1.0f, 1.0f, 1.0f };
+    desc.intensity = 2.0f;
+    owe::SceneLight light(desc);
+    light.setNode(node.as_ptr());
+
+    auto lights = Vec<ref<owe::SceneLight>>::make();
+    lights.push(ref<owe::SceneLight>::from_raw_parts(rstd::addressof(light)));
+    owe::LightKindLimits limits;
+    limits.tube = u32(1);
+    owe::LightUniformSource source(rstd::move(lights), Some(limits));
+    owe::SceneFrame         frame;
+
+    auto color = scene_test::Capture(frame, source, owe::LightUniformOutput::LightingV1ColorRadius);
+    ASSERT_EQ(color.size(), usize(16));
+    EXPECT_FLOAT_EQ(color[usize()], 2.0f);
+}
+
 TEST(ShadowUniformSource, UsesAuthoredCascadeExtentAndLightObjectFrame) {
     auto camera =
         Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000.0, 50.0));

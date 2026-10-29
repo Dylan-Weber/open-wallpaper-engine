@@ -412,6 +412,7 @@ struct LightKindLimits {
     u32 point {};
     u32 spot {};
     u32 directional {};
+    u32 tube {};
 };
 
 class LightUniformSource {

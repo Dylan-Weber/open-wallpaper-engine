@@ -46,6 +46,7 @@ struct SceneShaderEnvironment {
     u32 point_lights {};
     u32 spot_lights {};
     u32 directional_lights {};
+    u32 tube_lights {};
 };
 
 // A light that casts a shadow map (by its object id).

@@ -888,6 +888,7 @@ auto LightUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
         if (left.is_none()) return true;
         u32* count = type == SceneLightType::Spot          ? &left->spot
                      : type == SceneLightType::Directional ? &left->directional
+                     : type == SceneLightType::Tube        ? &left->tube
                                                            : &left->point;
         if (*count == u32()) return false;
         *count = *count - u32(1);
