@@ -131,6 +131,75 @@ TEST(ScriptInitialization, UsesSceneOwnerOrderInsteadOfRegistrationOrder) {
     EXPECT_EQ(LastScalar(consumer), 7.0);
 }
 
+TEST(ScriptMatrices, Mat3AndMat4FollowTheSceneScriptReference) {
+    JsRuntime rt;
+    auto*     script = rt.MakeFieldScript(
+        R"JS(
+            function near(a, b, e) { return Math.abs(a - b) < (e === undefined ? 1e-4 : e); }
+            function nearV(v, ...c) {
+                const k = [v.x, v.y, v.z, v.w];
+                return c.every((x, i) => near(k[i], x));
+            }
+            function nearM(m, ...c) {
+                return c.length === m.m.length && c.every((x, i) => near(m.m[i], x));
+            }
+            const checks = [
+                ["Mat4.identity", () => { return (nearM(new Mat4(), 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1) && nearM(Mat4.identity(), 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1)); }],
+                ["Mat4.fromTranslation", () => { return (nearV(Mat4.fromTranslation(new Vec3(1, 2, 3)).transformPoint(new Vec3(1, 1, 1)), 2, 3, 4) && nearV(Mat4.fromTranslation(new Vec2(1, 2)).translation(), 1, 2, 0)); }],
+                ["Mat4.fromScale", () => { return (nearV(Mat4.fromScale(2).transformPoint(new Vec3(1, 2, 3)), 2, 4, 6) && nearV(Mat4.fromScale(new Vec3(1, 2, 3)).transformPoint(new Vec3(1, 1, 1)), 1, 2, 3)); }],
+                ["Mat4.fromRotation", () => { return (nearV(Mat4.fromRotation(90, new Vec3(0, 0, 1)).transformDirection(new Vec3(1, 0, 0)), 0, 1, 0)); }],
+                ["Mat4.fromEuler", () => { return (nearV(Mat4.fromEuler(0, 0, 90).transformDirection(new Vec3(1, 0, 0)), 0, 1, 0) && nearV(Mat4.fromEuler(new Vec3(0, 90, 0)).transformDirection(new Vec3(0, 0, 1)), 1, 0, 0) && nearV(Mat4.fromEuler(90, 0, 0).transformDirection(new Vec3(0, 1, 0)), 0, 0, 1)); }],
+                ["Mat4.fromBasis", () => { return (nearV(Mat4.fromBasis(new Vec3(0, 1, 0), new Vec3(-1, 0, 0), new Vec3(0, 0, 1)).transformDirection(new Vec3(1, 0, 0)), 0, 1, 0)); }],
+                ["Mat4.lookAt", () => { const v = Mat4.lookAt(new Vec3(0, 0, 5), new Vec3(0, 0, 0), new Vec3(0, 1, 0)); return nearV(v.transformPoint(new Vec3(0, 0, 5)), 0, 0, 0) && nearV(v.transformPoint(new Vec3(0, 0, 0)), 0, 0, -5); }],
+                ["Mat4.compose", () => { return (nearV(Mat4.compose(new Vec3(10, 0, 0), new Vec3(0, 0, 90), new Vec3(2, 2, 2)).transformPoint(new Vec3(1, 0, 0)), 10, 2, 0)); }],
+                ["Mat4.decompose", () => { const d = Mat4.compose(new Vec3(1, 2, 3), new Vec3(10, 20, 30), new Vec3(2, 3, 4)).decompose(); return nearV(d.translation, 1, 2, 3) && nearV(d.rotation, 10, 20, 30) && nearV(d.scale, 2, 3, 4); }],
+                ["Mat4.extractEuler", () => { return (nearV(Mat4.fromEuler(10, 20, 30).extractEuler(), 10, 20, 30)); }],
+                ["Mat4.translation.set", () => { const m = new Mat4(); m.translation(new Vec3(4, 5, 6)); return nearV(m.translation(), 4, 5, 6); }],
+                ["Mat4.axes", () => { const m = Mat4.fromEuler(0, 0, 90); return nearV(m.right(), 0, 1, 0) && nearV(m.up(), -1, 0, 0) && nearV(m.forward(), 0, 0, 1); }],
+                ["Mat4.multiply.matrix", () => { return (nearV(Mat4.fromTranslation(new Vec3(1, 0, 0)).multiply(Mat4.fromScale(2)).transformPoint(new Vec3(1, 0, 0)), 3, 0, 0)); }],
+                ["Mat4.multiply.vec4", () => { const r = Mat4.fromTranslation(new Vec3(1, 2, 3)).multiply(new Vec4(1, 1, 1, 1)); return nearV(r, 2, 3, 4, 1); }],
+                ["Mat4.multiply.scalar", () => { return (nearM(Mat4.identity().multiply(2), 2,0,0,0, 0,2,0,0, 0,0,2,0, 0,0,0,2)); }],
+                ["Mat4.addSubtract", () => { return (nearM(Mat4.identity().add(Mat4.identity()), 2,0,0,0, 0,2,0,0, 0,0,2,0, 0,0,0,2) && nearM(Mat4.identity().subtract(Mat4.identity()), 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0)); }],
+                ["Mat4.rightMultiplies", () => { return (nearV(Mat4.fromScale(2).translate(new Vec3(1, 0, 0)).translation(), 2, 0, 0) && nearV(Mat4.fromTranslation(new Vec3(1, 0, 0)).scale(2).transformPoint(new Vec3(1, 0, 0)), 3, 0, 0) && nearV(new Mat4().rotate(90, new Vec3(0, 0, 1)).transformDirection(new Vec3(1, 0, 0)), 0, 1, 0)); }],
+                ["Mat4.transpose", () => { return (nearM(Mat4.fromTranslation(new Vec3(1, 2, 3)).transpose(), 1,0,0,1, 0,1,0,2, 0,0,1,3, 0,0,0,1)); }],
+                ["Mat4.inverse", () => { const m = Mat4.compose(new Vec3(1, 2, 3), new Vec3(10, 20, 30), new Vec3(2, 3, 4)); return m.multiply(m.inverse()).equals(Mat4.identity()); }],
+                ["Mat4.determinant", () => { return (near(Mat4.fromScale(new Vec3(2, 3, 4)).determinant(), 24)); }],
+                ["Mat4.normalMatrix", () => { const n = Mat4.fromScale(new Vec3(2, 1, 1)).normalMatrix(); return n.m.length === 9 && near(n.m[0], 0.5) && near(n.m[4], 1); }],
+                ["Mat4.copyEquals", () => { const a = Mat4.fromScale(2); const b = a.copy(); b.m[0] = 5; return a.m[0] === 2 && !a.equals(b) && a.equals(a.copy()); }],
+                ["Mat4.toString", () => { return (typeof Mat4.identity().toString() === 'string' && Mat4.identity().toString().split(' ').length === 16); }],
+                ["Mat3.identity", () => { return (nearM(new Mat3(), 1,0,0, 0,1,0, 0,0,1) && nearM(Mat3.identity(), 1,0,0, 0,1,0, 0,0,1)); }],
+                ["Mat3.fromTranslation", () => { return (nearV(Mat3.fromTranslation(new Vec2(1, 2)).transformPoint(new Vec2(1, 1)), 2, 3) && nearV(Mat3.fromTranslation(new Vec2(1, 2)).transformDirection(new Vec2(1, 1)), 1, 1)); }],
+                ["Mat3.fromScale", () => { return (nearV(Mat3.fromScale(2).transformPoint(new Vec2(1, 2)), 2, 4) && nearV(Mat3.fromScale(new Vec2(2, 3)).transformPoint(new Vec2(1, 1)), 2, 3)); }],
+                ["Mat3.fromRotation", () => { return (nearV(Mat3.fromRotation(90).transformDirection(new Vec2(1, 0)), 0, 1) && near(Mat3.fromRotation(90).angle(), 90)); }],
+                ["Mat3.fromBasis", () => { return (nearV(Mat3.fromBasis(new Vec2(0, 1), new Vec2(-1, 0)).transformDirection(new Vec2(1, 0)), 0, 1)); }],
+                ["Mat3.fromMat4", () => { return (nearV(Mat3.fromMat4(Mat4.fromEuler(0, 0, 90)).transformDirection(new Vec2(1, 0)), 0, 1)); }],
+                ["Mat3.compose", () => { return (nearV(Mat3.compose(new Vec2(10, 0), 90, new Vec2(2, 2)).transformPoint(new Vec2(1, 0)), 10, 2)); }],
+                ["Mat3.decompose", () => { const d = Mat3.compose(new Vec2(1, 2), 30, new Vec2(2, 3)).decompose(); return nearV(d.translation, 1, 2) && near(d.rotation, 30) && nearV(d.scale, 2, 3); }],
+                ["Mat3.translation.set", () => { const m = new Mat3(); m.translation(new Vec2(4, 5)); return nearV(m.translation(), 4, 5); }],
+                ["Mat3.multiply", () => { return (nearV(Mat3.fromTranslation(new Vec2(1, 0)).multiply(Mat3.fromScale(2)).transformPoint(new Vec2(1, 0)), 3, 0) && nearV(Mat3.fromTranslation(new Vec2(1, 2)).multiply(new Vec3(1, 1, 1)), 2, 3, 1) && nearM(Mat3.identity().multiply(2), 2,0,0, 0,2,0, 0,0,2)); }],
+                ["Mat3.rightMultiplies", () => { return (nearV(Mat3.fromScale(2).translate(new Vec2(1, 0)).translation(), 2, 0) && nearV(new Mat3().rotate(90).transformDirection(new Vec2(1, 0)), 0, 1) && nearV(Mat3.fromTranslation(new Vec2(1, 0)).scale(2).transformPoint(new Vec2(1, 0)), 3, 0)); }],
+                ["Mat3.inverseTranspose", () => { const m = Mat3.compose(new Vec2(1, 2), 30, new Vec2(2, 3)); return m.multiply(m.inverse()).equals(Mat3.identity()) && near(Mat3.fromScale(new Vec2(2, 3)).determinant(), 6) && nearM(Mat3.fromTranslation(new Vec2(1, 2)).transpose(), 1,0,1, 0,1,2, 0,0,1); }],
+                ["Mat3.addSubtractCopy", () => { return (nearM(Mat3.identity().add(Mat3.identity()), 2,0,0, 0,2,0, 0,0,2) && nearM(Mat3.identity().subtract(Mat3.identity()), 0,0,0, 0,0,0, 0,0,0) && Mat3.identity().copy().equals(Mat3.identity())); }],
+                ["Mat3.toString", () => { return (Mat3.identity().toString().split(' ').length === 9); }],
+            ];
+            const failed = checks.filter(([name, check]) => {
+                try { return check() !== true; } catch (e) { return true; }
+            }).map(([name]) => name);
+            export function update() { return failed.join(' '); }
+        )JS"_str,
+        "test/matrices"_str,
+        FieldKind::String,
+        owe::MakeObject(),
+        owe::IntoJson(""));
+    ASSERT_NE(script, nullptr);
+
+    rt.TickAll();
+
+    ASSERT_TRUE(script->last_value().is_String());
+    const auto failed = script->last_value().as_String().value.s.as_str();
+    EXPECT_EQ(failed, ""_str) << "failed: " << rstd::cppstd::as_string_view(failed);
+}
+
 TEST(ScriptValueCoercion, PreservesVec4InitialAndReturnValues) {
     JsRuntime rt;
     auto*     script = rt.MakeFieldScript(
