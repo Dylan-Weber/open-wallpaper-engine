@@ -475,6 +475,24 @@ void ParticleSpawnInstruction::Initialize(ParticleSpawnColumns&          columns
     }
 }
 
+ParticleRotationRange owe::ReadRotationRandom(const Json& initializer) {
+    ParticleRotationRange range;
+    range.max[usize(2)] = kTau;
+    auto read           = [&](ref<str> key, array<float, 3>& out) {
+        auto value = initializer.get(key);
+        if (value.is_none()) return;
+        if (auto number = (*value)->as_f64(); number.is_some()) {
+            out = { 0.0f, 0.0f, static_cast<float>(number->to_primitive()) };
+            return;
+        }
+        owe::GetJsonValue(initializer, key, out, false);
+    };
+    read("min"_str, range.min);
+    read("max"_str, range.max);
+    owe::GetJsonValue(initializer, "exponent"_str, range.exponent, false);
+    return range;
+}
+
 ParticleSpawnInstruction ParticleParser::GenInitializer(const Json& wpj,
                                                         u32         implicit_sequence_count) {
     do {
@@ -517,11 +535,10 @@ ParticleSpawnInstruction ParticleParser::GenInitializer(const Json& wpj,
                 .target = VectorRandomProgram::Target::Velocity,
             });
         } else if (name == "rotationrandom"_str) {
-            VecRandom r;
-            r.max[usize(2)] = kTau;
-            VecRandom::ReadFromJson(wpj, r);
+            auto range = ReadRotationRandom(wpj);
             return ParticleSpawnInstruction::Make(VectorRandomProgram {
-                .config = r,
+                .config =
+                    VecRandom { .min = range.min, .max = range.max, .exponent = range.exponent },
                 .target = VectorRandomProgram::Target::Rotation,
             });
         } else if (name == "angularvelocityrandom"_str) {
