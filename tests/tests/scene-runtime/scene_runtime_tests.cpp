@@ -1592,8 +1592,10 @@ TEST(SceneCameraPath, ALayerUnderAHiddenParentDoesNotDriveTheCamera) {
     auto scene  = rstd::move(parsed).unwrap();
     auto camera = scene.scene->ActiveCamera();
     ASSERT_TRUE(camera.is_some());
+    const double aspect = (**camera).Aspect();
     scene.scene->TickCameraPaths();
     EXPECT_DOUBLE_EQ((**camera).Fov(), 50.0);
+    EXPECT_DOUBLE_EQ((**camera).Aspect(), aspect);
     // and the camera keeps the scene's view, not the layer's place
     EXPECT_TRUE((**camera).IsLookAt());
     EXPECT_FLOAT_EQ(static_cast<float>((**camera).GetPosition().x()), 0.0f);

@@ -1410,8 +1410,11 @@ bool SceneCameraPath::ApplyDefault() {
         node->SetTranslate(default_translate);
         node->SetRotation(default_rotation);
     }
-    value.SetWidth(default_width);
-    value.SetHeight(default_height);
+    // a perspective camera's aspect comes from its width over its height, which only an orthographic one keeps
+    if (! perspective) {
+        value.SetWidth(default_width);
+        value.SetHeight(default_height);
+    }
     if (default_fov > 0.0) value.SetFov(default_fov);
     value.Update();
     return true;
