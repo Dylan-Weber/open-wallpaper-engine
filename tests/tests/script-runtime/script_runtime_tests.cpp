@@ -717,6 +717,56 @@ TEST(ScriptBones, LocalOriginAndAngles) {
     EXPECT_FLOAT_EQ(pose.angles.z, 1.5f);
 }
 
+TEST(ScriptBones, LocalBonesReadZeroAndTakeNothingInInit) {
+    // In a script's init Wallpaper Engine's bones read zero and setting them does nothing (puppet-bone-init); update sees them.
+    owe::SceneNode node;
+    JsRuntime      rt;
+    rt.SetBoneResolvers(
+        JsRuntime::BoneIndexResolver::make([](owe::SceneNode*, ref<str>) -> uint32_t { return 1; }),
+        JsRuntime::BoneTransformResolver::make(
+            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTranslation> {
+                return None();
+            }));
+    BoneLocalPose pose { .origin = { 1.0f, 2.0f, 3.0f }, .angles = { 0.0f, 0.0f, 0.3f } };
+    int           sets = 0;
+    rt.SetBoneLocalResolvers(
+        JsRuntime::BoneLocalGetter::make(
+            [&](owe::SceneNode*, uint32_t, double) -> Option<BoneLocalPose> { return Some(pose); }),
+        JsRuntime::BoneLocalSetter::make(
+            [&](owe::SceneNode*, uint32_t, BoneLocalPose value, double) {
+                ++sets;
+                pose = value;
+            }));
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            let atInit = 'unset';
+            export function init(value) {
+                const angles = thisLayer.getLocalBoneAngles('mid');
+                const origin = thisLayer.getLocalBoneOrigin(1);
+                atInit = [angles.z, origin.x, origin.y, origin.z].join(' ');
+                thisLayer.setLocalBoneAngles('mid', new Vec3(0, 0, 1.5));
+                return value;
+            }
+            export function update() {
+                const now = thisLayer.getLocalBoneAngles('mid').z;
+                return atInit === '0 0 0 0' && Math.abs(now - 0.3) < 1e-6 ? 1 : 0;
+            }
+        )JS"_str,
+        "test/bone_init"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+
+    rt.SetSceneRoot(&node);
+    rt.TickAll();
+
+    EXPECT_EQ(LastScalar(fs), 1.0);
+    EXPECT_EQ(sets, 0);
+    EXPECT_FLOAT_EQ(pose.angles.z, 0.3f);
+}
+
 TEST(ScriptNodeSoftMutation, VisibleAndAlphaWrites) {
     owe::SceneNode node;
     JsRuntime      rt;
@@ -2520,15 +2570,13 @@ TEST(ScriptScene, CameraTransformsRoundTripThroughSceneOwner) {
     rt.SetScene(&scene);
     auto* script = rt.MakeFieldScript(
         R"JS(
-            export function init() {
+            export function update() {
                 const camera = thisScene.getCameraTransforms();
                 camera.eye = new Vec3(3, 4, 5);
                 camera.center = new Vec3(0, 0, 0);
                 thisScene.setCameraTransforms(camera);
-            }
-            export function update() {
-                const camera = thisScene.getCameraTransforms();
-                return camera.eye.x * 100 + camera.eye.y * 10 + camera.eye.z;
+                const set = thisScene.getCameraTransforms();
+                return set.eye.x * 100 + set.eye.y * 10 + set.eye.z;
             }
         )JS"_str,
         "test/camera_transforms_round_trip"_str,
@@ -2548,6 +2596,46 @@ TEST(ScriptScene, CameraTransformsRoundTripThroughSceneOwner) {
     EXPECT_DOUBLE_EQ(LastScalar(script), 345.0);
 }
 
+// Measured in Wallpaper Engine: a script that calls setCameraTransforms in init (and returns its value) leaves the
+// camera where the scene put it; the same call in update moves it.
+TEST(ScriptScene, CameraTransformsSetInInitAreIgnored) {
+    owe::Scene scene;
+    auto       camera = Arc<owe::SceneCamera>::make(
+        owe::SceneCamera::MakePerspective(16.0 / 9.0, 0.01, 1000.0, 53.0));
+    camera->SetLookAt({ 0.0, 0.0, 250.0 }, { 0.0, 1.0, 0.0 }, { 0.0, 1.0, 0.0 });
+    scene.RegisterCamera(String::make("main"_str), rstd::move(camera));
+    ASSERT_TRUE(scene.SetActiveCamera("main"_str));
+
+    JsRuntime rt;
+    rt.SetScene(&scene);
+    auto* script = rt.MakeFieldScript(
+        R"JS(
+            export function init(value) {
+                const camera = thisScene.getCameraTransforms();
+                camera.eye = new Vec3(3, 4, 5);
+                camera.center = new Vec3(0, 0, 0);
+                thisScene.setCameraTransforms(camera);
+                return value;
+            }
+            export function update(value) {
+                return thisScene.getCameraTransforms().eye.z;
+            }
+        )JS"_str,
+        "test/camera_transforms_in_init"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0));
+    ASSERT_NE(script, nullptr);
+
+    rt.SetSceneRoot(scene.RootMut().as_raw_ptr());
+    rt.TickAll();
+
+    auto transforms = scene.ActiveCameraTransforms();
+    ASSERT_TRUE(transforms.is_some());
+    EXPECT_TRUE(transforms->eye.isApprox(Eigen::Vector3d { 0.0, 0.0, 250.0 }));
+    EXPECT_DOUBLE_EQ(LastScalar(script), 250.0);
+}
+
 TEST(ScriptScene, OrthographicCameraTransformsUseAttachedNodeCoordinates) {
     owe::Scene scene;
     auto       camera_node = Arc<owe::SceneNode>::make(Eigen::Vector3f { 1920.0f, 1080.0f, 0.0f },
@@ -2563,15 +2651,13 @@ TEST(ScriptScene, OrthographicCameraTransformsUseAttachedNodeCoordinates) {
     rt.SetScene(&scene);
     auto* script = rt.MakeFieldScript(
         R"JS(
-            export function init() {
+            export function update() {
                 const camera = thisScene.getCameraTransforms();
                 camera.eye = new Vec3(10, 20, 0);
                 camera.center = new Vec3(10, 20, -1);
                 thisScene.setCameraTransforms(camera);
-            }
-            export function update() {
-                const camera = thisScene.getCameraTransforms();
-                return camera.eye.x * 100 + camera.eye.y;
+                const set = thisScene.getCameraTransforms();
+                return set.eye.x * 100 + set.eye.y;
             }
         )JS"_str,
         "test/orthographic_camera_attached_coordinates"_str,

@@ -477,6 +477,8 @@ struct AudioBufferSlot {
 };
 
 struct EngineHostState {
+    // A field script's init is running: Wallpaper Engine leaves the camera alone for what it sets then.
+    bool in_field_init { false };
     FrameInputs                     inputs;
     MediaStatus                     media;
     bool                            media_initialized { false };
@@ -2737,13 +2739,19 @@ Option<owe::script::BoneLocalPose> ScriptBoneLocalPose(JSContext* ctx, JSValueCo
     return (*host->bone_local_getter)->operator()(n, bone, host->inputs.runtime);
 }
 
+bool InFieldInit(JSContext* ctx) {
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    return host != nullptr && host->in_field_init;
+}
+
 // get/setLocalBoneOrigin and get/setLocalBoneAngles (radians), relative to the bone's parent. A
 // bone the layer doesn't have reads as a zero vector.
 JSValue LocalBonePart(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv,
                       bool angles) {
     uint32_t bone = 0;
     auto     pose = ScriptBoneLocalPose(ctx, this_val, argc, argv, bone);
-    if (pose.is_none()) return MakeVec3(ctx, 0, 0, 0);
+    // in a script's init, bones read zero (Wallpaper Engine's)
+    if (pose.is_none() || InFieldInit(ctx)) return MakeVec3(ctx, 0, 0, 0);
     const auto& part = angles ? pose->angles : pose->origin;
     return MakeVec3(ctx, part.x, part.y, part.z);
 }
@@ -2751,6 +2759,8 @@ JSValue LocalBonePart(JSContext* ctx, JSValueConst this_val, int argc, JSValueCo
 JSValue SetLocalBonePart(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv,
                          bool angles) {
     auto*    host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    // and setting them does nothing there
+    if (InFieldInit(ctx)) return JS_UNDEFINED;
     uint32_t bone = 0;
     auto     pose = ScriptBoneLocalPose(ctx, this_val, argc, argv, bone);
     double   x = 0, y = 0, z = 0;
@@ -3025,6 +3035,8 @@ JSValue NodeSceneSetCameraTransforms(JSContext* ctx, JSValueConst, int argc, JSV
     if (! host || ! host->scene) return JS_ThrowTypeError(ctx, "scene camera is not available");
     if (argc < 1 || ! JS_IsObject(argv[0]))
         return JS_ThrowTypeError(ctx, "camera transforms must be an object");
+    // measured in Wallpaper Engine: the camera a script sets in init is the scene's again once it has loaded
+    if (host->in_field_init) return JS_UNDEFINED;
     auto transforms = host->scene->ActiveCameraTransforms();
     if (transforms.is_none()) return JS_ThrowTypeError(ctx, "active scene camera is not available");
     if (! ReadOptionalCameraVector(ctx, argv[0], "eye", transforms->eye) ||
@@ -4370,7 +4382,10 @@ void RunFieldScriptInit(JSContext* ctx, JsRuntime::Impl* rt, FieldScript* fs) {
     if (! JS_IsUndefined(rt->wrapped_scene)) BindThisScene(ctx, rt->wrapped_scene);
     rt->host.active_field_script = fs;
     JSValue arg                  = JS_DupValue(ctx, I->current_value);
-    JSValue r                    = JS_Call(ctx, I->init_fn, JS_UNDEFINED, 1, &arg);
+    const bool was_in_init       = rt->host.in_field_init;
+    rt->host.in_field_init       = true;
+    JSValue    r                 = JS_Call(ctx, I->init_fn, JS_UNDEFINED, 1, &arg);
+    rt->host.in_field_init       = was_in_init;
     JS_FreeValue(ctx, arg);
     if (JS_IsException(r)) rt->LogError(ctx, I->sha.as_str(), "init threw");
     JS_FreeValue(ctx, r);
