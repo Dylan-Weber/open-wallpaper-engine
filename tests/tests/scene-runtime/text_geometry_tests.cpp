@@ -339,7 +339,10 @@ TEST(TextLayouter, WrappedTextIsAsWideAsItsWidestLine) {
         const float widest = layouter.TextWidth();
         ASSERT_LT(widest, 400.0f);
         EXPECT_LE(widest, WidestLine(layout));
-        EXPECT_FLOAT_EQ(widest, InkWidth(layout));
+        // (a little less than the layout's ink: the pen moves by whole pixels, see
+        // LettersAdvanceByWholePixels)
+        EXPECT_LE(widest, InkWidth(layout));
+        EXPECT_GT(widest, InkWidth(layout) - 9.0f);
 
         // the background quad comes first: the box and its padding
         const auto& vertices = mesh->GetVertexArray(rstd::usize());
@@ -435,6 +438,47 @@ TEST(TextLayouter, LinesAreMeasuredByTheirInk) {
             EXPECT_NEAR(x(g + 1, 1), c.ink[g * 2 + 1], 1.01f)
                 << c.text << " " << c.align << " " << g;
         }
+    }
+}
+
+// Wallpaper Engine moves the pen by whole pixels: each letter's advance rounded down at the text's
+// size (user-properties' "from a property" at 64 points: its letters' places fit floored Arial
+// advances to 0.3 pixels, and owe's whole advances drifted 5 pixels wider along the line).
+TEST(TextLayouter, LettersAdvanceByWholePixels) {
+    auto source      = rstd::path::PathBuf::from(__FILE__ ""_str);
+    auto root        = source.as_path().parent().unwrap().parent().unwrap().parent().unwrap();
+    auto path        = rstd::path::PathBuf::from(root).join("fixtures/fonts/Bearings.ttf"_str);
+    auto bytes       = rstd::fs::read(path.as_path()).unwrap();
+    auto resources   = TextResources();
+    auto font_source = resources->RegisterFont(bytes.as_slice()).unwrap();
+    constexpr std::size_t                                                     peak_quads = 8;
+    const rstd::initializer_list<owe::SceneVertexArray::SceneVertexAttribute> attributes {
+        { .name = "a_Position"_Str, .type = owe::VertexType::FLOAT3 },
+        { .name = "a_TexCoord"_Str, .type = owe::VertexType::FLOAT2 },
+        { .name = "a_Color"_Str, .type = owe::VertexType::FLOAT4 },
+    };
+    auto mesh = Arc<owe::SceneMesh>::make();
+    mesh->AddVertexArray(owe::SceneVertexArray(attributes, rstd::usize(peak_quads * 4)));
+    mesh->AddIndexArray(owe::SceneIndexArray(rstd::usize(peak_quads * 6)));
+    owe::text::TextLayoutStyle style;
+    style.mesh_origin = owe::text::TextMeshOrigin::Layout;
+    style.halign      = "left"_Str;
+    // at 101 pixels L advances 60.6 and o 50.5: the pens are 0, 60, 110, 170, 220, 280, 330
+    owe::text::TextLayouter layouter(resources.clone(),
+                                     { .source = Some(font_source), .size = 101 },
+                                     mesh.clone(),
+                                     rstd::move(style),
+                                     peak_quads);
+    ASSERT_TRUE(layouter.SetText("LoLoLoL"_str).is_ok());
+    // from the first L's pen to the last one's ink: 330 + 50.5 (not 333.3 + 50.5)
+    EXPECT_NEAR(layouter.TextWidth(), 380.5f, 0.01f);
+    const auto& vertices = mesh->GetVertexArray(rstd::usize());
+    const auto  stride   = vertices.OneSize().to_primitive();
+    const float pens[7] { 0, 60, 110, 170, 220, 280, 330 };
+    for (std::size_t glyph = 0; glyph < 7; ++glyph) {
+        const float ink = glyph % 2 == 0 ? 10.1f : 5.05f;
+        EXPECT_NEAR(vertices.Data()[glyph * 4 * stride], pens[glyph] + ink - 380.5f / 2, 1.01f)
+            << glyph;
     }
 }
 
