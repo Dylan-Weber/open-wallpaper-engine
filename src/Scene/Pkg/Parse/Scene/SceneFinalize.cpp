@@ -225,7 +225,8 @@ void FinalizeUniformSources(SceneParseContext& context) {
             ShadowUniformSource { (*active_camera).clone(),
                                   ref<Scene>::from_raw_parts(&scene),
                                   rstd::move(transforms),
-                                  context.layer_resources->shader_environment.shadow_quality }));
+                                  context.layer_resources->shader_environment.shadow_quality,
+                                  Some(light_limits) }));
         lighting_sources.push(UniformSourceAttachment { .source = shadow_source });
     }
     (void)scene.RegisterUniformBlock(UniformBlockDefinition {
