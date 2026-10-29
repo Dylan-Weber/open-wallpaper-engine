@@ -90,6 +90,20 @@ class Floor(unittest.TestCase):
         self.assertFalse(owe_compare.near_floor(0.98, None))
 
 
+class BarJitter(unittest.TestCase):
+    # script-driven bars read the audio buffer a moment after the probe's record of it: a bar one step off is not a
+    # difference in what the wallpaper draws
+    regions = [{'x': 1395, 'y': 230, 'width': 17, 'height': 167, 'pixels': 2839},
+               {'x': 100, 'y': 100, 'width': 300, 'height': 40, 'pixels': 9000}]
+
+    def test_leaves_out_the_regions_no_wider_than_a_bar(self):
+        left = owe_compare.without_bar_jitter(self.regions, 20)
+        self.assertEqual([r['x'] for r in left], [100])
+
+    def test_no_bar_width_leaves_every_region(self):
+        self.assertEqual(owe_compare.without_bar_jitter(self.regions, 0), self.regions)
+
+
 class Layout(unittest.TestCase):
     def test_finds_the_wallpapers_viewer_and_assets_in_the_repository(self):
         repo = os.path.dirname(os.path.dirname(HERE))
