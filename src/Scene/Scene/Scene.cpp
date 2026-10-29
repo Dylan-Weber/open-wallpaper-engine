@@ -884,6 +884,7 @@ void RenderSceneSnapshot::Rebuild(Scene& scene, RenderSceneVersion version) {
                 .material    = variants[definition].clone(),
                 .instance_count =
                     rstd::as_cast<u32>(m_shadow_definitions[definition].viewports.len()),
+                .silent     = node->shadow.silent,
                 .definition = definition,
             });
         }

@@ -411,6 +411,51 @@ TEST(SceneRenderGraph, ShadowCastersMoveTheirDepthAwayFromTheLight) {
     EXPECT_FLOAT_EQ(pipeline.depth_bias_constant, -4.0f);
 }
 
+// A translucent or additive model casts no shadow (Wallpaper Engine's), but a scene whose casters are all like that
+// still has a shadow atlas its receivers sample: the model's caster is kept, drawing no pixels (a zero scissor), so
+// the first draw still clears the atlas.
+TEST(SceneRenderGraph, ASilentCasterKeepsTheAtlasWritten) {
+    owe::Scene scene;
+    scene.RegisterRenderTarget(String::make("_rt_default"_str),
+                               owe::SceneRenderTarget { .width = i32(1280), .height = i32(720) });
+    scene.RegisterRenderTarget(String::make("_rt_shadowAtlas"_str),
+                               owe::SceneRenderTarget {
+                                   .width  = i32(256),
+                                   .height = i32(256),
+                                   .kind   = owe::SceneRenderTargetKind::DepthSampled,
+                               });
+    auto viewports = Vec<owe::SceneShadowViewport>::make();
+    viewports.push(owe::SceneShadowViewport {
+        .width  = rstd::f32(256.0f),
+        .height = rstd::f32(256.0f),
+    });
+    scene.RegisterShadowDefinition(owe::SceneShadowDefinition {
+        .target    = String::make("_rt_shadowAtlas"_str),
+        .viewports = rstd::move(viewports),
+    });
+
+    auto caster          = Arc<owe::SceneNode>::make();
+    caster->shadow.cast  = true;
+    caster->shadow.silent = true;
+    auto caster_mesh     = Arc<owe::SceneMesh>::make();
+    auto caster_material = GraphMaterial();
+    caster_material.name = "caster-main"_Str;
+    auto variant  = Arc<owe::SceneMaterial>::make(GraphMaterial());
+    variant->name = "caster-shadow"_Str;
+    caster_material.shadow_variants.push(rstd::move(variant));
+    caster_mesh->AddMaterial(rstd::move(caster_material));
+    caster_mesh->Submeshes().push(owe::SceneMesh::Submesh {});
+    caster->AddMesh(rstd::move(caster_mesh));
+    scene.RootMut()->AppendChild(caster.clone());
+
+    auto snapshot = owe::ExtractRenderSceneSnapshot(scene);
+    ASSERT_EQ(snapshot.ShadowCasters().len(), usize(1));
+    EXPECT_TRUE(snapshot.ShadowCasters()[usize()].silent);
+    auto graph = owe::BuildSceneRenderState(scene, snapshot);
+    ASSERT_TRUE(graph.is_ok());
+    EXPECT_TRUE(graph->graph.compile().is_ok());
+}
+
 TEST(SceneRenderGraph, OrdersShadowAtlasWriterBeforeReceiver) {
     owe::Scene scene;
     scene.RegisterRenderTarget(String::make("_rt_default"_str),
