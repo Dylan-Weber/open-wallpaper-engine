@@ -1583,3 +1583,54 @@ TEST(SceneAssetPaths, ModelCameraAndClipRetainTheirReparseSemantics) {
     EXPECT_EQ(camera.path, "motion.json"_str);
     EXPECT_TRUE(clip.name.is_empty());
 }
+
+// Neon Sunset's sky is a fullscreen layer with a material of its own (models/cloudsbg.json has
+// "fullscreen" but no "passthrough"): it draws, so it can't be elided like the stock fullscreen
+// layer, which only passes the frame through.
+TEST(FullscreenImageParsing, OnlyPassthroughLayersAreElidable) {
+    auto root = std::filesystem::temp_directory_path() /
+                ("owe-fullscreen-" + std::to_string(rstd::process::id().to_primitive()));
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root / "models");
+    std::ofstream(root / "models" / "sky.json")
+        << R"({"material": "materials/util/fullscreenlayer.json", "fullscreen": true})";
+
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {},
+            "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+            "objects": [
+                {"id": 1, "name": "Passthrough", "image": "models/util/fullscreenlayer.json", "visible": true},
+                {"id": 2, "name": "Sky", "image": "models/sky.json", "visible": true}
+            ]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    auto own =
+        owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(root.string()).unwrap()));
+    ASSERT_TRUE(own.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, std::move(assets).unwrap_unchecked()).is_ok());
+    ASSERT_TRUE(vfs.mount("/assets"_str, std::move(own).unwrap_unchecked()).is_ok());
+
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "fullscreen-elision"_str,
+        rstd::ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        rstd::mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        rstd::mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+
+    EXPECT_TRUE(
+        scene.scene->IsLayerStaticElidable(owe::WallpaperLayerId { .value = rstd::i32(1) }));
+    EXPECT_FALSE(
+        scene.scene->IsLayerStaticElidable(owe::WallpaperLayerId { .value = rstd::i32(2) }));
+
+    std::filesystem::remove_all(root);
+}
