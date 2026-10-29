@@ -2511,3 +2511,41 @@ TEST(UniformSourceParallax, PerspectiveWithAuthoredParallaxDepthAppliesShift) {
                 std::abs(mvp_without_parallax[rstd::usize(13)] -
                          mvp_with_parallax[rstd::usize(13)]) > 1e-5f);
 }
+
+// In a 3D scene the camera looks from the scene's eye at its center; a camera layer that drove it
+// and is hidden gives it that view back (it fell back to the 2D perspective camera's place).
+TEST(SceneParserCameraLayer, HiddenLayerRestoresTheSceneLookAtCamera) {
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": { "center": "0 0 0", "eye": "0 1 5", "up": "0 1 0" },
+            "general": { "orthogonalprojection": null, "fov": 50 },
+            "objects": [
+                { "id": 1, "name": "Cam", "camera": "default", "origin": "10 20 30",
+                  "angles": "0 0 0", "fov": 50, "visible": { "user": "cam", "value": true } }
+            ]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    owe::fs::VFS                vfs;
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "camera-layer"_str,
+        ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+    scene.scene->TickCameraPaths();
+    auto camera = scene.scene->ActiveCamera();
+    ASSERT_TRUE(camera.is_some());
+    EXPECT_FLOAT_EQ(static_cast<float>((**camera).GetPosition().x()), 10.0f);
+
+    auto hidden = owe::ParseJson(R"({"value":false})"_str).unwrap();
+    scene.scene->ApplyUserCameraPathVisibilityBindings("cam"_str, hidden);
+    scene.scene->TickCameraPaths();
+    EXPECT_TRUE((**camera).IsLookAt());
+    EXPECT_FLOAT_EQ(static_cast<float>((**camera).GetPosition().x()), 0.0f);
+    EXPECT_FLOAT_EQ(static_cast<float>((**camera).GetPosition().y()), 1.0f);
+    EXPECT_FLOAT_EQ(static_cast<float>((**camera).GetPosition().z()), 5.0f);
+}
