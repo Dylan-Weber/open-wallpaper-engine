@@ -2548,4 +2548,57 @@ TEST(SceneParserCameraLayer, HiddenLayerRestoresTheSceneLookAtCamera) {
     EXPECT_FLOAT_EQ(static_cast<float>((**camera).GetPosition().x()), 0.0f);
     EXPECT_FLOAT_EQ(static_cast<float>((**camera).GetPosition().y()), 1.0f);
     EXPECT_FLOAT_EQ(static_cast<float>((**camera).GetPosition().z()), 5.0f);
+// Ocarina of Time's "Look At Events" camera layers are hidden unless that camera type is chosen,
+// while its manual camera script sets the camera each frame: a hidden layer must not take it back.
+TEST(SceneCameraPath, HiddenCameraLayerLeavesTheCameraToOthers) {
+    owe::Scene scene;
+    auto       camera = Arc<owe::SceneCamera>::make(
+        owe::SceneCamera::MakePerspective(16.0 / 9.0, 0.01, 1000.0, 50.0));
+    auto node = Arc<owe::SceneNode>::make();
+    node->SetTranslate({ 100.0f, 200.0f, 300.0f });
+
+    auto path               = Arc<owe::SceneCameraPath>::make();
+    path->camera_name       = "global_perspective"_Str;
+    path->camera            = Some(camera.clone());
+    path->node              = node.as_ptr();
+    path->default_translate = node->Translate();
+    path->perspective       = true;
+    path->enabled           = false;
+    scene.RegisterCameraPath(path.clone());
+
+    camera->SetLookAt({ 1.0, 2.0, 3.0 }, { 0.0, 0.0, 0.0 }, { 0.0, 1.0, 0.0 });
+    camera->Update();
+    scene.TickCameraPaths();
+
+    EXPECT_TRUE(camera->IsLookAt());
+    EXPECT_DOUBLE_EQ(camera->Transforms().eye.x(), 1.0);
+    EXPECT_DOUBLE_EQ(camera->Transforms().eye.y(), 2.0);
+    EXPECT_DOUBLE_EQ(camera->Transforms().eye.z(), 3.0);
+}
+
+TEST(SceneCameraPath, CameraLayerRestoresTheDefaultWhenHidden) {
+    owe::Scene scene;
+    auto       camera = Arc<owe::SceneCamera>::make(
+        owe::SceneCamera::MakePerspective(16.0 / 9.0, 0.01, 1000.0, 50.0));
+    auto node = Arc<owe::SceneNode>::make();
+    node->SetTranslate({ 100.0f, 200.0f, 300.0f });
+
+    auto path            = Arc<owe::SceneCameraPath>::make();
+    path->camera_name    = "global_perspective"_Str;
+    path->camera         = Some(camera.clone());
+    path->node           = node.as_ptr();
+    path->perspective    = true;
+    path->default_lookat = true;
+    path->default_eye    = { 0.0f, 0.0f, 5.0f };
+    path->default_center = { 0.0f, 0.0f, 0.0f };
+    path->default_up     = { 0.0f, 1.0f, 0.0f };
+    scene.RegisterCameraPath(path.clone());
+
+    scene.TickCameraPaths();
+    EXPECT_FALSE(camera->IsLookAt());
+
+    path->SetEnabled(false);
+    scene.TickCameraPaths();
+    EXPECT_TRUE(camera->IsLookAt());
+    EXPECT_DOUBLE_EQ(camera->Transforms().eye.z(), 5.0);
 }
