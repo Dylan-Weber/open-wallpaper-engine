@@ -153,6 +153,29 @@ TEST(ScriptValueCoercion, PreservesVec4InitialAndReturnValues) {
     EXPECT_DOUBLE_EQ(value.w, 7.5);
 }
 
+TEST(ScriptValueCoercion, InitReturnSetsTheValue) {
+    auto root = Arc<owe::SceneNode>::make();
+
+    JsRuntime rt;
+    auto*     script = rt.MakeFieldScript(
+        R"JS(
+            export function init(value) { return new Vec3(900, value.y, value.z); }
+            export function update(value) { return value; }
+        )JS"_str,
+        "test/init_return"_str,
+        FieldKind::Vec3,
+        owe::MakeObject(),
+        owe::IntoJson("300 200 0"));
+    ASSERT_NE(script, nullptr);
+
+    rt.SetSceneRoot(root.as_ptr());
+    rt.TickAll();
+
+    ASSERT_TRUE(script->last_value().is_Vec3());
+    EXPECT_DOUBLE_EQ(script->last_value().as_Vec3().value.x, 900.0);
+    EXPECT_DOUBLE_EQ(script->last_value().as_Vec3().value.y, 200.0);
+}
+
 TEST(ScriptValueCoercion, ParsesDecimalPrefixesWithoutCStringCopies) {
     struct Case {
         ref<str>  text;

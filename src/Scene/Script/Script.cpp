@@ -4311,7 +4311,18 @@ void RunFieldScriptInit(JSContext* ctx, JsRuntime::Impl* rt, FieldScript* fs) {
     JSValue arg                  = JS_DupValue(ctx, I->current_value);
     JSValue r                    = JS_Call(ctx, I->init_fn, JS_UNDEFINED, 1, &arg);
     JS_FreeValue(ctx, arg);
-    if (JS_IsException(r)) rt->LogError(ctx, I->sha.as_str(), "init threw");
+    if (JS_IsException(r)) {
+        rt->LogError(ctx, I->sha.as_str(), "init threw");
+    } else {
+        // What init returns is the property's value, as with update.
+        auto value = CoerceReturn(ctx, r, I->kind);
+        if (! value.is_Empty()) {
+            JSValue next_value = ScriptValueToJs(ctx, value);
+            JS_FreeValue(ctx, I->current_value);
+            I->current_value = next_value;
+            I->last_value    = rstd::move(value);
+        }
+    }
     JS_FreeValue(ctx, r);
     rt->host.active_field_script = nullptr;
     I->init_done                 = true;
