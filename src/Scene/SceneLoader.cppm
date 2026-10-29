@@ -18,6 +18,7 @@ struct SceneLoadRequest {
     Option<rstd::sync::Arc<wpscene::SceneDocument>> document;
     rstd::json::Map                                 user_properties;
     SceneParseCapabilities                          capabilities;
+    ShadowQuality                                   shadow_quality { ShadowQuality::Medium };
     SceneLoadBenchRecorderView                      load_bench;
     Option<ImageReadyCallback>                      image_ready;
     TextureMemoryOptions                            texture_memory;
