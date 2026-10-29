@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test a swaying parent carrying bones on springs",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}
