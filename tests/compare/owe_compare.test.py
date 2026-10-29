@@ -8,6 +8,8 @@ import json
 import os
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from unittest import mock
 
@@ -202,14 +204,15 @@ class Shots(unittest.TestCase):
 
     def test_a_frame_shown_twice_is_rendered_once(self):
         calls = []
-        cache = {}
+        renders = owe_compare.Renders(2)
+        self.addCleanup(renders.close)
 
         def render():
             calls.append(1)
             return 'frame.ppm'
         for _ in range(3):
-            self.assertEqual(owe_compare.cached(cache, ('w', 340), render), 'frame.ppm')
-        self.assertEqual(owe_compare.cached(cache, ('w', 341), render), 'frame.ppm')
+            self.assertEqual(renders.get(('w', 340), render), 'frame.ppm')
+        self.assertEqual(renders.get(('w', 341), render), 'frame.ppm')
         self.assertEqual(len(calls), 2)
 
     def test_the_series_is_written_as_a_csv(self):
@@ -220,6 +223,63 @@ class Shots(unittest.TestCase):
                 lines = f.read().splitlines()
         self.assertEqual(lines[0], 'shot,frame,ssim,mae,changed,regions')
         self.assertEqual(lines[1], '1,340,0.9900,1.00,0.0000,0')
+
+
+class Parallel(unittest.TestCase):
+    """Renders run side by side, no more at once than the limit (each is a viewer with a memory cap of its own)."""
+
+    def test_no_more_renders_at_once_than_the_limit(self):
+        running, most, lock = [0], [0], threading.Lock()
+
+        def run(command, **kwargs):
+            with lock:
+                running[0] += 1
+                most[0] = max(most[0], running[0])
+            time.sleep(0.05)
+            with lock:
+                running[0] -= 1
+        owe_compare.set_jobs(2)
+        self.addCleanup(owe_compare.set_jobs, owe_compare.default_jobs())
+        with tempfile.TemporaryDirectory() as folder, \
+                mock.patch.object(owe_compare, 'OUTPUT', folder), \
+                mock.patch.object(owe_compare, 'viewer_help', lambda viewer: '--capture'), \
+                mock.patch.object(owe_compare, 'settings_of', lambda name: {}), \
+                mock.patch.object(owe_compare, 'shader_cache', lambda viewer: 'cache'), \
+                mock.patch.object(owe_compare, 'scene_package', lambda folder: 'scene.pkg'), \
+                mock.patch.object(owe_compare.subprocess, 'run', run):
+            threads = [threading.Thread(target=lambda n=n: self.render_quietly('w%d' % n)) for n in range(6)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+        self.assertEqual(most[0], 2)
+
+    def render_quietly(self, name):
+        try:
+            owe_compare.render(name, (64, 32), 'viewer')
+        except RuntimeError:  # the fake viewer saves no picture
+            pass
+
+    def test_renders_given_to_the_pool_run_side_by_side(self):
+        running, most, lock = [0], [0], threading.Lock()
+
+        def render():
+            with lock:
+                running[0] += 1
+                most[0] = max(most[0], running[0])
+            time.sleep(0.05)
+            with lock:
+                running[0] -= 1
+            return 'frame.ppm'
+        renders = owe_compare.Renders(3)
+        self.addCleanup(renders.close)
+        futures = [renders.submit(('w', n), render) for n in range(6)]
+        self.assertEqual([future.result() for future in futures], ['frame.ppm'] * 6)
+        self.assertEqual(most[0], 3)
+
+    def test_the_default_is_a_few_not_every_core(self):
+        self.assertGreaterEqual(owe_compare.default_jobs(), 1)
+        self.assertLessEqual(owe_compare.default_jobs(), 4)
 
 
 if __name__ == '__main__':
