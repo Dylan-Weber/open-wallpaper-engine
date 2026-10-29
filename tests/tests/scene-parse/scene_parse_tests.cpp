@@ -1583,3 +1583,37 @@ TEST(SceneAssetPaths, ModelCameraAndClipRetainTheirReparseSemantics) {
     EXPECT_EQ(camera.path, "motion.json"_str);
     EXPECT_TRUE(clip.name.is_empty());
 }
+
+// Demon Core turns bloom on without a strength or threshold; Wallpaper Engine then blooms with the
+// editor's defaults, which the shipped scenes write out as 2.0 and 0.65.
+TEST(BloomParsing, MissingStrengthAndThresholdUseTheEditorDefaults) {
+    auto document = owe::wpscene::ParseSceneDocumentJson(R"({
+        "camera":{}, "general":{
+            "orthogonalprojection":{"width":128,"height":128},
+            "bloom":true
+        }, "objects":[]
+    })"_str,
+                                                         owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, rstd::move(assets).unwrap()).is_ok());
+    wavsen::audio::SoundManager sound;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "bloom-defaults"_str,
+        rstd::ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        rstd::mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        rstd::mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto chains = parsed->scene->PostProcesses();
+    ASSERT_EQ(chains.len(), rstd::usize(1));
+    const auto& first  = chains[rstd::usize()]->steps[rstd::usize()].as_Pass().value;
+    const auto& values = first.node->Mesh()->Material()->customShader.constValues;
+    ASSERT_TRUE(values.contains_key("g_BloomStrength"_str));
+    ASSERT_TRUE(values.contains_key("g_BloomThreshold"_str));
+    EXPECT_FLOAT_EQ(values.get("g_BloomStrength"_str).unwrap()->data()[0], 2.0f);
+    EXPECT_FLOAT_EQ(values.get("g_BloomThreshold"_str).unwrap()->data()[0], 0.65f);
+}
