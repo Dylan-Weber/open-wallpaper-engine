@@ -330,8 +330,9 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
     }
 
     text::TextLayoutStyle style;
-    style.mesh_origin =
-        direct_text ? text::TextMeshOrigin::Layout : text::TextMeshOrigin::InkBounds;
+    style.mesh_origin           = direct_text || has_bg || obj.copybackground
+                                      ? text::TextMeshOrigin::Layout
+                                      : text::TextMeshOrigin::InkBounds;
     style.color                 = { obj.color[usize(0)], obj.color[usize(1)], obj.color[usize(2)] };
     style.alpha                 = obj.alpha;
     style.brightness            = obj.brightness;
