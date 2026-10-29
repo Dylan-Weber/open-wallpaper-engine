@@ -1395,6 +1395,11 @@ public:
     float    Fps() const { return m_clip->Fps(); }
     float    Rate() const { return m_rate; }
     bool     StartsPaused() const { return m_start_paused; }
+    // As an animation layer: how much it weighs, and whether it applies at all.
+    float    Blend() const { return m_blend; }
+    void     SetBlend(float blend) { m_blend = blend; }
+    bool     Visible() const { return m_visible; }
+    void     SetVisible(bool visible) { m_visible = visible; }
     double   Duration() const;
     double   PositionSeconds() const { return m_position_seconds; }
     ref<str> Name() const { return m_clip->Name(); }
@@ -1408,6 +1413,8 @@ private:
     bool                    m_mirror { false };
     bool                    m_playing { true };
     bool                    m_start_paused { false };
+    float                   m_blend { 1.0f };
+    bool                    m_visible { true };
     Option<double>          m_last_runtime;
     double                  m_position_seconds { 0.0 };
     double                  m_previous_frame { -0.5 };

@@ -302,6 +302,9 @@ private:
         Puppet::Animation::InterpolationInfo interp_info {};
 
         bool IsAdditiveTransform() const { return anim_layer.additive && ! legacy_absolute_base; }
+        // What scripts set on the playback, which starts with the scene's values.
+        bool   Visible() const { return playback ? (*playback)->Visible() : anim_layer.visible; }
+        double Blend() const { return playback ? (*playback)->Blend() : anim_layer.blend; }
 
         operator bool() const noexcept { return anim != nullptr; };
     };

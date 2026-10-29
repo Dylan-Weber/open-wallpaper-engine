@@ -83,6 +83,27 @@ TEST(Puppet, VisibilityChangesKeepTheSamePlayback) {
     EXPECT_FLOAT_EQ((*playback)->Sample().current, 0.5f);
 }
 
+// An animation layer's blend and visibility live on its playback, where scripts set them.
+TEST(Puppet, PlaybackBlendAndVisibilityPoseTheLayer) {
+    owe::PuppetLayer                 layer(MakeReplacementPuppet());
+    owe::PuppetLayer::AnimationLayer authored { .id = 1, .blend = 0.25, .layer_id = 42 };
+    layer.prepared(slice<owe::PuppetLayer::AnimationLayer>::from_raw_parts(&authored, usize(1)));
+    auto playback = layer.AnimationPlayback(i32(42));
+    ASSERT_TRUE(playback.is_some());
+    EXPECT_FLOAT_EQ((*playback)->Blend(), 0.25f);
+    EXPECT_TRUE((*playback)->Visible());
+
+    // halfway between the reference (4) and the animation's frame 0.5 (15)
+    (*playback)->SetFrame(0.5f);
+    (*playback)->SetBlend(0.5f);
+    EXPECT_FLOAT_EQ(layer.boneTransform(1, 0.0)->translation().x(), 9.5f);
+    (*playback)->SetVisible(false);
+    EXPECT_FLOAT_EQ(layer.boneTransform(1, 0.0)->translation().x(), 4.0f);
+    layer.SetAnimationVisible(i32(42), true);
+    EXPECT_TRUE((*playback)->Visible());
+    EXPECT_FLOAT_EQ(layer.boneTransform(1, 0.0)->translation().x(), 9.5f);
+}
+
 TEST(Puppet, ReplacementLayersBlendSequentiallyFromReference) {
     auto puppet = MakeReplacementPuppet();
     for (bool reverse : { false, true }) {

@@ -1742,6 +1742,8 @@ function __wwCreateAnimationStub() {
     let frame = 0, playing = false;
     const o = {
         rate: 1,
+        blend: 1,
+        visible: true,
         frameCount: 1,
         play()     { playing = true;  },
         stop()     { playing = false; },
@@ -3234,6 +3236,32 @@ JSValue AnimationGetRate(JSContext* ctx, JSValueConst value) {
     return JS_NewFloat64(ctx, playback != nullptr ? playback->Rate() : 1.0);
 }
 
+JSValue AnimationGetBlend(JSContext* ctx, JSValueConst value) {
+    auto* playback = GetAnimationPlayback(value);
+    return JS_NewFloat64(ctx, playback != nullptr ? playback->Blend() : 1.0);
+}
+
+JSValue AnimationSetBlend(JSContext* ctx, JSValueConst value, JSValueConst next) {
+    double blend = 1.0;
+    if (JS_ToFloat64(ctx, &blend, next) == 0) {
+        if (auto* playback = GetAnimationPlayback(value))
+            playback->SetBlend(static_cast<float>(blend));
+    }
+    return JS_UNDEFINED;
+}
+
+JSValue AnimationGetVisible(JSContext* ctx, JSValueConst value) {
+    auto* playback = GetAnimationPlayback(value);
+    return JS_NewBool(ctx, playback == nullptr || playback->Visible());
+}
+
+JSValue AnimationSetVisible(JSContext* ctx, JSValueConst value, JSValueConst next) {
+    const int visible = JS_ToBool(ctx, next);
+    if (visible < 0) return JS_EXCEPTION;
+    if (auto* playback = GetAnimationPlayback(value)) playback->SetVisible(visible != 0);
+    return JS_UNDEFINED;
+}
+
 JSValue AnimationSetRate(JSContext* ctx, JSValueConst value, JSValueConst next) {
     double rate = 1.0;
     if (JS_ToFloat64(ctx, &rate, next) == 0) {
@@ -3284,6 +3312,8 @@ const JSCFunctionListEntry s_animation_proto_funcs[] = {
     JS_CGETSET_DEF("duration", AnimationGetDuration, NodeSetIgnore),
     JS_CGETSET_DEF("name", AnimationGetName, NodeSetIgnore),
     JS_CGETSET_DEF("rate", AnimationGetRate, AnimationSetRate),
+    JS_CGETSET_DEF("blend", AnimationGetBlend, AnimationSetBlend),
+    JS_CGETSET_DEF("visible", AnimationGetVisible, AnimationSetVisible),
     JS_CFUNC_DEF("play", 0, AnimationPlay),
     JS_CFUNC_DEF("stop", 0, AnimationStop),
     JS_CFUNC_DEF("pause", 0, AnimationPause),

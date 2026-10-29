@@ -1168,6 +1168,43 @@ TEST(ScriptAnimationLayer, ByIndexAndCount) {
     EXPECT_EQ(fs->last_value().as_Scalar().value.v, 210.0);
 }
 
+// An animation layer's blend and visible, as scripts read and set them.
+TEST(ScriptAnimationLayer, BlendAndVisible) {
+    owe::SceneNode node;
+    auto           playback = Arc<owe::SceneAnimationPlayback>::make(
+        Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {
+            .name = String::make("Wave"_str),
+            .mode = String::make("loop"_str),
+            .fps  = 30.0f,
+            .end  = i32(60),
+        }));
+    node.RegisterAnimationLayer(playback.clone());
+
+    JsRuntime rt;
+    rt.SetFrameInputs(MakeFi());
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            export function update() {
+                const layer = thisLayer.getAnimationLayer(0);
+                const before = layer.blend * 10 + (layer.visible ? 1 : 0);
+                layer.blend = 0.25;
+                layer.visible = false;
+                return before * 100 + layer.blend * 4 + (layer.visible ? 1 : 0);
+            }
+        )JS"_str,
+        "test/animation_layer_blend_visible"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+    rt.TickAll();
+    ASSERT_TRUE(fs->last_value().is_Scalar());
+    EXPECT_EQ(fs->last_value().as_Scalar().value.v, 1101.0);
+    EXPECT_FLOAT_EQ(playback->Blend(), 0.25f);
+    EXPECT_FALSE(playback->Visible());
+}
+
 TEST(ScriptCursor, ClickRestartsNamedAnimationLayer) {
     owe::SceneNode node;
     node.SetTranslate({ 500.0f, 500.0f, 0.0f });
