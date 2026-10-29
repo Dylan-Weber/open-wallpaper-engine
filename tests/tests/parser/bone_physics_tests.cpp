@@ -99,6 +99,18 @@ TEST(BonePhysics, AngularImpulseTurnsTheBoneAndTheSpringBringsItBack) {
     }
 }
 
+// A negative rotation stiffness (Gun Girl's gun bone has -5) is not none: it pushes the bone further from its pose, so a kick
+// grows (puppet-physics-gun) where it would otherwise swing back and forth.
+TEST(BonePhysics, ANegativeRotationStiffnessPushesTheBoneFurtherAway) {
+    const std::vector<float> frames(40, 1.0f / 30.0f);
+    std::string              text = Settings(true, false);
+    text.replace(text.find("\"rs\":300"), 8, "\"rs\":-50");
+    text.replace(text.find("\"rf\":20"), 7, "\"rf\":0");
+    const auto away = Run(Parse(text), frames, Eigen::Vector3f::Zero(), Eigen::Vector3f(0.0f, 0.0f, 10.0f));
+    // the tip points along -y, so its x is how far it has turned
+    EXPECT_GT(std::abs(away[39].x() - 0.5f), 1.5f * std::abs(away[10].x() - 0.5f));
+}
+
 TEST(BonePhysics, DirectionalImpulseMovesTheBoneWhichSwingsBack) {
     const std::vector<float> frames = { 0.074f, 0.066f, 0.082f, 0.082f, 0.061f, 0.072f, 0.066f };
     const auto               places = Run(Parse(Settings(false, true)),
@@ -155,6 +167,55 @@ TEST(BonePhysics, RestingBoneStaysWhereItIsPosed) {
                         .matrix()
                         .isApprox(posed.matrix()));
     }
+}
+
+namespace
+{
+// A bone with only its rotation spring (the tip 62.5 along x, mass `mass`) under gravity `direction`, left to settle for
+// 4 seconds at 30 frames a second: how far it has turned (radians, 0 when it hasn't).
+float SettledTurn(float mass, const std::string& direction, bool gravity = true) {
+    std::string settings = Settings(true, false);
+    const auto  replace  = [&](const std::string& from, const std::string& to) {
+        const auto at = settings.find(from);
+        ASSERT_NE(at, std::string::npos) << from;
+        settings.replace(at, from.size(), to);
+    };
+    replace("\"ge\":false", gravity ? "\"ge\":true" : "\"ge\":false");
+    replace("\"gd\":\"0 -1 0\"", "\"gd\":\"" + direction + "\"");
+    replace("\"m\":20", "\"m\":" + std::to_string(mass));
+    replace("\"rs\":300", "\"rs\":250");
+    replace("\"rf\":20", "\"rf\":35");
+    replace("\"tp\":\"0.00000 -22.00000 0.00000\"", "\"tp\":\"62.5 0 0\"");
+    const auto       simulation = Parse(settings);
+    owe::BonePhysics physics;
+    physics.Resize(usize(1));
+    Eigen::Affine3f turned = Eigen::Affine3f::Identity();
+    for (int frame = 0; frame < 120; ++frame) {
+        turned = physics.Apply(
+            usize(), simulation, Eigen::Affine3f::Identity(), Eigen::Affine3f::Identity(), 1.0f / 30.0f);
+    }
+    return Eigen::AngleAxisf(Eigen::Quaternionf(turned.rotation())).angle();
+}
+} // namespace
+
+// In Wallpaper Engine gravity turns a bone whose rotation spring is on (a puppet's hair, gun and hands hang from it): the tip
+// is moved against gravity's part across it by the mass (no frame time) and turned back, blended in by min(how far it moved x the
+// inertia x pi / 180, 1), so the turn goes with the mass squared, and a turn below the turn-between routine's threshold
+// (the directions' dot product at least 0.99999988) is none (puppet-physics-hang2 and -locked: 0.9946 to 1.0000;
+// the factor 10 on the pull is fitted, scores flat from 10 to 16).
+TEST(BonePhysics, GravityTurnsABoneWithARotationSpring) {
+    EXPECT_GT(SettledTurn(100.0f, "0 -1 0"), 0.5f);
+    EXPECT_GT(SettledTurn(20.0f, "0 -1 0"), 0.03f);
+    EXPECT_GT(SettledTurn(4.0f, "0 -1 0"), 3.0f * SettledTurn(2.0f, "0 -1 0"));
+}
+
+TEST(BonePhysics, ATinyGravityTurnsAlmostNothing) {
+    EXPECT_LT(SettledTurn(1.0f, "0 -1 0"), 0.01f);
+}
+
+TEST(BonePhysics, NothingTurnsABoneWithoutGravityOrAlongItsTip) {
+    EXPECT_NEAR(SettledTurn(100.0f, "0 -1 0", false), 0.0f, 1e-6f);
+    EXPECT_NEAR(SettledTurn(100.0f, "1 0 0"), 0.0f, 1e-4f);
 }
 
 TEST(Puppet, GravitySettlesABoneBelowItsPlace) {
