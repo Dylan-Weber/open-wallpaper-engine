@@ -1,0 +1,110 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0.1 0.1 0.15",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "eye xy",
+      "image": "models/util/solidlayer.json",
+      "size": "120 120",
+      "color": "1 0 0",
+      "alpha": 1,
+      "origin": {
+        "value": "0 0 0",
+        "script": "'use strict';\n\nexport function update(value) {\n\tconst t = thisScene.getCameraTransforms();\n\treturn new Vec3(t.eye.x, t.eye.y, 0);\n}\n",
+        "scriptproperties": {}
+      },
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 1,
+      "visible": true
+    },
+    {
+      "name": "centre xy",
+      "image": "models/util/solidlayer.json",
+      "size": "120 120",
+      "color": "0 1 0",
+      "alpha": 1,
+      "origin": {
+        "value": "0 0 0",
+        "script": "'use strict';\n\nexport function update(value) {\n\tconst t = thisScene.getCameraTransforms();\n\treturn new Vec3(t.center.x, t.center.y, 0);\n}\n",
+        "scriptproperties": {}
+      },
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 2,
+      "visible": true
+    },
+    {
+      "name": "eye z",
+      "image": "models/util/solidlayer.json",
+      "size": "120 120",
+      "color": "0 0 1",
+      "alpha": 1,
+      "origin": {
+        "value": "0 0 0",
+        "script": "'use strict';\n\nexport function update(value) {\n\tconst t = thisScene.getCameraTransforms();\n\treturn new Vec3(200 + t.eye.z / 4, 800, 0);\n}\n",
+        "scriptproperties": {}
+      },
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 3,
+      "visible": true
+    },
+    {
+      "name": "centre z",
+      "image": "models/util/solidlayer.json",
+      "size": "120 120",
+      "color": "1 1 0",
+      "alpha": 1,
+      "origin": {
+        "value": "0 0 0",
+        "script": "'use strict';\n\nexport function update(value) {\n\tconst t = thisScene.getCameraTransforms();\n\treturn new Vec3(200 + t.center.z / 4, 600, 0);\n}\n",
+        "scriptproperties": {}
+      },
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 4,
+      "visible": true
+    },
+    {
+      "name": "up",
+      "image": "models/util/solidlayer.json",
+      "size": "120 120",
+      "color": "1 0 1",
+      "alpha": 1,
+      "origin": {
+        "value": "0 0 0",
+        "script": "'use strict';\n\nexport function update(value) {\n\tconst t = thisScene.getCameraTransforms();\n\treturn new Vec3(1600 + t.up.x * 200, 200 + t.up.y * 200, 0);\n}\n",
+        "scriptproperties": {}
+      },
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 5,
+      "visible": true
+    }
+  ],
+  "version": 1
+}
