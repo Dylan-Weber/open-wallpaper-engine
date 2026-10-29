@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "name": "boxblur",
+  "passes": [
+    {
+      "material": "materials/effects/boxblur_x.json",
+      "target": "_rt_BlurTemp"
+    },
+    {
+      "material": "materials/effects/boxblur_y.json",
+      "bind": [
+        {
+          "name": "_rt_BlurTemp",
+          "index": 0
+        }
+      ]
+    }
+  ],
+  "fbos": [
+    {
+      "name": "_rt_BlurTemp",
+      "format": "rgba_backbuffer"
+    }
+  ]
+}
