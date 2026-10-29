@@ -1,0 +1,10 @@
+{
+  "title": "wpe-test steady tones: 100 Hz left, 1 kHz both, 5 kHz right",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {},
+    "supportsaudioprocessing": true
+  }
+}
