@@ -25,6 +25,8 @@ struct SceneViewerArgs {
     String      mouse_position;
     String      load_bench_output;
     String      texture_memory_output;
+    String      capture_output;
+    u32         capture_frame;
     Option<u64> random_seed;
     Option<f32> script_start;
     Option<f32> camera_path_delay;
@@ -185,6 +187,19 @@ SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
                             .help("Write texture CPU allocation statistics to FILE on exit"_str)
                             .default_value(""_str));
 
+    auto capture = command.add_arg(
+        Arg<String>::value("capture"_str, string_parser())
+            .long_name("capture"_str)
+            .value_name("FILE"_str)
+            .help("Render offscreen, write frame --capture-frame to FILE (binary PPM) and exit"_str)
+            .default_value(""_str));
+    auto capture_frame = command.add_arg(
+        Arg<u32>::value("capture-frame"_str, from_str_parser<u32>())
+            .long_name("capture-frame"_str)
+            .value_name("N"_str)
+            .help("The frame --capture writes, counted from 0: it shows the scene at N / fps s"_str)
+            .default_value("0"_str));
+
     auto parsed = owe::cli::ParseArgs(rstd::move(command), argc, argv);
     if (parsed.is_err()) rstd::process::exit(i32(parsed.unwrap_err().code));
     auto matches = rstd::move(parsed).unwrap();
@@ -197,6 +212,8 @@ SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
         .mouse_position        = Value(matches, mouse_position).clone(),
         .load_bench_output     = Value(matches, load_bench_output).clone(),
         .texture_memory_output = Value(matches, texture_memory_output).clone(),
+        .capture_output        = Value(matches, capture).clone(),
+        .capture_frame         = Value(matches, capture_frame),
         .random_seed           = OptionalValue(matches, random_seed),
         .script_start          = OptionalValue(matches, script_start),
         .camera_path_delay     = OptionalValue(matches, camera_path_delay),
