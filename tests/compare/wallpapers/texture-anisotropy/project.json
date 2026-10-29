@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test a texture with a colour for each mipmap, squeezed",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}
