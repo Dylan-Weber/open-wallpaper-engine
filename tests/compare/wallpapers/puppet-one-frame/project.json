@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test a looping animation of one frame",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}
