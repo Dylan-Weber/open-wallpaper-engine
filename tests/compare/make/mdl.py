@@ -81,7 +81,9 @@ def puppet_mdl(material, vertices, indices, bones, animations=(), shading=False,
     skeleton = b''
     for name, parent, (x, y, z), *simulation in bones:
         matrix = (1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1)  # columns, the translation last
-        skeleton += name.encode() + b'\0' + struct.pack('<iII', sim_type, 0xFFFFFFFF if parent is None else parent, 64)
+        # a bone with physics has simulation type 1 (as in Wallpaper Engine's own files)
+        kind = 1 if simulation and simulation[0] else sim_type
+        skeleton += name.encode() + b'\0' + struct.pack('<iII', kind, 0xFFFFFFFF if parent is None else parent, 64)
         skeleton += struct.pack('<16f', *matrix) + (simulation[0] if simulation else '').encode() + b'\0'
     head = b'MDLS0001\0'
     data += head + struct.pack('<IHH', len(data) + len(head) + 8 + len(skeleton), len(bones), 0) + skeleton
