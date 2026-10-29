@@ -44,7 +44,8 @@ using resource_registry::PipelineResourceSystem;
 inline bool SameTextureSample(const TextureSample& lhs, const TextureSample& rhs) {
     return lhs.wrapS == rhs.wrapS && lhs.wrapT == rhs.wrapT && lhs.magFilter == rhs.magFilter &&
            lhs.minFilter == rhs.minFilter && lhs.compare_enable == rhs.compare_enable &&
-           lhs.compare_op == rhs.compare_op && lhs.border_color == rhs.border_color;
+           lhs.compare_op == rhs.compare_op && lhs.border_color == rhs.border_color &&
+           lhs.max_anisotropy == rhs.max_anisotropy;
 }
 
 using resource::SameTextureBindingRequest;
@@ -58,6 +59,7 @@ inline void WriteTextureSampleIdentity(PipelineKeyWriter& writer, const TextureS
     writer.writeBool(sample.compare_enable);
     WritePipelineScalar(writer, sample.compare_op);
     WritePipelineScalar(writer, sample.border_color);
+    WritePipelineScalar(writer, sample.max_anisotropy);
 }
 
 inline void WriteTextureDefinitionIdIdentity(PipelineKeyWriter&         writer,

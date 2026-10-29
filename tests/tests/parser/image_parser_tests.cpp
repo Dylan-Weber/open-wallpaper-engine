@@ -207,11 +207,12 @@ protected:
     }
     void TearDown() noexcept { std::filesystem::remove_all(root); }
 
-    void WriteTexture(bool sprite, std::uint32_t conditions) {
+    void WriteTexture(bool sprite, std::uint32_t conditions, std::uint32_t flags = 0) {
         std::ofstream output(root / "materials" / "conditional.tex", std::ios::binary);
         output.write("TEXV0005", 9);
         output.write("TEXI0001", 9);
-        for (auto value : { 0u, sprite ? 4u : 0u, 2u, 2u, 2u, 2u, 0u }) WriteU32(output, value);
+        for (auto value : { 0u, (sprite ? 4u : 0u) | flags, 2u, 2u, 2u, 2u, 0u })
+            WriteU32(output, value);
         output.write("TEXB0004", 9);
         WriteU32(output, 1);
         WriteU32(output, 0xffffffffu);
@@ -506,6 +507,23 @@ bool WaitForRegisteredReads(const owe::TexImageParser& parser, u64 count) {
         rstd::thread::yield_now();
     }
     return true;
+}
+
+// Wallpaper Engine samples a texture with 8x anisotropic filtering (texture-anisotropy: a texture squeezed up to 6.4 times
+// keeps its full-size mipmap); a texture without interpolation (flag 1) is sampled from its nearest texel.
+TEST_F(ConditionalTextureTest, TexturesFilterAnisotropically) {
+    WriteTexture(false, 0);
+    {
+        owe::TexImageParser parser(&vfs);
+        auto                image = parser.Parse("conditional"_str);
+        ASSERT_TRUE(image.is_ok());
+        EXPECT_EQ(image.unwrap()->header.sample.max_anisotropy, 8);
+    }
+    WriteTexture(false, 0, 1u);
+    owe::TexImageParser parser(&vfs);
+    auto                image = parser.Parse("conditional"_str);
+    ASSERT_TRUE(image.is_ok());
+    EXPECT_EQ(image.unwrap()->header.sample.max_anisotropy, 1);
 }
 
 TEST_F(ConditionalTextureTest, PixelStatisticsFollowStorageNotImageWrappersOrArcClones) {
