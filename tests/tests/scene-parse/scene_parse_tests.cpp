@@ -1583,3 +1583,86 @@ TEST(SceneAssetPaths, ModelCameraAndClipRetainTheirReparseSemantics) {
     EXPECT_EQ(camera.path, "motion.json"_str);
     EXPECT_TRUE(clip.name.is_empty());
 }
+
+// As in Wallpaper Engine (model-depth-sorted): with the scene's transparentsorting, translucent
+// models write depth as their material says; without it they write none.
+TEST(ModelParsing, SortedTranslucentModelsWriteDepth) {
+    auto root = std::filesystem::temp_directory_path() /
+                ("owe-sorted-depth-" + std::to_string(rstd::process::id().to_primitive()));
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root / "models");
+    std::filesystem::create_directories(root / "materials");
+    std::ofstream(root / "materials" / "glass.json") << R"({"passes": [{
+        "shader": "generic4", "blending": "translucent", "cullmode": "normal",
+        "depthtest": "enabled", "depthwrite": "enabled",
+        "combos": {"LIGHTING": 0, "REFLECTION": 0, "RIMLIGHTING": 0, "SHADINGGRADIENT": 0},
+        "constantshadervalues": {"color": "0 1 0", "alpha": 0.5}, "textures": [null]}]})";
+    {
+        // one triangle (MDLV0017: position, normal, tangent and sign, uv per vertex)
+        std::string mdl("MDLV0017", 9);
+        auto        put = [&](auto value) {
+            mdl.append(reinterpret_cast<const char*>(&value), sizeof value);
+        };
+        put(std::int32_t(15));
+        put(std::int32_t(1));
+        put(std::uint32_t(1));
+        mdl += "materials/glass.json";
+        mdl.push_back('\0');
+        put(std::int32_t(0));
+        for (float bound : { -1.0f, -1.0f, 0.0f, 1.0f, 1.0f, 0.0f }) put(bound);
+        put(std::int32_t(15));
+        const float vertices[3][12] = {
+            { -1, -1, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0 },
+            { 1, -1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0 },
+            { 0, 1, 0, 0, 0, 1, 1, 0, 0, 1, 0.5f, 1 },
+        };
+        put(std::uint32_t(sizeof vertices));
+        for (const auto& vertex : vertices)
+            for (float value : vertex) put(value);
+        put(std::uint32_t(6));
+        for (std::uint16_t index : { 0, 1, 2 }) put(index);
+        std::ofstream(root / "models" / "glass.mdl", std::ios::binary) << mdl;
+    }
+
+    for (bool sorted : { false, true }) {
+        auto json     = std::string(R"JSON({
+            "camera": {"center": "0 0 0", "eye": "0 0 1", "up": "0 1 0"},
+            "general": {"orthogonalprojection": null, "fov": 50, "nearz": 0.1, "farz": 100,
+                        "transparentsorting": )JSON") +
+                        (sorted ? "true" : "false") + R"JSON(},
+            "objects": [{"id": 1, "name": "Glass", "model": "models/glass.mdl",
+                         "origin": "0 0 -3", "visible": true}]
+        })JSON";
+        auto document = owe::wpscene::ParseSceneDocumentJson(rstd::cppstd::as_str(json).unwrap(),
+                                                             owe::wpscene::kSceneVersionUnknown);
+        ASSERT_TRUE(document.is_some());
+
+        auto assets = owe::fs::make_physical_fs(
+            owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+        ASSERT_TRUE(assets.is_ok());
+        auto own =
+            owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(root.string()).unwrap()));
+        ASSERT_TRUE(own.is_ok());
+        owe::fs::VFS vfs;
+        ASSERT_TRUE(vfs.mount("/assets"_str, std::move(assets).unwrap_unchecked()).is_ok());
+        ASSERT_TRUE(vfs.mount("/assets"_str, std::move(own).unwrap_unchecked()).is_ok());
+
+        wavsen::audio::SoundManager sound_manager;
+        owe::SceneParser            parser;
+        auto                        parsed = parser.Parse(
+            "sorted-depth"_str,
+            rstd::ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+            rstd::mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+            rstd::mut_ref<wavsen::audio::SoundManager>::from_raw_parts(
+                rstd::addressof(sound_manager)));
+        ASSERT_TRUE(parsed.is_ok());
+        auto  scene = rstd::move(parsed).unwrap();
+        auto* glass = scene.scene->RootMut()->FindByName("Glass"_str);
+        ASSERT_NE(glass, nullptr);
+        ASSERT_NE(glass->Mesh(), nullptr);
+        ASSERT_NE(glass->Mesh()->Material(), nullptr);
+        EXPECT_EQ(glass->Mesh()->Material()->Pipeline().depth_write, sorted);
+    }
+
+    std::filesystem::remove_all(root);
+}
