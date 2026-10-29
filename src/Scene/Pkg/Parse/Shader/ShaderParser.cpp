@@ -278,7 +278,7 @@ float3 PerformLighting_V1(float3 worldPos, float3 albedo, float3 normal, float3 
         if (type < -0.5 || dot(color, color) <= 0.0)
             continue;
 
-        if (type > 1.5) {
+        if (type > 1.5 && type < 2.5) {
 #if LIGHTS_SHADOW_MAPPING
             if (g_LightsCastShadow[i] > 0.5) {
                 float selectedCascade = 0.0;
@@ -300,7 +300,13 @@ float3 PerformLighting_V1(float3 worldPos, float3 albedo, float3 normal, float3 
         }
 
         float3 toLight = g_LightsPosition[i] - worldPos;
-        if (type > 0.5) {
+        if (type > 2.5) {
+            // A tube: light from the nearest point of the segment its direction holds.
+            float3 segment = g_LightsDirectionType[i].xyz;
+            float  length2 = dot(segment, segment);
+            float  along   = length2 > 0.0 ? saturate(dot(-toLight, segment) / length2) : 0.0;
+            toLight += segment * along;
+        } else if (type > 0.5) {
             float3 lightToSurface = -normalize(toLight);
             float cone = smoothstep(g_LightsConeExponent[i].y,
                                     g_LightsConeExponent[i].x,
@@ -1890,7 +1896,7 @@ constexpr array<rstd::uint8_t, 8> kShaderCacheMagic { rstd::uint8_t('O'), rstd::
                                                       rstd::uint8_t('P'), rstd::uint8_t('V'),
                                                       rstd::uint8_t('3'), rstd::uint8_t(0) };
 constexpr rstd::uint32_t          kShaderCacheFormatVersion = 3;
-constexpr rstd::uint32_t          kShaderCacheAbiVersion    = 19;
+constexpr rstd::uint32_t          kShaderCacheAbiVersion    = 20;
 // 8-byte magic, six u32 fields, and four SHA-1 digests total 112 bytes.
 constexpr rstd::uint32_t kShaderCacheHeaderSize = static_cast<rstd::uint32_t>(
     kShaderCacheMagic.len().to_primitive() + 6 * sizeof(rstd::uint32_t) +
