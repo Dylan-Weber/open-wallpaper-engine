@@ -1,0 +1,142 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0.3 0.3 0.3",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "back normal",
+      "image": "models/util/solidlayer.json",
+      "origin": "400 700 0",
+      "size": "450 300",
+      "color": "0.2 0.4 0.8",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 1,
+      "visible": true
+    },
+    {
+      "name": "layer normal",
+      "image": "models/rainbow.json",
+      "origin": "400 700 0",
+      "size": "64 2",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "6 100 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/blend_normal/effect.json",
+          "id": 10,
+          "name": "normal",
+          "visible": true,
+          "passes": [
+            {
+              "id": 110
+            }
+          ]
+        }
+      ],
+      "id": 2,
+      "visible": true
+    },
+    {
+      "name": "back translucent",
+      "image": "models/util/solidlayer.json",
+      "origin": "950 700 0",
+      "size": "450 300",
+      "color": "0.2 0.4 0.8",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 3,
+      "visible": true
+    },
+    {
+      "name": "layer translucent",
+      "image": "models/rainbow.json",
+      "origin": "950 700 0",
+      "size": "64 2",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "6 100 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/blend_translucent/effect.json",
+          "id": 11,
+          "name": "translucent",
+          "visible": true,
+          "passes": [
+            {
+              "id": 111
+            }
+          ]
+        }
+      ],
+      "id": 4,
+      "visible": true
+    },
+    {
+      "name": "back additive",
+      "image": "models/util/solidlayer.json",
+      "origin": "1500 700 0",
+      "size": "450 300",
+      "color": "0.2 0.4 0.8",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 5,
+      "visible": true
+    },
+    {
+      "name": "layer additive",
+      "image": "models/rainbow.json",
+      "origin": "1500 700 0",
+      "size": "64 2",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "6 100 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/blend_additive/effect.json",
+          "id": 12,
+          "name": "additive",
+          "visible": true,
+          "passes": [
+            {
+              "id": 112
+            }
+          ]
+        }
+      ],
+      "id": 6,
+      "visible": true
+    }
+  ],
+  "version": 1
+}
