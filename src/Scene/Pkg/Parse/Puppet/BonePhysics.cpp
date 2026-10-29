@@ -184,14 +184,14 @@ auto BonePhysics::Apply(usize bone, const BoneSimulation& simulation, const Affi
                 state.spin = state.spin * Towards(Quaternionf::Identity(), own, inertia);
             }
             if (simulation.gravity) {
-                // Gravity turns the bone: its tip, as turned now, is moved against the part of gravity across it (mass x
-                // frame time x 10) and turned back, blended in by how far it moved x the inertia x pi / 180, so the turn goes
-                // with the mass squared and a tiny one is none (see TurnBetween).
+                // Gravity turns the bone: its tip, as turned now, is moved against the part of gravity across it (the mass,
+                // times the object scale: no frame time) and turned back, blended in by how far it moved x the inertia x
+                // pi / 180, so the turn goes with the mass squared and a tiny one is none (see TurnBetween).
                 const Vector3f turned = state.rotation_offset * simulation.tip;
                 if (turned.norm() > 1e-6f) {
                     const Vector3f along = turned.normalized();
                     const Vector3f pull =
-                        animated.linear().inverse() * simulation.gravity_direction * (simulation.mass * dt * 10.0f);
+                        animated.linear().inverse() * simulation.gravity_direction * simulation.mass;
                     const Vector3f across = pull - pull.dot(along) * along;
                     const float    moved  = across.norm();
                     if (moved > 0.0f) {
