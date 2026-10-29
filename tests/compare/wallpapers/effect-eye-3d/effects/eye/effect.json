@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "eye",
+  "passes": [
+    {
+      "material": "materials/effects/eye.json"
+    }
+  ]
+}
