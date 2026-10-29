@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "alphascale",
+  "passes": [
+    {
+      "material": "materials/effects/alphascale.json"
+    }
+  ]
+}
