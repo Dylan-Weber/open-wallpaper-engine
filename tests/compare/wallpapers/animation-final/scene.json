@@ -1,0 +1,649 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0.1 0.1 0.1",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "absolute",
+      "image": "models/util/solidlayer.json",
+      "size": "100 100",
+      "color": "1 0 0",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "origin": {
+        "value": "0 0 0",
+        "animation": {
+          "c0": [
+            {
+              "frame": 0,
+              "value": 100,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            },
+            {
+              "frame": 6,
+              "value": 600,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "c1": [
+            {
+              "frame": 0,
+              "value": 800,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            },
+            {
+              "frame": 6,
+              "value": 800,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "c2": [
+            {
+              "frame": 0,
+              "value": 0,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            },
+            {
+              "frame": 6,
+              "value": 0,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "options": {
+            "fps": 30,
+            "length": 6,
+            "mode": "single",
+            "wraploop": null
+          },
+          "relative": false
+        }
+      },
+      "id": 1
+    },
+    {
+      "name": "relative",
+      "image": "models/util/solidlayer.json",
+      "size": "100 100",
+      "color": "0 1 0",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "origin": {
+        "value": "1000 800 0",
+        "animation": {
+          "c0": [
+            {
+              "frame": 0,
+              "value": 0,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            },
+            {
+              "frame": 6,
+              "value": 400,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "c1": [
+            {
+              "frame": 0,
+              "value": 0,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            },
+            {
+              "frame": 6,
+              "value": 0,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "c2": [
+            {
+              "frame": 0,
+              "value": 0,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            },
+            {
+              "frame": 6,
+              "value": 0,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "options": {
+            "fps": 30,
+            "length": 6,
+            "mode": "single",
+            "wraploop": null
+          },
+          "relative": true
+        }
+      },
+      "id": 2
+    },
+    {
+      "name": "alpha",
+      "image": "models/util/solidlayer.json",
+      "size": "200 200",
+      "color": "1 1 1",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "origin": "400 400 0",
+      "alpha": {
+        "value": 1.0,
+        "animation": {
+          "c0": [
+            {
+              "frame": 0,
+              "value": 1,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            },
+            {
+              "frame": 6,
+              "value": 0.25,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "options": {
+            "fps": 30,
+            "length": 6,
+            "mode": "single",
+            "wraploop": null
+          },
+          "relative": false
+        }
+      },
+      "id": 3
+    },
+    {
+      "name": "scale",
+      "image": "models/util/solidlayer.json",
+      "size": "100 100",
+      "color": "0 0.5 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "alignment": "center",
+      "visible": true,
+      "origin": "900 400 0",
+      "scale": {
+        "value": "0 0 0",
+        "animation": {
+          "c0": [
+            {
+              "frame": 0,
+              "value": 1,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            },
+            {
+              "frame": 6,
+              "value": 3,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "c1": [
+            {
+              "frame": 0,
+              "value": 1,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            },
+            {
+              "frame": 6,
+              "value": 0.5,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "c2": [
+            {
+              "frame": 0,
+              "value": 1,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            },
+            {
+              "frame": 6,
+              "value": 1,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "options": {
+            "fps": 30,
+            "length": 6,
+            "mode": "single",
+            "wraploop": null
+          },
+          "relative": false
+        }
+      },
+      "id": 4
+    },
+    {
+      "name": "angle",
+      "image": "models/util/solidlayer.json",
+      "size": "250 60",
+      "color": "1 1 0",
+      "alpha": 1,
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "origin": "1500 400 0",
+      "angles": {
+        "value": "0 0 0",
+        "animation": {
+          "c0": [
+            {
+              "frame": 0,
+              "value": 0,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            },
+            {
+              "frame": 6,
+              "value": 0,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "c1": [
+            {
+              "frame": 0,
+              "value": 0,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            },
+            {
+              "frame": 6,
+              "value": 0,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "c2": [
+            {
+              "frame": 0,
+              "value": 0,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            },
+            {
+              "frame": 6,
+              "value": 0.7854,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "options": {
+            "fps": 30,
+            "length": 6,
+            "mode": "single",
+            "wraploop": null
+          },
+          "relative": false
+        }
+      },
+      "id": 5
+    },
+    {
+      "name": "colour",
+      "image": "models/util/solidlayer.json",
+      "size": "200 120",
+      "color": {
+        "value": "0 0 0",
+        "animation": {
+          "c0": [
+            {
+              "frame": 0,
+              "value": 1,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            },
+            {
+              "frame": 6,
+              "value": 0,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "c1": [
+            {
+              "frame": 0,
+              "value": 0,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            },
+            {
+              "frame": 6,
+              "value": 1,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "c2": [
+            {
+              "frame": 0,
+              "value": 0,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            },
+            {
+              "frame": 6,
+              "value": 0.5,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "options": {
+            "fps": 30,
+            "length": 6,
+            "mode": "single",
+            "wraploop": null
+          },
+          "relative": false
+        }
+      },
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "origin": "400 150 0",
+      "id": 6
+    }
+  ],
+  "version": 1
+}
