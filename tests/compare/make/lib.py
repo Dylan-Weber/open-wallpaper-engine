@@ -233,6 +233,7 @@ binary = importlib.util.module_from_spec(_binary_spec)
 _binary_spec.loader.exec_module(binary)
 cube_mdl = binary.cube_mdl
 puppet_mdl = binary.puppet_mdl
+quad_mdl = binary.quad_mdl
 
 
 class Scene3D(Wallpaper):
