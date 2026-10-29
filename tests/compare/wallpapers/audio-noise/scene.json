@@ -1,0 +1,126 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0 0 0",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "driver",
+      "image": "models/util/solidlayer.json",
+      "size": "10 10",
+      "color": "0 0 0",
+      "alpha": 0,
+      "origin": {
+        "value": "10 10 0",
+        "script": "'use strict';\nconst audio = engine.registerAudioBuffers(engine.AUDIO_RESOLUTION_64);\nconst bars = [];\nexport function init(value) {\n    // the left channel's 64 bands at the top, the right channel's at the bottom, growing up from a line\n    for (const [row, base] of [[0, 600], [1, 100]]) {\n        for (let i = 0; i < 64; i++) {\n            bars.push(thisScene.createLayer({image: 'models/util/solidlayer.json', name: 'bar ' + row + ' ' + i,\n                origin: new Vec3(60 + i * 28, base, 0), size: new Vec2(20, 2),\n                color: row === 0 ? new Vec3(1, 0.6, 0.2) : new Vec3(0.2, 0.7, 1)}));\n        }\n    }\n    return value;\n}\nexport function update(value) {\n    for (let i = 0; i < 64; i++) {\n        for (const [row, values] of [[0, audio.left], [1, audio.right]]) {\n            const bar = bars[row * 64 + i];\n            const height = Math.max(2, values[i] * 400);\n            bar.scale = new Vec3(1, height / 2, 1);\n            bar.origin = new Vec3(bar.origin.x, (row === 0 ? 600 : 100) + height / 2, 0);\n        }\n    }\n    return value;\n}\n",
+        "scriptproperties": {}
+      },
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 1,
+      "visible": true
+    },
+    {
+      "name": "left baseline",
+      "image": "models/util/solidlayer.json",
+      "origin": "960 598 0",
+      "size": "1800 2",
+      "color": "0.3 0.3 0.3",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 2,
+      "visible": true
+    },
+    {
+      "name": "right baseline",
+      "image": "models/util/solidlayer.json",
+      "origin": "960 98 0",
+      "size": "1800 2",
+      "color": "0.3 0.3 0.3",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 3,
+      "visible": true
+    },
+    {
+      "id": 4,
+      "name": "owe clock probe",
+      "image": "models/util/fullscreenlayer.json",
+      "origin": "0 0 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "color": "1 1 1",
+      "alpha": 1,
+      "visible": true,
+      "effects": [
+        {
+          "file": "effects/oweclock/effect.json",
+          "id": 5,
+          "name": "oweclock",
+          "visible": true,
+          "passes": [
+            {
+              "id": 6,
+              "constantshadervalues": {
+                "scriptframe": {
+                  "script": "'use strict';\n\nexport function update(value) {\n\treturn Math.floor(engine.runtime * 30 + 0.5);\n}\n",
+                  "value": -1
+                },
+                "press": {
+                  "script": "'use strict';\n\nlet last = 0;\nlet wasDown = false;\n\nexport function update(value) {\n\ttry {\n\t\tconst down = !!input.cursorLeftDown;\n\t\tif (down && !wasDown) last = Math.min(Math.floor(engine.runtime * 30 + 0.5) + 1, 4094);\n\t\twasDown = down;\n\t\treturn last;\n\t} catch (e) {\n\t\treturn 4095;\n\t}\n}\n",
+                  "value": -1
+                },
+                "date_day": {
+                  "script": "'use strict';\n\nexport function update(value) {\n\treturn Math.floor(Date.now() / 86400000) - 18262;\n}\n",
+                  "value": -1
+                },
+                "date_centis": {
+                  "script": "'use strict';\n\nexport function update(value) {\n\treturn Math.floor((Date.now() % 86400000) / 10);\n}\n",
+                  "value": -1
+                },
+                "timezone": {
+                  "script": "'use strict';\n\nexport function update(value) {\n\treturn new Date().getTimezoneOffset() + 1024;\n}\n",
+                  "value": -1
+                },
+                "camerax": {
+                  "script": "'use strict';\n\nfunction quantise(value, offset, scale, bits) {\n\tconst most = Math.pow(2, bits) - 1;\n\treturn Math.min(Math.max(Math.floor((value + offset) * scale + 0.5), 0), most);\n}\n\nexport function update(value) {\n\ttry {\n\t\treturn quantise(thisScene.getCameraTransforms().eye.x, 32768, 256, 24);\n\t} catch (e) {\n\t\treturn 16777215;\n\t}\n}\n",
+                  "value": -1
+                },
+                "cameray": {
+                  "script": "'use strict';\n\nfunction quantise(value, offset, scale, bits) {\n\tconst most = Math.pow(2, bits) - 1;\n\treturn Math.min(Math.max(Math.floor((value + offset) * scale + 0.5), 0), most);\n}\n\nexport function update(value) {\n\ttry {\n\t\treturn quantise(thisScene.getCameraTransforms().eye.y, 32768, 256, 24);\n\t} catch (e) {\n\t\treturn 16777215;\n\t}\n}\n",
+                  "value": -1
+                },
+                "cameraz": {
+                  "script": "'use strict';\n\nfunction quantise(value, offset, scale, bits) {\n\tconst most = Math.pow(2, bits) - 1;\n\treturn Math.min(Math.max(Math.floor((value + offset) * scale + 0.5), 0), most);\n}\n\nexport function update(value) {\n\ttry {\n\t\treturn quantise(thisScene.getCameraTransforms().eye.z, 32768, 256, 24);\n\t} catch (e) {\n\t\treturn 16777215;\n\t}\n}\n",
+                  "value": -1
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "version": 1
+}

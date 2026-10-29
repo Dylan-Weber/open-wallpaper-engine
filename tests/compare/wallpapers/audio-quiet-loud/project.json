@@ -1,0 +1,10 @@
+{
+  "title": "wpe-test one tone quiet on the left, loud on the right",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {},
+    "supportsaudioprocessing": true
+  }
+}
