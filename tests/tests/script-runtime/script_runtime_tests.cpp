@@ -777,10 +777,11 @@ TEST(ScriptBones, LocalBonesReadZeroAndTakeNothingInInit) {
     JsRuntime      rt;
     rt.SetBoneResolvers(
         JsRuntime::BoneIndexResolver::make([](owe::SceneNode*, ref<str>) -> uint32_t { return 1; }),
+        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t { return 0; }),
         JsRuntime::BoneTransformResolver::make(
-            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTranslation> {
-                return None();
-            }));
+            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTransformData> { return None(); }),
+        JsRuntime::BoneSetTransformResolver::make(
+            [](owe::SceneNode*, uint32_t, const BoneTransformData&) {}));
     BoneLocalPose pose { .origin = { 1.0f, 2.0f, 3.0f }, .angles = { 0.0f, 0.0f, 0.3f } };
     int           sets = 0;
     rt.SetBoneLocalResolvers(
