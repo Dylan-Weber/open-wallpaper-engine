@@ -1,0 +1,5 @@
+# the venv, the comparisons' pictures and wallpapers that aren't ours to commit
+/.venv/
+/output-owe/
+/wallpapers/_scratch/
+__pycache__/
