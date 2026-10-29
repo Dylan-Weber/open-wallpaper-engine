@@ -2547,13 +2547,29 @@ struct Impl<Copy, owe::SceneShadowViewport> {};
 export namespace owe
 {
 
+// How shadow casters draw: keeping the depth nearest the light (the greater: the atlas clears to
+// 0), unclipped, and moved away from the light by its slope (Wallpaper Engine's slope-scaled bias
+// of 4) and by a few steps of the depth, for surfaces that face a light square on (a point light's
+// face looking straight at a wall), whose slope is nothing.
+inline auto ShadowCasterPipeline(vrento::MaterialPipelineDesc pipeline)
+    -> vrento::MaterialPipelineDesc {
+    pipeline.depth_clamp         = true;
+    pipeline.depth_clip          = Some(true);
+    pipeline.depth_compare       = CompareOp::Greater;
+    pipeline.depth_bias          = true;
+    pipeline.depth_bias_slope    = -4.0f;
+    pipeline.depth_bias_constant = -4.0f;
+    return pipeline;
+}
+
 // One shadowed light's views of the shadow atlas.
 struct SceneShadowDefinition {
     String                   target;
     Vec<SceneShadowViewport> viewports;
     i32                      light_id { i32(-1) };
     // its first view in the scene's list of shadow views
-    u32 view_offset { 0 };
+    u32            view_offset { 0 };
+    SceneLightType type { SceneLightType::Directional };
 
     auto Clone() const -> SceneShadowDefinition {
         return {
@@ -2561,6 +2577,7 @@ struct SceneShadowDefinition {
             .viewports   = viewports.clone(),
             .light_id    = light_id,
             .view_offset = view_offset,
+            .type        = type,
         };
     }
 };

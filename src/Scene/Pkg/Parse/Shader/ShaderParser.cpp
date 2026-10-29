@@ -263,6 +263,7 @@ uniform float g_LightsCastShadow[4];
 uniform mat4 g_OweShadowViewProjections[24];
 uniform vec4 g_OweShadowAtlasTransforms[24];
 uniform vec4 g_OweLightsShadowView;
+uniform vec4 g_OweLightsShadowProjection[4];
 #endif
 
 float3 PerformLighting_V1(float3 worldPos, float3 albedo, float3 normal, float3 viewVector,
@@ -305,6 +306,13 @@ float3 PerformLighting_V1(float3 worldPos, float3 albedo, float3 normal, float3 
         }
 
         float3 toLight = g_LightsPosition[i] - worldPos;
+#if LIGHTS_SHADOW_MAPPING
+        if (type < 0.5 && g_OweLightsShadowView[i] > -0.5) {
+            shadowFactor = PerformPointShadowMapping(CalculateProjectedCoordsPoint(
+                worldPos, g_LightsPosition[i], g_OweLightsShadowProjection[i],
+                g_OweShadowAtlasTransforms[shadowView]));
+        }
+#endif
         if (type > 0.5) {
             float3 lightToSurface = -normalize(toLight);
             float cone = smoothstep(g_LightsConeExponent[i].y,
@@ -1923,7 +1931,7 @@ constexpr array<rstd::uint8_t, 8> kShaderCacheMagic { rstd::uint8_t('O'), rstd::
                                                       rstd::uint8_t('P'), rstd::uint8_t('V'),
                                                       rstd::uint8_t('3'), rstd::uint8_t(0) };
 constexpr rstd::uint32_t          kShaderCacheFormatVersion = 3;
-constexpr rstd::uint32_t          kShaderCacheAbiVersion    = 22;
+constexpr rstd::uint32_t          kShaderCacheAbiVersion    = 23;
 // 8-byte magic, six u32 fields, and four SHA-1 digests total 112 bytes.
 constexpr rstd::uint32_t kShaderCacheHeaderSize = static_cast<rstd::uint32_t>(
     kShaderCacheMagic.len().to_primitive() + 6 * sizeof(rstd::uint32_t) +
