@@ -253,30 +253,32 @@ __SHADER_PLACEHOLD__
 )"_str;
 
 static constexpr ref<str> lighting_v1_source = R"(
-uniform vec3 g_LightsPosition[4];
-uniform vec4 g_OweLightsColorRadius[4];
-uniform vec4 g_LightsDirectionType[4];
-uniform vec4 g_LightsConeExponent[4];
-uniform float g_LightsCastShadow[4];
+// owe's own slots: every light the light config counts (Wallpaper Engine lights more than the old
+// arrays' four)
+uniform vec3 g_OweLightsPosition[8];
+uniform vec4 g_OweLightsColorRadius[8];
+uniform vec4 g_OweLightsDirectionType[8];
+uniform vec4 g_OweLightsConeExponent[8];
+uniform float g_OweLightsCastShadow[8];
 #if LIGHTS_SHADOW_MAPPING
 // every shadowed light's views and their squares of the atlas; each light slot's first view
 uniform mat4 g_OweShadowViewProjections[24];
 uniform vec4 g_OweShadowAtlasTransforms[24];
-uniform vec4 g_OweLightsShadowView;
-uniform vec4 g_OweLightsShadowProjection[4];
+uniform float g_OweLightsShadowView[8];
+uniform vec4 g_OweLightsShadowProjection[8];
 #endif
 
 float3 PerformLighting_V1(float3 worldPos, float3 albedo, float3 normal, float3 viewVector,
                           float3 specularTint, float3 f0, float roughness, float metallic) {
     float3 light = float3(0.0, 0.0, 0.0);
-    for (int i = 0; i < 4; ++i) {
-        float type = g_LightsDirectionType[i].w;
+    for (int i = 0; i < 8; ++i) {
+        float type = g_OweLightsDirectionType[i].w;
         float3 color = g_OweLightsColorRadius[i].rgb;
         float shadowFactor = 1.0;
 #if !LIGHTS_SHADOW_MAPPING && OWE_IMAGE_LAYER && SCENE_ORTHO
         // Shadow-atlas rendering is not available yet. Suppress shadow-casting
         // lights on 2D layers instead of leaking them across the whole quad.
-        shadowFactor = 1.0 - step(0.5, g_LightsCastShadow[i]);
+        shadowFactor = 1.0 - step(0.5, g_OweLightsCastShadow[i]);
 #endif
         if (type < -0.5 || dot(color, color) <= 0.0)
             continue;
@@ -300,41 +302,41 @@ float3 PerformLighting_V1(float3 worldPos, float3 albedo, float3 normal, float3 
             }
 #endif
             light += ComputePBRLightShadowInfinite(
-                normal, g_LightsDirectionType[i].xyz, viewVector, albedo, color,
+                normal, g_OweLightsDirectionType[i].xyz, viewVector, albedo, color,
                 specularTint, f0, roughness, metallic, shadowFactor);
             continue;
         }
 
-        float3 toLight = g_LightsPosition[i] - worldPos;
+        float3 toLight = g_OweLightsPosition[i] - worldPos;
 #if LIGHTS_SHADOW_MAPPING
         if (type < 0.5 && g_OweLightsShadowView[i] > -0.5) {
             shadowFactor = PerformPointShadowMapping(CalculateProjectedCoordsPoint(
-                worldPos, g_LightsPosition[i], g_OweLightsShadowProjection[i],
+                worldPos, g_OweLightsPosition[i], g_OweLightsShadowProjection[i],
                 g_OweShadowAtlasTransforms[shadowView]));
         }
 #endif
         if (type > 2.5) {
             // A tube: light from the nearest point of the segment its direction holds.
-            float3 segment = g_LightsDirectionType[i].xyz;
+            float3 segment = g_OweLightsDirectionType[i].xyz;
             float  length2 = dot(segment, segment);
             float  along   = length2 > 0.0 ? saturate(dot(-toLight, segment) / length2) : 0.0;
             toLight += segment * along;
         } else if (type > 0.5) {
             float3 lightToSurface = -normalize(toLight);
-            float cone = smoothstep(g_LightsConeExponent[i].y,
-                                    g_LightsConeExponent[i].x,
-                                    dot(lightToSurface, g_LightsDirectionType[i].xyz));
+            float cone = smoothstep(g_OweLightsConeExponent[i].y,
+                                    g_OweLightsConeExponent[i].x,
+                                    dot(lightToSurface, g_OweLightsDirectionType[i].xyz));
 #if LIGHTS_COOKIE
             // A cookie light projects its cookie over its cone in place of the cone's falloff:
             // the light's axis is the middle of the cookie, the edge of the cone its edge, and
             // the cookie's top is up.
-            if (g_LightsConeExponent[i].w > 0.5) {
-                float3 forward = g_LightsDirectionType[i].xyz;
+            if (g_OweLightsConeExponent[i].w > 0.5) {
+                float3 forward = g_OweLightsDirectionType[i].xyz;
                 float3 worldUp = abs(forward.y) > 0.99 ? float3(0.0, 0.0, 1.0) : float3(0.0, 1.0, 0.0);
                 float3 right   = normalize(cross(forward, worldUp));
                 float3 up      = cross(right, forward);
                 float  depth   = dot(lightToSurface, forward);
-                float  outer   = g_LightsConeExponent[i].y;
+                float  outer   = g_OweLightsConeExponent[i].y;
                 float  tangent = sqrt(max(1.0 - outer * outer, 0.0)) / max(outer, 0.0001);
                 float2 ndc = float2(dot(lightToSurface, right), dot(lightToSurface, up)) /
                              max(depth * tangent, 0.0001);
@@ -355,7 +357,7 @@ float3 PerformLighting_V1(float3 worldPos, float3 albedo, float3 normal, float3 
         light += ComputePBRLightShadow(
             normal, toLight, viewVector, albedo, color,
             max(g_OweLightsColorRadius[i].w, 0.0001),
-            max(g_LightsConeExponent[i].z, 0.0), specularTint, f0,
+            max(g_OweLightsConeExponent[i].z, 0.0), specularTint, f0,
             roughness, metallic, shadowFactor);
     }
     return light;
@@ -1956,7 +1958,7 @@ constexpr array<rstd::uint8_t, 8> kShaderCacheMagic { rstd::uint8_t('O'), rstd::
                                                       rstd::uint8_t('P'), rstd::uint8_t('V'),
                                                       rstd::uint8_t('3'), rstd::uint8_t(0) };
 constexpr rstd::uint32_t          kShaderCacheFormatVersion = 3;
-constexpr rstd::uint32_t          kShaderCacheAbiVersion    = 24;
+constexpr rstd::uint32_t          kShaderCacheAbiVersion    = 25;
 // 8-byte magic, six u32 fields, and four SHA-1 digests total 112 bytes.
 constexpr rstd::uint32_t kShaderCacheHeaderSize = static_cast<rstd::uint32_t>(
     kShaderCacheMagic.len().to_primitive() + 6 * sizeof(rstd::uint32_t) +
