@@ -119,3 +119,23 @@ def quad_mdl(material, size=1.0, normal=(0, 0, 1), tangent=(1, 0, 0)):
     data += struct.pack('<I', 15) + struct.pack('<I', len(vertices)) + vertices
     data += struct.pack('<I', len(indices)) + indices
     return data
+
+
+def quads_mdl(parts, normal=(0, 0, 1), tangent=(1, 0, 0)):
+    """One model of several squares in the xy plane, each its own mesh with its own material: `parts` are
+    (material, size, (x, y)) in mesh order, a square of edge 2*size centred at x, y (a game level's model is many
+    meshes, one a material)."""
+    corners = [(-1, -1), (1, -1), (1, 1), (-1, 1)]
+    uvs = [(0, 0), (1, 0), (1, 1), (0, 1)]
+    data = b'MDLV0017\0' + struct.pack('<iiI', 15, 1, len(parts))
+    for material, size, (cx, cy) in parts:
+        vertices, indices = b'', b''
+        for (x, y), uv in zip(corners, uvs):
+            vertices += struct.pack('<12f', cx + x * size, cy + y * size, 0, *normal, *tangent, 1.0, *uv)
+        for i in (0, 1, 2, 0, 2, 3):
+            indices += struct.pack('<H', i)
+        data += material.encode() + b'\0' + struct.pack('<I', 0)
+        data += struct.pack('<6f', cx - size, cy - size, 0, cx + size, cy + size, 0)
+        data += struct.pack('<I', 15) + struct.pack('<I', len(vertices)) + vertices
+        data += struct.pack('<I', len(indices)) + indices
+    return data
