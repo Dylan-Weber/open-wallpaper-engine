@@ -526,6 +526,35 @@ TEST(LightUniformSource, LightConfigCountsEachKind) {
     for (usize index {}; index < none.size(); ++index) EXPECT_FLOAT_EQ(none[index], 0.0f);
 }
 
+// Measured in Wallpaper Engine (model-light-old-kind): the newer light interface leaves lights of
+// the old kind out, and they take none of the light config's slots. Of a "point" light and an
+// "lpoint" one after it, with one point light in the config, the "lpoint" one lights the model.
+TEST(LightUniformSource, OldKindTakesNoLightingV1Slot) {
+    owe::SceneNode        node;
+    owe::SceneLight::Desc older_desc;
+    older_desc.color    = { 0.0f, 0.0f, 1.0f };
+    older_desc.old_kind = true;
+    owe::SceneLight::Desc newer_desc;
+    newer_desc.color = { 1.0f, 0.0f, 0.0f };
+    owe::SceneLight older(older_desc);
+    owe::SceneLight newer(newer_desc);
+    older.setNode(&node);
+    newer.setNode(&node);
+    auto lights = Vec<ref<owe::SceneLight>>::make();
+    lights.push(ref<owe::SceneLight>::from_raw_parts(rstd::addressof(older)));
+    lights.push(ref<owe::SceneLight>::from_raw_parts(rstd::addressof(newer)));
+    owe::LightUniformSource source(rstd::move(lights),
+                                   Some(owe::LightKindLimits { .point = u32(1) }));
+    owe::SceneFrame         frame;
+
+    auto v1   = scene_test::Capture(frame, source, owe::LightUniformOutput::LightingV1ColorRadius);
+    auto type = scene_test::Capture(frame, source, owe::LightUniformOutput::DirectionType);
+    EXPECT_FLOAT_EQ(v1[usize(2)], 0.0f);
+    EXPECT_FLOAT_EQ(type[usize(3)], -1.0f);
+    EXPECT_FLOAT_EQ(v1[usize(4)], 1.0f);
+    EXPECT_FLOAT_EQ(type[usize(7)], static_cast<float>(owe::SceneLightType::Point));
+}
+
 TEST(ShadowUniformSource, UsesAuthoredCascadeExtentAndLightObjectFrame) {
     auto camera =
         Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000.0, 50.0));
@@ -2522,5 +2551,6 @@ TEST(LightUniformSource, NewerLightKindsStayOutOfTheOldArrays) {
     auto lighting_v1 =
         scene_test::Capture(frame, source, owe::LightUniformOutput::LightingV1ColorRadius);
     EXPECT_FLOAT_EQ(lighting_v1[usize(0)], 1.0f);
-    EXPECT_FLOAT_EQ(lighting_v1[usize(6)], 1.0f);
+    // the newer interface leaves the old kind out (model-light-old-kind)
+    EXPECT_FLOAT_EQ(lighting_v1[usize(6)], 0.0f);
 }

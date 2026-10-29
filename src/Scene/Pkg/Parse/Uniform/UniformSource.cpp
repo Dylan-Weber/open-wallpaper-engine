@@ -872,7 +872,8 @@ auto LightUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
     for (usize index {}; index < rstd::cmp::min(max_lights, m_lights.len()); ++index) {
         const auto& light = *m_lights[index];
         if (light.node() == nullptr || ! light.runtimeVisible()) continue;
-        const bool lighting_v1 = lit(light.type());
+        // The newer interface leaves the old kind of light out; it takes none of the counts.
+        const bool lighting_v1 = ! light.desc().old_kind && lit(light.type());
         auto& node = *light.node();
         node.UpdateTrans();
         const auto transform = node.ModelTrans();
