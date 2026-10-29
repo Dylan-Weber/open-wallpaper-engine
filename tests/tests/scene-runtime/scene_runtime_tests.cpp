@@ -2707,15 +2707,14 @@ TEST(LightUniformSource, NewerLightKindsStayOutOfTheOldArrays) {
     owe::SceneLight::Desc older_desc = newer_desc;
     older_desc.color                 = { 0.0f, 0.0f, 1.0f };
     older_desc.old_kind              = true;
-    owe::SceneLight newer_light(newer_desc);
-    owe::SceneLight older_light(older_desc);
-    newer_light.setNode(newer.as_ptr());
-    older_light.setNode(older.as_ptr());
-
-    auto lights = Vec<ref<owe::SceneLight>>::make();
-    lights.push(ref<owe::SceneLight>::from_raw_parts(rstd::addressof(newer_light)));
-    lights.push(ref<owe::SceneLight>::from_raw_parts(rstd::addressof(older_light)));
-    owe::LightUniformSource source(rstd::move(lights));
+    owe::Scene scene;
+    auto       newer_light = Box<owe::SceneLight>::make(newer_desc);
+    auto       older_light = Box<owe::SceneLight>::make(older_desc);
+    newer_light->setNode(newer.as_ptr());
+    older_light->setNode(older.as_ptr());
+    (void)scene.RegisterLight(rstd::move(newer_light));
+    (void)scene.RegisterLight(rstd::move(older_light));
+    owe::LightUniformSource source(ref<owe::Scene>::from_raw_parts(&scene));
     owe::SceneFrame         frame;
 
     auto old_arrays = scene_test::Capture(frame, source, owe::LightUniformOutput::ColorRadius);
