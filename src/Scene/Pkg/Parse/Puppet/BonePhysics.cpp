@@ -45,8 +45,9 @@ float Wrap(float angle) {
 }
 
 // The shorter turn taking direction `from` to `to`.
+// Directions whose dot product is at least 0.99999988 (Wallpaper Engine's constant, 1 - 2^-23) turn not at all.
 Quaternionf TurnBetween(const Vector3f& from, const Vector3f& to) {
-    if (from.dot(to) > 0.99999f) return Quaternionf::Identity();
+    if (from.dot(to) >= 0.99999988f) return Quaternionf::Identity();
     return Quaternionf::FromTwoVectors(from, to);
 }
 
@@ -181,6 +182,26 @@ auto BonePhysics::Apply(usize bone, const BoneSimulation& simulation, const Affi
                 const float       inertia = moved * simulation.rotation_inertia * kDegrees;
 
                 state.spin = state.spin * Towards(Quaternionf::Identity(), own, inertia);
+            }
+            if (simulation.gravity) {
+                // Gravity turns the bone: its tip, as turned now, is moved against the part of gravity across it (mass x
+                // frame time x 10) and turned back, blended in by how far it moved x the inertia x pi / 180, so the turn goes
+                // with the mass squared and a tiny one is none (see TurnBetween).
+                const Vector3f turned = state.rotation_offset * simulation.tip;
+                if (turned.norm() > 1e-6f) {
+                    const Vector3f along = turned.normalized();
+                    const Vector3f pull =
+                        animated.linear().inverse() * simulation.gravity_direction * (simulation.mass * dt * 10.0f);
+                    const Vector3f across = pull - pull.dot(along) * along;
+                    const float    moved  = across.norm();
+                    if (moved > 0.0f) {
+                        const Vector3f    moved_tip = turned - across;
+                        const Quaternionf back      = TurnBetween(moved_tip.normalized(), along);
+                        state.spin                  = state.spin * Towards(Quaternionf::Identity(),
+                                                          back,
+                                                          moved * simulation.rotation_inertia * kDegrees);
+                    }
+                }
             }
             if (! simulation.rigid) {
                 const Quaternionf pose   = TurnOf(-state.angles);
