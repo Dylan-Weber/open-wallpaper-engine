@@ -2458,6 +2458,23 @@ TEST(SceneParserText, CentredTextSitsBelowItsOrigin) {
                 {"id": 2, "name": "Top", "text": "H", "font": "systemfont_DejaVu Sans",
                  "pointsize": 100, "horizontalalign": "center", "verticalalign": "top",
                  "origin": "1000 500 0"}
+// Wallpaper Engine's getLayer returns nothing for a name no layer has, so scripts can test for a
+// layer; a layer that exists but was left out of the tree (hidden) still gets a handle.
+TEST(SceneParserScriptLookup, GetLayerOfAMissingNameReturnsNull) {
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {},
+            "general": {},
+            "objects": [
+                {
+                    "id": 1,
+                    "name": "Probe",
+                    "origin": {
+                        "value": "0 0 0",
+                        "script": "export function update(value) { return new Vec3(thisScene.getLayer('nonexistent') === null ? 1 : 0, thisScene.getLayer('hidden') ? 1 : 0, 0); }"
+                    }
+                },
+                { "id": 2, "name": "hidden", "light": "point", "visible": false }
             ]
         })JSON"_str,
         owe::wpscene::kSceneVersionUnknown);
@@ -2471,6 +2488,12 @@ TEST(SceneParserText, CentredTextSitsBelowItsOrigin) {
     owe::SceneParser            parser;
     auto                        parsed = parser.Parse(
         "text-centred"_str,
+
+    owe::fs::VFS                vfs;
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "script-lookup"_str,
         ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
         mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
         mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
@@ -2483,4 +2506,11 @@ TEST(SceneParserText, CentredTextSitsBelowItsOrigin) {
     EXPECT_NEAR(centred->GeometryTransform()(0, 3), 0.0, 1e-5);
     EXPECT_NEAR(centred->GeometryTransform()(1, 3), -0.11 * 4.0 * 100.0, 1e-4);
     EXPECT_NEAR(top->GeometryTransform()(1, 3), -top->Size().y() * 0.5, 1e-3);
+    auto scene = rstd::move(parsed).unwrap();
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+
+    auto probe = scene.scene->RootMut()->FindByName("Probe"_str);
+    ASSERT_NE(probe, nullptr);
+    EXPECT_FLOAT_EQ(probe->Translate().x(), 1.0f);
+    EXPECT_FLOAT_EQ(probe->Translate().y(), 1.0f);
 }
