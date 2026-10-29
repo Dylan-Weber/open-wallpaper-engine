@@ -1,0 +1,13 @@
+# 5. hierarchy: children move, turn and scale with their parent
+w = Wallpaper('hierarchy', 'parent and child layers', clear='0.05 0.1 0.05')
+parent = w.group('parent', 600, 540, angle=30, scale='1.5 1.5 1')
+w.solid('child a', 150, 0, 100, 100, '1 0 0', parent=parent)
+w.solid('child b', 0, 150, 60, 200, '0 1 0', parent=parent)
+w.solid('child c', -150, 0, 100, 100, '0 0 1', angle=45, parent=parent)
+outer = w.group('outer', 1400, 540, scale='1 1 1')
+inner = w.group('inner', 200, 0, angle=45, scale='0.5 0.5 1', parent=outer)
+w.solid('nested', 100, 0, 200, 80, '1 1 0', parent=inner)
+w.solid('outer child', -200, 0, 80, 80, '1 1 1', parent=outer)
+w.solid('marker', 600, 540, 20, 20, '1 1 1')
+w.solid('marker 2', 1400, 540, 20, 20, '1 1 1')
+w.save()
