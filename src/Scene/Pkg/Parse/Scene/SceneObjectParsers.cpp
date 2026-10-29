@@ -487,7 +487,7 @@ void ParseModelObjImpl(SceneLayerBuildContext& context, wpscene::ModelObject& mo
         shader_info         = rstd::move(material_build.shader_info);
         LoadConstvalue(context, scene_mat, *wpmat, shader_info);
 
-        if (node->shadow.cast && ! BlendingCastsShadow(wpmat->blending.as_str())) node->shadow.cast = false;
+        node->shadow.silent = node->shadow.cast && ! BlendingCastsShadow(wpmat->blending.as_str());
         if (node->shadow.cast) {
             wpscene::Material shadow_material;
             shadow_material.shader = shader_info.shadow_pass.is_empty()
