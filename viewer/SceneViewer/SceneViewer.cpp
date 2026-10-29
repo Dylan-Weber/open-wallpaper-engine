@@ -260,6 +260,8 @@ int main(int argc, char** argv) {
             quality != "ultra"_str)
             eprintln("--shadow-quality: '{}' isn't low, medium, high or ultra; medium", quality);
     }
+    // a capture's clock is frame-exact: no need to wait 1 / fps between frames (--capture-realtime does)
+    config.unpaced         = capture && ! args.capture_realtime;
     if (args.random_seed.is_some()) {
         config.random_seed = Some(*args.random_seed);
     }
