@@ -1,0 +1,10 @@
+# 19. model-depth: models in front of and behind each other, and a translucent one
+w = Scene3D('model-depth', 'depth order of models', ambient='1 1 1')
+near = w.material('near', '1 0 0')
+far = w.material('far', '0 0 1')
+glass = w.material('glass', '0 1 0', blending='translucent', alpha=0.5)
+w.cube('far', far, -0.6, 0, -3, (0.3, 0.5, 0), '1.5 1.5 1.5')
+w.cube('near', near, 0.6, 0, 0, (0.3, -0.5, 0), '1.5 1.5 1.5')
+w.cube('glass', glass, 4, 0, 1, (0.2, 0.4, 0.1), '1.5 1.5 1.5')
+w.cube('behind glass', far, 4.6, 0.4, -2, (0, 0.5, 0), '1 1 1')
+w.save()
