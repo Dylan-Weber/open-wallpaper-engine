@@ -2646,16 +2646,20 @@ JSValue MakeBoneTransform(JSContext* ctx, const Eigen::Vector3f& translation) {
     return obj;
 }
 
+// Scripts number a layer's bones from 0, with -1 for a name the layer does not
+// have, as Wallpaper Engine does; the bone resolvers count from 1, with 0 for none.
 JSValue NodeGetBoneIndex(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
     auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
     auto* n    = GetLayerNode(this_val);
-    if (! n || argc < 1 || ! host->bone_index_resolver) return JS_NewInt32(ctx, 0);
+    if (! n || argc < 1 || ! host->bone_index_resolver) return JS_NewInt32(ctx, -1);
     const char* name = JS_ToCString(ctx, argv[0]);
-    if (! name) return JS_NewInt32(ctx, 0);
-    const rstd::uint32_t index =
-        (*host->bone_index_resolver)->operator()(n, rstd::cppstd::as_str(name).unwrap());
+    if (! name) return JS_NewInt32(ctx, -1);
+    const auto bone_name = rstd::cppstd::as_str(name).unwrap();
+    // the empty name finds no bone, unnamed ones included
+    rstd::uint32_t index = 0;
+    if (! bone_name.is_empty()) index = (*host->bone_index_resolver)->operator()(n, bone_name);
     JS_FreeCString(ctx, name);
-    return JS_NewInt32(ctx, static_cast<int32_t>(index));
+    return JS_NewInt32(ctx, static_cast<int32_t>(index) - 1);
 }
 
 JSValue NodeGetBoneTransform(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
@@ -2664,12 +2668,12 @@ JSValue NodeGetBoneTransform(JSContext* ctx, JSValueConst this_val, int argc, JS
     if (! n || argc < 1 || ! host->bone_transform_resolver)
         return MakeBoneTransform(ctx, { 0.0f, 0.0f, 0.0f });
 
-    int32_t index = 0;
+    int32_t index = -1;
     JS_ToInt32(ctx, &index, argv[0]);
-    if (index <= 0) return MakeBoneTransform(ctx, { 0.0f, 0.0f, 0.0f });
+    if (index < 0) return MakeBoneTransform(ctx, { 0.0f, 0.0f, 0.0f });
 
     auto bone = (*host->bone_transform_resolver)
-                    ->operator()(n, static_cast<rstd::uint32_t>(index), host->inputs.runtime);
+                    ->operator()(n, static_cast<rstd::uint32_t>(index) + 1, host->inputs.runtime);
     if (! bone) return MakeBoneTransform(ctx, { 0.0f, 0.0f, 0.0f });
     return MakeBoneTransform(ctx, { bone->x, bone->y, bone->z });
 }

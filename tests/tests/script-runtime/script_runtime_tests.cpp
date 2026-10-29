@@ -575,6 +575,48 @@ TEST(ScriptNodeParent, DefaultLayerParentIsUndefined) {
     EXPECT_EQ(LastScalar(fs), 1.0);
 }
 
+TEST(ScriptBones, IndicesCountFromZero) {
+    // Wallpaper Engine numbers a layer's bones from 0 and gives -1 for a name it
+    // does not have (the empty name included); the resolvers count from 1, with
+    // 0 for none.
+    owe::SceneNode node;
+    JsRuntime      rt;
+    uint32_t       asked = 0;
+    rt.SetBoneResolvers(
+        JsRuntime::BoneIndexResolver::make([](owe::SceneNode*, ref<str> name) -> uint32_t {
+            if (name == "root"_str) return 1;
+            if (name == ""_str) return 1;
+            return name == "hair"_str ? 5 : 0;
+        }),
+        JsRuntime::BoneTransformResolver::make(
+            [&asked](owe::SceneNode*, uint32_t index, double) -> Option<BoneTranslation> {
+                asked = index;
+                return Some(BoneTranslation { .x = float(index) });
+            }));
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            const results = [
+                thisLayer.getBoneIndex('root'),
+                thisLayer.getBoneIndex('hair'),
+                thisLayer.getBoneIndex('missing'),
+                thisLayer.getBoneIndex(''),
+                thisLayer.getBoneTransform(0).translation().x,
+            ];
+            export function update() { return results.join(' ') === '0 4 -1 -1 1' ? 1 : 0; }
+        )JS"_str,
+        "test/bone_indices"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+
+    rt.TickAll();
+
+    EXPECT_EQ(LastScalar(fs), 1.0);
+    EXPECT_EQ(asked, 1u);
+}
+
 TEST(ScriptNodeSoftMutation, VisibleAndAlphaWrites) {
     owe::SceneNode node;
     JsRuntime      rt;
