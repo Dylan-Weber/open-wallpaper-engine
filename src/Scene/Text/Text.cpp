@@ -462,8 +462,11 @@ TextGeometry ResolveTextGeometry(const TextGeometryPolicy& policy,
     const float src_cx  = f32(metrics.source_center_x).is_finite() ? metrics.source_center_x : 0.0f;
     const float src_cy  = f32(metrics.source_center_y).is_finite() ? metrics.source_center_y : 0.0f;
 
+    // The box reaches its background gap below the text; the render target is centred on the
+    // text, so it reaches as far above, where the box leaves it clear.
+    const float gap         = rstd::cmp::max(metrics.background_gap, 0.0f);
     const float text_bbox_w = text_w + 2.0f * pad;
-    const float text_bbox_h = text_h + 2.0f * pad;
+    const float text_bbox_h = text_h + 2.0f * pad + 2.0f * gap;
     const float src_bbox_w  = src_w + 2.0f * pad;
     const float src_bbox_h  = src_h + 2.0f * pad;
 
@@ -475,10 +478,16 @@ TextGeometry ResolveTextGeometry(const TextGeometryPolicy& policy,
 
     const float dynamic_effect_w = rstd::cmp::max(text_bbox_w, frame_w);
     const float dynamic_effect_h = rstd::cmp::max(text_bbox_h, frame_h);
+    // Text drawn with its box keeps the whole box (layout and padding) in its render target, as
+    // it is drawn and sampled over that box.
+    const float static_w =
+        policy.preserve_text_bbox ? rstd::cmp::max(text_bbox_w, src_bbox_w) : src_bbox_w;
+    const float static_h =
+        policy.preserve_text_bbox ? rstd::cmp::max(text_bbox_h, src_bbox_h) : src_bbox_h;
     const float rt_max_w = policy.dynamic ? (! policy.has_effect ? dynamic_w : dynamic_effect_w)
-                                          : (policy.has_effect ? frame_w : src_bbox_w);
+                                          : (policy.has_effect ? frame_w : static_w);
     const float rt_max_h = policy.dynamic ? (! policy.has_effect ? dynamic_h : dynamic_effect_h)
-                                          : (policy.has_effect ? frame_h : src_bbox_h);
+                                          : (policy.has_effect ? frame_h : static_h);
 
     TextGeometry out;
     out.rt_width            = policy.frame_bound ? frame_w : rstd::cmp::max(rt_max_w, src_bbox_w);
@@ -492,8 +501,8 @@ TextGeometry ResolveTextGeometry(const TextGeometryPolicy& policy,
         out.draw_height       = tight_bbox ? src_h : text_bbox_h;
         out.draw_offset_x     = tight_bbox ? src_cx : 0.0f;
         out.draw_offset_y     = tight_bbox ? src_cy : 0.0f;
-        out.uv_source_width   = tight_bbox ? src_w : src_bbox_w;
-        out.uv_source_height  = tight_bbox ? src_h : src_bbox_h;
+        out.uv_source_width   = tight_bbox ? src_w : text_bbox_w;
+        out.uv_source_height  = tight_bbox ? src_h : text_bbox_h;
         return out;
     }
 
@@ -561,11 +570,58 @@ struct TextLayouter::Impl {
         Vec<Quad>         quads;
         TextLayoutMetrics measured;
         const auto        bounds = output.typographic_bounds();
-        measured.text_width      = float(bounds.width);
+        // Wallpaper Engine places text by its ink, not its advances: a line spans from its pen,
+        // or from ink that hangs left of it, to its ink's right edge; lines align against the
+        // widest span, and ink left of a pen moves every line right by that much. Wrapped text
+        // is no wider than its lines either.
+        // It also moves the pen by whole pixels, each letter's advance rounded down.
+        const auto glyphs = output.glyphs();
+        Vec<float> glyph_pen;  // each glyph's pen, from its line's start
+        Vec<float> line_shift; // how far that moves each line's last letter
+        glyph_pen.resize(glyphs.len(), 0.0f);
+        for (auto& line : output.lines()) {
+            float pen {}, shift {};
+            for (auto index = usize(line.glyph_start); index < usize(line.glyph_end); ++index) {
+                const auto& glyph = glyphs[index];
+                glyph_pen[index]  = pen;
+                if (glyph.drawable) shift = pen - float(glyph.position.x - line.logical.x);
+                pen += f32(float(glyph.advance)).floor().to_primitive();
+            }
+            line_shift.push(float(shift));
+        }
+        const auto span = [&](usize index) -> array<float, 2> {
+            const auto& line = output.lines()[index];
+            if (line.ink.width == 0) return { 0.0f, 0.0f };
+            const float left = float(line.ink.x - line.logical.x);
+            return { left, left + float(line.ink.width) + line_shift[index] };
+        };
+        Vec<float> line_pen; // where each line's pen starts, from the text's left edge
+        measured.text_width = float(bounds.width);
+        if (! output.lines().is_empty()) {
+            float hang {}, ink_right {}, widest {};
+            for (usize index {}; index < output.lines().len(); ++index) {
+                const auto [left, right] = span(index);
+                hang                     = rstd::cmp::min(hang, left);
+                ink_right                = rstd::cmp::max(ink_right, right);
+                widest = rstd::cmp::max(widest, right - rstd::cmp::min(left, 0.0f));
+            }
+            const float share = request.alignment == vectext::TextAlignment::Center  ? 0.5f
+                                : request.alignment == vectext::TextAlignment::Right ? 1.0f
+                                                                                     : 0.0f;
+            for (usize index {}; index < output.lines().len(); ++index) {
+                const auto [left, right] = span(index);
+                line_pen.push(
+                    float(share * (widest - (right - rstd::cmp::min(left, 0.0f))) - hang));
+            }
+            measured.text_width = ink_right - hang;
+        }
         measured.text_height     = float(bounds.height);
         measured.source_width    = measured.text_width;
         measured.source_height   = measured.text_height;
         measured.padding         = style.padding;
+        if (style.opaquebackground)
+            measured.background_gap =
+                rstd::cmp::max(float(output.logical_bounds().height - bounds.height), 0.0f);
         auto pages               = resources->Pages();
         if (pages.is_empty()) return Err(vectext::TextError::Limit);
         if (style.opaquebackground) {
@@ -573,7 +629,7 @@ struct TextLayouter::Impl {
             quads.push(Quad { AtlasGlyph { .x = 1, .y = 1, .width = 2, .height = 2 },
                               -measured.text_width / 2 - pad,
                               measured.text_width / 2 + pad,
-                              -measured.text_height / 2 - pad,
+                              -measured.text_height / 2 - pad - measured.background_gap,
                               measured.text_height / 2 + pad,
                               { style.background_color[usize()] * style.background_brightness,
                                 style.background_color[usize(1)] * style.background_brightness,
@@ -582,13 +638,15 @@ struct TextLayouter::Impl {
         }
         bool  have_bounds {};
         float minx {}, maxx {}, miny {}, maxy {};
-        for (auto& glyph : output.glyphs()) {
+        for (usize index {}; index < glyphs.len(); ++index) {
+            const auto& glyph = glyphs[index];
             if (! glyph.drawable) continue;
             auto raster = resources->Rasterize(output.fonts()[usize(glyph.font)], glyph.glyph);
             if (raster.is_err()) return Err(raster.unwrap_err());
             auto atlas = raster.unwrap();
             if (! atlas.width || ! atlas.height) continue;
-            float left = float(glyph.position.x + atlas.origin.x) - measured.text_width / 2;
+            float left = line_pen[usize(glyph.line)] + glyph_pen[index] + float(atlas.origin.x) -
+                         measured.text_width / 2;
             float top =
                 measured.text_height / 2 - float(glyph.position.y - bounds.y + atlas.origin.y);
             float right  = left + float(atlas.width / atlas.scale),

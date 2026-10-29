@@ -83,6 +83,8 @@ inline constexpr ref<str> G_LCR                = "g_LightsColorRadius"_str;
 inline constexpr ref<str> G_LIGHTDIRECTIONTYPE = "g_LightsDirectionType"_str;
 inline constexpr ref<str> G_LIGHTCONEEXPONENT  = "g_LightsConeExponent"_str;
 inline constexpr ref<str> G_LIGHTCASTSHADOW    = "g_LightsCastShadow"_str;
+// Lighting V1's light colors: every kind of light, where the old arrays have the old kind only.
+inline constexpr ref<str> G_LIGHTINGV1COLORRADIUS = "g_OweLightsColorRadius"_str;
 inline constexpr ref<str> G_LIGHTAMBIENTCOLOR  = "g_LightAmbientColor"_str;
 inline constexpr ref<str> G_LIGHTSKYLIGHTCOLOR = "g_LightSkylightColor"_str;
 inline constexpr ref<str> G_FOGDISTANCECOLOR   = "g_FogDistanceColor"_str;
@@ -108,6 +110,11 @@ inline constexpr ref<str> G_MORPHWEIGHTS                   = "g_MorphWeights"_st
 inline constexpr ref<str> G_MORPHOFFSETS                   = "g_MorphOffsets"_str;
 inline constexpr ref<str> G_VIEWPORTVIEWPROJECTIONMATRICES = "g_ViewportViewProjectionMatrices"_str;
 inline constexpr ref<str> G_SHADOWATLASTRANSFORMS          = "g_ShadowAtlasTransforms"_str;
+// owe's own: every shadowed light's views in one list, and where each light slot's views start
+inline constexpr ref<str> G_OWESHADOWVIEWPROJECTIONS       = "g_OweShadowViewProjections"_str;
+inline constexpr ref<str> G_OWESHADOWATLASTRANSFORMS       = "g_OweShadowAtlasTransforms"_str;
+inline constexpr ref<str> G_OWELIGHTSSHADOWVIEW            = "g_OweLightsShadowView"_str;
+inline constexpr ref<str> G_OWELIGHTSSHADOWPROJECTION      = "g_OweLightsShadowProjection"_str;
 inline constexpr ref<str> G_VIEWUP                         = "g_ViewUp"_str;
 inline constexpr ref<str> G_VIEWRIGHT                      = "g_ViewRight"_str;
 inline constexpr ref<str> G_VIEWFORWARD                    = "g_ViewForward"_str;

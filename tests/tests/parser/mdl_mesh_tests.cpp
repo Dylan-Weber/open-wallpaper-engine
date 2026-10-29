@@ -83,6 +83,65 @@ TEST(Puppet, VisibilityChangesKeepTheSamePlayback) {
     EXPECT_FLOAT_EQ((*playback)->Sample().current, 0.5f);
 }
 
+// An animation layer's blend and visibility live on its playback, where scripts set them.
+TEST(Puppet, PlaybackBlendAndVisibilityPoseTheLayer) {
+    owe::PuppetLayer                 layer(MakeReplacementPuppet());
+    owe::PuppetLayer::AnimationLayer authored { .id = 1, .blend = 0.25, .layer_id = 42 };
+    layer.prepared(slice<owe::PuppetLayer::AnimationLayer>::from_raw_parts(&authored, usize(1)));
+    auto playback = layer.AnimationPlayback(i32(42));
+    ASSERT_TRUE(playback.is_some());
+    EXPECT_FLOAT_EQ((*playback)->Blend(), 0.25f);
+    EXPECT_TRUE((*playback)->Visible());
+
+    // halfway between the reference (4) and the animation's frame 0.5 (15)
+    (*playback)->SetFrame(0.5f);
+    (*playback)->SetBlend(0.5f);
+    EXPECT_FLOAT_EQ(layer.boneTransform(1, 0.0)->translation().x(), 9.5f);
+    (*playback)->SetVisible(false);
+    EXPECT_FLOAT_EQ(layer.boneTransform(1, 0.0)->translation().x(), 4.0f);
+    layer.SetAnimationVisible(i32(42), true);
+    EXPECT_TRUE((*playback)->Visible());
+    EXPECT_FLOAT_EQ(layer.boneTransform(1, 0.0)->translation().x(), 9.5f);
+}
+
+// Scripts' createAnimationLayer, playSingleAnimation and destroyAnimationLayer: the other layers
+// keep their playbacks (scripts and the scene hold them), and a single play stops at its end
+// whatever the animation's own mode.
+TEST(Puppet, AnimationLayersCanBeAddedAndRemoved) {
+    auto puppet                  = MakeReplacementPuppet();
+    puppet->anims[usize(1)].mode = owe::Puppet::PlayMode::Loop;
+    puppet->anims[usize(1)].name = String::make("wave"_str);
+    owe::PuppetLayer                 layer(puppet.clone());
+    owe::PuppetLayer::AnimationLayer authored { .id = 1, .layer_id = 42 };
+    layer.prepared(slice<owe::PuppetLayer::AnimationLayer>::from_raw_parts(&authored, usize(1)));
+    auto first = (*layer.AnimationPlayback(i32(42))).clone();
+    first->SetFrame(0.5f);
+    EXPECT_EQ(layer.AnimationIdNamed("wave"_str), Some(rstd::int32_t(2)));
+    EXPECT_TRUE(layer.AnimationIdNamed("missing"_str).is_none());
+
+    auto added = layer.AddAnimationLayer(
+        owe::PuppetLayer::AnimationLayer { .id = 2, .name = String::make("Wave"_str) }, true);
+    ASSERT_TRUE(added.is_some());
+    EXPECT_EQ((*layer.AnimationPlayback(i32(42))).as_ptr(), first.as_ptr());
+    EXPECT_FLOAT_EQ(first->Sample().current, 0.5f);
+    ASSERT_EQ(layer.AnimationPlaybacks().len(), usize(2));
+    EXPECT_EQ((*added)->Name(), "Wave"_str);
+    // the later replacement layer poses the bone: animation 2 at its frame 0
+    EXPECT_FLOAT_EQ(layer.boneTransform(1, 0.0)->translation().x(), 30.0f);
+    Vec<owe::SceneAnimationEvent> events;
+    (*added)->Advance(0.0, events);
+    (*added)->Advance(5.0, events);
+    EXPECT_FALSE((*added)->IsPlaying());
+    EXPECT_FALSE(
+        layer.AddAnimationLayer(owe::PuppetLayer::AnimationLayer { .id = 9 }, false).is_some());
+
+    EXPECT_TRUE(layer.RemoveAnimationLayer(**added));
+    ASSERT_EQ(layer.AnimationPlaybacks().len(), usize(1));
+    EXPECT_EQ(layer.AnimationPlaybacks()[usize()].as_ptr(), first.as_ptr());
+    EXPECT_FLOAT_EQ(layer.boneTransform(1, 0.0)->translation().x(), 15.0f);
+    EXPECT_FALSE(layer.RemoveAnimationLayer(**added));
+}
+
 TEST(Puppet, ReplacementLayersBlendSequentiallyFromReference) {
     auto puppet = MakeReplacementPuppet();
     for (bool reverse : { false, true }) {
@@ -1170,4 +1229,34 @@ TEST(MdlMesh, NativeMaterialPathsShareResolutionAndPreserveDefaults) {
     ASSERT_EQ(short_ref->textures.len(), usize(1));
     EXPECT_EQ(short_ref->textures[usize()], "diffuse"_str);
     EXPECT_TRUE(owe::MdlParser::ParseMaterial("missing"_str, vfs).is_none());
+}
+
+// LittleBigPlanet (3081593255) has animations of no length (a single frame); looping or mirroring
+// one divided by its length of 0.
+TEST(Puppet, AnimationsOfNoLengthHoldTheirOnlyFrame) {
+    for (auto mode : { owe::Puppet::PlayMode::Loop, owe::Puppet::PlayMode::Mirror }) {
+        auto  puppet     = Arc<owe::Puppet>::make();
+        auto& bone       = puppet->bones.emplace_back();
+        bone.local_bind  = Eigen::Affine3f::Identity();
+        auto& animation  = puppet->anims.emplace_back();
+        animation.id     = 1;
+        animation.fps    = 30.0;
+        animation.length = 0;
+        animation.mode   = mode;
+        auto& track      = animation.bone_tracks.emplace_back();
+        track.frames.push(owe::Puppet::BoneFrame {
+            .position = Eigen::Vector3f(7.0f, 0.0f, 0.0f),
+            .angle    = Eigen::Vector3f::Zero(),
+            .scale    = Eigen::Vector3f::Ones(),
+        });
+        puppet->prepared();
+
+        owe::PuppetLayer                 layer(puppet.clone());
+        owe::PuppetLayer::AnimationLayer authored { .id = 1 };
+        layer.prepared(
+            slice<owe::PuppetLayer::AnimationLayer>::from_raw_parts(&authored, usize(1)));
+        for (double time : { 0.0, 0.5, 2.0 }) {
+            EXPECT_FLOAT_EQ(layer.boneTransform(1, time)->translation().x(), 7.0f);
+        }
+    }
 }

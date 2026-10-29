@@ -873,7 +873,8 @@ public:
     bool hasSprite { false };
 
     SceneMaterialCustomShader  customShader;
-    Option<Arc<SceneMaterial>> shadow_variant;
+    // its shadow casters, one for each of the scene's shadow definitions
+    Vec<Arc<SceneMaterial>> shadow_variants;
 
 private:
     ShaderValue ShapeShaderValue(ref<str> uniform_name, const ShaderValue& value) const {
@@ -909,7 +910,7 @@ private:
         hasSprite        = other.hasSprite;
         customShader     = other.customShader.Clone();
         (void)SetPipeline(other.Pipeline());
-        shadow_variant = other.shadow_variant.clone();
+        shadow_variants = other.shadow_variants.clone();
         m_dirty_flags.fetch_or(other.m_dirty_flags.load());
     }
     void moveFrom(SceneMaterial&& other) {
@@ -921,7 +922,7 @@ private:
         hasSprite        = other.hasSprite;
         customShader     = rstd::move(other.customShader);
         (void)SetPipeline(other.Pipeline());
-        shadow_variant = rstd::move(other.shadow_variant);
+        shadow_variants = rstd::move(other.shadow_variants);
         m_dirty_flags.fetch_or(other.m_dirty_flags.load());
     }
 
@@ -1395,6 +1396,13 @@ public:
     float    Fps() const { return m_clip->Fps(); }
     float    Rate() const { return m_rate; }
     bool     StartsPaused() const { return m_start_paused; }
+    // As an animation layer: how much it weighs, and whether it applies at all.
+    float    Blend() const { return m_blend; }
+    void     SetBlend(float blend) { m_blend = blend; }
+    bool     Visible() const { return m_visible; }
+    void     SetVisible(bool visible) { m_visible = visible; }
+    // How many times it has got to its end: every loop, or a single play's end.
+    u64      EndedCount() const { return m_ended; }
     double   Duration() const;
     double   PositionSeconds() const { return m_position_seconds; }
     ref<str> Name() const { return m_clip->Name(); }
@@ -1408,6 +1416,9 @@ private:
     bool                    m_mirror { false };
     bool                    m_playing { true };
     bool                    m_start_paused { false };
+    float                   m_blend { 1.0f };
+    bool                    m_visible { true };
+    u64                     m_ended {};
     Option<double>          m_last_runtime;
     double                  m_position_seconds { 0.0 };
     double                  m_previous_frame { -0.5 };
@@ -1420,6 +1431,11 @@ struct SceneAnimationTrack {
     bool            Empty() const { return curve->Empty(); }
     float           EvaluateScalar(float base) const;
     Eigen::Vector3f EvaluateVec3(const Eigen::Vector3f& base) const;
+    // A layer property's animation, as Wallpaper Engine applies it whatever the curve's
+    // `relative`: a vector (origin, scale, angles, color) is added to the property's value, a
+    // number (alpha) takes the place of it.
+    float           EvaluateLayerScalar(float value) const;
+    Eigen::Vector3f EvaluateLayerVec3(const Eigen::Vector3f& value) const;
     auto            Share() const -> SceneAnimationTrack {
         return { .curve = curve.clone(), .playback = playback.clone() };
     }
@@ -1431,6 +1447,7 @@ enum class SceneNodeAnimationTarget
     Scale,
     Rotation,
     Alpha,
+    Color,
 };
 
 struct SceneNodeFieldAnimation {
@@ -1450,6 +1467,7 @@ class SceneAnimationSet {
 public:
     void Register(Arc<SceneAnimationPlayback> playback);
     void Register(String property, Arc<SceneAnimationPlayback> playback);
+    void Unregister(const SceneAnimationPlayback& playback);
     auto ForProperty(ref<str> property) const -> Option<Arc<SceneAnimationPlayback>>;
     auto Named(ref<str> name) const -> Option<Arc<SceneAnimationPlayback>>;
     void Advance(SceneNode& owner, double runtime, Vec<SceneAnimationEventDispatch>& events);
@@ -1512,8 +1530,13 @@ public:
     Eigen::Vector3f             rotation_base { Eigen::Vector3f::Zero() };
     float                       zoom_base { 1.0f };
     float                       fov_base { 50.0f };
+    // a camera layer's own field of view, set on the camera when its queue starts driving it
+    Option<float>               own_fov;
     bool                        perspective { false };
     bool                        enabled { true };
+    // Set when the path is disabled after driving the camera: the next tick gives the camera back
+    // its defaults. A path that was never enabled leaves the camera to others (scripts, paths).
+    bool                        restore_default { false };
     bool                        default_lookat { false };
     Eigen::Vector3f             default_eye { Eigen::Vector3f::Zero() };
     Eigen::Vector3f             default_center { -Eigen::Vector3f::UnitZ() };
@@ -1641,6 +1664,9 @@ public:
     void            SetPerspective(bool value) { m_perspective = value; }
     bool            Reflected() const { return m_reflected; }
     void            SetReflected(bool value) { m_reflected = value; }
+    // A model layer: with the scene's transparent sorting, models are ordered by depth.
+    bool            DrawsAsModel() const { return m_draws_as_model; }
+    void            SetDrawsAsModel(bool value) { m_draws_as_model = value; }
     void            AddMesh(Arc<SceneMesh> mesh) { m_mesh = Some(rstd::move(mesh)); }
     bool            AppendChild(Arc<SceneNode> sub) { return m_node.AppendChild(rstd::move(sub)); }
     bool            RemoveChild(SceneNode& child) { return m_node.RemoveChild(child); }
@@ -1664,6 +1690,13 @@ public:
         MarkTransDirty();
     }
     void RotateObjectSpace(const Eigen::Vector3f& rotation);
+    // Scripts' setParent: changes only what the node moves with, not where it is drawn (its
+    // owner); keep_world keeps it where it is by changing its own transform. False for a parent
+    // that moves with the node.
+    bool SetParent(SceneNode* parent, bool keep_world);
+    // Scripts' lookAt: turns the node so that its +z points at `center`, about `up` only when
+    // yaw_only.
+    void LookAt(const Eigen::Vector3d& center, const Eigen::Vector3d& up, bool yaw_only);
     void SetTranslate(Eigen::Vector3f v) {
         m_translate = v;
         MarkTransDirty();
@@ -1724,11 +1757,18 @@ public:
     void SetScaleAnimation(SceneAnimationTrack track);
     void SetRotationAnimation(SceneAnimationTrack track);
     void SetAlphaAnimation(SceneAnimationTrack track);
+    void SetColorAnimation(SceneAnimationTrack track);
     void RegisterAnimation(Arc<SceneAnimationPlayback> playback);
     void BindFieldAnimation(String field, Arc<SceneAnimationPlayback> playback);
     auto FieldAnimation(ref<str> field) const -> Option<Arc<SceneAnimationPlayback>>;
     bool HasFieldAnimationTrack(ref<str> field) const;
     auto NamedAnimation(ref<str> name) const -> Option<Arc<SceneAnimationPlayback>>;
+    // Its animation layers (a puppet's, in the scene's order), for scripts' getAnimationLayer.
+    void RegisterAnimationLayer(Arc<SceneAnimationPlayback> playback);
+    // Scripts' destroyAnimationLayer: false for a playback that isn't one of its animation layers.
+    bool UnregisterAnimationLayer(const SceneAnimationPlayback& playback);
+    auto AnimationLayer(usize index) const -> Option<Arc<SceneAnimationPlayback>>;
+    auto AnimationLayerCount() const -> usize { return m_animation_layers.len(); }
     void TickFieldAnimations(double runtime, Vec<SceneAnimationEventDispatch>& events);
     void SetAlphaSource(SceneNode* node) { m_alpha_source = node; }
 
@@ -1875,6 +1915,8 @@ public:
 
     ref<str>   Name() const { return m_name.as_str(); }
     SceneNode* Parent() const { return m_node.Parent(); }
+    // The node whose children it is drawn with (its parent, unless a script changed that).
+    SceneNode* Owner() const { return m_node.Owner(); }
 
     // Anchor for transform-only inheritance. The node does NOT join `p`'s
     // children, so TraverseNode never visits it through `p`. Used for the
@@ -1924,6 +1966,7 @@ private:
     SceneNode*                             m_alpha_source { nullptr };
     Vec<SceneNodeFieldAnimation>           m_field_animation_tracks;
     SceneAnimationSet                      m_animations;
+    Vec<Arc<SceneAnimationPlayback>>       m_animation_layers;
     float                                  m_brightness { 1.0f };
     bool                                   m_brightness_overridden { false };
     Eigen::Vector3f                        m_color { 1.0f, 1.0f, 1.0f };
@@ -1942,6 +1985,7 @@ private:
     String m_cameraName;
     bool   m_perspective { false };
     bool   m_reflected { false };
+    bool   m_draws_as_model { false };
 
     Option<Arc<SceneNodeLayer>> m_layer;
 };
@@ -2546,14 +2590,37 @@ struct Impl<Copy, owe::SceneShadowViewport> {};
 export namespace owe
 {
 
+// How shadow casters draw: keeping the depth nearest the light (the greater: the atlas clears to
+// 0), unclipped, and moved away from the light by its slope (Wallpaper Engine's slope-scaled bias
+// of 4) and by a few steps of the depth, for surfaces that face a light square on (a point light's
+// face looking straight at a wall), whose slope is nothing.
+inline auto ShadowCasterPipeline(vrento::MaterialPipelineDesc pipeline)
+    -> vrento::MaterialPipelineDesc {
+    pipeline.depth_clamp         = true;
+    pipeline.depth_clip          = Some(true);
+    pipeline.depth_compare       = CompareOp::Greater;
+    pipeline.depth_bias          = true;
+    pipeline.depth_bias_slope    = -4.0f;
+    pipeline.depth_bias_constant = -4.0f;
+    return pipeline;
+}
+
+// One shadowed light's views of the shadow atlas.
 struct SceneShadowDefinition {
     String                   target;
     Vec<SceneShadowViewport> viewports;
+    i32                      light_id { i32(-1) };
+    // its first view in the scene's list of shadow views
+    u32            view_offset { 0 };
+    SceneLightType type { SceneLightType::Directional };
 
     auto Clone() const -> SceneShadowDefinition {
         return {
-            .target    = target.clone(),
-            .viewports = viewports.clone(),
+            .target      = target.clone(),
+            .viewports   = viewports.clone(),
+            .light_id    = light_id,
+            .view_offset = view_offset,
+            .type        = type,
         };
     }
 };
@@ -2562,6 +2629,8 @@ struct RenderShadowCasterRecord {
     RenderItemId       render_item;
     Arc<SceneMaterial> material;
     u32                instance_count { 1 };
+    // the shadow definition it is drawn into
+    usize definition {};
 };
 
 struct SceneMeshDirtyEvent {
@@ -2795,6 +2864,13 @@ public:
     auto MaterialTextureUserBindings(ref<str> key) const -> slice<MaterialTextureUserBinding>;
 
     void RegisterCameraPath(Arc<SceneCameraPath>);
+    // Seconds of the scene's clock before scripts start (they then read the scene's clock), and
+    // before camera paths start (they then run that much behind it). Wallpaper Engine starts both
+    // later than g_Time in some wallpapers, as they load.
+    void   SetScriptStart(double seconds) { m_script_start = seconds; }
+    double ScriptStart() const { return m_script_start; }
+    void   SetCameraPathDelay(double seconds) { m_camera_path_delay = seconds; }
+    double CameraPathDelay() const { return m_camera_path_delay; }
     void RegisterCameraPathUserBinding(String key, Arc<SceneCameraPath>);
     void RegisterTexture(String name, SceneTexture texture);
     bool RemoveTexture(ref<str> name);
@@ -2835,6 +2911,17 @@ public:
     bool SetImageEffectRuntimeVisible(const SceneImageEffectRef& ref, bool visible);
     void EnablePlanarReflection();
     bool PlanarReflectionEnabled() const { return m_planar_reflection_enabled; }
+    // general.transparentsorting: models draw opaque first, then translucent from far to near.
+    bool TransparentSorting() const { return m_transparent_sorting; }
+    void SetTransparentSorting(bool value) { m_transparent_sorting = value; }
+    // The texture the cookie spot lights project (`_alias_lightCookie`): one for all of them.
+    auto LightCookieTexture() const -> Option<ref<str>> {
+        if (m_light_cookie_texture.is_none()) return None();
+        return Some(m_light_cookie_texture->as_str());
+    }
+    void SetLightCookieTexture(Option<String> texture) {
+        m_light_cookie_texture = rstd::move(texture);
+    }
     bool ConsumeRenderGraphDirty();
     bool ApplyUserNodeVisibilityBindings(ref<str> key, const Json& property);
     bool ApplyUserImageEffectVisibilityBindings(ref<str> key, const Json& property);
@@ -2891,6 +2978,11 @@ public:
     auto AudioDemandHandle() const -> Arc<AudioResponseDemand> {
         return m_audio_response_demand.clone();
     }
+
+    // the moment (milliseconds since 1970) the scripts' Date reads when the scene starts; None: the
+    // system clock
+    void SetScriptClock(Option<double> epoch_ms) { m_script_clock = epoch_ms; }
+    auto ScriptClock() const -> Option<double> { return m_script_clock; }
 
     void SetImageParser(Arc<dyn<IImageParser>> parser) {
         m_image_parser  = Some(rstd::move(parser));
@@ -3089,6 +3181,7 @@ private:
     Box<SceneNode>                m_scene_graph;
     Arc<AudioResponseDemand>      m_audio_response_demand { Arc<AudioResponseDemand>::make() };
     Arc<SceneAudioAverage>        m_audio_average { Arc<SceneAudioAverage>::make() };
+    Option<double>                m_script_clock;
     Vec<Box<SceneLight>>          m_lights;
     Vec<Box<ScenePostProcess>>    m_post_processes;
     Vec<SceneShadowDefinition>    m_shadow_definitions;
@@ -3119,6 +3212,8 @@ private:
     Vec<String>                                m_camera_names;
     Option<String>                             m_active_camera;
     Vec<Arc<SceneCameraPath>>                  m_camera_paths;
+    double                                     m_script_start { 0.0 };
+    double                                     m_camera_path_delay { 0.0 };
     HashMap<String, Vec<Arc<SceneCameraPath>>> m_camera_path_user_index;
 
     void RebuildElidableLayerIds();
@@ -3131,6 +3226,8 @@ private:
     SceneResourceIndex                           m_resource_index;
     bool                                         m_render_graph_dirty { false };
     bool                                         m_planar_reflection_enabled { false };
+    bool                                         m_transparent_sorting { false };
+    Option<String>                               m_light_cookie_texture;
     HashMap<i32, String>                         m_render_group_cameras;
     HashMap<String, Vec<String>>                 m_linked_cameras;
     HashMap<i32, SceneNodeId>                    m_layer_link_source_ids;
@@ -3150,6 +3247,10 @@ private:
     HashSet<rstd::uint64_t> m_hidden_scene_node_ids;
     HashSet<rstd::uint64_t> m_render_graph_hidden_scene_node_ids;
 };
+
+// SceneViewer --camera-eye-log: the scene's clock and its active camera's eye (t, x, y, z), None
+// without a camera
+auto CameraEyeLogEntry(const Scene& scene) -> Option<array<double, 4>>;
 
 } // namespace owe
 

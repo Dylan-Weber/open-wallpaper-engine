@@ -254,13 +254,16 @@ __SHADER_PLACEHOLD__
 
 static constexpr ref<str> lighting_v1_source = R"(
 uniform vec3 g_LightsPosition[4];
-uniform vec4 g_LightsColorRadius[4];
+uniform vec4 g_OweLightsColorRadius[4];
 uniform vec4 g_LightsDirectionType[4];
 uniform vec4 g_LightsConeExponent[4];
 uniform float g_LightsCastShadow[4];
 #if LIGHTS_SHADOW_MAPPING
-uniform mat4 g_ViewportViewProjectionMatrices[6];
-uniform vec4 g_ShadowAtlasTransforms[3];
+// every shadowed light's views and their squares of the atlas; each light slot's first view
+uniform mat4 g_OweShadowViewProjections[24];
+uniform vec4 g_OweShadowAtlasTransforms[24];
+uniform vec4 g_OweLightsShadowView;
+uniform vec4 g_OweLightsShadowProjection[4];
 #endif
 
 float3 PerformLighting_V1(float3 worldPos, float3 albedo, float3 normal, float3 viewVector,
@@ -268,7 +271,7 @@ float3 PerformLighting_V1(float3 worldPos, float3 albedo, float3 normal, float3 
     float3 light = float3(0.0, 0.0, 0.0);
     for (int i = 0; i < 4; ++i) {
         float type = g_LightsDirectionType[i].w;
-        float3 color = g_LightsColorRadius[i].rgb;
+        float3 color = g_OweLightsColorRadius[i].rgb;
         float shadowFactor = 1.0;
 #if !LIGHTS_SHADOW_MAPPING && OWE_IMAGE_LAYER && SCENE_ORTHO
         // Shadow-atlas rendering is not available yet. Suppress shadow-casting
@@ -278,16 +281,19 @@ float3 PerformLighting_V1(float3 worldPos, float3 albedo, float3 normal, float3 
         if (type < -0.5 || dot(color, color) <= 0.0)
             continue;
 
-        if (type > 1.5) {
 #if LIGHTS_SHADOW_MAPPING
-            if (g_LightsCastShadow[i] > 0.5) {
+        int shadowView = int(g_OweLightsShadowView[i] + 0.5);
+#endif
+        if (type > 1.5 && type < 2.5) {
+#if LIGHTS_SHADOW_MAPPING
+            if (g_OweLightsShadowView[i] > -0.5) {
                 float selectedCascade = 0.0;
                 for (int cascade = 0; cascade < 3; ++cascade) {
                     float4 projected = CalculateProjectedCoordsCascades(
-                        worldPos, g_ViewportViewProjectionMatrices[cascade]);
+                        worldPos, g_OweShadowViewProjections[shadowView + cascade]);
                     float active = (1.0 - projected.w) * (1.0 - selectedCascade);
                     float sampled = PerformShadowMapping(
-                        projected.xyz, g_ShadowAtlasTransforms[cascade]);
+                        projected.xyz, g_OweShadowAtlasTransforms[shadowView + cascade]);
                     shadowFactor = lerp(shadowFactor, sampled, active);
                     selectedCascade = saturate(selectedCascade + active);
                 }
@@ -300,16 +306,55 @@ float3 PerformLighting_V1(float3 worldPos, float3 albedo, float3 normal, float3 
         }
 
         float3 toLight = g_LightsPosition[i] - worldPos;
-        if (type > 0.5) {
+#if LIGHTS_SHADOW_MAPPING
+        if (type < 0.5 && g_OweLightsShadowView[i] > -0.5) {
+            shadowFactor = PerformPointShadowMapping(CalculateProjectedCoordsPoint(
+                worldPos, g_LightsPosition[i], g_OweLightsShadowProjection[i],
+                g_OweShadowAtlasTransforms[shadowView]));
+        }
+#endif
+        if (type > 2.5) {
+            // A tube: light from the nearest point of the segment its direction holds.
+            float3 segment = g_LightsDirectionType[i].xyz;
+            float  length2 = dot(segment, segment);
+            float  along   = length2 > 0.0 ? saturate(dot(-toLight, segment) / length2) : 0.0;
+            toLight += segment * along;
+        } else if (type > 0.5) {
             float3 lightToSurface = -normalize(toLight);
             float cone = smoothstep(g_LightsConeExponent[i].y,
                                     g_LightsConeExponent[i].x,
                                     dot(lightToSurface, g_LightsDirectionType[i].xyz));
+#if LIGHTS_COOKIE
+            // A cookie light projects its cookie over its cone in place of the cone's falloff:
+            // the light's axis is the middle of the cookie, the edge of the cone its edge, and
+            // the cookie's top is up.
+            if (g_LightsConeExponent[i].w > 0.5) {
+                float3 forward = g_LightsDirectionType[i].xyz;
+                float3 worldUp = abs(forward.y) > 0.99 ? float3(0.0, 0.0, 1.0) : float3(0.0, 1.0, 0.0);
+                float3 right   = normalize(cross(forward, worldUp));
+                float3 up      = cross(right, forward);
+                float  depth   = dot(lightToSurface, forward);
+                float  outer   = g_LightsConeExponent[i].y;
+                float  tangent = sqrt(max(1.0 - outer * outer, 0.0)) / max(outer, 0.0001);
+                float2 ndc = float2(dot(lightToSurface, right), dot(lightToSurface, up)) /
+                             max(depth * tangent, 0.0001);
+                float inside = step(0.0, depth) * step(abs(ndc.x), 1.0) * step(abs(ndc.y), 1.0);
+                cone = inside;
+                color *= texSample2D(COOKIE_SAMPLER, float2(0.5, 0.5) + float2(0.5, -0.5) * ndc).rgb;
+            }
+#endif
             color *= cone;
+#if LIGHTS_SHADOW_MAPPING
+            if (g_OweLightsShadowView[i] > -0.5) {
+                shadowFactor = PerformShadowMapping(
+                    CalculateProjectedCoords(worldPos, g_OweShadowViewProjections[shadowView]),
+                    g_OweShadowAtlasTransforms[shadowView]);
+            }
+#endif
         }
         light += ComputePBRLightShadow(
             normal, toLight, viewVector, albedo, color,
-            max(g_LightsColorRadius[i].w, 0.0001),
+            max(g_OweLightsColorRadius[i].w, 0.0001),
             max(g_LightsConeExponent[i].z, 0.0), specularTint, f0,
             roughness, metallic, shadowFactor);
     }
@@ -528,6 +573,27 @@ inline String NormalizePackedAudioSpectrumAccess(ref<str> src) {
 
     if (! changed) return String::make(src);
     out.push_str(*src.get(copied, src.size()));
+    return out;
+}
+
+// Wallpaper Engine's shadow casters draw one instance a view, reading
+// `g_ViewportViewProjectionMatrices[gl_InstanceID]`. owe keeps every shadowed
+// light's views in one longer list and gives each light's caster material its
+// first view (the OWE_SHADOW_VIEW_OFFSET combo).
+inline String StartCasterViewsAtTheirLight(ref<str> src) {
+    constexpr ref<str> stock = "g_ViewportViewProjectionMatrices[gl_InstanceID]"_str;
+    if (! src.contains(stock)) return String::make(src);
+    auto out  = String::make("uniform mat4 g_OweShadowViewProjections[24];\n"
+                             "#ifndef OWE_SHADOW_VIEW_OFFSET\n"
+                             "#define OWE_SHADOW_VIEW_OFFSET 0\n"
+                             "#endif\n"_str);
+    auto rest = src;
+    for (auto pos = rest.find(stock); pos.is_some(); pos = rest.find(stock)) {
+        out.push_str(*rest.get(usize(), *pos));
+        out.push_str("g_OweShadowViewProjections[gl_InstanceID + OWE_SHADOW_VIEW_OFFSET]"_str);
+        rest = *rest.get(*pos + stock.len(), rest.len());
+    }
+    out.push_str(rest);
     return out;
 }
 
@@ -1890,7 +1956,7 @@ constexpr array<rstd::uint8_t, 8> kShaderCacheMagic { rstd::uint8_t('O'), rstd::
                                                       rstd::uint8_t('P'), rstd::uint8_t('V'),
                                                       rstd::uint8_t('3'), rstd::uint8_t(0) };
 constexpr rstd::uint32_t          kShaderCacheFormatVersion = 3;
-constexpr rstd::uint32_t          kShaderCacheAbiVersion    = 19;
+constexpr rstd::uint32_t          kShaderCacheAbiVersion    = 24;
 // 8-byte magic, six u32 fields, and four SHA-1 digests total 112 bytes.
 constexpr rstd::uint32_t kShaderCacheHeaderSize = static_cast<rstd::uint32_t>(
     kShaderCacheMagic.len().to_primitive() + 6 * sizeof(rstd::uint32_t) +
@@ -2596,7 +2662,8 @@ String ShaderParser::PreShaderHeader(ref<str> src, const Combos& combos, ShaderT
     auto undefined        = UndefBeforeConflictingMacroDefines(compatible.as_str());
     auto normalized_audio = NormalizePackedAudioSpectrumAccess(undefined.as_str());
     auto normalized_mul   = NormalizeLeadingIntegerMulLiteral(normalized_audio.as_str());
-    auto user_src         = normalized_mul.as_str();
+    auto shadow_views     = StartCasterViewsAtTheirLight(normalized_mul.as_str());
+    auto user_src         = shadow_views.as_str();
 
     // All stages route through glslang's HLSL frontend.
     String pre;

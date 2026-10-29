@@ -3,6 +3,7 @@ module;
 #include <rstd/macro.hpp>
 #include <rstd/enum.hpp>
 #include "quickjs.h"
+#include <time.h>
 
 module wescene.script;
 import eigen;
@@ -316,6 +317,39 @@ JSValue UserPropertyValueToJs(JSContext* ctx, const Json& property) {
 // Everything else passes through.
 JSValue ResolveConfigValue(JSContext* ctx, const Json& v) { return JsonToJs(ctx, v); }
 
+// Wallpaper Engine hands a property script its own copy of the value in each
+// call: changing `value` without returning it has no effect, and a value kept
+// from an earlier call stays as it was.
+JSValue CopyFieldValue(JSContext* ctx, JSValueConst value) {
+    if (JS_IsArray(value)) {
+        JSValue        length_value = JS_GetPropertyStr(ctx, value, "length");
+        rstd::uint32_t length {};
+        JS_ToUint32(ctx, &length, length_value);
+        JS_FreeValue(ctx, length_value);
+        JSValue copy = JS_NewArray(ctx);
+        for (rstd::uint32_t i = 0; i < length; ++i) {
+            JSValue element = JS_GetPropertyUint32(ctx, value, i);
+            JS_DefinePropertyValueUint32(ctx, copy, i, element, JS_PROP_C_W_E);
+        }
+        return copy;
+    }
+    if (! JS_IsObject(value)) return JS_DupValue(ctx, value);
+
+    // Vec2/Vec3/Vec4 copy every component as it is, non-finite ones included.
+    JSValue copy_fn = JS_GetPropertyStr(ctx, value, "copy");
+    if (! JS_IsFunction(ctx, copy_fn)) {
+        JS_FreeValue(ctx, copy_fn);
+        return JS_DupValue(ctx, value);
+    }
+    JSValue copy = JS_Call(ctx, copy_fn, value, 0, nullptr);
+    JS_FreeValue(ctx, copy_fn);
+    if (JS_IsException(copy)) {
+        JS_FreeValue(ctx, JS_GetException(ctx));
+        return JS_DupValue(ctx, value);
+    }
+    return copy;
+}
+
 // Coerce a binding's initial-value JSON into the JS shape the script's
 // `init(value)` expects, given the bound field kind. Audio-response,
 // parallax, and color scripts all assume `value` is already a Vec2/Vec3,
@@ -502,9 +536,27 @@ struct EngineHostState {
     HashSet<owe::SceneNode*>          script_layers;
     // Keep registered queries enabled even when the scene has no wallpaper layers.
     bool registered_layer_queries { false };
+    // Set by the scene parser: see JsRuntime::SetAuthoredLayerNames.
+    Option<HashSet<String>> authored_layer_names;
     // engine.setTimeout / setInterval queue. Swept once per frame in
     // JsRuntime::TickAll before the script update loop runs.
     Vec<DeferredCb> deferred;
+    // addEndedCallback: called each time the playback gets to its end.
+    struct EndedCallback {
+        Arc<owe::SceneAnimationPlayback> playback;
+        u64                              seen;
+        JSValue                          fn; // owned
+        FieldScript*                     owner { nullptr };
+    };
+    Vec<EndedCallback> ended_callbacks;
+    Option<JsRuntime::AnimationLayerCreator>   animation_layer_creator;
+    Option<JsRuntime::AnimationLayerDestroyer> animation_layer_destroyer;
+    // playSingleAnimation's layers, removed once they get to their end.
+    struct SinglePlay {
+        owe::SceneNode*                  node;
+        Arc<owe::SceneAnimationPlayback> playback;
+    };
+    Vec<SinglePlay> single_plays;
     rstd::uint32_t  next_handle { 1 };
     // localStorage backing. Values are JSON-serialised strings so we can
     // round-trip arbitrary script values through the persistence file.
@@ -550,6 +602,7 @@ struct EngineHostState {
     HashMap<owe::SceneNode*, Json>               initial_layer_configs;
     Option<JsRuntime::BoneIndexResolver>         bone_index_resolver;
     Option<JsRuntime::BoneTransformResolver>     bone_transform_resolver;
+    Option<JsRuntime::BonePhysicsHandler>        bone_physics_handler;
     owe::SceneNode*                              scene_root { nullptr };
 };
 
@@ -772,6 +825,13 @@ JSValue EngineGetterRuntime(JSContext* ctx, JSValueConst, int, JSValueConst*) {
     auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
     return JS_NewFloat64(ctx, host->inputs.runtime);
 }
+// the scripts' clock for the Date wrapper: NaN when they run on the system clock
+JSValue EngineScriptClock(JSContext* ctx, JSValueConst, int, JSValueConst*) {
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    return JS_NewFloat64(
+        ctx, host->inputs.clock_ms.is_some() ? *host->inputs.clock_ms : __builtin_nan(""));
+}
+
 JSValue EngineGetterTimeOfDay(JSContext* ctx, JSValueConst, int, JSValueConst*) {
     auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
     return JS_NewFloat64(ctx, host->inputs.time_of_day);
@@ -1542,8 +1602,20 @@ globalThis.engine.isScreensaver     = function() { return false; };
 // .multiply / .add / .subtract / .divide as Vec3 instance methods (used
 // by every audio-response script binding scale), so a simple class with
 // these methods covers the audio-responsive cluster (1023 instances).
+//
+// As in Wallpaper Engine, a vector may be built from text ("x y z"), the
+// arguments after a vector are ignored, and arithmetic with a shorter vector
+// leaves the components it lacks as they are.
+function __wwParseVector(text, n) {
+  const numbers = text.trim().split(/\s+/).map(Number);
+  return Array.from({ length: n }, (_, i) => (Number.isFinite(numbers[i]) ? numbers[i] : 0));
+}
+// One component of an arithmetic operand: a number applies to every component;
+// `keep` (0 to add, 1 to multiply) for a component the operand lacks.
+function __wwOperand(o, key, keep) { return typeof o === 'number' ? o : (o[key] ?? keep); }
 class Vec2 {
   constructor(x, y) {
+    if (typeof x === 'string') [x, y] = __wwParseVector(x, 2);
     if (typeof x === 'object' && x !== null) {
       this.x = x.x ?? 0; this.y = x.y ?? 0; return;
     }
@@ -1574,6 +1646,7 @@ class Vec2 {
 }
 class Vec3 {
   constructor(x, y, z) {
+    if (typeof x === 'string') [x, y, z] = __wwParseVector(x, 3);
     if (typeof x === 'object' && x !== null) {
       this.x = x.x ?? 0; this.y = x.y ?? 0; this.z = x.z ?? 0;
     } else if (typeof x === 'number' && y === undefined && z === undefined) {
@@ -1586,10 +1659,30 @@ class Vec3 {
       this.z = (typeof z === 'number') ? z : 0;
     }
   }
-  add(o)      { return new Vec3(this.x + (o.x ?? o), this.y + (o.y ?? o), this.z + (o.z ?? o)); }
-  subtract(o) { return new Vec3(this.x - (o.x ?? o), this.y - (o.y ?? o), this.z - (o.z ?? o)); }
-  multiply(o) { return new Vec3(this.x * (o.x ?? o), this.y * (o.y ?? o), this.z * (o.z ?? o)); }
-  divide(o)   { return new Vec3(this.x / (o.x ?? o), this.y / (o.y ?? o), this.z / (o.z ?? o)); }
+  add(o) {
+    return new Vec3(
+      this.x + __wwOperand(o, 'x', 0),
+      this.y + __wwOperand(o, 'y', 0),
+      this.z + __wwOperand(o, 'z', 0));
+  }
+  subtract(o) {
+    return new Vec3(
+      this.x - __wwOperand(o, 'x', 0),
+      this.y - __wwOperand(o, 'y', 0),
+      this.z - __wwOperand(o, 'z', 0));
+  }
+  multiply(o) {
+    return new Vec3(
+      this.x * __wwOperand(o, 'x', 1),
+      this.y * __wwOperand(o, 'y', 1),
+      this.z * __wwOperand(o, 'z', 1));
+  }
+  divide(o) {
+    return new Vec3(
+      this.x / __wwOperand(o, 'x', 1),
+      this.y / __wwOperand(o, 'y', 1),
+      this.z / __wwOperand(o, 'z', 1));
+  }
   mix(o, t)    {
     return new Vec3(
       this.x + ((o.x ?? o) - this.x) * t,
@@ -1608,6 +1701,7 @@ class Vec3 {
 }
 class Vec4 {
   constructor(x, y, z, w) {
+    if (typeof x === 'string') [x, y, z, w] = __wwParseVector(x, 4);
     if (typeof x === 'object' && x !== null) {
       this.x = x.x ?? 0; this.y = x.y ?? 0; this.z = x.z ?? 0; this.w = x.w ?? 0;
     } else if (typeof x === 'number' && y === undefined && z === undefined && w === undefined) {
@@ -1619,10 +1713,34 @@ class Vec4 {
       this.w = (typeof w === 'number') ? w : 0;
     }
   }
-  add(o)      { return new Vec4(this.x + (o.x ?? o), this.y + (o.y ?? o), this.z + (o.z ?? o), this.w + (o.w ?? o)); }
-  subtract(o) { return new Vec4(this.x - (o.x ?? o), this.y - (o.y ?? o), this.z - (o.z ?? o), this.w - (o.w ?? o)); }
-  multiply(o) { return new Vec4(this.x * (o.x ?? o), this.y * (o.y ?? o), this.z * (o.z ?? o), this.w * (o.w ?? o)); }
-  divide(o)   { return new Vec4(this.x / (o.x ?? o), this.y / (o.y ?? o), this.z / (o.z ?? o), this.w / (o.w ?? o)); }
+  add(o) {
+    return new Vec4(
+      this.x + __wwOperand(o, 'x', 0),
+      this.y + __wwOperand(o, 'y', 0),
+      this.z + __wwOperand(o, 'z', 0),
+      this.w + __wwOperand(o, 'w', 0));
+  }
+  subtract(o) {
+    return new Vec4(
+      this.x - __wwOperand(o, 'x', 0),
+      this.y - __wwOperand(o, 'y', 0),
+      this.z - __wwOperand(o, 'z', 0),
+      this.w - __wwOperand(o, 'w', 0));
+  }
+  multiply(o) {
+    return new Vec4(
+      this.x * __wwOperand(o, 'x', 1),
+      this.y * __wwOperand(o, 'y', 1),
+      this.z * __wwOperand(o, 'z', 1),
+      this.w * __wwOperand(o, 'w', 1));
+  }
+  divide(o) {
+    return new Vec4(
+      this.x / __wwOperand(o, 'x', 1),
+      this.y / __wwOperand(o, 'y', 1),
+      this.z / __wwOperand(o, 'z', 1),
+      this.w / __wwOperand(o, 'w', 1));
+  }
   mix(o, t)   {
     return new Vec4(
       this.x + ((o.x ?? o) - this.x) * t,
@@ -1643,6 +1761,145 @@ class Vec4 {
 globalThis.Vec2 = Vec2;
 globalThis.Vec3 = Vec3;
 globalThis.Vec4 = Vec4;
+// The SceneScript vector methods the classes above leave out
+// (https://docs.wallpaperengine.io/en/scene/scenescript/reference/class/Vec3). Angles are in degrees.
+(function () {
+  const COMPONENTS = { 2: ['x', 'y'], 3: ['x', 'y', 'z'], 4: ['x', 'y', 'z', 'w'] };
+  const CLASSES = { 2: Vec2, 3: Vec3, 4: Vec4 };
+  const RAD = Math.PI / 180;
+  const DEG = 180 / Math.PI;
+
+  function define(target, name, fn) {
+    Object.defineProperty(target, name, { value: fn, writable: true, configurable: true, enumerable: false });
+  }
+
+  function dot(a, b) {
+    return a.reduce((sum, x, i) => sum + x * b[i], 0);
+  }
+
+  function clamp01(x) {
+    return Math.min(Math.max(x, 0), 1);
+  }
+
+  for (const n of [2, 3, 4]) {
+    const keys = COMPONENTS[n];
+    const Class = CLASSES[n];
+    const proto = Class.prototype;
+    const numbers = (vector) => keys.map((key) => vector[key]);
+    // a number for every component, or a vector's components (0 for those a shorter one lacks)
+    const operand = (value) =>
+      typeof value === 'number' ? keys.map(() => value) : keys.map((key) => value[key] ?? 0);
+    const make = (values) => new Class(...values);
+    const each = (vector, fn) => make(numbers(vector).map(fn));
+    const pair = (vector, other, fn) => {
+      const b = operand(other);
+      return make(numbers(vector).map((x, i) => fn(x, b[i])));
+    };
+
+    define(proto, 'dot', function (other) { return dot(numbers(this), operand(other)); });
+    define(proto, 'min', function (other) { return pair(this, other, Math.min); });
+    define(proto, 'max', function (other) { return pair(this, other, Math.max); });
+    define(proto, 'abs', function () { return each(this, Math.abs); });
+    define(proto, 'sign', function () { return each(this, Math.sign); });
+    define(proto, 'round', function () { return each(this, Math.round); });
+    define(proto, 'floor', function () { return each(this, Math.floor); });
+    define(proto, 'ceil', function () { return each(this, Math.ceil); });
+    define(proto, 'negate', function () { return each(this, (x) => -x); });
+    define(proto, 'fract', function () { return each(this, (x) => x - Math.floor(x)); });
+    define(proto, 'equals', function (other) {
+      const b = operand(other);
+      return numbers(this).every((x, i) => x === b[i]);
+    });
+    define(proto, 'isFinite', function () { return numbers(this).every(Number.isFinite); });
+    define(proto, 'distanceSqr', function (other) {
+      const b = operand(other);
+      return numbers(this).reduce((sum, x, i) => sum + (x - b[i]) * (x - b[i]), 0);
+    });
+    define(proto, 'distance', function (other) { return Math.sqrt(this.distanceSqr(other)); });
+    define(proto, 'reflect', function (normal) {
+      const a = numbers(this);
+      const b = operand(normal);
+      const d = 2 * dot(a, b);
+      return make(a.map((x, i) => x - d * b[i]));
+    });
+    define(proto, 'project', function (other) {
+      const a = numbers(this);
+      const b = operand(other);
+      const lengthSqr = dot(b, b);
+      const scale = lengthSqr === 0 ? 0 : dot(a, b) / lengthSqr;
+      return make(b.map((x) => x * scale));
+    });
+    define(proto, 'clamp', function (min, max) {
+      const low = operand(min);
+      const high = operand(max);
+      return make(numbers(this).map((x, i) => Math.min(Math.max(x, low[i]), high[i])));
+    });
+    define(proto, 'mod', function (value) { return pair(this, value, (x, y) => x - y * Math.floor(x / y)); });
+    define(proto, 'step', function (edge) { return pair(this, edge, (x, e) => (x < e ? 0 : 1)); });
+    define(proto, 'smoothStep', function (min, max) {
+      const low = operand(min);
+      const high = operand(max);
+      return make(numbers(this).map((x, i) => {
+        const t = clamp01((x - low[i]) / (high[i] - low[i]));
+        return t * t * (3 - 2 * t);
+      }));
+    });
+    // mix takes a number as the amount, or a vector of amounts
+    const mixByNumber = proto.mix;
+    define(proto, 'mix', function (other, amount) {
+      if (typeof amount === 'number') return mixByNumber.call(this, other, amount);
+      const b = operand(other);
+      const t = operand(amount);
+      return make(numbers(this).map((x, i) => x + (b[i] - x) * t[i]));
+    });
+  }
+
+  // Vec2: angles are counter-clockwise from +x
+  define(Vec2.prototype, 'perpendicular', function () { return new Vec2(-this.y, this.x); });
+  define(Vec2.prototype, 'angle', function () { return Math.atan2(this.y, this.x) * DEG; });
+  define(Vec2.prototype, 'angleBetween', function (other) {
+    // signed: positive when `other` is counter-clockwise from this vector
+    return Math.atan2(this.x * other.y - this.y * other.x, this.x * other.x + this.y * other.y) * DEG;
+  });
+  define(Vec2.prototype, 'rotate', function (angle) {
+    const c = Math.cos(angle * RAD);
+    const s = Math.sin(angle * RAD);
+    return new Vec2(this.x * c - this.y * s, this.x * s + this.y * c);
+  });
+
+  // Vec3
+  define(Vec3.prototype, 'cross', function (other) {
+    return new Vec3(
+      this.y * other.z - this.z * other.y,
+      this.z * other.x - this.x * other.z,
+      this.x * other.y - this.y * other.x
+    );
+  });
+  define(Vec3.prototype, 'angleBetween', function (other) {
+    const lengths = this.length() * other.length();
+    if (lengths === 0) return 0;
+    return Math.acos(Math.min(Math.max(this.dot(other) / lengths, -1), 1)) * DEG;
+  });
+  define(Vec3.prototype, 'refract', function (normal, eta) {
+    // GLSL semantics: the zero vector for total internal reflection
+    const d = this.dot(normal);
+    const k = 1 - eta * eta * (1 - d * d);
+    if (k < 0) return new Vec3(0, 0, 0);
+    const scale = eta * d + Math.sqrt(k);
+    return new Vec3(eta * this.x - scale * normal.x, eta * this.y - scale * normal.y, eta * this.z - scale * normal.z);
+  });
+  // theta is the polar angle from +y, phi the azimuth around y measured from +x towards +z
+  define(Vec3.prototype, 'toSpherical', function () {
+    const r = this.length();
+    if (r === 0) return new Vec3(0, 0, 0);
+    return new Vec3(r, Math.acos(Math.min(Math.max(this.y / r, -1), 1)) * DEG, Math.atan2(this.z, this.x) * DEG);
+  });
+  define(Vec3, 'fromSpherical', function (r, theta, phi) {
+    const t = theta * RAD;
+    const p = phi * RAD;
+    return new Vec3(r * Math.sin(t) * Math.cos(p), r * Math.cos(t), r * Math.sin(t) * Math.sin(p));
+  });
+})();
 globalThis.__wwSerializeLayerConfig = function(config) {
   return JSON.stringify(config, function(_key, value) {
     if (value instanceof Vec2 || value instanceof Vec3 || value instanceof Vec4)
@@ -1691,6 +1948,10 @@ function __wwCreateNodeStub() {
             if (key === 'getVideoTexture')     return () => __wwCreateVideoTextureStub();
             if (key === 'getAnimation')        return ()   => __wwCreateAnimationStub();
             if (key === 'getAnimationLayer')   return (_n) => __wwCreateAnimationStub();
+            if (key === 'getAnimationLayerCount') return () => 0;
+            if (key === 'createAnimationLayer')   return (_a) => undefined;
+            if (key === 'playSingleAnimation')    return (_a, _c) => undefined;
+            if (key === 'destroyAnimationLayer')  return (_a) => false;
             if (key === 'destroyLayer')        return (_layer) => undefined;
             if (key in target) return target[key];
             return undefined;
@@ -1741,6 +2002,8 @@ function __wwCreateAnimationStub() {
     let frame = 0, playing = false;
     const o = {
         rate: 1,
+        blend: 1,
+        visible: true,
         frameCount: 1,
         play()     { playing = true;  },
         stop()     { playing = false; },
@@ -1748,6 +2011,7 @@ function __wwCreateAnimationStub() {
         setFrame(n){ frame = Math.max(0, n | 0); },
         getFrame() { return frame;    },
         isPlaying(){ return playing;  },
+        addEndedCallback(_fn) {},
     };
     return o;
 }
@@ -1790,6 +2054,8 @@ if (! globalThis.shared) globalThis.shared = {};
 // localStorage is installed from C++ in InstallEngineGlobal so it can
 // optionally persist to a JSON file under cache_path keyed by scene_id.
 )JS";
+
+void InstallSceneDate(JSContext* ctx);
 
 void InstallEngineGlobal(JSContext* ctx) {
     // Run the bootstrap to create createScriptProperties + skeleton engine.
@@ -1854,6 +2120,62 @@ void InstallEngineGlobal(JSContext* ctx) {
     // C++-backed localStorage. Replaces the in-memory JS Map; values
     // persist to a JSON file when JsRuntime::SetPersistence is called.
     InstallLocalStorage(ctx);
+    InstallSceneDate(ctx);
+}
+
+// Date reads the scripts' clock when the scene has one (Scene::SetScriptClock): `new Date()` and
+// Date.now() are that moment, everything else is the built-in Date.
+constexpr const char* kSceneDateJs = R"JS(
+(() => {
+    const SystemDate = Date;
+    const clock = globalThis.__oweScriptClock;
+    delete globalThis.__oweScriptClock;
+    const now = () => {
+        const time = clock();
+        return time === time ? time : SystemDate.now();
+    };
+    class SceneDate extends SystemDate {
+        constructor(...args) {
+            if (args.length === 0) super(now());
+            else super(...args);
+        }
+        static now() { return now(); }
+    }
+    // Date() called as a function gives the moment as a string
+    globalThis.Date = new Proxy(SceneDate, { apply() { return new SceneDate().toString(); } });
+})();
+)JS";
+
+void InstallSceneDate(JSContext* ctx) {
+    JSValue global = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(ctx,
+                      global,
+                      "__oweScriptClock",
+                      JS_NewCFunction(ctx, EngineScriptClock, "__oweScriptClock", 0));
+    JS_FreeValue(ctx, global);
+    JSValue r = JS_Eval(ctx,
+                        kSceneDateJs,
+                        CStr::from_ptr(kSceneDateJs).to_bytes().len().to_primitive(),
+                        "<wescene-date>",
+                        JS_EVAL_TYPE_GLOBAL);
+    if (JS_IsException(r)) {
+        JSValue     exc = JS_GetException(ctx);
+        const char* msg = JS_ToCString(ctx, exc);
+        rstd_error("script date: {}", msg ? msg : "<exc>");
+        if (msg) JS_FreeCString(ctx, msg);
+        JS_FreeValue(ctx, exc);
+    }
+    JS_FreeValue(ctx, r);
+}
+
+// the local time of day (0..1) at `epoch_ms`
+float LocalTimeOfDay(double epoch_ms) {
+    const auto seconds = static_cast<time_t>(epoch_ms / 1000.0);
+    tm         local {};
+    localtime_r(&seconds, &local);
+    const double into_day = local.tm_hour * 3600.0 + local.tm_min * 60.0 + local.tm_sec +
+                            (epoch_ms - static_cast<double>(seconds) * 1000.0) / 1000.0;
+    return static_cast<float>(into_day / 86400.0);
 }
 
 // --- Built-in ES modules ----------------------------------------------------
@@ -2624,6 +2946,53 @@ JSValue NodeRotateObjectSpace(JSContext* ctx, JSValueConst this_val, int argc, J
     return JS_UNDEFINED;
 }
 
+owe::SceneNode* SceneLayerAt(JSContext* ctx, owe::SceneNode* root, JSValueConst value);
+
+// setParent(parent, adjustTransforms) or setParent(parent, attachment, adjustTransform): the parent
+// is a layer, a name or the layer's index in the scene, undefined for none. As measured in
+// Wallpaper Engine, the layers keep their draw order. Attachments aren't supported yet.
+JSValue NodeSetParent(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    auto* n    = GetLayerNode(this_val);
+    if (! n) return JS_UNDEFINED;
+    owe::SceneNode* parent = nullptr;
+    if (argc > 0 && ! JS_IsUndefined(argv[0]) && ! JS_IsNull(argv[0])) {
+        if (JS_IsNumber(argv[0]))
+            parent = SceneLayerAt(ctx, host->scene_root, argv[0]);
+        else
+            parent = GetLayerNode(argv[0]);
+        if (parent == nullptr && ! JS_IsNumber(argv[0]) && host->scene_root) {
+            const char* name = JS_ToCString(ctx, argv[0]);
+            if (name == nullptr) return JS_EXCEPTION;
+            parent = host->scene_root->FindByName(rstd::cppstd::as_str(name).unwrap());
+            JS_FreeCString(ctx, name);
+        }
+        if (parent == nullptr) return JS_UNDEFINED;
+    }
+    const int  flag   = argc > 2 ? 2 : 1;
+    const bool adjust = argc > flag && JS_ToBool(ctx, argv[flag]) > 0;
+    (void)n->SetParent(parent, adjust);
+    return JS_UNDEFINED;
+}
+
+// lookAt(center, up = (0, 1, 0)) and lookAtYaw(center, up): see SceneNode::LookAt.
+JSValue LookAt(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv, bool yaw_only) {
+    auto*  n = GetLayerNode(this_val);
+    double x = 0, y = 0, z = 0, up_x = 0, up_y = 1, up_z = 0;
+    if (! n || argc < 1 || ! ReadXYZ(ctx, argv[0], x, y, z)) return JS_UNDEFINED;
+    if (argc > 1 && ! JS_IsUndefined(argv[1])) (void)ReadXYZ(ctx, argv[1], up_x, up_y, up_z);
+    n->LookAt({ x, y, z }, { up_x, up_y, up_z }, yaw_only);
+    return JS_UNDEFINED;
+}
+
+JSValue NodeLookAt(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+    return LookAt(ctx, this_val, argc, argv, false);
+}
+
+JSValue NodeLookAtYaw(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+    return LookAt(ctx, this_val, argc, argv, true);
+}
+
 JSValue BoneTransformTranslation(JSContext* ctx, JSValueConst this_val, int, JSValueConst*) {
     JSValue v = JS_GetPropertyStr(ctx, this_val, "__wwTranslation");
     if (! JS_IsUndefined(v)) return v;
@@ -2672,6 +3041,73 @@ JSValue NodeGetBoneTransform(JSContext* ctx, JSValueConst this_val, int argc, JS
                     ->operator()(n, static_cast<rstd::uint32_t>(index), host->inputs.runtime);
     if (! bone) return MakeBoneTransform(ctx, { 0.0f, 0.0f, 0.0f });
     return MakeBoneTransform(ctx, { bone->x, bone->y, bone->z });
+}
+
+array<float, 3> ReadVec3Argument(JSContext* ctx, JSValueConst value) {
+    array<float, 3> out {};
+    if (! JS_IsObject(value)) return out;
+    const char* names[] = { "x", "y", "z" };
+    for (usize i {}; i < usize(3); ++i) {
+        JSValue component = JS_GetPropertyStr(ctx, value, names[i.to_primitive()]);
+        double  number    = 0.0;
+        if (JS_ToFloat64(ctx, &number, component) == 0) out[i] = float(number);
+        JS_FreeValue(ctx, component);
+    }
+    return out;
+}
+
+// Reads the bone a physics call names, a name or an index as getBoneIndex
+// returns them, into `bone` in the bone index resolver's numbering (None when
+// no bone is named: every bone with physics). False when the layer has no such
+// bone.
+bool ReadPhysicsBone(JSContext* ctx, EngineHostState* host, owe::SceneNode* node,
+                     JSValueConst value, Option<uint32_t>& bone) {
+    if (JS_IsUndefined(value) || JS_IsNull(value)) return true;
+    uint32_t index = 0;
+    if (JS_IsString(value)) {
+        if (! host->bone_index_resolver) return false;
+        const char* name = JS_ToCString(ctx, value);
+        if (! name) return false;
+        index = (*host->bone_index_resolver)->operator()(node, rstd::cppstd::as_str(name).unwrap());
+        JS_FreeCString(ctx, name);
+    } else {
+        int32_t number = 0;
+        if (JS_ToInt32(ctx, &number, value) != 0 || number <= 0) return false;
+        index = uint32_t(number);
+    }
+    if (index == 0) return false;
+    bone = Some(uint32_t(index));
+    return true;
+}
+
+// applyBonePhysicsImpulse([bone], directionalImpulse, angularImpulse): without
+// the bone, every bone with physics.
+JSValue NodeApplyBonePhysicsImpulse(JSContext* ctx, JSValueConst this_val, int argc,
+                                    JSValueConst* argv) {
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    auto* n    = GetLayerNode(this_val);
+    if (! n || ! host->bone_physics_handler) return JS_UNDEFINED;
+    const bool         named = argc >= 3;
+    BonePhysicsRequest request;
+    if (! ReadPhysicsBone(ctx, host, n, named ? argv[0] : JS_UNDEFINED, request.bone))
+        return JS_UNDEFINED;
+    if (argc > (named ? 1 : 0)) request.directional = ReadVec3Argument(ctx, argv[named ? 1 : 0]);
+    if (argc > (named ? 2 : 1)) request.angular = ReadVec3Argument(ctx, argv[named ? 2 : 1]);
+    (*host->bone_physics_handler)->operator()(n, request);
+    return JS_UNDEFINED;
+}
+
+// resetBonePhysicsSimulation([bone]): without the bone, every bone with physics.
+JSValue NodeResetBonePhysicsSimulation(JSContext* ctx, JSValueConst this_val, int argc,
+                                       JSValueConst* argv) {
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    auto* n    = GetLayerNode(this_val);
+    if (! n || ! host->bone_physics_handler) return JS_UNDEFINED;
+    BonePhysicsRequest request { .reset = true };
+    if (! ReadPhysicsBone(ctx, host, n, argc > 0 ? argv[0] : JS_UNDEFINED, request.bone))
+        return JS_UNDEFINED;
+    (*host->bone_physics_handler)->operator()(n, request);
+    return JS_UNDEFINED;
 }
 
 JSValue NodeGetChildren(JSContext* ctx, JSValueConst this_val, int, JSValueConst*) {
@@ -2756,7 +3192,11 @@ JSValue NodeGetLayer(JSContext* ctx, JSValueConst this_val, int argc, JSValueCon
     String          layer_name = rstd::into(rstd::cppstd::as_str(name).unwrap());
     owe::SceneNode* hit        = n->FindByName(layer_name.as_str());
     JS_FreeCString(ctx, name);
-    return hit ? WrapLayerNode(ctx, hit) : WrapLayerName(ctx, rstd::move(layer_name));
+    if (hit) return WrapLayerNode(ctx, hit);
+    if (host->authored_layer_names.is_some() &&
+        ! host->authored_layer_names->contains(layer_name.as_str()))
+        return JS_NULL;
+    return WrapLayerName(ctx, rstd::move(layer_name));
 }
 
 JSValue NodeGetEffect(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
@@ -3233,6 +3673,32 @@ JSValue AnimationGetRate(JSContext* ctx, JSValueConst value) {
     return JS_NewFloat64(ctx, playback != nullptr ? playback->Rate() : 1.0);
 }
 
+JSValue AnimationGetBlend(JSContext* ctx, JSValueConst value) {
+    auto* playback = GetAnimationPlayback(value);
+    return JS_NewFloat64(ctx, playback != nullptr ? playback->Blend() : 1.0);
+}
+
+JSValue AnimationSetBlend(JSContext* ctx, JSValueConst value, JSValueConst next) {
+    double blend = 1.0;
+    if (JS_ToFloat64(ctx, &blend, next) == 0) {
+        if (auto* playback = GetAnimationPlayback(value))
+            playback->SetBlend(static_cast<float>(blend));
+    }
+    return JS_UNDEFINED;
+}
+
+JSValue AnimationGetVisible(JSContext* ctx, JSValueConst value) {
+    auto* playback = GetAnimationPlayback(value);
+    return JS_NewBool(ctx, playback == nullptr || playback->Visible());
+}
+
+JSValue AnimationSetVisible(JSContext* ctx, JSValueConst value, JSValueConst next) {
+    const int visible = JS_ToBool(ctx, next);
+    if (visible < 0) return JS_EXCEPTION;
+    if (auto* playback = GetAnimationPlayback(value)) playback->SetVisible(visible != 0);
+    return JS_UNDEFINED;
+}
+
 JSValue AnimationSetRate(JSContext* ctx, JSValueConst value, JSValueConst next) {
     double rate = 1.0;
     if (JS_ToFloat64(ctx, &rate, next) == 0) {
@@ -3272,6 +3738,49 @@ JSValue AnimationGetFrame(JSContext* ctx, JSValueConst value, int, JSValueConst*
     return JS_NewInt32(ctx, playback != nullptr ? playback->Frame().to_primitive() : 0);
 }
 
+JSValue AnimationAddEndedCallback(JSContext* ctx, JSValueConst value, int argc,
+                                  JSValueConst* argv) {
+    auto* host   = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    auto* handle = static_cast<AnimationHandle*>(JS_GetOpaque(value, s_animation_class_id));
+    if (host == nullptr || handle == nullptr || argc < 1 || ! JS_IsFunction(ctx, argv[0]))
+        return JS_UNDEFINED;
+    host->ended_callbacks.push(EngineHostState::EndedCallback {
+        .playback = handle->playback.clone(),
+        .seen     = handle->playback->EndedCount(),
+        .fn       = JS_DupValue(ctx, argv[0]),
+        .owner    = host->active_field_script,
+    });
+    return JS_UNDEFINED;
+}
+
+// Calls each ended callback once for every time its playback got to its end since the last call.
+void CallEndedCallbacks(JSContext* ctx, EngineHostState* host) {
+    // Iterate by index; callbacks may add more.
+    for (usize i {}; i < host->ended_callbacks.len(); ++i) {
+        while (host->ended_callbacks[i].seen < host->ended_callbacks[i].playback->EndedCount()) {
+            host->ended_callbacks[i].seen += u64(1);
+            auto* previous = host->active_field_script;
+            auto* owner    = host->ended_callbacks[i].owner;
+            if (owner != nullptr && owner->m_impl->alive) {
+                BindFieldScriptContext(ctx, *owner->m_impl, host->default_layer);
+                host->active_field_script = owner;
+            }
+            JSValue fn  = JS_DupValue(ctx, host->ended_callbacks[i].fn);
+            JSValue ret = JS_Call(ctx, fn, JS_UNDEFINED, 0, nullptr);
+            JS_FreeValue(ctx, fn);
+            host->active_field_script = previous;
+            if (JS_IsException(ret)) {
+                JSValue     exc = JS_GetException(ctx);
+                const char* msg = JS_ToCString(ctx, exc);
+                rstd_error("animation ended callback threw: {}", msg ? msg : "<no message>");
+                if (msg) JS_FreeCString(ctx, msg);
+                JS_FreeValue(ctx, exc);
+            }
+            JS_FreeValue(ctx, ret);
+        }
+    }
+}
+
 JSValue AnimationIsPlaying(JSContext* ctx, JSValueConst value, int, JSValueConst*) {
     auto* playback = GetAnimationPlayback(value);
     return JS_NewBool(ctx, playback != nullptr && playback->IsPlaying());
@@ -3283,12 +3792,15 @@ const JSCFunctionListEntry s_animation_proto_funcs[] = {
     JS_CGETSET_DEF("duration", AnimationGetDuration, NodeSetIgnore),
     JS_CGETSET_DEF("name", AnimationGetName, NodeSetIgnore),
     JS_CGETSET_DEF("rate", AnimationGetRate, AnimationSetRate),
+    JS_CGETSET_DEF("blend", AnimationGetBlend, AnimationSetBlend),
+    JS_CGETSET_DEF("visible", AnimationGetVisible, AnimationSetVisible),
     JS_CFUNC_DEF("play", 0, AnimationPlay),
     JS_CFUNC_DEF("stop", 0, AnimationStop),
     JS_CFUNC_DEF("pause", 0, AnimationPause),
     JS_CFUNC_DEF("setFrame", 1, AnimationSetFrame),
     JS_CFUNC_DEF("getFrame", 0, AnimationGetFrame),
     JS_CFUNC_DEF("isPlaying", 0, AnimationIsPlaying),
+    JS_CFUNC_DEF("addEndedCallback", 1, AnimationAddEndedCallback),
 };
 
 void InitAnimationClass(JSContext* ctx, JSRuntime* rt) {
@@ -3337,21 +3849,23 @@ JSValue PropertyObjectGetAnimation(JSContext* ctx, JSValueConst, int argc, JSVal
     return WrapAnimation(ctx, ActivePropertyAnimation(ctx, argc, argv));
 }
 
+// An animation layer (IAnimationLayer): its playback's controls (play, pause, stop, isPlaying,
+// getFrame, setFrame, rate, ...) and getAnimation, which gives that same animation.
 JSValue WrapAnimationLayer(JSContext* ctx, Option<Arc<owe::SceneAnimationPlayback>> playback) {
-    JSValue object    = JS_NewObject(ctx);
-    JSValue animation = WrapAnimation(ctx, rstd::move(playback));
-    JSValue getter    = JS_NewCFunctionData(
+    JSValue layer = WrapAnimation(ctx, rstd::move(playback));
+    if (JS_IsException(layer)) return layer;
+    JSValue getter = JS_NewCFunctionData(
         ctx,
-        [](JSContext* context, JSValueConst, int, JSValueConst*, int, JSValue* data) -> JSValue {
-            return JS_DupValue(context, data[0]);
+        [](JSContext* context, JSValueConst this_val, int, JSValueConst*, int, JSValue*)
+            -> JSValue {
+            return JS_DupValue(context, this_val);
         },
         0,
         0,
-        1,
-        &animation);
-    JS_SetPropertyStr(ctx, object, "getAnimation", getter);
-    JS_FreeValue(ctx, animation);
-    return object;
+        0,
+        nullptr);
+    JS_SetPropertyStr(ctx, layer, "getAnimation", getter);
+    return layer;
 }
 
 JSValue NodeGetAnimation(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
@@ -3371,6 +3885,151 @@ JSValue NodeGetAnimation(JSContext* ctx, JSValueConst this_val, int argc, JSValu
     auto playback = node->NamedAnimation(rstd::cppstd::as_str(name).unwrap());
     JS_FreeCString(ctx, name);
     return WrapAnimation(ctx, rstd::move(playback));
+}
+
+// getAnimationLayer(name or index): the index counts the layer's animation layers in the scene's
+// order.
+JSValue NodeGetAnimationLayer(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+    auto* handle = GetLayerHandle(this_val);
+    auto* node   = handle != nullptr ? ResolveLayerNode(handle) : nullptr;
+    if (node != nullptr && argc > 0 && JS_IsNumber(argv[0])) {
+        rstd::int64_t index {};
+        if (JS_ToInt64(ctx, &index, argv[0]) != 0) return JS_EXCEPTION;
+        auto playback = index >= 0 ? node->AnimationLayer(usize(static_cast<rstd::size_t>(index)))
+                                   : None<Arc<owe::SceneAnimationPlayback>>();
+        return WrapAnimationLayer(ctx, rstd::move(playback));
+    }
+    if (node == nullptr || argc == 0 || ! JS_IsString(argv[0]))
+        return WrapAnimationLayer(ctx, None<Arc<owe::SceneAnimationPlayback>>());
+    const char* name = JS_ToCString(ctx, argv[0]);
+    if (name == nullptr) return JS_EXCEPTION;
+    auto playback = node->NamedAnimation(rstd::cppstd::as_str(name).unwrap());
+    JS_FreeCString(ctx, name);
+    return WrapAnimationLayer(ctx, rstd::move(playback));
+}
+
+// The settings of a layer to make: an animation's name, or an object as the scene file has it
+// ({animation: name or id, name, rate, blend, visible, additive}).
+void ReadAnimationLayerRequest(JSContext* ctx, JSValueConst value,
+                               JsRuntime::AnimationLayerRequest& request) {
+    auto read_string = [&](JSValueConst string, String& out) {
+        const char* text = JS_ToCString(ctx, string);
+        if (text == nullptr) return;
+        out = String::make(rstd::cppstd::as_str(text).unwrap());
+        JS_FreeCString(ctx, text);
+    };
+    if (JS_IsString(value)) {
+        read_string(value, request.animation);
+        return;
+    }
+    if (! JS_IsObject(value)) return;
+    JSValue animation = JS_GetPropertyStr(ctx, value, "animation");
+    if (JS_IsNumber(animation)) {
+        rstd::int32_t id {};
+        if (JS_ToInt32(ctx, &id, animation) == 0) request.animation_id = Some(id);
+    } else if (JS_IsString(animation)) {
+        read_string(animation, request.animation);
+    }
+    JS_FreeValue(ctx, animation);
+    JSValue name = JS_GetPropertyStr(ctx, value, "name");
+    if (JS_IsString(name)) read_string(name, request.name);
+    JS_FreeValue(ctx, name);
+    auto read_number = [&](const char* key, double& out) {
+        JSValue number = JS_GetPropertyStr(ctx, value, key);
+        if (JS_IsNumber(number)) (void)JS_ToFloat64(ctx, &out, number);
+        JS_FreeValue(ctx, number);
+    };
+    auto read_flag = [&](const char* key, bool& out) {
+        JSValue flag = JS_GetPropertyStr(ctx, value, key);
+        if (! JS_IsUndefined(flag)) out = JS_ToBool(ctx, flag) > 0;
+        JS_FreeValue(ctx, flag);
+    };
+    read_number("rate", request.rate);
+    read_number("blend", request.blend);
+    read_flag("visible", request.visible);
+    read_flag("additive", request.additive);
+}
+
+JSValue MakeAnimationLayer(JSContext* ctx, JSValueConst this_val,
+                           JsRuntime::AnimationLayerRequest request) {
+    auto* host   = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    auto* handle = GetLayerHandle(this_val);
+    auto* node   = handle != nullptr ? ResolveLayerNode(handle) : nullptr;
+    if (node == nullptr || host == nullptr || ! host->animation_layer_creator) return JS_UNDEFINED;
+    const bool single   = request.single;
+    auto       playback = (*host->animation_layer_creator)->operator()(node, rstd::move(request));
+    if (playback.is_none()) return JS_UNDEFINED;
+    if (single)
+        host->single_plays.push(
+            EngineHostState::SinglePlay { .node = node, .playback = (*playback).clone() });
+    return WrapAnimationLayer(ctx, rstd::move(playback));
+}
+
+JSValue NodeCreateAnimationLayer(JSContext* ctx, JSValueConst this_val, int argc,
+                                 JSValueConst* argv) {
+    JsRuntime::AnimationLayerRequest request;
+    if (argc > 0) ReadAnimationLayerRequest(ctx, argv[0], request);
+    return MakeAnimationLayer(ctx, this_val, rstd::move(request));
+}
+
+// playSingleAnimation(animation, config): the layer plays once, then goes.
+JSValue NodePlaySingleAnimation(JSContext* ctx, JSValueConst this_val, int argc,
+                                JSValueConst* argv) {
+    JsRuntime::AnimationLayerRequest request;
+    if (argc > 0) ReadAnimationLayerRequest(ctx, argv[0], request);
+    if (argc > 1 && JS_IsObject(argv[1])) ReadAnimationLayerRequest(ctx, argv[1], request);
+    request.single = true;
+    return MakeAnimationLayer(ctx, this_val, rstd::move(request));
+}
+
+// destroyAnimationLayer(layer, its name or its index): whether it was one of the layer's.
+JSValue NodeDestroyAnimationLayer(JSContext* ctx, JSValueConst this_val, int argc,
+                                  JSValueConst* argv) {
+    auto* host   = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    auto* handle = GetLayerHandle(this_val);
+    auto* node   = handle != nullptr ? ResolveLayerNode(handle) : nullptr;
+    if (node == nullptr || argc < 1 || ! host->animation_layer_destroyer) return JS_FALSE;
+    Option<Arc<owe::SceneAnimationPlayback>> playback;
+    if (auto* animation =
+            static_cast<AnimationHandle*>(JS_GetOpaque(argv[0], s_animation_class_id))) {
+        playback = Some(animation->playback.clone());
+    } else if (JS_IsNumber(argv[0])) {
+        rstd::int64_t index {};
+        if (JS_ToInt64(ctx, &index, argv[0]) == 0 && index >= 0)
+            playback = node->AnimationLayer(usize(static_cast<rstd::size_t>(index)));
+    } else if (JS_IsString(argv[0])) {
+        const char* name = JS_ToCString(ctx, argv[0]);
+        if (name == nullptr) return JS_EXCEPTION;
+        playback = node->NamedAnimation(rstd::cppstd::as_str(name).unwrap());
+        JS_FreeCString(ctx, name);
+    }
+    if (playback.is_none()) return JS_FALSE;
+    const auto* pointer = (*playback).as_ptr().as_raw_ptr();
+    host->single_plays.retain([pointer](const EngineHostState::SinglePlay& play) {
+        return play.playback.as_ptr().as_raw_ptr() != pointer;
+    });
+    return JS_NewBool(ctx, (*host->animation_layer_destroyer)->operator()(node, **playback));
+}
+
+// Removes playSingleAnimation's layers that got to their end.
+void RemoveFinishedSinglePlays(EngineHostState* host) {
+    if (! host->animation_layer_destroyer) return;
+    Vec<EngineHostState::SinglePlay> finished;
+    host->single_plays.retain([&](const EngineHostState::SinglePlay& play) {
+        if (play.playback->EndedCount() == u64()) return true;
+        finished.push(
+            EngineHostState::SinglePlay { .node = play.node, .playback = play.playback.clone() });
+        return false;
+    });
+    for (const auto& play : finished)
+        (void)(*host->animation_layer_destroyer)->operator()(play.node, *play.playback);
+}
+
+JSValue NodeGetAnimationLayerCount(JSContext* ctx, JSValueConst this_val, int, JSValueConst*) {
+    auto* handle = GetLayerHandle(this_val);
+    auto* node   = handle != nullptr ? ResolveLayerNode(handle) : nullptr;
+    auto  count  = node != nullptr ? node->AnimationLayerCount().to_primitive() : 0;
+    return JS_NewInt64(ctx, static_cast<rstd::int64_t>(count));
 }
 
 static JSClassID s_video_texture_class_id = 0;
@@ -3517,6 +4176,9 @@ const JSCFunctionListEntry s_layer_proto_funcs[] = {
     JS_CFUNC_DEF("getParent", 0, NodeGetParent),
     JS_CFUNC_DEF("getTransformMatrix", 0, NodeGetTransformMatrix),
     JS_CFUNC_DEF("rotateObjectSpace", 1, NodeRotateObjectSpace),
+    JS_CFUNC_DEF("setParent", 2, NodeSetParent),
+    JS_CFUNC_DEF("lookAt", 2, NodeLookAt),
+    JS_CFUNC_DEF("lookAtYaw", 2, NodeLookAtYaw),
     JS_CFUNC_DEF("getChildren", 0, NodeGetChildren),
     JS_CFUNC_DEF("getName", 0, NodeGetName),
     JS_CFUNC_DEF("getLayer", 1, NodeGetLayer),
@@ -3529,11 +4191,17 @@ const JSCFunctionListEntry s_layer_proto_funcs[] = {
     JS_CFUNC_DEF("setCameraTransforms", 1, NodeSceneSetCameraTransforms),
     JS_CFUNC_DEF("getBoneIndex", 1, NodeGetBoneIndex),
     JS_CFUNC_DEF("getBoneTransform", 1, NodeGetBoneTransform),
+    JS_CFUNC_DEF("applyBonePhysicsImpulse", 3, NodeApplyBonePhysicsImpulse),
+    JS_CFUNC_DEF("resetBonePhysicsSimulation", 1, NodeResetBonePhysicsSimulation),
     JS_CFUNC_DEF("getTextureAnimation", 0, NodeGetTextureAnimation),
     JS_CFUNC_DEF("getVideoTexture", 0, NodeGetVideoTexture),
     JS_CFUNC_DEF("emitParticles", 1, NodeEmitParticles),
     JS_CFUNC_DEF("getAnimation", 1, NodeGetAnimation),
-    JS_CFUNC_DEF("getAnimationLayer", 1, NodeGetAnimation),
+    JS_CFUNC_DEF("getAnimationLayer", 1, NodeGetAnimationLayer),
+    JS_CFUNC_DEF("getAnimationLayerCount", 0, NodeGetAnimationLayerCount),
+    JS_CFUNC_DEF("createAnimationLayer", 1, NodeCreateAnimationLayer),
+    JS_CFUNC_DEF("playSingleAnimation", 2, NodePlaySingleAnimation),
+    JS_CFUNC_DEF("destroyAnimationLayer", 1, NodeDestroyAnimationLayer),
     JS_CFUNC_DEF("createLayer", 1, NodeSceneCreateLayer),
     JS_CFUNC_DEF("destroyLayer", 1, NodeSceneDestroyLayer),
     JS_CFUNC_DEF("getLayerIndex", 1, NodeSceneGetLayerIndex),
@@ -3802,6 +4470,8 @@ JsRuntime::~JsRuntime() {
         if (! JS_IsUndefined(d.fn)) JS_FreeValue(m_impl->ctx, d.fn);
     }
     m_impl->host.deferred.clear();
+    for (auto& callback : m_impl->host.ended_callbacks) JS_FreeValue(m_impl->ctx, callback.fn);
+    m_impl->host.ended_callbacks.clear();
     PruneSceneLayerBindings(m_impl->ctx, m_impl->host, nullptr);
     if (m_impl->ctx) JS_FreeContext(m_impl->ctx);
     if (m_impl->rt) JS_FreeRuntime(m_impl->rt);
@@ -3915,10 +4585,20 @@ void JsRuntime::SetMediaStatus(const MediaStatus& status) {
     m_impl->host.active_field_script = nullptr;
 }
 
+void JsRuntime::SetAnimationLayerResolvers(AnimationLayerCreator   creator,
+                                           AnimationLayerDestroyer destroyer) {
+    m_impl->host.animation_layer_creator   = Some(rstd::move(creator));
+    m_impl->host.animation_layer_destroyer = Some(rstd::move(destroyer));
+}
+
 void JsRuntime::SetBoneResolvers(BoneIndexResolver     index_resolver,
                                  BoneTransformResolver transform_resolver) {
     m_impl->host.bone_index_resolver     = Some(rstd::move(index_resolver));
     m_impl->host.bone_transform_resolver = Some(rstd::move(transform_resolver));
+}
+
+void JsRuntime::SetBonePhysicsHandler(BonePhysicsHandler handler) {
+    m_impl->host.bone_physics_handler = Some(rstd::move(handler));
 }
 
 void JsRuntime::SetPersistence(PathBuf path) {
@@ -3948,6 +4628,10 @@ void JsRuntime::RegisterInitialLayerConfig(owe::SceneNode* node, Json config) {
     (void)m_impl->host.initial_layer_configs.insert(node, rstd::move(config));
     (void)m_impl->host.script_layers.insert(node);
     m_impl->host.registered_layer_queries = true;
+}
+
+void JsRuntime::SetAuthoredLayerNames(HashSet<String> names) {
+    m_impl->host.authored_layer_names = Some(rstd::move(names));
 }
 
 void JsRuntime::SetSceneRoot(owe::SceneNode* root) {
@@ -3980,6 +4664,8 @@ void JsRuntime::SetSceneRoot(owe::SceneNode* root) {
 void JsRuntime::TickAll(slice<owe::SceneAnimationEventDispatch> animation_events) {
     JSContext* ctx = m_impl->ctx;
     SweepDeferred(ctx, &m_impl->host);
+    CallEndedCallbacks(ctx, &m_impl->host);
+    RemoveFinishedSinglePlays(&m_impl->host);
     const auto script_count = usize(m_impl->scripts.len().to_primitive());
 
     // Node animations run before scripts; cached script returns must not erase their values.
@@ -4086,7 +4772,7 @@ void JsRuntime::TickAll(slice<owe::SceneAnimationEventDispatch> animation_events
             BindFieldScriptContext(ctx, *I, m_impl->host.default_layer);
             m_impl->host.active_field_script = fs;
             JSValue args[2]                  = { MakeAnimationEvent(ctx, dispatch.event),
-                                                 JS_DupValue(ctx, I->current_value) };
+                                                 CopyFieldValue(ctx, I->current_value) };
             JSValue ret = JS_Call(ctx, I->animation_event_fn, JS_UNDEFINED, 2, args);
             JS_FreeValue(ctx, args[0]);
             JS_FreeValue(ctx, args[1]);
@@ -4120,7 +4806,7 @@ void JsRuntime::TickAll(slice<owe::SceneAnimationEventDispatch> animation_events
         m_impl->host.active_field_script = fs;
         JSValue ret;
         if (I->update_takes_arg) {
-            JSValue args[1] = { JS_DupValue(ctx, I->current_value) };
+            JSValue args[1] = { CopyFieldValue(ctx, I->current_value) };
             ret             = JS_Call(ctx, I->update_fn, JS_UNDEFINED, 1, args);
             JS_FreeValue(ctx, args[0]);
         } else {
@@ -4248,10 +4934,21 @@ void RunFieldScriptInit(JSContext* ctx, JsRuntime::Impl* rt, FieldScript* fs) {
     BindFieldScriptContext(ctx, *I, rt->host.default_layer);
     if (! JS_IsUndefined(rt->wrapped_scene)) BindThisScene(ctx, rt->wrapped_scene);
     rt->host.active_field_script = fs;
-    JSValue arg                  = JS_DupValue(ctx, I->current_value);
+    JSValue arg                  = CopyFieldValue(ctx, I->current_value);
     JSValue r                    = JS_Call(ctx, I->init_fn, JS_UNDEFINED, 1, &arg);
     JS_FreeValue(ctx, arg);
-    if (JS_IsException(r)) rt->LogError(ctx, I->sha.as_str(), "init threw");
+    if (JS_IsException(r)) {
+        rt->LogError(ctx, I->sha.as_str(), "init threw");
+    } else {
+        // What init returns is the property's value, as with update.
+        auto value = CoerceReturn(ctx, r, I->kind);
+        if (! value.is_Empty()) {
+            JSValue next_value = ScriptValueToJs(ctx, value);
+            JS_FreeValue(ctx, I->current_value);
+            I->current_value = next_value;
+            I->last_value    = rstd::move(value);
+        }
+    }
     JS_FreeValue(ctx, r);
     rt->host.active_field_script = nullptr;
     I->init_done                 = true;
@@ -4589,6 +5286,16 @@ void TickSceneScripts(owe::Scene& scene, const FrameInputs& fi) {
     auto script_scene = scene.ExtensionMut<ScriptScene>();
     if (script_scene.is_none()) return;
     auto events = scene.ConsumeAnimationEvents();
+    // Scripts start at the scene's script start, on the scene's clock.
+    if (static_cast<double>(fi.runtime) < scene.ScriptStart()) return;
+    if (auto start = scene.ScriptClock(); start.is_some()) {
+        // the scripts' clock started with the scene: Date and engine.timeOfDay read it
+        auto inputs        = fi;
+        inputs.clock_ms    = Some(*start + static_cast<double>(fi.runtime) * 1000.0);
+        inputs.time_of_day = LocalTimeOfDay(*inputs.clock_ms);
+        (**script_scene).Tick(inputs, events.as_slice());
+        return;
+    }
     (**script_scene).Tick(fi, events.as_slice());
 }
 

@@ -872,16 +872,21 @@ void RenderSceneSnapshot::Rebuild(Scene& scene, RenderSceneVersion version) {
                                                .submesh_index   = item.submesh_index,
                                                .output_override = output_override });
         auto view = index.resolve(item.id);
-        if (node == nullptr || ! node->shadow.cast || view.is_none() || view->material == nullptr ||
-            ! view->material->shadow_variant || m_shadow_definitions.is_empty()) {
+        if (node == nullptr || ! node->shadow.cast || view.is_none() || view->material == nullptr) {
             continue;
         }
-        m_shadow_casters.push(RenderShadowCasterRecord {
-            .render_item = id,
-            .material    = (*view->material->shadow_variant).clone(),
-            .instance_count =
-                rstd::as_cast<u32>(m_shadow_definitions.first().unwrap()->viewports.len()),
-        });
+        const auto& variants = view->material->shadow_variants;
+        for (usize definition {};
+             definition < rstd::cmp::min(variants.len(), m_shadow_definitions.len());
+             ++definition) {
+            m_shadow_casters.push(RenderShadowCasterRecord {
+                .render_item = id,
+                .material    = variants[definition].clone(),
+                .instance_count =
+                    rstd::as_cast<u32>(m_shadow_definitions[definition].viewports.len()),
+                .definition = definition,
+            });
+        }
     }
 
     auto linked_ids = m_linked_layer_ids.iter();
@@ -1001,6 +1006,16 @@ Eigen::Vector3f SceneAnimationTrack::EvaluateVec3(const Eigen::Vector3f& base) c
     return curve->EvaluateVec3(base, playback->Sample());
 }
 
+float SceneAnimationTrack::EvaluateLayerScalar(float value) const {
+    if (curve->c0.is_empty()) return value;
+    // From a base of zero, relative and absolute curves both give the animated value itself.
+    return curve->EvaluateScalar(0.0f, playback->Sample());
+}
+
+Eigen::Vector3f SceneAnimationTrack::EvaluateLayerVec3(const Eigen::Vector3f& value) const {
+    return value + curve->EvaluateVec3(Eigen::Vector3f::Zero(), playback->Sample());
+}
+
 SceneAnimationPlayback::SceneAnimationPlayback(Arc<SceneAnimationClip> clip, bool start_paused)
     : m_clip(rstd::move(clip)) {
     m_start_paused = start_paused;
@@ -1086,6 +1101,15 @@ void SceneAnimationPlayback::Advance(double runtime, Vec<SceneAnimationEvent>& o
             }
         }
     }
+    if (end > 0.0 && now > m_previous_frame) {
+        if (! m_loop && ! m_mirror) {
+            if (m_previous_frame < end && now >= end) m_ended += u64(1);
+        } else {
+            const double from = rstd::cmp::max(m_previous_frame, 0.0);
+            const auto   ends = f64(now / period).floor() - f64(from / period).floor();
+            m_ended += u64(static_cast<rstd::uint64_t>(ends.to_primitive()));
+        }
+    }
     m_previous_frame = now;
     if (passed.is_empty()) return;
     rstd::slice_::sort_unstable_by(passed.as_mut_slice().as_mut_ref(),
@@ -1154,6 +1178,19 @@ auto SceneAnimationPlayback::Sample() const -> SceneAnimationSample {
         frame = rstd::cmp::min(end_frame, rstd::cmp::max(0.0f, frame));
     }
     return { .current = frame, .end = end, .wraps = m_loop && m_clip->WrapLoop() };
+}
+
+void SceneAnimationSet::Unregister(const SceneAnimationPlayback& playback) {
+    const auto* pointer = rstd::addressof(playback);
+    m_players.retain([pointer](const Arc<SceneAnimationPlayback>& value) {
+        return value.as_ptr() != pointer;
+    });
+    m_names.retain([pointer](const auto&, const Arc<SceneAnimationPlayback>& value) {
+        return value.as_ptr() != pointer;
+    });
+    m_properties.retain([pointer](const auto&, const Arc<SceneAnimationPlayback>& value) {
+        return value.as_ptr() != pointer;
+    });
 }
 
 void SceneAnimationSet::Register(Arc<SceneAnimationPlayback> playback) {
@@ -1243,6 +1280,11 @@ void SceneNode::SetAlphaAnimation(SceneAnimationTrack track) {
                       m_base_alpha);
 }
 
+void SceneNode::SetColorAnimation(SceneAnimationTrack track) {
+    SetFieldAnimation(
+        "color"_Str, SceneNodeAnimationTarget::Color, rstd::move(track), m_base_color, 0.0f);
+}
+
 auto SceneNode::FieldAnimation(ref<str> field) const -> Option<Arc<SceneAnimationPlayback>> {
     return m_animations.ForProperty(field);
 }
@@ -1258,21 +1300,45 @@ auto SceneNode::NamedAnimation(ref<str> name) const -> Option<Arc<SceneAnimation
     return m_animations.Named(name);
 }
 
+void SceneNode::RegisterAnimationLayer(Arc<SceneAnimationPlayback> playback) {
+    RegisterAnimation(playback.clone());
+    m_animation_layers.push(rstd::move(playback));
+}
+
+bool SceneNode::UnregisterAnimationLayer(const SceneAnimationPlayback& playback) {
+    const auto* pointer = rstd::addressof(playback);
+    const auto  before  = m_animation_layers.len();
+    m_animation_layers.retain([pointer](const Arc<SceneAnimationPlayback>& value) {
+        return value.as_ptr() != pointer;
+    });
+    if (m_animation_layers.len() == before) return false;
+    m_animations.Unregister(playback);
+    return true;
+}
+
+auto SceneNode::AnimationLayer(usize index) const -> Option<Arc<SceneAnimationPlayback>> {
+    if (index >= m_animation_layers.len()) return None();
+    return Some(m_animation_layers[index].clone());
+}
+
 void SceneNode::TickFieldAnimations(double runtime, Vec<SceneAnimationEventDispatch>& events) {
     m_animations.Advance(*this, runtime, events);
     for (const auto& binding : m_field_animation_tracks) {
         switch (binding.target) {
         case SceneNodeAnimationTarget::Origin:
-            SetTranslate(binding.track.EvaluateVec3(binding.vector_base));
+            SetTranslate(binding.track.EvaluateLayerVec3(binding.vector_base));
             break;
         case SceneNodeAnimationTarget::Scale:
-            SetScale(binding.track.EvaluateVec3(binding.vector_base));
+            SetScale(binding.track.EvaluateLayerVec3(binding.vector_base));
             break;
         case SceneNodeAnimationTarget::Rotation:
-            SetRotation(binding.track.EvaluateVec3(binding.vector_base));
+            SetRotation(binding.track.EvaluateLayerVec3(binding.vector_base));
             break;
         case SceneNodeAnimationTarget::Alpha:
-            SetUserAlpha(binding.track.EvaluateScalar(binding.scalar_base));
+            SetUserAlpha(binding.track.EvaluateLayerScalar(binding.scalar_base));
+            break;
+        case SceneNodeAnimationTarget::Color:
+            SetColor(binding.track.EvaluateLayerVec3(binding.vector_base));
             break;
         }
     }
@@ -1293,7 +1359,8 @@ void SceneCameraPath::ResetQueue() {
 
 void SceneCameraPath::SetEnabled(bool value) {
     if (enabled == value) return;
-    enabled = value;
+    enabled         = value;
+    restore_default = ! value;
     ResetQueue();
 }
 
@@ -1359,6 +1426,7 @@ bool SceneCameraPath::ApplyQueueClip(float frame) {
 bool SceneCameraPath::TickQueue(double runtime) {
     if (queue.is_empty()) return false;
     if (queue_last_runtime.is_none() || runtime < *queue_last_runtime) {
+        if (own_fov.is_some() && camera.is_some()) (**camera).SetFov(*own_fov);
         SelectQueueClip(true);
         queue_last_runtime = Some(runtime);
         return ApplyQueueClip(0.0f);
@@ -1869,6 +1937,14 @@ auto Scene::ScreenToWorld(array<float, 2> position) -> Eigen::Vector3d {
     return world.allFinite() ? world : fallback;
 }
 
+auto CameraEyeLogEntry(const Scene& scene) -> Option<array<double, 4>> {
+    auto camera = scene.ActiveCamera();
+    if (camera.is_none()) return None();
+    const auto eye = (*camera)->GetPosition();
+    return Some(array<double, 4> {
+        scene.Runtime().Frame().elapsed.to_primitive(), eye.x(), eye.y(), eye.z() });
+}
+
 auto Scene::ActiveCameraTransforms() const -> Option<SceneCameraTransforms> {
     auto camera = ActiveCamera();
     if (camera.is_none()) return None();
@@ -2119,13 +2195,13 @@ void Scene::AttachRuntimeNode(SceneNode& parent, Arc<SceneNode> node) {
 }
 
 auto Scene::LayerIndex(const SceneNode& node) const -> Option<usize> {
-    auto* parent = node.Parent();
-    return parent ? parent->ChildIndex(node) : None<usize>();
+    auto* owner = node.Owner();
+    return owner ? owner->ChildIndex(node) : None<usize>();
 }
 
 bool Scene::SortLayer(SceneNode& node, usize index) {
-    auto* parent = node.Parent();
-    if (parent == nullptr || ! parent->MoveChild(node, index)) return false;
+    auto* owner = node.Owner();
+    if (owner == nullptr || ! owner->MoveChild(node, index)) return false;
     m_render_graph_dirty = true;
     return true;
 }
@@ -2809,6 +2885,9 @@ Vec<SceneMaterialDirtyEvent> Scene::ConsumePreparedMaterialDirtyEvents() {
 
 void Scene::TickCameraPaths() {
     if (m_camera_paths.is_empty()) return;
+    // Camera paths start after the camera path delay, their clock that much behind the scene's.
+    const double runtime = m_runtime.Frame().elapsed.to_primitive() - m_camera_path_delay;
+    if (runtime < 0.0) return;
 
     HashSet<String> has_enabled;
     for (const auto& path : m_camera_paths) {
@@ -2819,11 +2898,13 @@ void Scene::TickCameraPaths() {
     HashSet<String> reset;
     for (const auto& path : m_camera_paths) {
         if (! path->enabled) continue;
-        if (path->Tick(m_runtime.Frame().elapsed.to_primitive()))
+        if (path->Tick(runtime))
             touched.insert(path->camera_name.clone());
     }
     for (const auto& path : m_camera_paths) {
-        if (path->enabled || has_enabled.contains(path->camera_name.as_str()) ||
+        if (path->enabled || ! path->restore_default) continue;
+        path->restore_default = false;
+        if (has_enabled.contains(path->camera_name.as_str()) ||
             reset.contains(path->camera_name.as_str()))
             continue;
         if (path->ApplyDefault()) touched.insert(path->camera_name.clone());

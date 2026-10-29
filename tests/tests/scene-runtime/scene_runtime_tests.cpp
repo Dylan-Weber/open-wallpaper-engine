@@ -222,6 +222,57 @@ TEST(TransformUniformSource, UsesResolvedPerspectiveCameraEyePosition) {
     EXPECT_FLOAT_EQ(eye[usize(2)], 3.25f);
 }
 
+TEST(TransformUniformSource, EffectPassesSeeTheSceneCameraEye) {
+    // an effect renders with its own orthographic camera, but Wallpaper Engine gives it the scene's
+    // eye (the clock probe reads the camera path's eye from an effect)
+    auto state  = Arc<owe::UniformSceneState>::make(Arc<owe::AudioResponseDemand>::make());
+    auto camera = Arc<owe::SceneCamera>::make(
+        owe::SceneCamera::MakePerspective(16.0 / 9.0, 0.1, 10000.0, 60.0));
+    camera->SetLookAt(
+        Eigen::Vector3d { 3.0, -1.0, 12.0 }, Eigen::Vector3d::Zero(), Eigen::Vector3d::UnitY());
+    auto resolver = Arc<owe::UniformCameraResolver>::make(rstd::move(camera));
+    resolver->Add(String::make("effect"_str),
+                  Arc<owe::SceneCamera>::make(
+                      owe::SceneCamera::MakeOrthographic(1920.0, 1080.0, -5000.0, 5000.0)));
+    auto scene_node = Arc<owe::SceneNode>::make();
+    scene_node->SetCamera("effect"_str);
+    auto node = Arc<owe::UniformNodeState>::make(rstd::move(scene_node), rstd::move(resolver));
+    owe::TransformUniformSource source(rstd::move(state), rstd::move(node));
+
+    auto eye =
+        scene_test::Capture(owe::SceneFrame {}, source, owe::TransformUniformOutput::EyePosition);
+
+    ASSERT_EQ(eye.size(), usize(3));
+    EXPECT_FLOAT_EQ(eye[usize()], 3.0f);
+    EXPECT_FLOAT_EQ(eye[usize(1)], -1.0f);
+    EXPECT_FLOAT_EQ(eye[usize(2)], 12.0f);
+}
+
+TEST(TransformUniformSource, AFlatSceneEyeIsInFrontOfItsMiddle) {
+    // Wallpaper Engine's 2D scenes report an eye 2000 in front of the middle of the scene
+    // (2560x1440: 1280 720 2000; 1920x1080: 960 540 2000), where owe's orthographic camera sits at
+    // depth 0
+    auto state  = Arc<owe::UniformSceneState>::make(Arc<owe::AudioResponseDemand>::make());
+    auto camera = Arc<owe::SceneCamera>::make(
+        owe::SceneCamera::MakeOrthographic(2560.0, 1440.0, -5000.0, 5000.0));
+    auto camera_node = Arc<owe::SceneNode>::make(Eigen::Vector3f { 1280.0f, 720.0f, 0.0f },
+                                                 Eigen::Vector3f::Ones(),
+                                                 Eigen::Vector3f::Zero());
+    camera->AttatchNode(camera_node.as_ptr());
+    auto resolver   = Arc<owe::UniformCameraResolver>::make(rstd::move(camera));
+    auto scene_node = Arc<owe::SceneNode>::make();
+    auto node = Arc<owe::UniformNodeState>::make(rstd::move(scene_node), rstd::move(resolver));
+    owe::TransformUniformSource source(rstd::move(state), rstd::move(node));
+
+    auto eye =
+        scene_test::Capture(owe::SceneFrame {}, source, owe::TransformUniformOutput::EyePosition);
+
+    ASSERT_EQ(eye.size(), usize(3));
+    EXPECT_FLOAT_EQ(eye[usize()], 1280.0f);
+    EXPECT_FLOAT_EQ(eye[usize(1)], 720.0f);
+    EXPECT_FLOAT_EQ(eye[usize(2)], 2000.0f);
+}
+
 TEST(TransformUniformSource, UsesConfiguredEyePositionBeforePerspectiveCamera) {
     auto state  = Arc<owe::UniformSceneState>::make(Arc<owe::AudioResponseDemand>::make());
     auto camera = Arc<owe::SceneCamera>::make(
@@ -477,6 +528,30 @@ TEST(LightUniformSource, PublishesWorldDirectionAndType) {
     EXPECT_FLOAT_EQ(cast_shadow[usize()], 1.0f);
 }
 
+// A tube light takes the light config's tube count, not the point lights': a scene with one tube light and no
+// point lights still lights through the newer interface.
+TEST(LightUniformSource, ATubeLightTakesTheTubeCount) {
+    auto node = Arc<owe::SceneNode>::make();
+
+    owe::SceneLight::Desc desc;
+    desc.type      = owe::SceneLightType::Tube;
+    desc.color     = { 1.0f, 1.0f, 1.0f };
+    desc.intensity = 2.0f;
+    owe::SceneLight light(desc);
+    light.setNode(node.as_ptr());
+
+    auto lights = Vec<ref<owe::SceneLight>>::make();
+    lights.push(ref<owe::SceneLight>::from_raw_parts(rstd::addressof(light)));
+    owe::LightKindLimits limits;
+    limits.tube = u32(1);
+    owe::LightUniformSource source(rstd::move(lights), Some(limits));
+    owe::SceneFrame         frame;
+
+    auto color = scene_test::Capture(frame, source, owe::LightUniformOutput::LightingV1ColorRadius);
+    ASSERT_EQ(color.size(), usize(16));
+    EXPECT_FLOAT_EQ(color[usize()], 2.0f);
+}
+
 TEST(ShadowUniformSource, UsesAuthoredCascadeExtentAndLightObjectFrame) {
     auto camera =
         Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000.0, 50.0));
@@ -489,10 +564,16 @@ TEST(ShadowUniformSource, UsesAuthoredCascadeExtentAndLightObjectFrame) {
     desc.cascade_distances[0] = 10.0f;
     desc.cascade_distances[1] = 20.0f;
     desc.cascade_distances[2] = 40.0f;
+    desc.shadow_view          = i32();
     owe::SceneLight light(desc);
     light.setNode(light_node.as_ptr());
-    owe::ShadowUniformSource source(rstd::move(camera),
-                                    ref<owe::SceneLight>::from_raw_parts(rstd::addressof(light)));
+    auto lights = Vec<ref<owe::SceneLight>>::make();
+    lights.push(ref<owe::SceneLight>::from_raw_parts(rstd::addressof(light)));
+    // the cascades' squares in a two-column atlas
+    auto transforms = Vec<float>::make();
+    for (float value : { 0.0f, 0.0f, 0.5f, 0.5f, 0.5f, 0.0f, 0.5f, 0.5f, 0.0f, 0.5f, 0.5f, 0.5f })
+        transforms.push(float(value));
+    owe::ShadowUniformSource source(rstd::move(camera), rstd::move(lights), rstd::move(transforms));
 
     owe::SceneFrame frame;
     auto            matrices =
@@ -510,9 +591,229 @@ TEST(ShadowUniformSource, UsesAuthoredCascadeExtentAndLightObjectFrame) {
     auto atlas = scene_test::Capture(frame, source, owe::ShadowUniformOutput::AtlasTransforms);
     ASSERT_EQ(atlas.size(), usize(12));
     EXPECT_FLOAT_EQ(atlas[usize()], 0.0f);
-    EXPECT_FLOAT_EQ(atlas[usize(2)], 1.0f / 3.0f);
-    EXPECT_FLOAT_EQ(atlas[usize(4)], 1.0f / 3.0f);
-    EXPECT_FLOAT_EQ(atlas[usize(8)], 2.0f / 3.0f);
+    EXPECT_FLOAT_EQ(atlas[usize(2)], 0.5f);
+    EXPECT_FLOAT_EQ(atlas[usize(4)], 0.5f);
+    EXPECT_FLOAT_EQ(atlas[usize(8)], 0.0f);
+    EXPECT_FLOAT_EQ(atlas[usize(9)], 0.5f);
+}
+
+// Every shadowed light's views sit at its own place in one list, which each light slot points into
+// (-1: no shadow map).
+// A light's shadow views sit in the slot the light takes, and the slots go to the lights that
+// light: Ocarina of Time's sun comes after four torch lights in a hidden layer.
+TEST(ShadowUniformSource, HiddenLightsLeaveTheirSlotsToTheOthers) {
+    auto camera =
+        Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000.0, 50.0));
+    camera->SetLookAt(Eigen::Vector3d::Zero(), -Eigen::Vector3d::UnitZ(), Eigen::Vector3d::UnitY());
+
+    auto torches = Arc<owe::SceneNode>::make();
+    torches->SetVisible(false);
+    Vec<Arc<owe::SceneNode>>  torch_nodes;
+    Vec<Box<owe::SceneLight>> torch_lights;
+    owe::SceneLight::Desc     torch;
+    torch.type = owe::SceneLightType::Point;
+    for (int index = 0; index < 4; ++index) {
+        torch_nodes.push(Arc<owe::SceneNode>::make());
+        torches->AppendChild(torch_nodes.last_mut().unwrap()->clone());
+        torch_lights.push(Box<owe::SceneLight>::make(torch));
+        (*torch_lights.last_mut().unwrap())->setNode(torch_nodes.last_mut().unwrap()->as_ptr());
+    }
+    auto                  sun_node = Arc<owe::SceneNode>::make();
+    owe::SceneLight::Desc sun_desc;
+    sun_desc.type                 = owe::SceneLightType::Directional;
+    sun_desc.cast_shadow          = true;
+    sun_desc.cascade_distances[0] = 10.0f;
+    sun_desc.shadow_view          = i32(0);
+    owe::SceneLight sun(sun_desc);
+    sun.setNode(sun_node.as_ptr());
+    auto lights = Vec<ref<owe::SceneLight>>::make();
+    for (auto& light : torch_lights)
+        lights.push(ref<owe::SceneLight>::from_raw_parts(light.as_ptr()));
+    lights.push(ref<owe::SceneLight>::from_raw_parts(rstd::addressof(sun)));
+    auto transforms = Vec<float>::make();
+    for (int value = 0; value < 12; ++value) transforms.push(float(value) / 12.0f);
+    owe::ShadowUniformSource source(rstd::move(camera), rstd::move(lights), rstd::move(transforms));
+
+    owe::SceneFrame frame;
+    auto slots = scene_test::Capture(frame, source, owe::ShadowUniformOutput::LightViews);
+    ASSERT_EQ(slots.size(), usize(4));
+    EXPECT_FLOAT_EQ(slots[usize()], 0.0f);
+    for (usize slot { 1 }; slot < usize(4); ++slot)
+        EXPECT_FLOAT_EQ(slots[slot], -1.0f) << "slot " << slot.to_primitive();
+}
+
+TEST(ShadowUniformSource, EachShadowedLightHasItsViews) {
+    auto camera =
+        Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000.0, 50.0));
+    camera->SetLookAt(Eigen::Vector3d::Zero(), -Eigen::Vector3d::UnitZ(), Eigen::Vector3d::UnitY());
+
+    auto                  point_node = Arc<owe::SceneNode>::make();
+    owe::SceneLight::Desc point_desc;
+    point_desc.type = owe::SceneLightType::Point;
+    owe::SceneLight point(point_desc);
+    point.setNode(point_node.as_ptr());
+    auto                  sun_node = Arc<owe::SceneNode>::make();
+    owe::SceneLight::Desc sun_desc;
+    sun_desc.type                 = owe::SceneLightType::Directional;
+    sun_desc.cast_shadow          = true;
+    sun_desc.cascade_distances[0] = 10.0f;
+    sun_desc.shadow_view          = i32(2);
+    owe::SceneLight sun(sun_desc);
+    sun.setNode(sun_node.as_ptr());
+    auto lights = Vec<ref<owe::SceneLight>>::make();
+    lights.push(ref<owe::SceneLight>::from_raw_parts(rstd::addressof(point)));
+    lights.push(ref<owe::SceneLight>::from_raw_parts(rstd::addressof(sun)));
+    auto transforms = Vec<float>::make();
+    for (int value = 0; value < 20; ++value) transforms.push(float(value) / 20.0f);
+    owe::ShadowUniformSource source(rstd::move(camera), rstd::move(lights), rstd::move(transforms));
+
+    owe::SceneFrame frame;
+    auto slots = scene_test::Capture(frame, source, owe::ShadowUniformOutput::LightViews);
+    ASSERT_EQ(slots.size(), usize(4));
+    EXPECT_FLOAT_EQ(slots[usize()], -1.0f);
+    EXPECT_FLOAT_EQ(slots[usize(1)], 2.0f);
+    EXPECT_FLOAT_EQ(slots[usize(2)], -1.0f);
+    EXPECT_FLOAT_EQ(slots[usize(3)], -1.0f);
+
+    auto cascades =
+        scene_test::Capture(frame, source, owe::ShadowUniformOutput::ViewProjectionMatrices);
+    auto views = scene_test::Capture(frame, source, owe::ShadowUniformOutput::Views);
+    ASSERT_EQ(views.size(), usize(24 * 16));
+    for (usize value {}; value < usize(32); ++value) EXPECT_FLOAT_EQ(views[value], 0.0f);
+    for (usize value {}; value < usize(48); ++value)
+        EXPECT_FLOAT_EQ(views[usize(32) + value], cascades[value]);
+    EXPECT_FLOAT_EQ(views[usize(80)], 0.0f);
+
+    auto atlas = scene_test::Capture(frame, source, owe::ShadowUniformOutput::ViewAtlasTransforms);
+    ASSERT_EQ(atlas.size(), usize(24 * 4));
+    for (usize value {}; value < usize(20); ++value)
+        EXPECT_FLOAT_EQ(atlas[value], float(value.to_primitive()) / 20.0f);
+    EXPECT_FLOAT_EQ(atlas[usize(20)], 0.0f);
+}
+
+// A spot light's view looks along it and sees its outer cone, from 0.05 to its radius; nearer is
+// deeper, as the casters keep the greater depth.
+TEST(ShadowUniformSource, SpotLightSeesItsConeFromNearToRadius) {
+    auto camera =
+        Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000.0, 50.0));
+    camera->SetLookAt(Eigen::Vector3d::Zero(), -Eigen::Vector3d::UnitZ(), Eigen::Vector3d::UnitY());
+    auto                  spot_node = Arc<owe::SceneNode>::make(Eigen::Vector3f(1.0f, 2.0f, 5.0f),
+                                                                Eigen::Vector3f::Ones(),
+                                                                Eigen::Vector3f(0.3f, 1.2f, 0.0f),
+                                                                "spot"_str);
+    owe::SceneLight::Desc desc;
+    desc.type           = owe::SceneLightType::Spot;
+    desc.cast_shadow    = true;
+    desc.radius         = 10.0f;
+    desc.outer_cone_cos = std::cos(30.0f * 3.14159265f / 180.0f);
+    desc.shadow_view    = i32();
+    owe::SceneLight spot(desc);
+    spot.setNode(spot_node.as_ptr());
+    auto lights = Vec<ref<owe::SceneLight>>::make();
+    lights.push(ref<owe::SceneLight>::from_raw_parts(rstd::addressof(spot)));
+    owe::ShadowUniformSource source(rstd::move(camera), rstd::move(lights), Vec<float>::make());
+
+    owe::SceneFrame frame;
+    auto slots = scene_test::Capture(frame, source, owe::ShadowUniformOutput::LightViews);
+    EXPECT_FLOAT_EQ(slots[usize()], 0.0f);
+    auto            views = scene_test::Capture(frame, source, owe::ShadowUniformOutput::Views);
+    Eigen::Matrix4f view_projection;
+    for (int value = 0; value < 16; ++value) view_projection.data()[value] = views[usize(value)];
+
+    spot_node->UpdateTrans();
+    const Eigen::Matrix4d model    = spot_node->ModelTrans();
+    const Eigen::Vector3f position = model.block<3, 1>(0, 3).cast<float>();
+    const Eigen::Vector3f forward =
+        (model.block<3, 3>(0, 0) * Eigen::Vector3d::UnitX()).normalized().cast<float>();
+    const Eigen::Vector3f side    = forward.cross(Eigen::Vector3f::UnitY()).normalized();
+    const auto            project = [&](const Eigen::Vector3f& point) {
+        const Eigen::Vector4f clip = view_projection * point.homogeneous();
+        return Eigen::Vector3f(clip.x() / clip.w(), clip.y() / clip.w(), clip.z() / clip.w());
+    };
+    const auto ahead = project(position + forward * 5.0f);
+    EXPECT_NEAR(ahead.x(), 0.0f, 1e-4f);
+    EXPECT_NEAR(ahead.y(), 0.0f, 1e-4f);
+    EXPECT_NEAR(ahead.z(), 0.05f * 5.0f / (5.0f * 9.95f), 1e-5f);
+    EXPECT_NEAR(project(position + forward * 0.05f).z(), 1.0f, 1e-4f);
+    EXPECT_NEAR(project(position + forward * 10.0f).z(), 0.0f, 1e-4f);
+    // the cone's edge is the view's edge
+    const auto edge =
+        project(position + forward * 5.0f + side * (5.0f * std::tan(30.0f * 3.14159265f / 180.0f)));
+    EXPECT_NEAR(std::abs(edge.x()), 1.0f, 1e-4f);
+    EXPECT_NEAR(edge.y(), 0.0f, 1e-4f);
+}
+
+// A point light's six views look down +x, -x, +y, -y, +z and -z from it, turned as the stock point
+// lookup (CalculateProjectedCoordsPoint) expects, 94 degrees wide at medium shadows (its 0.47
+// compensation); its light slot carries the depth terms the lookup projects with, from
+// `lightsourcesize` (at least 0.05) to its radius, nearer deeper.
+TEST(ShadowUniformSource, PointLightSeesSixFacesFromItsSizeToRadius) {
+    struct Case {
+        owe::ShadowQuality quality;
+        float              degrees; // half the faces' width
+    };
+    const Case cases[] { { owe::ShadowQuality::Medium, 47.0f },
+                         { owe::ShadowQuality::High, 46.0f },
+                         { owe::ShadowQuality::Ultra, 45.6f } };
+    for (const auto& [quality, degrees] : cases) {
+    auto camera =
+        Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000.0, 50.0));
+    camera->SetLookAt(Eigen::Vector3d::Zero(), -Eigen::Vector3d::UnitZ(), Eigen::Vector3d::UnitY());
+    auto                  point_node = Arc<owe::SceneNode>::make(Eigen::Vector3f(1.0f, 2.0f, 3.0f),
+                                                                 Eigen::Vector3f::Ones(),
+                                                                 Eigen::Vector3f::Zero(),
+                                                                 "point"_str);
+    owe::SceneLight::Desc desc;
+    desc.type              = owe::SceneLightType::Point;
+    desc.cast_shadow       = true;
+    desc.radius            = 10.0f;
+    desc.light_source_size = 0.2f;
+    desc.shadow_view       = i32(2);
+    owe::SceneLight point(desc);
+    point.setNode(point_node.as_ptr());
+    auto lights = Vec<ref<owe::SceneLight>>::make();
+    lights.push(ref<owe::SceneLight>::from_raw_parts(rstd::addressof(point)));
+    owe::ShadowUniformSource source(
+        rstd::move(camera), rstd::move(lights), Vec<float>::make(), quality);
+
+    owe::SceneFrame frame;
+    auto slots = scene_test::Capture(frame, source, owe::ShadowUniformOutput::LightViews);
+    EXPECT_FLOAT_EQ(slots[usize()], 2.0f);
+    const float nearz = 0.2f, farz = 10.0f;
+    auto        projections =
+        scene_test::Capture(frame, source, owe::ShadowUniformOutput::PointProjections);
+    ASSERT_EQ(projections.size(), usize(16));
+    EXPECT_NEAR(projections[usize()], nearz / (farz - nearz), 1e-6f);
+    EXPECT_NEAR(projections[usize(1)], nearz * farz / (farz - nearz), 1e-6f);
+    EXPECT_FLOAT_EQ(projections[usize(2)], -1.0f);
+    EXPECT_FLOAT_EQ(projections[usize(3)], 0.0f);
+
+    auto views = scene_test::Capture(frame, source, owe::ShadowUniformOutput::Views);
+    const Eigen::Vector3f light(1.0f, 2.0f, 3.0f);
+    // each face's direction, sideways and upwards axes
+    const float faces[6][3][3] = {
+        { { 1, 0, 0 }, { 0, 0, 1 }, { 0, 1, 0 } },  { { -1, 0, 0 }, { 0, 0, -1 }, { 0, 1, 0 } },
+        { { 0, 1, 0 }, { 1, 0, 0 }, { 0, 0, 1 } },  { { 0, -1, 0 }, { 1, 0, 0 }, { 0, 0, -1 } },
+        { { 0, 0, 1 }, { -1, 0, 0 }, { 0, 1, 0 } }, { { 0, 0, -1 }, { 1, 0, 0 }, { 0, 1, 0 } },
+    };
+    // the faces are wider than a cube's (94, 92 and 91.2 degrees), as the lookup's 0.47, 0.48 and
+    // 0.49 compensation at medium, high and ultra shadows undoes
+    const float focal = 1.0f / std::tan(degrees * 3.14159265f / 180.0f);
+    for (int face = 0; face < 6; ++face) {
+        Eigen::Matrix4f view_projection;
+        for (int value = 0; value < 16; ++value)
+            view_projection.data()[value] = views[usize((2 + face) * 16 + value)];
+        const Eigen::Vector3f ahead(faces[face][0][0], faces[face][0][1], faces[face][0][2]);
+        const Eigen::Vector3f side(faces[face][1][0], faces[face][1][1], faces[face][1][2]);
+        const Eigen::Vector3f up(faces[face][2][0], faces[face][2][1], faces[face][2][2]);
+        const Eigen::Vector4f clip =
+            view_projection * (light + ahead * 3.0f + side * 0.6f + up * 0.3f).homogeneous();
+        EXPECT_NEAR(clip.x() / clip.w(), focal * 0.6f / 3.0f, 1e-4f) << face;
+        EXPECT_NEAR(clip.y() / clip.w(), focal * 0.3f / 3.0f, 1e-4f) << face;
+        EXPECT_NEAR(clip.z() / clip.w(), nearz * (farz - 3.0f) / (3.0f * (farz - nearz)), 1e-5f)
+            << face;
+    }
+    }
 }
 
 TEST(TextureUniformSource, PublishesUnreducedTextureScale) {
@@ -1014,6 +1315,89 @@ TEST(SceneParserText, ScriptSceneExposesTextWritesWithoutSourceInspection) {
     EXPECT_NE(value->Mesh()->DirtyFlags(), owe::SceneMeshDirtyNone);
 }
 
+// Scripts can start later than the scene (Wallpaper Engine hadn't run Ocarina of Time's 2.6 s in),
+// but engine.runtime is the scene's clock all the same (its other wallpapers' scripts read g_Time).
+TEST(SceneScripts, StartAtTheScriptStart) {
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {},
+            "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+            "objects": [{
+                "id": 1,
+                "name": "Mover",
+                "origin": {
+                    "value": "5 0 0",
+                    "script": "export function update(value) { value.x = engine.runtime; return value; }"
+                },
+                "angles": "0 0 0",
+                "scale": "1 1 1"
+            }]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+
+    owe::fs::VFS                vfs;
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "script-delay"_str,
+        ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto  scene = rstd::move(parsed).unwrap();
+    auto* mover = scene.scene->RootMut()->FindByName("Mover"_str);
+    ASSERT_NE(mover, nullptr);
+    scene.scene->SetScriptStart(2.0);
+
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs { .runtime = 1.0f });
+    EXPECT_FLOAT_EQ(mover->Translate().x(), 5.0f);
+
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs { .runtime = 3.5f });
+    EXPECT_FLOAT_EQ(mover->Translate().x(), 3.5f);
+}
+
+TEST(SceneScripts, DateFollowsTheScriptClock) {
+    // a reference's scripts saw the VM's clock: a scene can run its scripts' Date, and
+    // engine.timeOfDay, on a given clock that starts with the scene
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {},
+            "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+            "objects": [{
+                "id": 1,
+                "name": "Clock",
+                "origin": {
+                    "value": "0 0 0",
+                    "script": "export function update(value) { const now = new Date(); value.x = (Date.now() - 1793000000000) / 1000; value.y = (now.getTime() - 1793000000000) / 1000; value.z = engine.timeOfDay * 86400 - (now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds() + now.getMilliseconds() / 1000); return value; }"
+                },
+                "angles": "0 0 0",
+                "scale": "1 1 1"
+            }]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+
+    owe::fs::VFS                vfs;
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "script-clock"_str,
+        ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto  scene = rstd::move(parsed).unwrap();
+    auto* clock = scene.scene->RootMut()->FindByName("Clock"_str);
+    ASSERT_NE(clock, nullptr);
+    scene.scene->SetScriptClock(Some(1793000005000.0));
+
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs { .runtime = 2.5f });
+    EXPECT_NEAR(clock->Translate().x(), 7.5f, 1.0e-3f);
+    EXPECT_NEAR(clock->Translate().y(), 7.5f, 1.0e-3f);
+    EXPECT_NEAR(clock->Translate().z(), 0.0f, 0.05f);
+}
+
 TEST(SceneParserText, AlignmentDoesNotMoveChildFrames) {
     for (auto blend_mode : { "0"_str, "11"_str }) {
         auto document = owe::wpscene::ParseSceneDocumentJson(
@@ -1503,6 +1887,50 @@ TEST(CameraShake, RuntimeUpdatesLinkedViewAndClearsDisabledOrPreviousCamera) {
     EXPECT_TRUE(effect->GetPosition().isZero());
 }
 
+// Without authored distances the cascades are 3, 10 and 100 wide (Wallpaper Engine's defaults,
+// not the camera's far plane), as deep as four times the second; their centres move in whole
+// texels of their 256-pixel squares, so the shadow doesn't shimmer as the camera moves.
+TEST(ShadowUniformSource, CascadesDefaultToThreeTenAndAHundredInWholeTexels) {
+    auto camera =
+        Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000.0, 50.0));
+    const Eigen::Vector3d eye(0.013, -0.021, 0.0);
+    camera->SetLookAt(eye, eye - Eigen::Vector3d::UnitZ(), Eigen::Vector3d::UnitY());
+    auto                  light_node = Arc<owe::SceneNode>::make();
+    owe::SceneLight::Desc desc;
+    desc.type        = owe::SceneLightType::Directional;
+    desc.cast_shadow = true;
+    desc.shadow_view = i32();
+    owe::SceneLight light(desc);
+    light.setNode(light_node.as_ptr());
+    auto lights = Vec<ref<owe::SceneLight>>::make();
+    lights.push(ref<owe::SceneLight>::from_raw_parts(&light));
+    owe::ShadowUniformSource source(camera.clone(), rstd::move(lights), Vec<float>::make());
+
+    auto matrices = scene_test::Capture(
+        owe::SceneFrame {}, source, owe::ShadowUniformOutput::ViewProjectionMatrices);
+    ASSERT_EQ(matrices.size(), usize(96));
+    // widths
+    EXPECT_NEAR(matrices[usize(8)], 2.0f / 3.0f, 1e-6f);
+    EXPECT_NEAR(matrices[usize(16 + 8)], 2.0f / 10.0f, 1e-6f);
+    EXPECT_NEAR(matrices[usize(32 + 8)], 2.0f / 100.0f, 1e-6f);
+    // depths: four times the second width (and 1.5 times the third, if more)
+    EXPECT_NEAR(matrices[usize(2)], -1.0f / 40.0f, 1e-6f);
+    EXPECT_NEAR(matrices[usize(32 + 2)], -1.0f / 150.0f, 1e-6f);
+    // the light's x and y axes see the eye's z and y: each centre is a whole number of texels
+    for (usize cascade {}; cascade < usize(3); ++cascade) {
+        const float width = cascade == usize() ? 3.0f : cascade == usize(1) ? 10.0f : 100.0f;
+        const float texel = width / 256.0f;
+        for (usize axis {}; axis < usize(2); ++axis) {
+            const float scale  = matrices[cascade * usize(16) + axis * usize(5) +
+                                          (axis == usize() ? usize(8) : usize())];
+            const float offset = matrices[cascade * usize(16) + usize(12) + axis];
+            const float centre = -offset / scale;
+            EXPECT_NEAR(centre / texel, std::round(centre / texel), 1e-3f)
+                << cascade.to_primitive();
+        }
+    }
+}
+
 TEST(ShadowUniformSource, CascadeCentersUseFinalCameraPosition) {
     auto camera =
         Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000, 50));
@@ -1513,9 +1941,12 @@ TEST(ShadowUniformSource, CascadeCentersUseFinalCameraPosition) {
     owe::SceneLight::Desc desc;
     desc.type        = owe::SceneLightType::Directional;
     desc.cast_shadow = true;
+    desc.shadow_view = i32();
     owe::SceneLight light(desc);
     light.setNode(light_node.as_ptr());
-    owe::ShadowUniformSource source(camera.clone(), ref<owe::SceneLight>::from_raw_parts(&light));
+    auto lights = Vec<ref<owe::SceneLight>>::make();
+    lights.push(ref<owe::SceneLight>::from_raw_parts(&light));
+    owe::ShadowUniformSource source(camera.clone(), rstd::move(lights), Vec<float>::make());
     auto                     translated = scene_test::Capture(
         owe::SceneFrame {}, source, owe::ShadowUniformOutput::ViewProjectionMatrices);
     camera->SetViewOffset(Eigen::Vector3d::Zero());
@@ -1526,6 +1957,26 @@ TEST(ShadowUniformSource, CascadeCentersUseFinalCameraPosition) {
     ASSERT_EQ(translated.size(), explicit_camera.size());
     for (usize index {}; index < translated.size(); ++index)
         EXPECT_FLOAT_EQ(translated[index], explicit_camera[index]);
+}
+
+TEST(SceneCameraPath, EyeLogGivesTheClockAndTheEye) {
+    // SceneViewer --camera-eye-log: Wallpaper Engine's camera paths run behind its clock, so a
+    // reference's eye (the clock probe's) is matched against owe's eye frame by frame
+    owe::Scene scene;
+    EXPECT_TRUE(owe::CameraEyeLogEntry(scene).is_none());
+    auto camera = Arc<owe::SceneCamera>::make(
+        owe::SceneCamera::MakePerspective(16.0 / 9.0, 0.01, 1000.0, 45.0));
+    camera->SetLookAt({ 1.5, -2.0, 5.25 }, { 0.0, 0.0, 0.0 }, { 0.0, 1.0, 0.0 });
+    camera->Update();
+    scene.RegisterCamera(String::make("global"_str), camera.clone());
+    ASSERT_TRUE(scene.SetActiveCamera("global"_str));
+    scene.PassFrameTime(0.5);
+    auto entry = owe::CameraEyeLogEntry(scene);
+    ASSERT_TRUE(entry.is_some());
+    EXPECT_NEAR((*entry)[usize()], 0.5, 1.0e-9);
+    EXPECT_NEAR((*entry)[usize(1)], 1.5, 1.0e-9);
+    EXPECT_NEAR((*entry)[usize(2)], -2.0, 1.0e-9);
+    EXPECT_NEAR((*entry)[usize(3)], 5.25, 1.0e-9);
 }
 
 TEST(SceneCameraPath, UserBindingMutatesRegisteredArc) {
@@ -2442,4 +2893,139 @@ TEST(UniformSourceParallax, PerspectiveWithAuthoredParallaxDepthAppliesShift) {
                          mvp_with_parallax[rstd::usize(12)]) > 1e-5f ||
                 std::abs(mvp_without_parallax[rstd::usize(13)] -
                          mvp_with_parallax[rstd::usize(13)]) > 1e-5f);
+}
+
+// Ocarina of Time's "Look At Events" camera layers are hidden unless that camera type is chosen,
+// while its manual camera script sets the camera each frame: a hidden layer must not take it back.
+TEST(SceneCameraPath, HiddenCameraLayerLeavesTheCameraToOthers) {
+    owe::Scene scene;
+    auto       camera = Arc<owe::SceneCamera>::make(
+        owe::SceneCamera::MakePerspective(16.0 / 9.0, 0.01, 1000.0, 50.0));
+    auto node = Arc<owe::SceneNode>::make();
+    node->SetTranslate({ 100.0f, 200.0f, 300.0f });
+
+    auto path               = Arc<owe::SceneCameraPath>::make();
+    path->camera_name       = "global_perspective"_Str;
+    path->camera            = Some(camera.clone());
+    path->node              = node.as_ptr();
+    path->default_translate = node->Translate();
+    path->perspective       = true;
+    path->enabled           = false;
+    scene.RegisterCameraPath(path.clone());
+
+    camera->SetLookAt({ 1.0, 2.0, 3.0 }, { 0.0, 0.0, 0.0 }, { 0.0, 1.0, 0.0 });
+    camera->Update();
+    scene.TickCameraPaths();
+
+    EXPECT_TRUE(camera->IsLookAt());
+    EXPECT_DOUBLE_EQ(camera->Transforms().eye.x(), 1.0);
+    EXPECT_DOUBLE_EQ(camera->Transforms().eye.y(), 2.0);
+    EXPECT_DOUBLE_EQ(camera->Transforms().eye.z(), 3.0);
+}
+
+TEST(SceneCameraPath, CameraLayerRestoresTheDefaultWhenHidden) {
+    owe::Scene scene;
+    auto       camera = Arc<owe::SceneCamera>::make(
+        owe::SceneCamera::MakePerspective(16.0 / 9.0, 0.01, 1000.0, 50.0));
+    auto node = Arc<owe::SceneNode>::make();
+    node->SetTranslate({ 100.0f, 200.0f, 300.0f });
+
+    auto path            = Arc<owe::SceneCameraPath>::make();
+    path->camera_name    = "global_perspective"_Str;
+    path->camera         = Some(camera.clone());
+    path->node           = node.as_ptr();
+    path->perspective    = true;
+    path->default_lookat = true;
+    path->default_eye    = { 0.0f, 0.0f, 5.0f };
+    path->default_center = { 0.0f, 0.0f, 0.0f };
+    path->default_up     = { 0.0f, 1.0f, 0.0f };
+    scene.RegisterCameraPath(path.clone());
+
+    scene.TickCameraPaths();
+    EXPECT_FALSE(camera->IsLookAt());
+
+    path->SetEnabled(false);
+    scene.TickCameraPaths();
+    EXPECT_TRUE(camera->IsLookAt());
+    EXPECT_DOUBLE_EQ(camera->Transforms().eye.z(), 5.0);
+}
+
+// A camera layer's field of view is its own: one that doesn't drive the camera leaves the
+// scene's (Ocarina of Time has ten camera layers on the default camera, from 25 to 73 degrees;
+// before any drives it, Wallpaper Engine shows the scene's 50).
+TEST(SceneParserCameraLayer, OnlyADrivingLayerSetsTheFieldOfView) {
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": { "center": "0 0 0", "eye": "0 1 5", "up": "0 1 0" },
+            "general": { "orthogonalprojection": null, "fov": 50 },
+            "objects": [
+                { "id": 1, "name": "Events", "origin": "0 0 0", "visible": false },
+                { "id": 2, "name": "Cam Guest", "camera": "default", "origin": "1 2 3",
+                  "angles": "0 0 0", "fov": 30, "parent": 1,
+                  "visible": { "value": false,
+                               "script": "export function update(value) { return true; }" } },
+                { "id": 3, "name": "Cam Time", "camera": "default", "origin": "4 5 6",
+                  "angles": "0 0 0", "fov": 70, "visible": false }
+            ]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    owe::fs::VFS                vfs;
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "camera-layer-fov"_str,
+        ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene  = rstd::move(parsed).unwrap();
+    auto camera = scene.scene->ActiveCamera();
+    ASSERT_TRUE(camera.is_some());
+    EXPECT_DOUBLE_EQ((**camera).Fov(), 50.0);
+    scene.scene->TickCameraPaths();
+    EXPECT_DOUBLE_EQ((**camera).Fov(), 50.0);
+}
+
+// A camera layer's visible script decides whether it drives the camera, while its parents are
+// shown (Ocarina of Time's scripts pick one of its "Look At Events" cameras, all under a layer
+// that only shows when that camera type is chosen).
+TEST(SceneParserCameraLayer, VisibleScriptsDecideWhichLayerDrivesTheCamera) {
+    auto parse = [](bool parent_visible) {
+        auto json = rstd::format(R"JSON({{
+            "camera": {{ "center": "0 0 0", "eye": "0 1 5", "up": "0 1 0" }},
+            "general": {{ "orthogonalprojection": null, "fov": 50 }},
+            "objects": [
+                {{ "id": 1, "name": "Cameras", "origin": "0 0 0", "visible": {} }},
+                {{ "id": 2, "name": "Cam", "camera": "default", "origin": "10 20 30",
+                   "angles": "0 0 0", "fov": 50, "parent": 1,
+                   "visible": {{ "value": false,
+                                 "script": "export function update(value) {{ return true; }}" }} }}
+            ]
+        }})JSON",
+                                 parent_visible ? "true" : "false");
+        return owe::wpscene::ParseSceneDocumentJson(json.as_str(),
+                                                    owe::wpscene::kSceneVersionUnknown);
+    };
+    for (bool parent_visible : { true, false }) {
+        auto document = parse(parent_visible);
+        ASSERT_TRUE(document.is_some());
+        owe::fs::VFS                vfs;
+        wavsen::audio::SoundManager sound_manager;
+        owe::SceneParser            parser;
+        auto                        parsed = parser.Parse(
+            "camera-visible-script"_str,
+            ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+            mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+            mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+        ASSERT_TRUE(parsed.is_ok());
+        auto scene = rstd::move(parsed).unwrap();
+        owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+        scene.scene->TickCameraPaths();
+        auto camera = scene.scene->ActiveCamera();
+        ASSERT_TRUE(camera.is_some());
+        EXPECT_FLOAT_EQ(static_cast<float>((**camera).GetPosition().x()),
+                        parent_visible ? 10.0f : 0.0f)
+            << "parent visible: " << parent_visible;
+    }
 }

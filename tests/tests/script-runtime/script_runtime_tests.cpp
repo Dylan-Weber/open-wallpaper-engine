@@ -131,6 +131,87 @@ TEST(ScriptInitialization, UsesSceneOwnerOrderInsteadOfRegistrationOrder) {
     EXPECT_EQ(LastScalar(consumer), 7.0);
 }
 
+TEST(ScriptVector, MethodsFollowTheSceneScriptReference) {
+    JsRuntime rt;
+    auto*     script = rt.MakeFieldScript(
+        R"JS(
+            function near(a, b, e) { return Math.abs(a - b) < (e === undefined ? 1e-4 : e); }
+            function nearV(v, ...c) {
+                const k = [v.x, v.y, v.z, v.w];
+                return c.every((x, i) => near(k[i], x));
+            }
+            const checks = [
+                ["Vec.dot", () => { return (typeof new Vec3(1, 2, 3).dot(new Vec3(4, 5, 6)) === 'number' && new Vec3(1, 2, 3).dot(new Vec3(4, 5, 6)) === 32 && new Vec2(1, 2).dot(new Vec2(3, 4)) === 11); }],
+                ["Vec.cross", () => { return (nearV(new Vec3(1, 0, 0).cross(new Vec3(0, 1, 0)), 0, 0, 1) && nearV(new Vec3(0, 0, -1).cross(new Vec3(0, 1, 0)), 1, 0, 0)); }],
+                ["Vec.length", () => { return (new Vec3(3, 4, 0).length() === 5 && new Vec3(1, 2, 2).lengthSqr() === 9 && new Vec2(3, 4).length() === 5); }],
+                ["Vec.normalize", () => { return (nearV(new Vec3(0, 0, -5).normalize(), 0, 0, -1) && nearV(new Vec2(3, 4).normalize(), 0.6, 0.8)); }],
+                ["Vec.subtract", () => { return (nearV(new Vec3(5, 5, 5).subtract(new Vec3(1, 2, 3)), 4, 3, 2) && nearV(new Vec2(5, 5).subtract(1), 4, 4)); }],
+                ["Vec.divide", () => { return (nearV(new Vec3(8, 6, 4).divide(new Vec3(2, 3, 4)), 4, 2, 1)); }],
+                ["Vec.minMax", () => { return (nearV(new Vec3(1, 5, 3).min(new Vec3(2, 2, 2)), 1, 2, 2) && nearV(new Vec3(1, 5, 3).max(new Vec3(2, 2, 2)), 2, 5, 3)); }],
+                ["Vec.rounding", () => { return (nearV(new Vec3(-1.5, 2.4, 2.6).abs(), 1.5, 2.4, 2.6) && nearV(new Vec3(-1.5, 0, 2).sign(), -1, 0, 1) && nearV(new Vec3(1.4, 1.6, -1.4).round(), 1, 2, -1) && nearV(new Vec3(1.5, -1.5, 2).floor(), 1, -2, 2) && nearV(new Vec3(1.5, -1.5, 2).ceil(), 2, -1, 2)); }],
+                ["Vec.mix", () => { return (nearV(new Vec3(0, 0, 0).mix(new Vec3(10, 20, 30), 0.5), 5, 10, 15)); }],
+                ["Vec.equalsCopy", () => { return (new Vec3(1, 2, 3).equals(new Vec3(1, 2, 3)) && !new Vec3(1, 2, 3).equals(new Vec3(1, 2, 4)) && nearV(new Vec3(1, 2, 3).copy(), 1, 2, 3)); }],
+                ["Vec2.distance", () => { return (new Vec2(0, 0).distance(new Vec2(3, 4)) === 5); }],
+                ["Vec2.distanceSqr", () => { return (new Vec2(0, 0).distanceSqr(new Vec2(3, 4)) === 25); }],
+                ["Vec2.isFinite", () => { return (new Vec2(1, 2).isFinite() === true && new Vec2(1, Infinity).isFinite() === false); }],
+                ["Vec2.negate", () => { return (nearV(new Vec2(1, -2).negate(), -1, 2)); }],
+                ["Vec2.reflect", () => { return (nearV(new Vec2(1, -1).reflect(new Vec2(0, 1)), 1, 1)); }],
+                ["Vec2.perpendicular", () => { return (nearV(new Vec2(1, 0).perpendicular(), 0, 1)); }],
+                ["Vec2.project", () => { return (nearV(new Vec2(2, 2).project(new Vec2(1, 0)), 2, 0)); }],
+                ["Vec2.angle", () => { return (near(new Vec2(0, 1).angle(), 90)); }],
+                ["Vec2.angleBetween", () => { return (near(new Vec2(1, 0).angleBetween(new Vec2(0, 1)), 90) && near(new Vec2(0, 1).angleBetween(new Vec2(1, 0)), -90)); }],
+                ["Vec2.rotate", () => { return (nearV(new Vec2(1, 0).rotate(90), 0, 1)); }],
+                ["Vec2.mix.vector", () => { return (nearV(new Vec2(0, 0).mix(new Vec2(10, 10), new Vec2(0.5, 1)), 5, 10)); }],
+                ["Vec2.mix.number", () => { return (nearV(new Vec2(0, 0).mix(new Vec2(10, 10), 0.5), 5, 5)); }],
+                ["Vec2.clamp", () => { return (nearV(new Vec2(-1, 5).clamp(0, 2), 0, 2) && nearV(new Vec2(-1, 5).clamp(new Vec2(0, 0), new Vec2(1, 9)), 0, 5)); }],
+                ["Vec2.fract", () => { return (nearV(new Vec2(1.25, -0.25).fract(), 0.25, 0.75)); }],
+                ["Vec2.mod", () => { return (nearV(new Vec2(5.5, -1).mod(2), 1.5, 1) && nearV(new Vec2(5, 5).mod(new Vec2(2, 3)), 1, 2)); }],
+                ["Vec2.step", () => { return (nearV(new Vec2(0.2, 0.8).step(0.5), 0, 1)); }],
+                ["Vec2.smoothStep", () => { return (nearV(new Vec2(0.5, 2).smoothStep(0, 1), 0.5, 1)); }],
+                ["Vec2.ctor.empty", () => { return (nearV(new Vec2(), 0, 0)); }],
+                ["Vec2.ctor.number", () => { return (nearV(new Vec2(4), 4, 4)); }],
+                ["Vec2.ctor.xy", () => { return (nearV(new Vec2(1, 2), 1, 2)); }],
+                ["Vec2.ctor.vec3", () => { return (nearV(new Vec2(new Vec3(1, 2, 3)), 1, 2)); }],
+                ["Vec2.arithmetic", () => { return (nearV(new Vec2(1, 2).add(1), 2, 3) && nearV(new Vec2(1, 2).multiply(new Vec2(2, 3)), 2, 6) && nearV(new Vec2(4, 6).divide(2), 2, 3)); }],
+                ["Vec3.distance", () => { return (new Vec3(1, 1, 1).distance(new Vec3(1, 1, 4)) === 3 && new Vec3(1, 1, 1).distanceSqr(new Vec3(1, 1, 4)) === 9); }],
+                ["Vec3.isFinite", () => { return (new Vec3(1, 2, 3).isFinite() && !new Vec3(NaN, 0, 0).isFinite()); }],
+                ["Vec3.negate", () => { return (nearV(new Vec3(1, -2, 3).negate(), -1, 2, -3)); }],
+                ["Vec3.reflect", () => { return (nearV(new Vec3(1, -1, 0).reflect(new Vec3(0, 1, 0)), 1, 1, 0)); }],
+                ["Vec3.refract", () => { return (nearV(new Vec3(0, -1, 0).refract(new Vec3(0, 1, 0), 1), 0, -1, 0) && nearV(new Vec3(0.9, -0.1, 0).normalize().refract(new Vec3(0, 1, 0), 1.5), 0, 0, 0)); }],
+                ["Vec3.project", () => { return (nearV(new Vec3(2, 3, 4).project(new Vec3(0, 0, 1)), 0, 0, 4)); }],
+                ["Vec3.angleBetween", () => { return (near(new Vec3(1, 0, 0).angleBetween(new Vec3(0, 1, 0)), 90) && near(new Vec3(1, 0, 0).angleBetween(new Vec3(-1, 0, 0)), 180)); }],
+                ["Vec3.fromSpherical", () => { return (nearV(Vec3.fromSpherical(2, 90, 0), 2, 0, 0) && nearV(Vec3.fromSpherical(3, 0, 0), 0, 3, 0) && nearV(Vec3.fromSpherical(1, 90, 90), 0, 0, 1)); }],
+                ["Vec3.toSpherical", () => { const s = new Vec3(0, 0, 5).toSpherical(); return nearV(s, 5, 90, 90); }],
+                ["Vec3.mix.vector", () => { return (nearV(new Vec3(0, 0, 0).mix(new Vec3(10, 10, 10), new Vec3(0.5, 1, 0)), 5, 10, 0)); }],
+                ["Vec3.clamp", () => { return (nearV(new Vec3(-1, 5, 1).clamp(0, 2), 0, 2, 1)); }],
+                ["Vec3.fract", () => { return (nearV(new Vec3(1.5, 2.25, -0.5).fract(), 0.5, 0.25, 0.5)); }],
+                ["Vec3.mod", () => { return (nearV(new Vec3(5, 5, 5).mod(new Vec3(2, 3, 4)), 1, 2, 1)); }],
+                ["Vec3.step", () => { return (nearV(new Vec3(0.2, 0.8, 0.5).step(0.5), 0, 1, 1)); }],
+                ["Vec3.smoothStep", () => { return (nearV(new Vec3(0, 0.5, 1).smoothStep(0, 1), 0, 0.5, 1)); }],
+                ["Vec3.ctor.number", () => { return (nearV(new Vec3(7), 7, 7, 7)); }],
+                ["Vec3.ctor.xy", () => { return (nearV(new Vec3(1, 2), 1, 2, 0)); }],
+                ["Vec3.ctor.vec2", () => { return (nearV(new Vec3(new Vec2(1, 2)), 1, 2, 0)); }],
+                ["Vec4.methods", () => { return (nearV(new Vec4(1, 2, 3, 4).negate(), -1, -2, -3, -4) && near(new Vec4(0, 0, 0, 0).distance(new Vec4(1, 2, 2, 0)), 3) && nearV(new Vec4(-1, 5, 1, 9).clamp(0, 2), 0, 2, 1, 2)); }],
+                ["Vec4.ctor.vec3", () => { return (nearV(new Vec4(new Vec3(1, 2, 3)), 1, 2, 3, 0)); }],
+            ];
+            const failed = checks.filter(([name, check]) => {
+                try { return check() !== true; } catch (e) { return true; }
+            }).map(([name]) => name);
+            export function update() { return failed.join(' '); }
+        )JS"_str,
+        "test/vector_methods"_str,
+        FieldKind::String,
+        owe::MakeObject(),
+        owe::IntoJson(""));
+    ASSERT_NE(script, nullptr);
+
+    rt.TickAll();
+
+    ASSERT_TRUE(script->last_value().is_String());
+    const auto failed = script->last_value().as_String().value.s.as_str();
+    EXPECT_EQ(failed, ""_str) << "failed: " << rstd::cppstd::as_string_view(failed);
+}
+
 TEST(ScriptValueCoercion, PreservesVec4InitialAndReturnValues) {
     JsRuntime rt;
     auto*     script = rt.MakeFieldScript(
@@ -151,6 +232,83 @@ TEST(ScriptValueCoercion, PreservesVec4InitialAndReturnValues) {
     EXPECT_DOUBLE_EQ(value.y, 3.5);
     EXPECT_DOUBLE_EQ(value.z, 5.5);
     EXPECT_DOUBLE_EQ(value.w, 7.5);
+}
+
+// Wallpaper Engine gives a property script its own copy of the value in each
+// call; only what the script returns changes the property.
+TEST(ScriptValueCoercion, InitChangesWithoutReturnLeaveTheValue) {
+    auto root = Arc<owe::SceneNode>::make();
+
+    JsRuntime rt;
+    auto*     script = rt.MakeFieldScript(
+        R"JS(
+            export function init(value) { value.x = 900; }
+            export function update(value) { return value; }
+        )JS"_str,
+        "test/init_without_return"_str,
+        FieldKind::Vec3,
+        owe::MakeObject(),
+        owe::IntoJson("300 200 0"));
+    ASSERT_NE(script, nullptr);
+
+    rt.SetSceneRoot(root.as_ptr());
+    rt.TickAll();
+
+    ASSERT_TRUE(script->last_value().is_Vec3());
+    EXPECT_DOUBLE_EQ(script->last_value().as_Vec3().value.x, 300.0);
+}
+
+TEST(ScriptValueCoercion, UpdateChangesWithoutReturnDoNotReachTheNextCall) {
+    JsRuntime rt;
+    auto*     script = rt.MakeFieldScript(
+        R"JS(
+            let calls = 0;
+            export function update(value) {
+                if (calls++ === 0) {
+                    value.x = 900;
+                    return;
+                }
+                return value;
+            }
+        )JS"_str,
+        "test/update_without_return"_str,
+        FieldKind::Vec3,
+        owe::MakeObject(),
+        owe::IntoJson("300 200 0"));
+    ASSERT_NE(script, nullptr);
+
+    rt.TickAll();
+    rt.TickAll();
+
+    ASSERT_TRUE(script->last_value().is_Vec3());
+    EXPECT_DOUBLE_EQ(script->last_value().as_Vec3().value.x, 300.0);
+}
+
+TEST(ScriptValueCoercion, ValueKeptFromInitStaysAsItWas) {
+    auto root = Arc<owe::SceneNode>::make();
+
+    JsRuntime rt;
+    auto*     script = rt.MakeFieldScript(
+        R"JS(
+            let kept;
+            export function init(value) { kept = value; return value; }
+            export function update(value) {
+                value.x = 900;
+                return kept;
+            }
+        )JS"_str,
+        "test/value_kept_from_init"_str,
+        FieldKind::Vec3,
+        owe::MakeObject(),
+        owe::IntoJson("300 200 0"));
+    ASSERT_NE(script, nullptr);
+
+    rt.SetSceneRoot(root.as_ptr());
+    rt.TickAll();
+    rt.TickAll();
+
+    ASSERT_TRUE(script->last_value().is_Vec3());
+    EXPECT_DOUBLE_EQ(script->last_value().as_Vec3().value.x, 300.0);
 }
 
 TEST(ScriptValueCoercion, ParsesDecimalPrefixesWithoutCStringCopies) {
@@ -573,6 +731,58 @@ TEST(ScriptNodeParent, DefaultLayerParentIsUndefined) {
 
     rt.TickAll();
     EXPECT_EQ(LastScalar(fs), 1.0);
+}
+
+TEST(ScriptBonePhysics, ImpulsesAndResetsReachTheLayersBones) {
+    owe::SceneNode          node;
+    JsRuntime               rt;
+    Vec<BonePhysicsRequest> requests;
+    rt.SetBoneResolvers(
+        JsRuntime::BoneIndexResolver::make([](owe::SceneNode*, ref<str> name) -> uint32_t {
+            return name == "hair"_str ? 5 : 0;
+        }),
+        JsRuntime::BoneTransformResolver::make(
+            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTranslation> {
+                return None();
+            }));
+    rt.SetBonePhysicsHandler(JsRuntime::BonePhysicsHandler::make(
+        [&requests](owe::SceneNode* target, const BonePhysicsRequest& request) {
+            EXPECT_NE(target, nullptr);
+            requests.push(BonePhysicsRequest(request));
+        }));
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            thisLayer.applyBonePhysicsImpulse('hair', new Vec3(1, 2, 3), new Vec3(0, 0, 10));
+            thisLayer.applyBonePhysicsImpulse(new Vec3(4, 0, 0), new Vec3(0, 0, -5));
+            thisLayer.applyBonePhysicsImpulse('missing', new Vec3(1, 0, 0), new Vec3());
+            thisLayer.resetBonePhysicsSimulation(5);
+            thisLayer.resetBonePhysicsSimulation();
+            export function update() {}
+        )JS"_str,
+        "test/bone_physics_requests"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+
+    // a bone that is not there is left out; no bone means every bone with physics
+    ASSERT_EQ(requests.len(), usize(4));
+    const auto& hair = requests[usize(0)];
+    ASSERT_TRUE(hair.bone.is_some());
+    EXPECT_EQ(*hair.bone, 5u);
+    EXPECT_FALSE(hair.reset);
+    EXPECT_FLOAT_EQ(hair.directional[usize(1)], 2.0f);
+    EXPECT_FLOAT_EQ(hair.angular[usize(2)], 10.0f);
+    const auto& every = requests[usize(1)];
+    EXPECT_TRUE(every.bone.is_none());
+    EXPECT_FLOAT_EQ(every.directional[usize(0)], 4.0f);
+    EXPECT_FLOAT_EQ(every.angular[usize(2)], -5.0f);
+    EXPECT_TRUE(requests[usize(2)].reset);
+    ASSERT_TRUE(requests[usize(2)].bone.is_some());
+    EXPECT_EQ(*requests[usize(2)].bone, 5u);
+    EXPECT_TRUE(requests[usize(3)].reset);
+    EXPECT_TRUE(requests[usize(3)].bone.is_none());
 }
 
 TEST(ScriptNodeSoftMutation, VisibleAndAlphaWrites) {
@@ -1090,6 +1300,259 @@ TEST(ScriptCursor, ClickAndDownUpInside) {
     rt.SetFrameInputs(fi);
     rt.TickAll();
     EXPECT_EQ(fs->last_value().as_Scalar().value.v, 1'010'101);
+}
+
+// getAnimationLayer returns the animation layer: its playback controls, and getAnimation for its
+// animation (Ocarina of Time: getAnimationLayer("Surprise").getAnimation("surprise").isPlaying()).
+TEST(ScriptAnimationLayer, LayerControlsAndGetsItsAnimation) {
+    owe::SceneNode node;
+    auto           clip     = Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {
+        .name = String::make("Surprise"_str),
+        .mode = String::make("single"_str),
+        .fps  = 30.0f,
+        .end  = i32(60),
+    });
+    auto           playback = Arc<owe::SceneAnimationPlayback>::make(rstd::move(clip));
+    node.RegisterAnimation(playback.clone());
+
+    JsRuntime rt;
+    rt.SetFrameInputs(MakeFi());
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            export function update() {
+                const layer = thisLayer.getAnimationLayer("Surprise");
+                layer.pause();
+                const before = layer.getAnimation("surprise").isPlaying();
+                layer.play();
+                const after = layer.getAnimation("surprise").isPlaying();
+                return (before ? 10 : 0) + (after ? 1 : 0);
+            }
+        )JS"_str,
+        "test/animation_layer_get_animation"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+    rt.TickAll();
+    ASSERT_TRUE(fs->last_value().is_Scalar());
+    EXPECT_EQ(fs->last_value().as_Scalar().value.v, 1.0);
+}
+
+// A layer's animation layers by index, in the scene's order, and how many it has. Other animations
+// of the layer (a material's, its values') aren't animation layers.
+TEST(ScriptAnimationLayer, ByIndexAndCount) {
+    owe::SceneNode node;
+    auto           make = [](ref<str> name) {
+        return Arc<owe::SceneAnimationPlayback>::make(
+            Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {
+                .name = String::make(name),
+                .mode = String::make("loop"_str),
+                .fps  = 30.0f,
+                .end  = i32(60),
+            }));
+    };
+    node.RegisterAnimation(make("material"_str));
+    node.RegisterAnimationLayer(make("Idle"_str));
+    node.RegisterAnimationLayer(make("Wave"_str));
+
+    JsRuntime rt;
+    rt.SetFrameInputs(MakeFi());
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            export function update() {
+                thisLayer.getAnimationLayer(1).pause();
+                const idle = thisLayer.getAnimationLayer("Idle").isPlaying();
+                const wave = thisLayer.getAnimationLayer("Wave").isPlaying();
+                return thisLayer.getAnimationLayerCount() * 100 + (idle ? 10 : 0) + (wave ? 1 : 0);
+            }
+        )JS"_str,
+        "test/animation_layer_by_index"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+    rt.TickAll();
+    ASSERT_TRUE(fs->last_value().is_Scalar());
+    EXPECT_EQ(fs->last_value().as_Scalar().value.v, 210.0);
+}
+
+// An animation layer's blend and visible, as scripts read and set them.
+TEST(ScriptAnimationLayer, BlendAndVisible) {
+    owe::SceneNode node;
+    auto           playback = Arc<owe::SceneAnimationPlayback>::make(
+        Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {
+            .name = String::make("Wave"_str),
+            .mode = String::make("loop"_str),
+            .fps  = 30.0f,
+            .end  = i32(60),
+        }));
+    node.RegisterAnimationLayer(playback.clone());
+
+    JsRuntime rt;
+    rt.SetFrameInputs(MakeFi());
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            export function update() {
+                const layer = thisLayer.getAnimationLayer(0);
+                const before = layer.blend * 10 + (layer.visible ? 1 : 0);
+                layer.blend = 0.25;
+                layer.visible = false;
+                return before * 100 + layer.blend * 4 + (layer.visible ? 1 : 0);
+            }
+        )JS"_str,
+        "test/animation_layer_blend_visible"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+    rt.TickAll();
+    ASSERT_TRUE(fs->last_value().is_Scalar());
+    EXPECT_EQ(fs->last_value().as_Scalar().value.v, 1101.0);
+    EXPECT_FLOAT_EQ(playback->Blend(), 0.25f);
+    EXPECT_FALSE(playback->Visible());
+}
+
+// The times an animation gets to its end: every loop, or the end of a single play.
+TEST(SceneAnimationPlayback, CountsEachEnd) {
+    auto make = [](ref<str> mode) {
+        return Arc<owe::SceneAnimationPlayback>::make(
+            Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {
+                .name = String::make("Wave"_str),
+                .mode = String::make(mode),
+                .fps  = 30.0f,
+                .end  = i32(30),
+            }));
+    };
+    Vec<owe::SceneAnimationEvent> events;
+    auto                          loop = make("loop"_str);
+    loop->Advance(0.0, events);
+    loop->Advance(0.5, events);
+    EXPECT_EQ(loop->EndedCount(), u64(0));
+    loop->Advance(2.5, events);
+    EXPECT_EQ(loop->EndedCount(), u64(2));
+
+    auto single = make("single"_str);
+    single->Advance(0.0, events);
+    single->Advance(1.5, events);
+    single->Advance(3.0, events);
+    EXPECT_EQ(single->EndedCount(), u64(1));
+}
+
+// addEndedCallback: called every time the animation layer gets to its end.
+TEST(ScriptAnimationLayer, EndedCallbacksFireEachTimeTheLayerEnds) {
+    owe::SceneNode node;
+    auto           playback = Arc<owe::SceneAnimationPlayback>::make(
+        Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {
+            .name = String::make("Wave"_str),
+            .mode = String::make("loop"_str),
+            .fps  = 30.0f,
+            .end  = i32(30),
+        }));
+    node.RegisterAnimationLayer(playback.clone());
+
+    JsRuntime rt;
+    rt.SetFrameInputs(MakeFi());
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            let ended = 0;
+            export function init() {
+                thisLayer.getAnimationLayer(0).addEndedCallback(() => { ended++; });
+            }
+            export function update() { return ended; }
+        )JS"_str,
+        "test/animation_layer_ended"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+    rt.SetSceneRoot(&node);
+    Vec<owe::SceneAnimationEvent> events;
+    playback->Advance(0.0, events);
+    rt.TickAll();
+    EXPECT_EQ(LastScalar(fs), 0.0);
+    playback->Advance(2.5, events);
+    rt.TickAll();
+    EXPECT_EQ(LastScalar(fs), 2.0);
+    rt.TickAll();
+    EXPECT_EQ(LastScalar(fs), 2.0);
+}
+
+// createAnimationLayer (an animation's name, or a layer's settings), destroyAnimationLayer (a
+// layer, its name or its index) and playSingleAnimation, whose layer goes once it has played.
+TEST(ScriptAnimationLayer, CreateDestroyAndPlaySingle) {
+    owe::SceneNode                        node;
+    Vec<JsRuntime::AnimationLayerRequest> requests;
+    usize                                 destroyed {};
+    JsRuntime                             rt;
+    rt.SetFrameInputs(MakeFi());
+    rt.SetAnimationLayerResolvers(
+        JsRuntime::AnimationLayerCreator::make(
+            [&](owe::SceneNode* owner, JsRuntime::AnimationLayerRequest request)
+                -> Option<Arc<owe::SceneAnimationPlayback>> {
+                if (request.animation != "wave"_str) return None();
+                auto playback = Arc<owe::SceneAnimationPlayback>::make(
+                    Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {
+                        .name = String::make("wave"_str),
+                        .mode = String::make(request.single ? "single"_str : "loop"_str),
+                        .fps  = 30.0f,
+                        .end  = i32(30),
+                    }));
+                owner->RegisterAnimationLayer(playback.clone());
+                requests.push(rstd::move(request));
+                return Some(rstd::move(playback));
+            }),
+        JsRuntime::AnimationLayerDestroyer::make(
+            [&](owe::SceneNode* owner, const owe::SceneAnimationPlayback& playback) {
+                destroyed += usize(1);
+                return owner->UnregisterAnimationLayer(playback);
+            }));
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            let single;
+            export function update() {
+                if (single) return 100 + thisLayer.getAnimationLayerCount();
+                const made = thisLayer.createAnimationLayer('wave');
+                const missing = thisLayer.createAnimationLayer('missing');
+                thisLayer.createAnimationLayer({ animation: 'wave', rate: 2, blend: 0.5, visible: false });
+                const count = thisLayer.getAnimationLayerCount();
+                const removed = thisLayer.destroyAnimationLayer(made);
+                const again = thisLayer.destroyAnimationLayer(made);
+                single = thisLayer.playSingleAnimation('wave');
+                const read = [made !== undefined, missing === undefined, count, removed, again,
+                              thisLayer.getAnimationLayerCount()].join(' ');
+                return read === 'true true 2 true false 2' ? 1 : 0;
+            }
+        )JS"_str,
+        "test/animation_layer_create"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+    rt.TickAll();
+    EXPECT_EQ(LastScalar(fs), 1.0);
+    ASSERT_EQ(requests.len(), usize(3));
+    EXPECT_FALSE(requests[usize(0)].single);
+    EXPECT_DOUBLE_EQ(requests[usize(1)].rate, 2.0);
+    EXPECT_DOUBLE_EQ(requests[usize(1)].blend, 0.5);
+    EXPECT_FALSE(requests[usize(1)].visible);
+    EXPECT_TRUE(requests[usize(2)].single);
+
+    // the single play's layer goes when it gets to its end
+    auto single = node.AnimationLayer(usize(1));
+    ASSERT_TRUE(single.is_some());
+    Vec<owe::SceneAnimationEvent> events;
+    (*single)->Advance(0.0, events);
+    rt.TickAll();
+    EXPECT_EQ(LastScalar(fs), 102.0);
+    (*single)->Advance(2.0, events);
+    rt.TickAll();
+    EXPECT_EQ(LastScalar(fs), 101.0);
+    EXPECT_EQ(destroyed, usize(3));
 }
 
 TEST(ScriptCursor, ClickRestartsNamedAnimationLayer) {

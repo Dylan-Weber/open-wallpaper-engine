@@ -3,6 +3,7 @@
 import rstd;
 import rstd.cppstd;
 import eigen;
+import wescene.fs;
 import wescene.json;
 import wescene.particle;
 import wescene.particle.program;
@@ -985,4 +986,34 @@ TEST(ParticleInstanceModifiers, CloneRetainsReadOnlyBindingsAfterSourceReplaceme
     EXPECT_EQ(binding->identity, identity);
     ASSERT_TRUE(binding->animation.is_some());
     EXPECT_FLOAT_EQ(binding->animation->c0[usize()].value, 7.0f);
+}
+
+// Shimmering Particles (and other custom particle shaders) ship only a .vert and a .frag: their
+// vertex shader expands each particle into a quad itself, so they are drawn without a geometry
+// stage.
+TEST(ParticleShaders, ShadersWithoutAGeometryStageExpandTheirQuadsInTheVertexShader) {
+    auto root = std::filesystem::temp_directory_path() /
+                ("owe-particle-shaders-" + std::to_string(rstd::process::id().to_primitive()));
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root / "shaders");
+    for (auto file : { "with_geometry.vert",
+                       "with_geometry.geom",
+                       "with_geometry.frag",
+                       "without_geometry.vert",
+                       "without_geometry.frag" }) {
+        std::ofstream(root / "shaders" / file) << "void main() {}\n";
+    }
+
+    owe::fs::VFS vfs;
+    auto         physical =
+        owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(root.string()).unwrap()));
+    ASSERT_TRUE(physical.is_ok());
+    ASSERT_TRUE(vfs.mount("/assets"_str, std::move(physical).unwrap_unchecked()).is_ok());
+
+    EXPECT_TRUE(owe::ParticleShaderUsesGeometryStage(vfs, "with_geometry"_str, true));
+    EXPECT_FALSE(owe::ParticleShaderUsesGeometryStage(vfs, "without_geometry"_str, true));
+    // without geometry shaders on the device, none uses one
+    EXPECT_FALSE(owe::ParticleShaderUsesGeometryStage(vfs, "with_geometry"_str, false));
+
+    std::filesystem::remove_all(root);
 }

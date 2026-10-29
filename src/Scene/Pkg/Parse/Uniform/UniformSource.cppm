@@ -62,21 +62,52 @@ enum class LightUniformOutput : rstd::uint32_t
     DirectionType,
     ConeExponent,
     CastShadow,
+    LightingV1ColorRadius,
 };
 
 enum class ShadowUniformOutput : rstd::uint32_t
 {
+    // the first shadowed directional light's cascades, as Wallpaper Engine's casters read them
     ViewProjectionMatrices,
     AtlasTransforms,
+    // every shadowed light's views (kShadowViewCount), their atlas squares, and each light slot's
+    // first view (-1 without a shadow map)
+    Views,
+    ViewAtlasTransforms,
+    LightViews,
+    // each light slot's point light depth terms for the stock point lookup
+    PointProjections,
 };
+
+inline constexpr usize kShadowViewCount { 24 };
+
+// Wallpaper Engine's shadow quality setting, numbered as its shaders number it
+// (LIGHTS_SHADOW_MAPPING_QUALITY). Medium is owe's default.
+enum class ShadowQuality : rstd::uint8_t
+{
+    Low    = 1,
+    Medium = 2,
+    High   = 3,
+    Ultra  = 4,
+};
+
+// Each shadow view's square of the atlas: 256 pixels at low and medium shadows, 512 at high, 1024
+// at ultra.
+constexpr int ShadowTileSize(ShadowQuality quality) {
+    return quality == ShadowQuality::Ultra ? 1024 : quality == ShadowQuality::High ? 512 : 256;
+}
+
+// How wide a point light's six views are, in degrees: wider than a cube's faces by what the stock
+// lookup's compensation (0.47 at low and medium, 0.48 at high, 0.49 at ultra) undoes.
+constexpr double PointShadowFieldOfView(ShadowQuality quality) {
+    return quality == ShadowQuality::Ultra ? 91.2 : quality == ShadowQuality::High ? 92.0 : 94.0;
+}
 
 enum class ColorUniformOutput : rstd::uint32_t
 {
-    UserAlpha,
     Color4,
     Color,
     Alpha,
-    Brightness,
 };
 
 enum class AudioUniformOutput : rstd::uint32_t
@@ -375,9 +406,21 @@ private:
     Arc<SceneNode> m_node;
 };
 
+// How many lights of each kind the newer light interface (Lighting V1) gets: the scene's
+// general.lightconfig, all 0 without one.
+struct LightKindLimits {
+    u32 point {};
+    u32 spot {};
+    u32 directional {};
+    u32 tube {};
+};
+
 class LightUniformSource {
 public:
-    explicit LightUniformSource(Vec<ref<SceneLight>> lights): m_lights(rstd::move(lights)) {}
+    // Without limits, every light shows through the newer interface too.
+    explicit LightUniformSource(Vec<ref<SceneLight>>    lights,
+                                Option<LightKindLimits> limits = None())
+        : m_lights(rstd::move(lights)), m_limits(rstd::move(limits)) {}
 
     auto Describe(mut_ref<dyn<UniformBindingSink>>) const -> Result<empty, UniformError>;
     auto Version(ref<dyn<UniformUpdateContext>>) const -> u64;
@@ -386,13 +429,20 @@ public:
     auto AcquireBindingLease() const -> Option<Box<dyn<UniformBindingLease>>> { return None(); }
 
 private:
-    Vec<ref<SceneLight>> m_lights;
+    Vec<ref<SceneLight>>    m_lights;
+    Option<LightKindLimits> m_limits;
 };
 
 class ShadowUniformSource {
 public:
-    ShadowUniformSource(Arc<SceneCamera> camera, ref<SceneLight> light)
-        : m_camera(rstd::move(camera)), m_light(light) {}
+    // `lights` in the light slots' order; `atlas_transforms` holds each view's square of the atlas
+    // (x, y, width, height, in its texture coordinates).
+    ShadowUniformSource(Arc<SceneCamera> camera, Vec<ref<SceneLight>> lights,
+                        Vec<float> atlas_transforms, ShadowQuality quality = ShadowQuality::Medium)
+        : m_camera(rstd::move(camera)),
+          m_lights(rstd::move(lights)),
+          m_atlas_transforms(rstd::move(atlas_transforms)),
+          m_quality(quality) {}
 
     auto Describe(mut_ref<dyn<UniformBindingSink>>) const -> Result<empty, UniformError>;
     auto Version(ref<dyn<UniformUpdateContext>>) const -> u64;
@@ -401,8 +451,10 @@ public:
     auto AcquireBindingLease() const -> Option<Box<dyn<UniformBindingLease>>> { return None(); }
 
 private:
-    Arc<SceneCamera> m_camera;
-    ref<SceneLight>  m_light;
+    Arc<SceneCamera>     m_camera;
+    Vec<ref<SceneLight>> m_lights;
+    Vec<float>           m_atlas_transforms;
+    ShadowQuality        m_quality;
 };
 
 class TextureUniformSource {

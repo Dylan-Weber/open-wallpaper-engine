@@ -41,6 +41,7 @@ struct SceneParseOptions {
     Option<ref<rstd::json::Map>> user_properties;
     Option<rstd::path::PathBuf>  shader_cache_dir;
     SceneParseCapabilities       capabilities;
+    ShadowQuality                shadow_quality { ShadowQuality::Medium };
     Option<ImageReadyCallback>   image_ready;
     TextureMemoryOptions         texture_memory;
 };

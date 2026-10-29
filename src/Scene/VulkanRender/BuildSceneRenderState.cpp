@@ -586,9 +586,64 @@ static void ConfigureNestedOutput(SceneNode* node, ref<str> output, ref<str> inh
     }
 }
 
+static bool DrawsBlended(const SceneNode& node) {
+    const auto* mesh = node.Mesh();
+    if (mesh == nullptr) return false;
+    for (const auto& material : mesh->MaterialSlots()) {
+        if (! material) continue;
+        const auto blend = material->Pipeline().blend_mode;
+        if (blend == BlendMode::Translucent || blend == BlendMode::Additive) return true;
+    }
+    return false;
+}
+
+// The order a node's children draw in. With the scene's transparent sorting, each run of model
+// layers (sorting stops at any other layer) draws its opaque models in scene order, then its
+// translucent ones from the farthest to the nearest.
+static auto DrawOrder(const Scene& scene, SceneNode& node) -> Vec<SceneNode*> {
+    Vec<SceneNode*> order;
+    for (auto& child : node.GetChildren()) {
+        SceneNode* pointer = child.as_ptr();
+        order.push(rstd::move(pointer));
+    }
+    auto camera = scene.ActiveCamera();
+    if (! scene.TransparentSorting() || camera.is_none()) return order;
+
+    const Eigen::Vector3d eye      = (**camera).GetPosition();
+    auto                  distance = [&](const SceneNode* model) {
+        return (model->ModelTrans().block<3, 1>(0, 3) - eye).norm();
+    };
+    for (usize start {}; start < order.len();) {
+        if (! order[start]->DrawsAsModel()) {
+            ++start;
+            continue;
+        }
+        usize end = start;
+        while (end < order.len() && order[end]->DrawsAsModel()) ++end;
+        Vec<SceneNode*> opaque;
+        Vec<SceneNode*> blended;
+        for (usize index = start; index < end; ++index) {
+            SceneNode* model = order[index];
+            (DrawsBlended(*model) ? blended : opaque).push(rstd::move(model));
+        }
+        rstd::slice_::sort_unstable_by(blended.as_mut_slice().as_mut_ref(),
+                                       [&](SceneNode* a, SceneNode* b) {
+                                           return distance(a) > distance(b);
+                                       });
+        usize index = start;
+        for (auto* model : opaque) order[index++] = model;
+        for (auto* model : blended) order[index++] = model;
+        start = end;
+    }
+    return order;
+}
+
+// A node below a hidden one (`hidden_ancestor`) is hidden too: CollectEmitSkipSubtrees skips a
+// hidden subtree only when nothing in it is linked, so a linked layer anywhere below (a puppet's
+// eyes) keeps the subtree, and its other nodes must still not be drawn.
 static void EmitSceneNode(SceneNode* node, ref<str> inherited_output, ref<str> inherited_camera,
                           ExtraInfo& extra, const HashSet<const SceneNode*>& emit_skip_subtrees,
-                          const BTreeSet<i32>& linked_ids) {
+                          const BTreeSet<i32>& linked_ids, bool hidden_ancestor = false) {
     if (node == nullptr || emit_skip_subtrees.contains(node)) return;
 
     auto&      scene       = *extra.scene;
@@ -598,12 +653,16 @@ static void EmitSceneNode(SceneNode* node, ref<str> inherited_output, ref<str> i
                                                : (wallpaper.is_some() ? wallpaper->value : i32(-1));
     const bool elidable = scene.IsLayerElidable(WallpaperLayerId { .value = layer_id });
     const bool linked   = link_source.is_some() && linked_ids.contains(link_source->value);
-    bool       emit     = true;
+    const bool hidden = hidden_ancestor || ! node->Visible() ||
+                        (layer_id >= i32() &&
+                         scene.IsLayerVisibilityElidable(WallpaperLayerId { .value = layer_id }));
+    bool       emit   = true;
 
     ref<str> node_output = inherited_output;
 
     if (! linked && ShouldSkipNoRuntimeEffect(node, scene)) emit = false;
-    if (elidable) {
+    // a hidden linked layer draws only its link target, for the layers that read it
+    if (elidable || hidden) {
         if (! linked) {
             emit = false;
         } else {
@@ -631,9 +690,9 @@ static void EmitSceneNode(SceneNode* node, ref<str> inherited_output, ref<str> i
         }
         const ref<str> child_output =
             effect_layer == nullptr ? node_output : effect_layer->CompositeTarget();
-        for (auto& child : node->GetChildren()) {
+        for (auto* child : DrawOrder(scene, *node)) {
             EmitSceneNode(
-                child.as_ptr(), child_output, *group_camera, extra, emit_skip_subtrees, linked_ids);
+                child, child_output, *group_camera, extra, emit_skip_subtrees, linked_ids, hidden);
         }
         if (effect_layer != nullptr && effect_layer->HasRenderEffects()) {
             LoadGraphEffects(effect_layer, extra);
@@ -645,13 +704,9 @@ static void EmitSceneNode(SceneNode* node, ref<str> inherited_output, ref<str> i
         ConfigureNestedOutput(node, node_output, inherited_camera);
         ToGraphPass(node, node_output, extra);
     }
-    for (auto& child : node->GetChildren()) {
-        EmitSceneNode(child.as_ptr(),
-                      inherited_output,
-                      inherited_camera,
-                      extra,
-                      emit_skip_subtrees,
-                      linked_ids);
+    for (auto* child : DrawOrder(scene, *node)) {
+        EmitSceneNode(
+            child, inherited_output, inherited_camera, extra, emit_skip_subtrees, linked_ids, hidden);
     }
 }
 
@@ -665,6 +720,28 @@ static bool SamplesPlanarReflection(SceneNode& node) {
         }
     }
     return false;
+}
+
+// Clears the reflection target to the scene's clear color, as the first reflected draw would: a
+// scene can sample the reflection without reflecting anything, and it must still be written.
+static auto ClearPlanarReflection(ExtraInfo& extra, const Scene& scene)
+    -> Result<empty, fg::Error> {
+    auto target = SelectTexture(extra, MakeTextureDesc(extra, WE_REFLECTION_PREFIX));
+    if (extra.error) return Err(*extra.error);
+    auto color   = scene.ClearColor();
+    auto cleared = vrento::vulkan::declare_graphics_clear(
+        extra.graph,
+        fg::PassId { extra.next_pass++ },
+        target,
+        { color[usize()], color[usize(1)], color[usize(2)], 1.0f },
+        1,
+        "frame/clear-reflection"_Str);
+    if (cleared.is_err()) return Err(cleared.unwrap_err());
+    auto output = cleared->output.clone();
+    PublishTexture(extra, output);
+    (void)Use(extra, output);
+    extra.descriptions.push(rstd::move(cleared->description));
+    return Ok(empty {});
 }
 
 static void EmitPlanarReflectionNode(SceneNode* node, ExtraInfo& extra,
@@ -682,13 +759,15 @@ static void EmitShadowPasses(ExtraInfo& extra) {
     if (extra.render_scene == nullptr) return;
     auto definitions = extra.render_scene->ShadowDefinitions();
     if (definitions.is_empty()) return;
-    const auto& definition = definitions.first().unwrap().get();
-    const auto  target     = definition.target.as_str();
-    bool        first      = true;
+    // the first draw clears the whole atlas; every light's casters draw into its own squares
+    bool first = true;
 
     for (const auto& caster : extra.render_scene->ShadowCasters()) {
         const auto* item = extra.render_scene->renderItem(caster.render_item);
-        if (item == nullptr || ! caster.material) continue;
+        if (item == nullptr || ! caster.material || caster.definition >= definitions.len())
+            continue;
+        const auto& definition = definitions[caster.definition];
+        const auto  target     = definition.target.as_str();
         auto draw = extra.scene->ResourceIndex().resolve(item->scene_draw_item);
         if (draw.is_none() || draw->node == nullptr || draw->mesh == nullptr) continue;
         extra.scene->ResolveMaterialTextureSources(*caster.material);
@@ -815,6 +894,8 @@ auto owe::BuildSceneRenderState(Scene& scene, const RenderSceneSnapshot& render_
     EmitShadowPasses(extra);
 
     if (scene.PlanarReflectionEnabled()) {
+        auto cleared = ClearPlanarReflection(extra, scene);
+        if (cleared.is_err()) return Err(cleared.unwrap_err());
         EmitPlanarReflectionNode(scene.RootMut().as_raw_ptr(), extra, emit_skip_subtrees);
     }
 

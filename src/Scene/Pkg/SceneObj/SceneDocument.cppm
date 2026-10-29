@@ -93,6 +93,9 @@ public:
     u32  pointshadow { 0 };
     u32  spot { 0 };
     u32  spotshadow { 0 };
+    u32  tube { 0 };
+    // Spot lights that may project their cookie (usecookie).
+    u32 spotcookie { 0 };
 };
 
 class SceneGeneral {
@@ -121,8 +124,10 @@ public:
     // bloom / camerashake scalars exist since PKGV0001 but were never
     // unpacked into the struct before the version-aware split.
     bool                    bloom { false };
-    float                   bloomstrength { 0.0f };
-    float                   bloomthreshold { 0.0f };
+    // Wallpaper Engine's defaults when a scene turns bloom on without them (the editor writes
+    // these values out).
+    float                   bloomstrength { 2.0f };
+    float                   bloomthreshold { 0.65f };
     bool                    camerashake { false };
     float                   camerashakeamplitude { 0.0f };
     float                   camerashakespeed { 0.0f };

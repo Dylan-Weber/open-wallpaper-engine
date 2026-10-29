@@ -141,11 +141,12 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
 
     bool hasEffect = ! wpimgobj.effects.is_empty() || is_linked_source;
 
-    // No-effect fullscreen / compose layers contribute nothing on their own
-    // (they just sample `_rt_default` and write it back). Mark as elidable
-    // so the render-graph builder drops them when unreferenced, or routes
-    // them to `_rt_link_<id>` when another layer reads their composite.
-    if (! hasEffect && wpimgobj.visible && (wpimgobj.fullscreen || isPassthrough)) {
+    // No-effect passthrough (fullscreen / compose) layers contribute nothing
+    // on their own (they just sample `_rt_default` and write it back). Mark as
+    // elidable so the render-graph builder drops them when unreferenced, or
+    // routes them to `_rt_link_<id>` when another layer reads their composite.
+    // A fullscreen layer with a material of its own draws, so it stays.
+    if (! hasEffect && wpimgobj.visible && isPassthrough) {
         context.scene->MarkLayerStaticElidable(WallpaperLayerId { .value = wpimgobj.id });
     }
     if (! hasEffect && wpimgobj.visible && wpimgobj.alpha <= 0.0f && ! alpha_can_change) {
@@ -234,9 +235,9 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
                                   ShaderValue(array<float, 3> { wpimgobj.color[usize(0)],
                                                                 wpimgobj.color[usize(1)],
                                                                 wpimgobj.color[usize(2)] }));
+        // g_UserAlpha and g_Brightness are material settings ("Alpha", "Brightness"): the
+        // layer's own alpha and brightness don't reach them, as in Wallpaper Engine.
         (void)baseConstSvs.insert(rstd::into(G_ALPHA), ShaderValue(wpimgobj.alpha));
-        (void)baseConstSvs.insert(rstd::into(G_USERALPHA), ShaderValue(wpimgobj.alpha));
-        (void)baseConstSvs.insert(rstd::into(G_BRIGHTNESS), ShaderValue(wpimgobj.brightness));
 
         shaderInfo.baseConstSvs = baseConstSvs.clone();
 
@@ -266,10 +267,22 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
         auto texture = context.scene->Texture(material.textures[usize()].as_str());
         point_source = texture.is_some() && (**texture).sample.magFilter == TextureFilter::NEAREST;
     }
+    // The first pass of the layer's effects reads the layer's image in Wallpaper Engine, so it
+    // sees that texture's resolution: its size padded to a multiple of 4, the picture's in zw.
+    Option<SceneMaterialTextureMetadata> image_texture_metadata;
+    if (! material.texture_metadata.is_empty() && material.texture_metadata[usize()].has_extent) {
+        auto metadata = material.texture_metadata[usize()];
+        for (usize axis {}; axis < usize(2); ++axis)
+            metadata.source_extent[axis] =
+                4.0f * f32(metadata.source_extent[axis] / 4.0f).ceil().to_primitive();
+        image_texture_metadata = Some(metadata);
+    }
 
     // mesh
     auto      geometry_span = SceneLoadSpan(context.load_bench, &SceneLoadProbeIds::image_geometry);
     SceneMesh effct_final_mesh {};
+    // where the puppet's own geometry goes (in effct_final_mesh with effects), for its blend shapes
+    Option<usize>         puppet_submesh;
     auto      spMesh              = Arc<SceneMesh>::make();
     auto&     mesh                = *spMesh;
     const array<float, 2> mapRate = Texture0UvScale(material, wpimgobj.nopadding);
@@ -332,6 +345,7 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
                         mapRate,
                         source_alignment_offset);
             if (primary_puppet_mesh != nullptr) {
+                puppet_submesh = Some(effct_final_mesh.Submeshes().len());
                 effct_final_mesh.Submeshes().emplace_back();
                 MdlParser::GenMeshFromMdl(
                     effct_final_mesh.Submeshes().last_mut().unwrap().get_mut(),
@@ -355,6 +369,7 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
             mesh.SetGeometryTransform(
                 Affine3d(Translation3d(alignment_offset.cast<double>())).matrix());
             if (primary_puppet_mesh != nullptr) {
+                puppet_submesh = Some(mesh.Submeshes().len());
                 mesh.Submeshes().emplace_back();
                 MdlParser::GenMeshFromMdl(mesh.Submeshes().last_mut().unwrap().get_mut(),
                                           *primary_puppet_mesh,
@@ -596,6 +611,14 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
         }
     }
 
+    if (! hasEffect && image_puppet_layer.is_some() && primary_puppet_mesh != nullptr &&
+        puppet_submesh.is_some()) {
+        MdlParser::BindMorph(*context.scene,
+                             mesh,
+                             *puppet_submesh,
+                             *primary_puppet_mesh,
+                             (*image_puppet_layer).clone());
+    }
     if (image_puppet_layer.is_some() && primary_puppet_mesh != nullptr) {
         auto& ordered_mesh = hasEffect ? effct_final_mesh : mesh;
         for (auto& submesh : ordered_mesh.Submeshes())
@@ -661,8 +684,18 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
             imgEffectLayer->SetIntermediateSourceBlend(BlendMode::Normal);
             imgEffectLayer->SetFullscreen(wpimgobj.fullscreen);
             imgEffectLayer->SetFinalMaterialState(finalMaterialState);
-            imgEffectLayer->SetSkipWhenNoRuntimeEffect(wpimgobj.fullscreen || isPassthrough);
+            // Only a passthrough layer has nothing to draw once its effects are all off; a
+            // fullscreen layer with a material of its own still draws.
+            imgEffectLayer->SetSkipWhenNoRuntimeEffect(isPassthrough);
             imgEffectLayer->FinalMesh().ChangeMeshDataFrom(effct_final_mesh);
+            if (image_puppet_layer.is_some() && primary_puppet_mesh != nullptr &&
+                puppet_submesh.is_some()) {
+                MdlParser::BindMorph(*context.scene,
+                                     imgEffectLayer->FinalMesh(),
+                                     *puppet_submesh,
+                                     *primary_puppet_mesh,
+                                     (*image_puppet_layer).clone());
+            }
             spImgNode->AttachLayer(imgEffectLayer.clone());
         }
         // set renderTarget for ping-pong operate
@@ -696,6 +729,7 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
         const bool allow_transparent_previous_final = ! solid_composite_context;
         const bool passthrough_can_composite_final =
             isPassthrough || ! parse_geometry.requires_source_draw;
+        bool first_effect_pass = true;
         for (const auto& wpeffobj : wpimgobj.effects) {
             Arc<SceneImageEffect> imgEffect = Arc<SceneImageEffect>::make();
             imgEffect->name                 = rstd::into(wpeffobj.name.as_str());
@@ -859,6 +893,11 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
                 auto effect_build = rstd::move(effect_result).unwrap_unchecked();
                 material          = rstd::move(effect_build.material);
                 wpEffShaderInfo   = rstd::move(effect_build.shader_info);
+                if (first_effect_pass && image_texture_metadata.is_some() &&
+                    ! material.texture_metadata.is_empty() &&
+                    wpmat.textures[usize()].as_str() == inRT)
+                    material.texture_metadata[usize()] = *image_texture_metadata;
+                first_effect_pass = false;
 
                 // load glname from alias and load to constvalue
                 LoadConstvalue(

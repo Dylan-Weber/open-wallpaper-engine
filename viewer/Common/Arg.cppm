@@ -22,12 +22,18 @@ struct SceneViewerArgs {
     PathBuf     scene_path;
     PathBuf     cache_path;
     PathBuf     user_properties_path;
+    PathBuf     audio_spectrum_path;
+    PathBuf     camera_eye_log;
     String      mouse_position;
     String      load_bench_output;
     String      texture_memory_output;
     String      capture_output;
     u32         capture_frame;
     Option<u64> random_seed;
+    Option<f32> script_start;
+    Option<f32> camera_path_delay;
+    String      shadow_quality;
+    Option<f64> script_clock;
     Resolution  resolution;
     i32         fps;
     u32         msaa_samples;
@@ -89,8 +95,9 @@ auto ParseMousePosition(ref<str> input) -> Option<array<double, 2>> {
     auto x        = rstd::from_str<f64>(xs);
     auto y        = rstd::from_str<f64>(ys);
     if (x.is_err() || y.is_err() || ! x->is_finite() || ! y->is_finite()) return None();
-    return Some(array<double, 2> { x->clamp(f64(0.0), f64(1.0)).to_primitive(),
-                                   y->clamp(f64(0.0), f64(1.0)).to_primitive() });
+    // not clamped: Wallpaper Engine follows the pointer outside its window too (a reference taken
+    // with the pointer parked in the screen's corner saw 1.19, 1.16)
+    return Some(array<double, 2> { x->to_primitive(), y->to_primitive() });
 }
 
 SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
@@ -142,14 +149,49 @@ SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
             .help(
                 "Path to a JSON file mapping project.json property keys to user-edited values"_str)
             .default_value(""_str));
-    auto mouse_position =
-        command.add_arg(Arg<String>::value("mouse-position"_str, string_parser())
-                            .long_name("mouse-position"_str)
-                            .help("Set initial normalized mouse position, e.g. 0,1"_str)
-                            .default_value(""_str));
+    auto audio_spectrum = command.add_arg(
+        Arg<String>::value("audio-spectrum"_str, string_parser())
+            .long_name("audio-spectrum"_str)
+            .help("Hold the audio spectrum still instead of listening: a JSON file of bands, "
+                  "{\"16\": {\"left\": [...], \"right\": [...]}} (16, 32 and/or 64)"_str)
+            .default_value(""_str));
+    auto camera_eye_log = command.add_arg(
+        Arg<String>::value("camera-eye-log"_str, string_parser())
+            .long_name("camera-eye-log"_str)
+            .help(
+                "Write the scene clock and the camera's eye (\"t x y z\") of every frame to this file"_str)
+            .default_value(""_str));
+    auto mouse_position = command.add_arg(
+        Arg<String>::value("mouse-position"_str, string_parser())
+            .long_name("mouse-position"_str)
+            .help(
+                "Set initial normalized mouse position, e.g. 0,1 (outside 0..1: outside the window)"_str)
+            .default_value(""_str));
+    auto script_clock = command.add_arg(
+        Arg<f64>::value("script-clock"_str, from_str_parser<f64>())
+            .long_name("script-clock"_str)
+            .help(
+                "Run the scripts' Date from this moment (milliseconds since 1970) as the scene starts"_str));
     auto random_seed = command.add_arg(Arg<u64>::value("random-seed"_str, from_str_parser<u64>())
                                            .long_name("random-seed"_str)
                                            .help("Set the scene random seed"_str));
+    auto script_start = command.add_arg(
+        Arg<f32>::value("script-start"_str, from_str_parser<f32>())
+            .long_name("script-start"_str)
+            .help("Start scripts at SECONDS of the scene's clock (Wallpaper Engine can start them "
+                  "late, as a wallpaper loads)"_str)
+            .value_name("SECONDS"_str));
+    auto camera_path_delay = command.add_arg(
+        Arg<f32>::value("camera-path-delay"_str, from_str_parser<f32>())
+            .long_name("camera-path-delay"_str)
+            .help("Start camera paths SECONDS after the scene's clock and run them that much "
+                  "behind it (as Wallpaper Engine does after loading)"_str)
+            .value_name("SECONDS"_str));
+    auto shadow_quality =
+        command.add_arg(Arg<String>::value("shadow-quality"_str, string_parser())
+                            .long_name("shadow-quality"_str)
+                            .help("Shadows as Wallpaper Engine's setting: low, medium, high, ultra"_str)
+                            .default_value("medium"_str));
     auto load_bench_output =
         command.add_arg(Arg<String>::value("load-bench-output"_str, string_parser())
                             .long_name("load-bench-output"_str)
@@ -195,12 +237,18 @@ SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
         .scene_path            = PathBuf::from(Value(matches, scene).as_str()),
         .cache_path            = PathBuf::from(Value(matches, cache_path).as_str()),
         .user_properties_path  = PathBuf::from(Value(matches, user_properties).as_str()),
+        .audio_spectrum_path   = PathBuf::from(Value(matches, audio_spectrum).as_str()),
+        .camera_eye_log        = PathBuf::from(Value(matches, camera_eye_log).as_str()),
         .mouse_position        = Value(matches, mouse_position).clone(),
         .load_bench_output     = Value(matches, load_bench_output).clone(),
         .texture_memory_output = Value(matches, texture_memory_output).clone(),
         .capture_output        = Value(matches, capture).clone(),
         .capture_frame         = Value(matches, capture_frame),
         .random_seed           = OptionalValue(matches, random_seed),
+        .script_start          = OptionalValue(matches, script_start),
+        .camera_path_delay     = OptionalValue(matches, camera_path_delay),
+        .shadow_quality        = Value(matches, shadow_quality).clone(),
+        .script_clock          = OptionalValue(matches, script_clock),
         .resolution            = Value(matches, resolution),
         .fps                   = Value(matches, fps),
         .msaa_samples          = Value(matches, msaa),

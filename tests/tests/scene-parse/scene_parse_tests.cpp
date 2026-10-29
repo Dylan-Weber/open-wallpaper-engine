@@ -14,6 +14,8 @@
 #include <rstd/test/gtest.hpp>
 
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 
 import rstd.cppstd;
 import rstd;
@@ -1223,6 +1225,231 @@ TEST(SceneShadowParsing, RequiresRendererCapabilityBeforeRegisteringDerivedResou
     EXPECT_FLOAT_EQ((**atlas).depth_clear_value, 0.0f);
     EXPECT_TRUE((**atlas).sample.compare_enable);
     EXPECT_EQ((**atlas).sample.compare_op, owe::CompareOp::Greater);
+    // Wallpaper Engine's "medium" shadows: a 256-pixel square for each cascade, in rows of a near
+    // square (two columns for three squares)
+    EXPECT_EQ((**atlas).width, rstd::i32(512));
+    EXPECT_EQ((**atlas).height, rstd::i32(512));
+    const auto& definition = supported_scene.scene->ShadowDefinitions()[rstd::usize()];
+    EXPECT_EQ(definition.light_id, rstd::i32(1));
+    EXPECT_EQ(definition.view_offset, rstd::u32());
+    const auto& viewports = definition.viewports;
+    ASSERT_EQ(viewports.len(), rstd::usize(3));
+    const float corners[3][2] { { 0, 0 }, { 256, 0 }, { 0, 256 } };
+    for (rstd::usize index {}; index < viewports.len(); ++index) {
+        const auto& viewport = viewports[index];
+        const auto  corner   = corners[index.to_primitive()];
+        EXPECT_FLOAT_EQ(viewport.width.to_primitive(), 256.0f);
+        EXPECT_FLOAT_EQ(viewport.height.to_primitive(), -256.0f);
+        EXPECT_FLOAT_EQ(viewport.x.to_primitive(), corner[0]);
+        EXPECT_FLOAT_EQ(viewport.y.to_primitive(), corner[1] + 256.0f);
+        EXPECT_EQ(viewport.scissor_x, rstd::i32(static_cast<int>(corner[0])));
+        EXPECT_EQ(viewport.scissor_y, rstd::i32(static_cast<int>(corner[1])));
+        EXPECT_EQ(viewport.scissor_width, rstd::u32(256));
+        EXPECT_EQ(viewport.scissor_height, rstd::u32(256));
+    }
+    // the light knows where its views start
+    auto lights = supported_scene.scene->Lights();
+    ASSERT_EQ(lights.len(), rstd::usize(1));
+    EXPECT_EQ(lights[rstd::usize()]->desc().shadow_view, rstd::i32());
+    EXPECT_EQ(unsupported_scene.scene->Lights()[rstd::usize()]->desc().shadow_view, rstd::i32(-1));
+}
+
+// Spot lights cast shadow maps too, as many as the light config's `spotshadow`; their squares
+// come first in the atlas, before the cascades (Wallpaper Engine's order).
+// Wallpaper Engine's shadow quality setting sizes the squares: 256 pixels at medium (the default),
+// 512 at high, 1024 at ultra.
+TEST(SceneShadowParsing, QualitySizesTheSquares) {
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {},
+            "general": {
+                "lightconfig": {"directionalshadow": 1},
+                "orthogonalprojection": {"width": 1920, "height": 1080}
+            },
+            "objects": [{
+                "id": 1, "name": "Directional", "light": "ldirectional", "castshadow": true,
+                "origin": [0.0, 0.0, 0.0], "angles": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0]
+            }, {
+                "id": 2, "name": "Caster", "model": "models/editor/camera/camera.mdl", "castshadow": true,
+                "origin": [0.0, 0.0, 0.0], "angles": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0]
+            }]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, std::move(assets).unwrap_unchecked()).is_ok());
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    struct Case {
+        owe::ShadowQuality quality;
+        int                tile;
+    };
+    const Case cases[] { { owe::ShadowQuality::Medium, 256 },
+                         { owe::ShadowQuality::High, 512 },
+                         { owe::ShadowQuality::Ultra, 1024 } };
+    for (const auto& c : cases) {
+        auto parsed = parser.Parse(
+            "shadow-quality"_str,
+            rstd::ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+            rstd::mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+            rstd::mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)),
+            owe::SceneParseOptions {
+                .capabilities   = { .directional_shadow = true },
+                .shadow_quality = c.quality,
+            });
+        ASSERT_TRUE(parsed.is_ok());
+        auto scene = rstd::move(parsed).unwrap();
+        auto atlas = scene.scene->RenderTarget("_rt_shadowAtlas"_str);
+        ASSERT_TRUE(atlas.is_some());
+        // three cascades in two columns
+        EXPECT_EQ((**atlas).width, rstd::i32(2 * c.tile)) << c.tile;
+        EXPECT_EQ((**atlas).height, rstd::i32(2 * c.tile)) << c.tile;
+        const auto& viewports = scene.scene->ShadowDefinitions()[rstd::usize()].viewports;
+        EXPECT_FLOAT_EQ(viewports[rstd::usize(1)].x.to_primitive(), static_cast<float>(c.tile));
+        EXPECT_EQ(viewports[rstd::usize()].scissor_width, rstd::u32(static_cast<unsigned>(c.tile)));
+    }
+}
+
+TEST(SceneShadowParsing, SpotLightsHaveTheFirstSquares) {
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {},
+            "general": {
+                "lightconfig": {"directional": 1, "spot": 2, "directionalshadow": 1, "spotshadow": 1},
+                "orthogonalprojection": {"width": 1920, "height": 1080}
+            },
+            "objects": [{
+                "id": 1, "name": "Directional", "light": "ldirectional", "castshadow": true,
+                "origin": [0.0, 0.0, 0.0], "angles": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0]
+            }, {
+                "id": 3, "name": "Spot", "light": "lspot", "castshadow": true,
+                "origin": [0.0, 0.0, 0.0], "angles": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0]
+            }, {
+                "id": 4, "name": "Second spot", "light": "lspot", "castshadow": true,
+                "origin": [0.0, 0.0, 0.0], "angles": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0]
+            }, {
+                "id": 2, "name": "Caster", "model": "models/editor/camera/camera.mdl", "castshadow": true,
+                "origin": [0.0, 0.0, 0.0], "angles": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0]
+            }]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, std::move(assets).unwrap_unchecked()).is_ok());
+
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "shadow-spot"_str,
+        rstd::ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        rstd::mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        rstd::mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)),
+        owe::SceneParseOptions {
+            .capabilities = { .directional_shadow = true },
+        });
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+    // four squares: the spot's and three cascades
+    auto atlas = scene.scene->RenderTarget("_rt_shadowAtlas"_str);
+    ASSERT_TRUE(atlas.is_some());
+    EXPECT_EQ((**atlas).width, rstd::i32(512));
+    EXPECT_EQ((**atlas).height, rstd::i32(512));
+    const auto definitions = scene.scene->ShadowDefinitions();
+    ASSERT_EQ(definitions.len(), rstd::usize(2));
+    EXPECT_EQ(definitions[rstd::usize()].light_id, rstd::i32(3));
+    EXPECT_EQ(definitions[rstd::usize()].view_offset, rstd::u32());
+    ASSERT_EQ(definitions[rstd::usize()].viewports.len(), rstd::usize(1));
+    EXPECT_EQ(definitions[rstd::usize()].viewports[rstd::usize()].scissor_x, rstd::i32());
+    EXPECT_EQ(definitions[rstd::usize()].viewports[rstd::usize()].scissor_y, rstd::i32());
+    EXPECT_EQ(definitions[rstd::usize(1)].light_id, rstd::i32(1));
+    EXPECT_EQ(definitions[rstd::usize(1)].view_offset, rstd::u32(1));
+    ASSERT_EQ(definitions[rstd::usize(1)].viewports.len(), rstd::usize(3));
+    EXPECT_EQ(definitions[rstd::usize(1)].viewports[rstd::usize()].scissor_x, rstd::i32(256));
+
+    auto lights = scene.scene->Lights();
+    ASSERT_EQ(lights.len(), rstd::usize(3));
+    EXPECT_EQ(lights[rstd::usize()]->desc().shadow_view, rstd::i32(1));
+    EXPECT_EQ(lights[rstd::usize(1)]->desc().shadow_view, rstd::i32());
+    // the config shadows one spot light
+    EXPECT_EQ(lights[rstd::usize(2)]->desc().shadow_view, rstd::i32(-1));
+}
+
+// Point lights cast shadow maps too, as many as the light config's `pointshadow`: one square each,
+// after the spots' and the cascades', holding the six views (+x -x, +y -y, +z -z) in two columns
+// and three rows.
+TEST(SceneShadowParsing, PointLightsHaveSixFacesInTheirSquare) {
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {},
+            "general": {
+                "lightconfig": {"point": 1, "spot": 1, "pointshadow": 1, "spotshadow": 1},
+                "orthogonalprojection": {"width": 1920, "height": 1080}
+            },
+            "objects": [{
+                "id": 5, "name": "Point", "light": "lpoint", "castshadow": true,
+                "origin": [0.0, 0.0, 0.0], "angles": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0]
+            }, {
+                "id": 3, "name": "Spot", "light": "lspot", "castshadow": true,
+                "origin": [0.0, 0.0, 0.0], "angles": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0]
+            }, {
+                "id": 2, "name": "Caster", "model": "models/editor/camera/camera.mdl", "castshadow": true,
+                "origin": [0.0, 0.0, 0.0], "angles": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0]
+            }]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, std::move(assets).unwrap_unchecked()).is_ok());
+
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "shadow-point"_str,
+        rstd::ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        rstd::mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        rstd::mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)),
+        owe::SceneParseOptions {
+            .capabilities = { .directional_shadow = true },
+        });
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+    // two squares: the spot's, then the point's
+    auto atlas = scene.scene->RenderTarget("_rt_shadowAtlas"_str);
+    ASSERT_TRUE(atlas.is_some());
+    EXPECT_EQ((**atlas).width, rstd::i32(512));
+    EXPECT_EQ((**atlas).height, rstd::i32(256));
+    const auto definitions = scene.scene->ShadowDefinitions();
+    ASSERT_EQ(definitions.len(), rstd::usize(2));
+    EXPECT_EQ(definitions[rstd::usize()].light_id, rstd::i32(3));
+    const auto& point = definitions[rstd::usize(1)];
+    EXPECT_EQ(point.light_id, rstd::i32(5));
+    EXPECT_EQ(point.type, owe::SceneLightType::Point);
+    EXPECT_EQ(point.view_offset, rstd::u32(1));
+    ASSERT_EQ(point.viewports.len(), rstd::usize(6));
+    for (rstd::usize face {}; face < point.viewports.len(); ++face) {
+        const auto& viewport = point.viewports[face];
+        const int   index    = static_cast<int>(face.to_primitive());
+        EXPECT_EQ(viewport.scissor_x, rstd::i32(256 + (index % 2) * 128)) << index;
+        EXPECT_EQ(viewport.scissor_y, rstd::i32((index / 2) * 85)) << index;
+        EXPECT_EQ(viewport.scissor_width, rstd::u32(128));
+        EXPECT_EQ(viewport.scissor_height, rstd::u32(85));
+    }
+    auto lights = scene.scene->Lights();
+    ASSERT_EQ(lights.len(), rstd::usize(2));
+    EXPECT_EQ(lights[rstd::usize()]->desc().shadow_view, rstd::i32(1));
+    EXPECT_EQ(lights[rstd::usize(1)]->desc().shadow_view, rstd::i32());
 }
 
 TEST(ModelObjectJson, ReadsMaterialSkin) {
@@ -1582,4 +1809,199 @@ TEST(SceneAssetPaths, ModelCameraAndClipRetainTheirReparseSemantics) {
     EXPECT_EQ(model.model, "mesh.mdl"_str);
     EXPECT_EQ(camera.path, "motion.json"_str);
     EXPECT_TRUE(clip.name.is_empty());
+}
+
+// Neon Sunset's sky is a fullscreen layer with a material of its own (models/cloudsbg.json has
+// "fullscreen" but no "passthrough"): it draws, so it can't be elided like the stock fullscreen
+// layer, which only passes the frame through.
+TEST(FullscreenImageParsing, OnlyPassthroughLayersAreElidable) {
+    auto root = std::filesystem::temp_directory_path() /
+                ("owe-fullscreen-" + std::to_string(rstd::process::id().to_primitive()));
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root / "models");
+    std::ofstream(root / "models" / "sky.json")
+        << R"({"material": "materials/util/fullscreenlayer.json", "fullscreen": true})";
+
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {},
+            "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+            "objects": [
+                {"id": 1, "name": "Passthrough", "image": "models/util/fullscreenlayer.json", "visible": true},
+                {"id": 2, "name": "Sky", "image": "models/sky.json", "visible": true}
+            ]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    auto own =
+        owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(root.string()).unwrap()));
+    ASSERT_TRUE(own.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, std::move(assets).unwrap_unchecked()).is_ok());
+    ASSERT_TRUE(vfs.mount("/assets"_str, std::move(own).unwrap_unchecked()).is_ok());
+
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "fullscreen-elision"_str,
+        rstd::ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        rstd::mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        rstd::mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+
+    EXPECT_TRUE(
+        scene.scene->IsLayerStaticElidable(owe::WallpaperLayerId { .value = rstd::i32(1) }));
+    EXPECT_FALSE(
+        scene.scene->IsLayerStaticElidable(owe::WallpaperLayerId { .value = rstd::i32(2) }));
+
+    std::filesystem::remove_all(root);
+}
+
+// Measured with animation-base-value: an animated origin, scale, angles or colour is added to the
+// property's value, whether the animation says "relative" or not; an animated alpha is the
+// animation's value, relative or not.
+TEST(AnimationParsing, VectorAnimationsAddToTheValueAndAlphaReplacesIt) {
+    // Each animation holds one value: 100 added to x for the origins, 0.25 for the alphas.
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {},
+            "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+            "objects": [
+                {"id": 1, "name": "origin", "image": "models/util/solidlayer.json", "size": "100 100",
+                 "visible": true, "origin": {"value": "300 800 0", "animation": {
+                     "c0": [{"frame": 0, "value": 100}, {"frame": 6, "value": 100}],
+                     "c1": [{"frame": 0, "value": 0}, {"frame": 6, "value": 0}],
+                     "c2": [{"frame": 0, "value": 0}, {"frame": 6, "value": 0}],
+                     "options": {"fps": 30, "length": 6, "mode": "single"}, "relative": false}}},
+                {"id": 2, "name": "origin relative", "image": "models/util/solidlayer.json",
+                 "size": "100 100", "visible": true, "origin": {"value": "300 600 0", "animation": {
+                     "c0": [{"frame": 0, "value": 100}, {"frame": 6, "value": 100}],
+                     "c1": [{"frame": 0, "value": 0}, {"frame": 6, "value": 0}],
+                     "c2": [{"frame": 0, "value": 0}, {"frame": 6, "value": 0}],
+                     "options": {"fps": 30, "length": 6, "mode": "single"}, "relative": true}}},
+                {"id": 3, "name": "alpha", "image": "models/util/solidlayer.json", "size": "100 100",
+                 "visible": true, "alpha": {"value": 0.5, "animation": {
+                     "c0": [{"frame": 0, "value": 0.25}, {"frame": 6, "value": 0.25}],
+                     "options": {"fps": 30, "length": 6, "mode": "single"}, "relative": false}}},
+                {"id": 4, "name": "alpha relative", "image": "models/util/solidlayer.json",
+                 "size": "100 100", "visible": true, "alpha": {"value": 0.5, "animation": {
+                     "c0": [{"frame": 0, "value": 0.25}, {"frame": 6, "value": 0.25}],
+                     "options": {"fps": 30, "length": 6, "mode": "single"}, "relative": true}}}
+            ]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, std::move(assets).unwrap_unchecked()).is_ok());
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "animation-base-value"_str,
+        rstd::ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        rstd::mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        rstd::mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+    scene.scene->Runtime().Advance(rstd::f64(1.0));
+    scene.scene->TickNodeFieldAnimations();
+
+    auto node = [&](rstd::ref<rstd::str> name) {
+        return scene.scene->RootMut()->FindByName(name);
+    };
+    ASSERT_NE(node("origin"_str), nullptr);
+    ASSERT_NE(node("origin relative"_str), nullptr);
+    ASSERT_NE(node("alpha"_str), nullptr);
+    ASSERT_NE(node("alpha relative"_str), nullptr);
+    EXPECT_FLOAT_EQ(node("origin"_str)->Translate().x(), 400.0f);
+    EXPECT_FLOAT_EQ(node("origin"_str)->Translate().y(), 800.0f);
+    EXPECT_FLOAT_EQ(node("origin relative"_str)->Translate().x(), 400.0f);
+    EXPECT_FLOAT_EQ(node("alpha"_str)->EffectiveAlpha(), 0.25f);
+    EXPECT_FLOAT_EQ(node("alpha relative"_str)->EffectiveAlpha(), 0.25f);
+}
+
+namespace
+{
+
+// A 2x2 texture of `format` (0: RGBA8888, 8: RG88), uncompressed.
+void WriteFormatTexture(const std::filesystem::path& path, std::uint32_t format) {
+    const std::uint32_t channels = format == 8 ? 2 : 4;
+    std::ofstream       output(path, std::ios::binary);
+    auto                u32 = [&](std::uint32_t value) {
+        output.write(reinterpret_cast<const char*>(&value), sizeof(value));
+    };
+    output.write("TEXV0005", 9);
+    output.write("TEXI0001", 9);
+    for (std::uint32_t value : { format, 0u, 2u, 2u, 2u, 2u, 0u }) u32(value);
+    output.write("TEXB0003", 9);
+    for (std::uint32_t value : { 1u, 0xffffffffu, 1u, 2u, 2u, 0u, 4 * channels, 4 * channels })
+        u32(value);
+    for (std::uint32_t byte = 0; byte < 4 * channels; ++byte) output.put(char(0x80));
+}
+
+} // namespace
+
+// Wallpaper Engine gives a shader every texture's format as TEXnFORMAT: generic4 decodes an RG88
+// normal map (g_Texture1) from .rg only when TEX1FORMAT says so, and otherwise from .wy, which is
+// 1 in an RG88 texture (LittleBigPlanet's clouds lit as if every normal leaned the same way).
+TEST(MaterialTextureFormats, EverySlotGetsItsFormat) {
+    auto root = std::filesystem::temp_directory_path() /
+                ("owe-texture-formats-" + std::to_string(rstd::process::id().to_primitive()));
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root / "models");
+    std::filesystem::create_directories(root / "materials");
+    std::ofstream(root / "models" / "cloud.json") << R"({"material": "materials/cloud.json"})";
+    std::ofstream(root / "materials" / "cloud.json")
+        << R"({"passes": [{"shader": "generic4", "textures": ["cloud_d", "cloud_n"]}]})";
+    WriteFormatTexture(root / "materials" / "cloud_d.tex", 0);
+    WriteFormatTexture(root / "materials" / "cloud_n.tex", 8);
+
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {},
+            "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+            "objects": [{"id": 1, "name": "Cloud", "image": "models/cloud.json", "visible": true}]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    auto own =
+        owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(root.string()).unwrap()));
+    ASSERT_TRUE(own.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, std::move(assets).unwrap_unchecked()).is_ok());
+    ASSERT_TRUE(vfs.mount("/assets"_str, std::move(own).unwrap_unchecked()).is_ok());
+
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "texture-formats"_str,
+        rstd::ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        rstd::mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        rstd::mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+    auto cloud = scene.scene->RootMut()->FindByName("Cloud"_str);
+    ASSERT_NE(cloud, nullptr);
+    ASSERT_NE(cloud->Mesh(), nullptr);
+    auto* material = cloud->Mesh()->Material();
+    ASSERT_NE(material, nullptr);
+    ASSERT_TRUE(material->customShader.variant.is_some());
+    const auto& combos = material->customShader.variant->Description().input_combos;
+    ASSERT_TRUE(combos.get("TEX1FORMAT"_str).is_some());
+    EXPECT_EQ(*combos.get("TEX1FORMAT"_str).unwrap(), "FORMAT_RG88"_str);
+    // an RGBA8888 colour map needs no combo (0, like a missing one)
+    EXPECT_TRUE(combos.get("TEX0FORMAT"_str).is_none());
+    std::filesystem::remove_all(root);
 }

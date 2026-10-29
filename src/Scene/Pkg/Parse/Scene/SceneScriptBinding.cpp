@@ -120,7 +120,7 @@ Arc<PuppetLayer> MakePuppetLayer(Arc<Puppet> puppet, slice<wpscene::PuppetAnimat
 void RegisterPuppetLayer(SceneParseContext& context, SceneNode* node, Arc<PuppetLayer> layer) {
     if (! node) return;
     for (const auto& playback : layer->AnimationPlaybacks())
-        node->RegisterAnimation(playback.clone());
+        node->RegisterAnimationLayer(playback.clone());
     (void)context.puppet_layers->by_node.insert(node, rstd::move(layer));
 }
 
@@ -201,6 +201,10 @@ script::ScriptScene& EnsureScriptScene(SceneParseContext& context) {
     if (context.script_scene.is_none()) {
         context.script_scene =
             Some(Box<script::ScriptScene>::make(Some(context.audio_response_demand.clone())));
+        if (context.authored_layer_names.is_some())
+            (*context.script_scene)
+                ->runtime()
+                .SetAuthoredLayerNames(context.authored_layer_names->clone());
         auto layers = context.puppet_layers.clone();
         (*context.script_scene)
             ->runtime()
@@ -233,6 +237,56 @@ script::ScriptScene& EnsureScriptScene(SceneParseContext& context) {
                         world.matrix()        = node->ModelTrans().cast<float>();
                         Eigen::Vector3f t     = (world * *bone).translation();
                         return Some(script::BoneTranslation { t.x(), t.y(), t.z() });
+                    }));
+        (*context.script_scene)
+            ->runtime()
+            .SetBonePhysicsHandler(script::JsRuntime::BonePhysicsHandler::make(
+                [layers = layers.clone()](SceneNode*                        node,
+                                          const script::BonePhysicsRequest& request) {
+                    auto layer = LookupPuppetLayer(layers, node);
+                    if (layer.is_none()) return;
+                    if (request.reset) {
+                        (*layer)->ResetBonePhysics(request.bone);
+                        return;
+                    }
+                    const auto&           d = request.directional;
+                    const auto&           a = request.angular;
+                    const Eigen::Vector3f directional(d[usize(0)], d[usize(1)], d[usize(2)]);
+                    const Eigen::Vector3f angular(a[usize(0)], a[usize(1)], a[usize(2)]);
+                    (*layer)->ApplyBoneImpulse(request.bone, directional, angular);
+                }));
+        (*context.script_scene)
+            ->runtime()
+            .SetAnimationLayerResolvers(
+                script::JsRuntime::AnimationLayerCreator::make(
+                    [layers = layers.clone()](SceneNode*                               node,
+                                              script::JsRuntime::AnimationLayerRequest request)
+                        -> Option<Arc<SceneAnimationPlayback>> {
+                        auto layer = LookupPuppetLayer(layers, node);
+                        if (layer.is_none()) return None();
+                        auto id = request.animation_id.is_some()
+                                      ? request.animation_id
+                                      : (*layer)->AnimationIdNamed(request.animation.as_str());
+                        if (id.is_none()) return None();
+                        auto playback = (*layer)->AddAnimationLayer(
+                            PuppetLayer::AnimationLayer {
+                                .id       = *id,
+                                .rate     = request.rate,
+                                .blend    = request.blend,
+                                .visible  = request.visible,
+                                .name     = rstd::move(request.name),
+                                .additive = request.additive,
+                            },
+                            request.single);
+                        if (playback.is_some()) node->RegisterAnimationLayer((*playback).clone());
+                        return playback;
+                    }),
+                script::JsRuntime::AnimationLayerDestroyer::make(
+                    [layers = layers.clone()](SceneNode*                    node,
+                                              const SceneAnimationPlayback& playback) {
+                        auto layer = LookupPuppetLayer(layers, node);
+                        if (layer.is_some()) (void)(*layer)->RemoveAnimationLayer(playback);
+                        return node->UnregisterAnimationLayer(playback);
                     }));
         if (context.user_properties.is_some())
             (*context.user_properties)->iter().for_each([&](auto entry) {
@@ -640,6 +694,18 @@ void WireCameraFieldScripts(SceneParseContext& context, const Arc<SceneNode>& no
                           camera_owner->Update();
                       }
                   } });
+        } else if (field == "visible"_str) {
+            auto path = camera_path.clone();
+            ss.AddActuator({ fs, [node, path = path.clone()](const script::ScriptValue& value) {
+                                auto visible = ScriptValueAsFloat(value);
+                                if (visible.is_none()) return;
+                                // The layer drives the camera while it and its parents are shown.
+                                bool shown = *visible >= 0.5f;
+                                for (auto* parent = node->Parent(); shown && parent != nullptr;
+                                     parent       = parent->Parent())
+                                    shown = parent->Visible();
+                                path->SetEnabled(shown);
+                            } });
         } else if (field == "angles"_str) {
             auto path         = camera_path.clone();
             auto camera_owner = camera.clone();
