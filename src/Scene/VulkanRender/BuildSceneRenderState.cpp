@@ -586,9 +586,12 @@ static void ConfigureNestedOutput(SceneNode* node, ref<str> output, ref<str> inh
     }
 }
 
+// A node below a hidden one (`hidden_ancestor`) is hidden too: CollectEmitSkipSubtrees skips a
+// hidden subtree only when nothing in it is linked, so a linked layer anywhere below (a puppet's
+// eyes) keeps the subtree, and its other nodes must still not be drawn.
 static void EmitSceneNode(SceneNode* node, ref<str> inherited_output, ref<str> inherited_camera,
                           ExtraInfo& extra, const HashSet<const SceneNode*>& emit_skip_subtrees,
-                          const BTreeSet<i32>& linked_ids) {
+                          const BTreeSet<i32>& linked_ids, bool hidden_ancestor = false) {
     if (node == nullptr || emit_skip_subtrees.contains(node)) return;
 
     auto&      scene       = *extra.scene;
@@ -598,12 +601,16 @@ static void EmitSceneNode(SceneNode* node, ref<str> inherited_output, ref<str> i
                                                : (wallpaper.is_some() ? wallpaper->value : i32(-1));
     const bool elidable = scene.IsLayerElidable(WallpaperLayerId { .value = layer_id });
     const bool linked   = link_source.is_some() && linked_ids.contains(link_source->value);
-    bool       emit     = true;
+    const bool hidden = hidden_ancestor || ! node->Visible() ||
+                        (layer_id >= i32() &&
+                         scene.IsLayerVisibilityElidable(WallpaperLayerId { .value = layer_id }));
+    bool       emit   = true;
 
     ref<str> node_output = inherited_output;
 
     if (! linked && ShouldSkipNoRuntimeEffect(node, scene)) emit = false;
-    if (elidable) {
+    // a hidden linked layer draws only its link target, for the layers that read it
+    if (elidable || hidden) {
         if (! linked) {
             emit = false;
         } else {
@@ -632,8 +639,13 @@ static void EmitSceneNode(SceneNode* node, ref<str> inherited_output, ref<str> i
         const ref<str> child_output =
             effect_layer == nullptr ? node_output : effect_layer->CompositeTarget();
         for (auto& child : node->GetChildren()) {
-            EmitSceneNode(
-                child.as_ptr(), child_output, *group_camera, extra, emit_skip_subtrees, linked_ids);
+            EmitSceneNode(child.as_ptr(),
+                          child_output,
+                          *group_camera,
+                          extra,
+                          emit_skip_subtrees,
+                          linked_ids,
+                          hidden);
         }
         if (effect_layer != nullptr && effect_layer->HasRenderEffects()) {
             LoadGraphEffects(effect_layer, extra);
@@ -651,7 +663,8 @@ static void EmitSceneNode(SceneNode* node, ref<str> inherited_output, ref<str> i
                       inherited_camera,
                       extra,
                       emit_skip_subtrees,
-                      linked_ids);
+                      linked_ids,
+                      hidden);
     }
 }
 
