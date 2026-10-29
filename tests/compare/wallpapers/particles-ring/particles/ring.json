@@ -1,0 +1,68 @@
+{
+  "material": "materials/particle/halo.json",
+  "maxcount": 22,
+  "starttime": 0,
+  "flags": 0,
+  "controlpoint": [
+    {
+      "id": 0,
+      "flags": 0,
+      "offset": "0 0 0"
+    }
+  ],
+  "emitter": [
+    {
+      "id": 1,
+      "name": "sphererandom",
+      "distancemin": 20,
+      "distancemax": 20,
+      "directions": "1 1 0",
+      "origin": "0 0 0",
+      "rate": 0,
+      "instantaneous": 12,
+      "speedmin": 0,
+      "speedmax": 0
+    }
+  ],
+  "initializer": [
+    {
+      "id": 2,
+      "name": "lifetimerandom",
+      "min": 100000,
+      "max": 100000
+    },
+    {
+      "id": 3,
+      "name": "sizerandom",
+      "min": 40,
+      "max": 40
+    },
+    {
+      "id": 4,
+      "name": "colorrandom",
+      "min": "255 128 0",
+      "max": "255 128 0"
+    },
+    {
+      "id": 5,
+      "name": "alpharandom",
+      "min": 1.0,
+      "max": 1.0
+    },
+    {
+      "name": "mapsequencearoundcontrolpoint",
+      "controlpoint": 0,
+      "count": 12,
+      "speedmin": "0 0 0",
+      "speedmax": "0 0 0",
+      "id": 10
+    }
+  ],
+  "operator": [],
+  "renderer": [
+    {
+      "id": 90,
+      "name": "sprite"
+    }
+  ]
+}
