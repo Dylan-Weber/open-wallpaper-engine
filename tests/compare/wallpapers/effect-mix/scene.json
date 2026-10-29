@@ -1,0 +1,465 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0.15 0.15 0.15",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "mix red 0",
+      "image": "models/rainbow.json",
+      "origin": "200 860 0",
+      "size": "64 2",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "5 100 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/colormix/effect.json",
+          "id": 10,
+          "name": "colormix",
+          "visible": true,
+          "passes": [
+            {
+              "id": 110,
+              "constantshadervalues": {
+                "color": "1 0 0",
+                "amount": 0.0
+              }
+            }
+          ]
+        }
+      ],
+      "id": 1,
+      "visible": true
+    },
+    {
+      "name": "mix red 0.25",
+      "image": "models/rainbow.json",
+      "origin": "560 860 0",
+      "size": "64 2",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "5 100 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/colormix/effect.json",
+          "id": 11,
+          "name": "colormix",
+          "visible": true,
+          "passes": [
+            {
+              "id": 111,
+              "constantshadervalues": {
+                "color": "1 0 0",
+                "amount": 0.25
+              }
+            }
+          ]
+        }
+      ],
+      "id": 2,
+      "visible": true
+    },
+    {
+      "name": "mix red 0.5",
+      "image": "models/rainbow.json",
+      "origin": "920 860 0",
+      "size": "64 2",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "5 100 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/colormix/effect.json",
+          "id": 12,
+          "name": "colormix",
+          "visible": true,
+          "passes": [
+            {
+              "id": 112,
+              "constantshadervalues": {
+                "color": "1 0 0",
+                "amount": 0.5
+              }
+            }
+          ]
+        }
+      ],
+      "id": 3,
+      "visible": true
+    },
+    {
+      "name": "mix red 0.75",
+      "image": "models/rainbow.json",
+      "origin": "1280 860 0",
+      "size": "64 2",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "5 100 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/colormix/effect.json",
+          "id": 13,
+          "name": "colormix",
+          "visible": true,
+          "passes": [
+            {
+              "id": 113,
+              "constantshadervalues": {
+                "color": "1 0 0",
+                "amount": 0.75
+              }
+            }
+          ]
+        }
+      ],
+      "id": 4,
+      "visible": true
+    },
+    {
+      "name": "mix red 1",
+      "image": "models/rainbow.json",
+      "origin": "1640 860 0",
+      "size": "64 2",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "5 100 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/colormix/effect.json",
+          "id": 14,
+          "name": "colormix",
+          "visible": true,
+          "passes": [
+            {
+              "id": 114,
+              "constantshadervalues": {
+                "color": "1 0 0",
+                "amount": 1.0
+              }
+            }
+          ]
+        }
+      ],
+      "id": 5,
+      "visible": true
+    },
+    {
+      "name": "mix full 0",
+      "image": "models/rainbow.json",
+      "origin": "200 600 0",
+      "size": "64 2",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "5 100 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/colormix/effect.json",
+          "id": 20,
+          "name": "colormix",
+          "visible": true,
+          "passes": [
+            {
+              "id": 120,
+              "constantshadervalues": {
+                "color": "0 0 1",
+                "amount": 1.0
+              }
+            }
+          ]
+        }
+      ],
+      "id": 6,
+      "visible": true
+    },
+    {
+      "name": "mix full 1",
+      "image": "models/rainbow.json",
+      "origin": "560 600 0",
+      "size": "64 2",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "5 100 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/colormix/effect.json",
+          "id": 21,
+          "name": "colormix",
+          "visible": true,
+          "passes": [
+            {
+              "id": 121,
+              "constantshadervalues": {
+                "color": "0 1 0",
+                "amount": 1.0
+              }
+            }
+          ]
+        }
+      ],
+      "id": 7,
+      "visible": true
+    },
+    {
+      "name": "mix full 2",
+      "image": "models/rainbow.json",
+      "origin": "920 600 0",
+      "size": "64 2",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "5 100 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/colormix/effect.json",
+          "id": 22,
+          "name": "colormix",
+          "visible": true,
+          "passes": [
+            {
+              "id": 122,
+              "constantshadervalues": {
+                "color": "1 1 1",
+                "amount": 1.0
+              }
+            }
+          ]
+        }
+      ],
+      "id": 8,
+      "visible": true
+    },
+    {
+      "name": "mix full 3",
+      "image": "models/rainbow.json",
+      "origin": "1280 600 0",
+      "size": "64 2",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "5 100 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/colormix/effect.json",
+          "id": 23,
+          "name": "colormix",
+          "visible": true,
+          "passes": [
+            {
+              "id": 123,
+              "constantshadervalues": {
+                "color": "0 0 0",
+                "amount": 1.0
+              }
+            }
+          ]
+        }
+      ],
+      "id": 9,
+      "visible": true
+    },
+    {
+      "name": "opacity back 0",
+      "image": "models/util/solidlayer.json",
+      "origin": "300 300 0",
+      "size": "400 260",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 10,
+      "visible": true
+    },
+    {
+      "name": "opacity 1",
+      "image": "models/rainbow.json",
+      "origin": "300 300 0",
+      "size": "64 2",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "4.6875 100 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/alphascale/effect.json",
+          "id": 30,
+          "name": "alphascale",
+          "visible": true,
+          "passes": [
+            {
+              "id": 130,
+              "constantshadervalues": {
+                "scale": 1.0
+              }
+            }
+          ]
+        }
+      ],
+      "id": 11,
+      "visible": true
+    },
+    {
+      "name": "opacity back 1",
+      "image": "models/util/solidlayer.json",
+      "origin": "800 300 0",
+      "size": "400 260",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 12,
+      "visible": true
+    },
+    {
+      "name": "opacity 0.5",
+      "image": "models/rainbow.json",
+      "origin": "800 300 0",
+      "size": "64 2",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "4.6875 100 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/alphascale/effect.json",
+          "id": 31,
+          "name": "alphascale",
+          "visible": true,
+          "passes": [
+            {
+              "id": 131,
+              "constantshadervalues": {
+                "scale": 0.5
+              }
+            }
+          ]
+        }
+      ],
+      "id": 13,
+      "visible": true
+    },
+    {
+      "name": "opacity back 2",
+      "image": "models/util/solidlayer.json",
+      "origin": "1300 300 0",
+      "size": "400 260",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 14,
+      "visible": true
+    },
+    {
+      "name": "opacity 0.25",
+      "image": "models/rainbow.json",
+      "origin": "1300 300 0",
+      "size": "64 2",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "4.6875 100 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/alphascale/effect.json",
+          "id": 32,
+          "name": "alphascale",
+          "visible": true,
+          "passes": [
+            {
+              "id": 132,
+              "constantshadervalues": {
+                "scale": 0.25
+              }
+            }
+          ]
+        }
+      ],
+      "id": 15,
+      "visible": true
+    },
+    {
+      "name": "chain",
+      "image": "models/rainbow.json",
+      "origin": "1700 300 0",
+      "size": "64 2",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "4.375 100 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/alphascale/effect.json",
+          "id": 40,
+          "name": "alphascale",
+          "visible": true,
+          "passes": [
+            {
+              "id": 140,
+              "constantshadervalues": {
+                "scale": 0.5
+              }
+            }
+          ]
+        },
+        {
+          "file": "effects/colormix/effect.json",
+          "id": 41,
+          "name": "colormix",
+          "visible": true,
+          "passes": [
+            {
+              "id": 141,
+              "constantshadervalues": {
+                "color": "0 0 1",
+                "amount": 0.5
+              }
+            }
+          ]
+        }
+      ],
+      "id": 16,
+      "visible": true
+    }
+  ],
+  "version": 1
+}
