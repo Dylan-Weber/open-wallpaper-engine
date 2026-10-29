@@ -53,6 +53,17 @@ def tex(width, height, pixels, format=RGBA8888):
     return data
 
 
+
+def tex_mips(levels):
+    """An uncompressed RGBA8888 texture with mipmaps: `levels` are (width, height, pixels) from the largest down."""
+    width, height = levels[0][0], levels[0][1]
+    data = b'TEXV0005\0TEXI0001\0' + struct.pack('<7I', RGBA8888, 0, width, height, width, height, 0)
+    data += b'TEXB0003\0' + struct.pack('<Ii', 1, -1) + struct.pack('<I', len(levels))
+    for w, h, pixels in levels:
+        assert len(pixels) == w * h * 4
+        data += struct.pack('<IIII', w, h, 0, len(pixels)) + struct.pack('<I', len(pixels)) + bytes(pixels)
+    return data
+
 def puppet_mdl(material, vertices, indices, bones, animations=(), shading=False, sim_type=0):
     """A skinned mesh with its skeleton (MDLV0013, MDLS0001) and animations (MDLA0001).
 
