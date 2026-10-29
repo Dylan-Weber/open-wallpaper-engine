@@ -222,7 +222,8 @@ bool SceneWritesLayerText(slice<SceneObjectVar>);
 bool SceneHasScripts(slice<SceneObjectVar>);
 auto LoadJsonFile(fs::VFS&, ref<str>) -> Option<Json>;
 bool AppendLayerCompositePassthroughEffect(fs::VFS&, wpscene::ImageObject&);
-auto MakePuppetLayer(Arc<Puppet>, slice<wpscene::PuppetAnimationLayer>) -> Arc<PuppetLayer>;
+// `scale`: the object's, for its bone physics (PuppetLayer::SetObjectScale)
+auto MakePuppetLayer(Arc<Puppet>, slice<wpscene::PuppetAnimationLayer>, const array<float, 3>& scale) -> Arc<PuppetLayer>;
 void WirePuppetAnimationScripts(SceneParseContext&, SceneNode*, Arc<PuppetLayer>,
                                 slice<wpscene::PuppetAnimationLayer>);
 void RegisterPuppetLayer(SceneParseContext&, SceneNode*, Arc<PuppetLayer>);

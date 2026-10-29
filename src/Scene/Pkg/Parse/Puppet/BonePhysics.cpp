@@ -134,7 +134,7 @@ auto BonePhysics::Advance(double time) -> float {
 }
 
 auto BonePhysics::Apply(usize bone, const BoneSimulation& simulation, const Affine3f& parent,
-                        const Affine3f& local, float dt) -> Affine3f {
+                        const Affine3f& local, float dt, const Vector3f& scale) -> Affine3f {
     auto& state = m_states[bone];
     if (dt > 0.0f) {
         // where the animation (and the parents' physics) put the bone and its tip
@@ -152,7 +152,7 @@ auto BonePhysics::Apply(usize bone, const BoneSimulation& simulation, const Affi
             // pulled by gravity and back by its spring, along the axes it may
             // move along, no further than its largest distance, and its
             // movement dies down.
-            state.offset -= (place - state.last_place) * simulation.translation_inertia;
+            state.offset -= (place - state.last_place).cwiseProduct(scale) * simulation.translation_inertia;
             if (simulation.gravity) {
                 state.velocity += simulation.mass * dt * 1000.0f * simulation.gravity_direction;
             }
@@ -170,7 +170,7 @@ auto BonePhysics::Apply(usize bone, const BoneSimulation& simulation, const Affi
             }
             state.velocity -=
                 state.velocity * rstd::cmp::min(dt * simulation.translation_friction, 1.0f);
-            state.position_offset = parent.linear().inverse() * state.offset;
+            state.position_offset = parent.linear().inverse() * state.offset.cwiseQuotient(scale);
         }
 
         if (simulation.rotation) {
