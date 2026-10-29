@@ -44,6 +44,22 @@ auto AtlasFont() -> vectext::FontInstance {
         Box<vectext::FontRasterizer>::from_raw(
             rstd::move(raster).into_raw().cast<vectext::FontRasterizer>()));
 }
+auto WidestLine(const vectext::TextLayout& layout) -> float {
+    float widest {};
+    for (auto& line : layout.lines()) widest = rstd::cmp::max(widest, float(line.logical.width));
+    return widest;
+}
+// Wallpaper Engine's width of laid-out text: from the pen, or from ink that hangs left of it, to
+// the right edge of the ink (not of the advances).
+auto InkWidth(const vectext::TextLayout& layout) -> float {
+    float left {}, right {};
+    for (auto& line : layout.lines()) {
+        if (line.ink.width == 0) continue;
+        left  = rstd::cmp::min(left, float(line.ink.x - line.logical.x));
+        right = rstd::cmp::max(right, float(line.ink.x + line.ink.width - line.logical.x));
+    }
+    return right - left;
+}
 } // namespace
 TEST(TextAtlas, ImageRetainsLivePixelsAfterCacheDestruction) {
     Option<Arc<owe::Image>> image;
@@ -275,7 +291,7 @@ TEST(TextLayouter, FontBoundsExcludeTrailingLeadingWithoutMovingBaselines) {
         ASSERT_TRUE(layouter.SetText(text).is_ok());
         const auto& layout = *layouter.Layout();
         const auto  bounds = layout.typographic_bounds();
-        EXPECT_FLOAT_EQ(layouter.TextWidth(), 300);
+        EXPECT_FLOAT_EQ(layouter.TextWidth(), InkWidth(layout));
         EXPECT_FLOAT_EQ(layouter.TextHeight(), float(bounds.height));
         EXPECT_FLOAT_EQ(float(layout.logical_bounds().height - bounds.height), 100);
         const auto& glyph    = layout.glyphs()[usize()];
@@ -291,7 +307,179 @@ TEST(TextLayouter, FontBoundsExcludeTrailingLeadingWithoutMovingBaselines) {
     EXPECT_FLOAT_EQ(layouter.TextHeight(), 50);
     ASSERT_TRUE(layouter.SetHorizontalAlign("right"_str).is_ok());
     EXPECT_FLOAT_EQ(layouter.TextHeight(), 50);
-    EXPECT_FLOAT_EQ(layouter.TextWidth(), 300);
+    EXPECT_FLOAT_EQ(layouter.TextWidth(), InkWidth(*layouter.Layout()));
+}
+
+// A layer that limits its width is only as wide as its widest wrapped line, and so is its
+// background: Wallpaper Engine draws text-layout's "wrapped" box 444 units wide, not maxwidth 450 +
+// padding = 490. Its lines keep their alignment inside that box.
+TEST(TextLayouter, WrappedTextIsAsWideAsItsWidestLine) {
+    auto                  resources  = TextResources();
+    constexpr std::size_t peak_quads = 16;
+    const rstd::initializer_list<owe::SceneVertexArray::SceneVertexAttribute> attributes {
+        { .name = "a_Position"_Str, .type = owe::VertexType::FLOAT3 },
+        { .name = "a_TexCoord"_Str, .type = owe::VertexType::FLOAT2 },
+        { .name = "a_Color"_Str, .type = owe::VertexType::FLOAT4 },
+    };
+    for (auto align : array<ref<str>, 3> { "left"_str, "center"_str, "right"_str }) {
+        auto mesh = Arc<owe::SceneMesh>::make();
+        mesh->AddVertexArray(owe::SceneVertexArray(attributes, rstd::usize(peak_quads * 4)));
+        mesh->AddIndexArray(owe::SceneIndexArray(rstd::usize(peak_quads * 6)));
+        owe::text::TextLayoutStyle style;
+        style.halign           = rstd::into(align);
+        style.wrap_width       = 400;
+        style.padding          = 10;
+        style.opaquebackground = true;
+        owe::text::TextLayouter layouter(
+            resources.clone(), TextFont(), mesh.clone(), rstd::move(style), peak_quads);
+        ASSERT_TRUE(layouter.SetText("AAA AAAAA A"_str).is_ok());
+        const auto& layout = *layouter.Layout();
+        ASSERT_EQ(layout.lines().len(), usize(2));
+        // (its ink: the letters' bare sides are not counted, see LinesAreMeasuredByTheirInk)
+        const float widest = layouter.TextWidth();
+        ASSERT_LT(widest, 400.0f);
+        EXPECT_LE(widest, WidestLine(layout));
+        // (a little less than the layout's ink: the pen moves by whole pixels, see
+        // LettersAdvanceByWholePixels)
+        EXPECT_LE(widest, InkWidth(layout));
+        EXPECT_GT(widest, InkWidth(layout) - 9.0f);
+
+        // the background quad comes first: the box and its padding
+        const auto& vertices = mesh->GetVertexArray(rstd::usize());
+        const auto  stride   = vertices.OneSize().to_primitive();
+        const auto  x        = [&](std::size_t quad, std::size_t corner) {
+            return vertices.Data()[(quad * 4 + corner) * stride];
+        };
+        EXPECT_FLOAT_EQ(x(0, 0), -widest / 2 - 10);
+        EXPECT_FLOAT_EQ(x(0, 1), widest / 2 + 10);
+        const auto quads = mesh->GetIndexArray(rstd::usize()).RenderDataCount().to_primitive() / 6;
+        float      left = x(1, 0), right = x(1, 1);
+        for (std::size_t q = 1; q < quads; ++q) {
+            left  = rstd::cmp::min(left, x(q, 0));
+            right = rstd::cmp::max(right, x(q, 1));
+        }
+        // letters' ink sits a few pixels inside their advances
+        if (align == "left"_str) EXPECT_NEAR(left, -widest / 2, 10.0f);
+        if (align == "right"_str) EXPECT_NEAR(right, widest / 2, 10.0f);
+        if (align == "center"_str) EXPECT_NEAR(left + right, 0.0f, 2.0f);
+        EXPECT_GE(left, -widest / 2 - 1);
+        EXPECT_LE(right, widest / 2 + 1);
+    }
+}
+
+// Wallpaper Engine places text by its ink, not its advances (gnome-extension test/wallpapers
+// text-bearings*, measured against Arial's metrics):
+// - a line spans from its pen, or from ink that hangs left of it, to its ink's right edge: a right
+//   aligned L ends at its ink, an f that reaches past its advance is not cut;
+// - lines align against the widest of those spans;
+// - ink that hangs left of the pen (j) moves every line right by that much;
+// - the text, and its background box, is as wide as the widest line's ink plus that hang.
+TEST(TextLayouter, LinesAreMeasuredByTheirInk) {
+    auto source      = rstd::path::PathBuf::from(__FILE__ ""_str);
+    auto root        = source.as_path().parent().unwrap().parent().unwrap().parent().unwrap();
+    auto path        = rstd::path::PathBuf::from(root).join("fixtures/fonts/Bearings.ttf"_str);
+    auto bytes       = rstd::fs::read(path.as_path()).unwrap();
+    auto resources   = TextResources();
+    auto font_source = resources->RegisterFont(bytes.as_slice()).unwrap();
+    constexpr std::size_t                                                     peak_quads = 8;
+    const rstd::initializer_list<owe::SceneVertexArray::SceneVertexAttribute> attributes {
+        { .name = "a_Position"_Str, .type = owe::VertexType::FLOAT3 },
+        { .name = "a_TexCoord"_Str, .type = owe::VertexType::FLOAT2 },
+        { .name = "a_Color"_Str, .type = owe::VertexType::FLOAT4 },
+    };
+    struct Case {
+        const char*        text;
+        const char*        align;
+        float              width;
+        std::vector<float> ink; // left and right of each glyph's quad
+    };
+    // Bearings.ttf at 100 pixels: L ink 10..50 of 60, o 5..45 of 50, j -10..20 of 30,
+    // f 5..45 of 40
+    const std::vector<Case> cases {
+        { "L", "left", 50, { -15, 25 } },
+        { "L", "right", 50, { -15, 25 } },
+        { "j", "left", 30, { -15, 15 } },
+        { "j", "center", 30, { -15, 15 } },
+        { "f", "right", 45, { -17.5f, 22.5f } },
+        // lines Lo (10..105), j (-10..20) and f (5..45): 105 + the j's 10, and every pen at 10
+        { "Lo\nj\nf", "left", 115, { -37.5f, 2.5f, 17.5f, 57.5f, -57.5f, -27.5f, -42.5f, -2.5f } },
+        { "Lo\nj\nf", "center", 115, { -37.5f, 2.5f, 17.5f, 57.5f, -20, 10, -12.5f, 27.5f } },
+        { "Lo\nj\nf", "right", 115, { -37.5f, 2.5f, 17.5f, 57.5f, 17.5f, 47.5f, 17.5f, 57.5f } },
+    };
+    for (const auto& c : cases) {
+        auto mesh = Arc<owe::SceneMesh>::make();
+        mesh->AddVertexArray(owe::SceneVertexArray(attributes, rstd::usize(peak_quads * 4)));
+        mesh->AddIndexArray(owe::SceneIndexArray(rstd::usize(peak_quads * 6)));
+        owe::text::TextLayoutStyle style;
+        style.mesh_origin      = owe::text::TextMeshOrigin::Layout;
+        style.halign           = rstd::into(rstd::cppstd::as_str(c.align).unwrap());
+        style.padding          = 10;
+        style.opaquebackground = true;
+        owe::text::TextLayouter layouter(resources.clone(),
+                                         { .source = Some(font_source), .size = 100 },
+                                         mesh.clone(),
+                                         rstd::move(style),
+                                         peak_quads);
+        ASSERT_TRUE(layouter.SetText(rstd::cppstd::as_str(c.text).unwrap()).is_ok());
+        EXPECT_NEAR(layouter.TextWidth(), c.width, 0.01f) << c.text << " " << c.align;
+        const auto& vertices = mesh->GetVertexArray(rstd::usize());
+        const auto  stride   = vertices.OneSize().to_primitive();
+        const auto  x        = [&](std::size_t quad, std::size_t corner) {
+            return vertices.Data()[(quad * 4 + corner) * stride];
+        };
+        EXPECT_NEAR(x(0, 0), -c.width / 2 - 10, 0.01f) << c.text << " " << c.align;
+        EXPECT_NEAR(x(0, 1), c.width / 2 + 10, 0.01f) << c.text << " " << c.align;
+        ASSERT_EQ(mesh->GetIndexArray(rstd::usize()).RenderDataCount().to_primitive(),
+                  (1 + c.ink.size() / 2) * 6)
+            << c.text;
+        for (std::size_t g = 0; g < c.ink.size() / 2; ++g) {
+            // the rasterizer may pad a quad by a pixel
+            EXPECT_NEAR(x(g + 1, 0), c.ink[g * 2], 1.01f) << c.text << " " << c.align << " " << g;
+            EXPECT_NEAR(x(g + 1, 1), c.ink[g * 2 + 1], 1.01f)
+                << c.text << " " << c.align << " " << g;
+        }
+    }
+}
+
+// Wallpaper Engine moves the pen by whole pixels: each letter's advance rounded down at the text's
+// size (user-properties' "from a property" at 64 points: its letters' places fit floored Arial
+// advances to 0.3 pixels, and owe's whole advances drifted 5 pixels wider along the line).
+TEST(TextLayouter, LettersAdvanceByWholePixels) {
+    auto source      = rstd::path::PathBuf::from(__FILE__ ""_str);
+    auto root        = source.as_path().parent().unwrap().parent().unwrap().parent().unwrap();
+    auto path        = rstd::path::PathBuf::from(root).join("fixtures/fonts/Bearings.ttf"_str);
+    auto bytes       = rstd::fs::read(path.as_path()).unwrap();
+    auto resources   = TextResources();
+    auto font_source = resources->RegisterFont(bytes.as_slice()).unwrap();
+    constexpr std::size_t                                                     peak_quads = 8;
+    const rstd::initializer_list<owe::SceneVertexArray::SceneVertexAttribute> attributes {
+        { .name = "a_Position"_Str, .type = owe::VertexType::FLOAT3 },
+        { .name = "a_TexCoord"_Str, .type = owe::VertexType::FLOAT2 },
+        { .name = "a_Color"_Str, .type = owe::VertexType::FLOAT4 },
+    };
+    auto mesh = Arc<owe::SceneMesh>::make();
+    mesh->AddVertexArray(owe::SceneVertexArray(attributes, rstd::usize(peak_quads * 4)));
+    mesh->AddIndexArray(owe::SceneIndexArray(rstd::usize(peak_quads * 6)));
+    owe::text::TextLayoutStyle style;
+    style.mesh_origin = owe::text::TextMeshOrigin::Layout;
+    style.halign      = "left"_Str;
+    // at 101 pixels L advances 60.6 and o 50.5: the pens are 0, 60, 110, 170, 220, 280, 330
+    owe::text::TextLayouter layouter(resources.clone(),
+                                     { .source = Some(font_source), .size = 101 },
+                                     mesh.clone(),
+                                     rstd::move(style),
+                                     peak_quads);
+    ASSERT_TRUE(layouter.SetText("LoLoLoL"_str).is_ok());
+    // from the first L's pen to the last one's ink: 330 + 50.5 (not 333.3 + 50.5)
+    EXPECT_NEAR(layouter.TextWidth(), 380.5f, 0.01f);
+    const auto& vertices = mesh->GetVertexArray(rstd::usize());
+    const auto  stride   = vertices.OneSize().to_primitive();
+    const float pens[7] { 0, 60, 110, 170, 220, 280, 330 };
+    for (std::size_t glyph = 0; glyph < 7; ++glyph) {
+        const float ink = glyph % 2 == 0 ? 10.1f : 5.05f;
+        EXPECT_NEAR(vertices.Data()[glyph * 4 * stride], pens[glyph] + ink - 380.5f / 2, 1.01f)
+            << glyph;
+    }
 }
 
 TEST(TextGeometry, DynamicEffectFollowsCurrentTextBounds) {
