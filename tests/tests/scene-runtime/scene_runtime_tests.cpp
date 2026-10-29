@@ -222,6 +222,57 @@ TEST(TransformUniformSource, UsesResolvedPerspectiveCameraEyePosition) {
     EXPECT_FLOAT_EQ(eye[usize(2)], 3.25f);
 }
 
+TEST(TransformUniformSource, EffectPassesSeeTheSceneCameraEye) {
+    // an effect renders with its own orthographic camera, but Wallpaper Engine gives it the scene's
+    // eye (the clock probe reads the camera path's eye from an effect)
+    auto state  = Arc<owe::UniformSceneState>::make(Arc<owe::AudioResponseDemand>::make());
+    auto camera = Arc<owe::SceneCamera>::make(
+        owe::SceneCamera::MakePerspective(16.0 / 9.0, 0.1, 10000.0, 60.0));
+    camera->SetLookAt(
+        Eigen::Vector3d { 3.0, -1.0, 12.0 }, Eigen::Vector3d::Zero(), Eigen::Vector3d::UnitY());
+    auto resolver = Arc<owe::UniformCameraResolver>::make(rstd::move(camera));
+    resolver->Add(String::make("effect"_str),
+                  Arc<owe::SceneCamera>::make(
+                      owe::SceneCamera::MakeOrthographic(1920.0, 1080.0, -5000.0, 5000.0)));
+    auto scene_node = Arc<owe::SceneNode>::make();
+    scene_node->SetCamera("effect"_str);
+    auto node = Arc<owe::UniformNodeState>::make(rstd::move(scene_node), rstd::move(resolver));
+    owe::TransformUniformSource source(rstd::move(state), rstd::move(node));
+
+    auto eye =
+        scene_test::Capture(owe::SceneFrame {}, source, owe::TransformUniformOutput::EyePosition);
+
+    ASSERT_EQ(eye.size(), usize(3));
+    EXPECT_FLOAT_EQ(eye[usize()], 3.0f);
+    EXPECT_FLOAT_EQ(eye[usize(1)], -1.0f);
+    EXPECT_FLOAT_EQ(eye[usize(2)], 12.0f);
+}
+
+TEST(TransformUniformSource, AFlatSceneEyeIsInFrontOfItsMiddle) {
+    // Wallpaper Engine's 2D scenes report an eye 2000 in front of the middle of the scene
+    // (2560x1440: 1280 720 2000; 1920x1080: 960 540 2000), where owe's orthographic camera sits at
+    // depth 0
+    auto state  = Arc<owe::UniformSceneState>::make(Arc<owe::AudioResponseDemand>::make());
+    auto camera = Arc<owe::SceneCamera>::make(
+        owe::SceneCamera::MakeOrthographic(2560.0, 1440.0, -5000.0, 5000.0));
+    auto camera_node = Arc<owe::SceneNode>::make(Eigen::Vector3f { 1280.0f, 720.0f, 0.0f },
+                                                 Eigen::Vector3f::Ones(),
+                                                 Eigen::Vector3f::Zero());
+    camera->AttatchNode(camera_node.as_ptr());
+    auto resolver   = Arc<owe::UniformCameraResolver>::make(rstd::move(camera));
+    auto scene_node = Arc<owe::SceneNode>::make();
+    auto node = Arc<owe::UniformNodeState>::make(rstd::move(scene_node), rstd::move(resolver));
+    owe::TransformUniformSource source(rstd::move(state), rstd::move(node));
+
+    auto eye =
+        scene_test::Capture(owe::SceneFrame {}, source, owe::TransformUniformOutput::EyePosition);
+
+    ASSERT_EQ(eye.size(), usize(3));
+    EXPECT_FLOAT_EQ(eye[usize()], 1280.0f);
+    EXPECT_FLOAT_EQ(eye[usize(1)], 720.0f);
+    EXPECT_FLOAT_EQ(eye[usize(2)], 2000.0f);
+}
+
 TEST(TransformUniformSource, UsesConfiguredEyePositionBeforePerspectiveCamera) {
     auto state  = Arc<owe::UniformSceneState>::make(Arc<owe::AudioResponseDemand>::make());
     auto camera = Arc<owe::SceneCamera>::make(
