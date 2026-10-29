@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "colormix",
+  "passes": [
+    {
+      "material": "materials/effects/colormix.json"
+    }
+  ]
+}
