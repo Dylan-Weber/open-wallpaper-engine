@@ -1,0 +1,7 @@
+{
+  "probe": true,
+  "probe_bands": [
+    64
+  ],
+  "probe_mirrored": true
+}
