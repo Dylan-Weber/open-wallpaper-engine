@@ -400,12 +400,14 @@ auto BuildMaterial(fs::VFS& vfs, ShaderCache& shader_cache,
                 return parsed_header.is_ok() ? rstd::move(parsed_header).unwrap_unchecked()
                                              : ImageHeader {};
             }();
-            if (i == usize()) {
-                if (texh.format == TextureFormat::R8)
-                    (void)shader_info_ref.combos.insert("TEX0FORMAT"_Str, "FORMAT_R8"_Str);
-                else if (texh.format == TextureFormat::RG8)
-                    (void)shader_info_ref.combos.insert("TEX0FORMAT"_Str, "FORMAT_RG88"_Str);
-            }
+            // every texture's format, as TEXnFORMAT: generic4 decodes an RG88 normal map
+            // (g_Texture1) from .rg only when TEX1FORMAT says so
+            if (texh.format == TextureFormat::R8)
+                (void)shader_info_ref.combos.insert(rstd::format("TEX{}FORMAT", i),
+                                                    "FORMAT_R8"_Str);
+            else if (texh.format == TextureFormat::RG8)
+                (void)shader_info_ref.combos.insert(rstd::format("TEX{}FORMAT", i),
+                                                    "FORMAT_RG88"_Str);
             if (texh.mipmap_larger) {
                 resolution = {
                     i32(texh.width), i32(texh.height), i32(texh.mapWidth), i32(texh.mapHeight)
