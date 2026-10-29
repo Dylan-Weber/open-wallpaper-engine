@@ -1460,6 +1460,7 @@ class SceneAnimationSet {
 public:
     void Register(Arc<SceneAnimationPlayback> playback);
     void Register(String property, Arc<SceneAnimationPlayback> playback);
+    void Unregister(const SceneAnimationPlayback& playback);
     auto ForProperty(ref<str> property) const -> Option<Arc<SceneAnimationPlayback>>;
     auto Named(ref<str> name) const -> Option<Arc<SceneAnimationPlayback>>;
     void Advance(SceneNode& owner, double runtime, Vec<SceneAnimationEventDispatch>& events);
@@ -1741,6 +1742,8 @@ public:
     auto NamedAnimation(ref<str> name) const -> Option<Arc<SceneAnimationPlayback>>;
     // Its animation layers (a puppet's, in the scene's order), for scripts' getAnimationLayer.
     void RegisterAnimationLayer(Arc<SceneAnimationPlayback> playback);
+    // Scripts' destroyAnimationLayer: false for a playback that isn't one of its animation layers.
+    bool UnregisterAnimationLayer(const SceneAnimationPlayback& playback);
     auto AnimationLayer(usize index) const -> Option<Arc<SceneAnimationPlayback>>;
     auto AnimationLayerCount() const -> usize { return m_animation_layers.len(); }
     void TickFieldAnimations(double runtime, Vec<SceneAnimationEventDispatch>& events);

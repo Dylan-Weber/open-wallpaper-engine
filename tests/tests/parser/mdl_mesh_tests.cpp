@@ -104,6 +104,44 @@ TEST(Puppet, PlaybackBlendAndVisibilityPoseTheLayer) {
     EXPECT_FLOAT_EQ(layer.boneTransform(1, 0.0)->translation().x(), 9.5f);
 }
 
+// Scripts' createAnimationLayer, playSingleAnimation and destroyAnimationLayer: the other layers
+// keep their playbacks (scripts and the scene hold them), and a single play stops at its end
+// whatever the animation's own mode.
+TEST(Puppet, AnimationLayersCanBeAddedAndRemoved) {
+    auto puppet                  = MakeReplacementPuppet();
+    puppet->anims[usize(1)].mode = owe::Puppet::PlayMode::Loop;
+    puppet->anims[usize(1)].name = String::make("wave"_str);
+    owe::PuppetLayer                 layer(puppet.clone());
+    owe::PuppetLayer::AnimationLayer authored { .id = 1, .layer_id = 42 };
+    layer.prepared(slice<owe::PuppetLayer::AnimationLayer>::from_raw_parts(&authored, usize(1)));
+    auto first = (*layer.AnimationPlayback(i32(42))).clone();
+    first->SetFrame(0.5f);
+    EXPECT_EQ(layer.AnimationIdNamed("wave"_str), Some(rstd::int32_t(2)));
+    EXPECT_TRUE(layer.AnimationIdNamed("missing"_str).is_none());
+
+    auto added = layer.AddAnimationLayer(
+        owe::PuppetLayer::AnimationLayer { .id = 2, .name = String::make("Wave"_str) }, true);
+    ASSERT_TRUE(added.is_some());
+    EXPECT_EQ((*layer.AnimationPlayback(i32(42))).as_ptr(), first.as_ptr());
+    EXPECT_FLOAT_EQ(first->Sample().current, 0.5f);
+    ASSERT_EQ(layer.AnimationPlaybacks().len(), usize(2));
+    EXPECT_EQ((*added)->Name(), "Wave"_str);
+    // the later replacement layer poses the bone: animation 2 at its frame 0
+    EXPECT_FLOAT_EQ(layer.boneTransform(1, 0.0)->translation().x(), 30.0f);
+    Vec<owe::SceneAnimationEvent> events;
+    (*added)->Advance(0.0, events);
+    (*added)->Advance(5.0, events);
+    EXPECT_FALSE((*added)->IsPlaying());
+    EXPECT_FALSE(
+        layer.AddAnimationLayer(owe::PuppetLayer::AnimationLayer { .id = 9 }, false).is_some());
+
+    EXPECT_TRUE(layer.RemoveAnimationLayer(**added));
+    ASSERT_EQ(layer.AnimationPlaybacks().len(), usize(1));
+    EXPECT_EQ(layer.AnimationPlaybacks()[usize()].as_ptr(), first.as_ptr());
+    EXPECT_FLOAT_EQ(layer.boneTransform(1, 0.0)->translation().x(), 15.0f);
+    EXPECT_FALSE(layer.RemoveAnimationLayer(**added));
+}
+
 TEST(Puppet, ReplacementLayersBlendSequentiallyFromReference) {
     auto puppet = MakeReplacementPuppet();
     for (bool reverse : { false, true }) {
