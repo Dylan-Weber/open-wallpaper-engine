@@ -1159,6 +1159,16 @@ TEST(SceneLightParsing, RecognizesPrefixedKindsAndFullConeAngles) {
     EXPECT_NEAR(lights[rstd::usize()]->desc().outer_cone_cos, std::cos(77.94f * deg_to_rad), 1e-5f);
 }
 
+// Measured in Wallpaper Engine with ceilings over a lit floor under a sun: a model whose material is blended
+// translucent or additive casts no shadow; a normal one does.
+TEST(SceneShadowParsing, OnlyModelsWithoutBlendingCastShadows) {
+    EXPECT_TRUE(owe::BlendingCastsShadow("normal"_str));
+    EXPECT_TRUE(owe::BlendingCastsShadow("disabled"_str));
+    EXPECT_TRUE(owe::BlendingCastsShadow(""_str));
+    EXPECT_FALSE(owe::BlendingCastsShadow("translucent"_str));
+    EXPECT_FALSE(owe::BlendingCastsShadow("additive"_str));
+}
+
 TEST(SceneShadowParsing, RequiresRendererCapabilityBeforeRegisteringDerivedResources) {
     auto document = owe::wpscene::ParseSceneDocumentJson(
         R"JSON({
