@@ -232,6 +232,7 @@ _binary_spec = importlib.util.spec_from_file_location('binary', os.path.join(MAK
 binary = importlib.util.module_from_spec(_binary_spec)
 _binary_spec.loader.exec_module(binary)
 cube_mdl = binary.cube_mdl
+puppet_mdl = binary.puppet_mdl
 
 
 class Scene3D(Wallpaper):
@@ -492,3 +493,20 @@ void main() {
 	gl_FragColor = vec4(saturate(pointer.x), saturate(pointer.y), v_TexCoord.x, 1.0);
 }
 """
+
+
+def strip_mesh(width=600.0, height=100.0, columns=9, bones=2):
+    """A strip of two rows of `columns` vertices centred on the origin, skinned along its length to `bones` bones
+    (each weighted across its own stretch, blended with the next): its vertices and triangles for puppet_mdl()."""
+    vertices, indices = [], []
+    for row in range(2):
+        for column in range(columns):
+            t = column / (columns - 1) * (bones - 1)
+            first = min(int(t), bones - 2)
+            blend = t - first
+            vertices.append((-width / 2 + width * column / (columns - 1), (row - 0.5) * height, 0,
+                             column / (columns - 1), row, [first, first + 1, 0, 0], [1 - blend, blend, 0, 0]))
+    for column in range(columns - 1):
+        a, b, c, d = column, column + 1, columns + column, columns + column + 1
+        indices += [(a, b, c), (b, d, c)]
+    return vertices, indices
