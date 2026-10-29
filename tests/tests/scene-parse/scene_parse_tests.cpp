@@ -2005,3 +2005,53 @@ TEST(MaterialTextureFormats, EverySlotGetsItsFormat) {
     EXPECT_TRUE(combos.get("TEX0FORMAT"_str).is_none());
     std::filesystem::remove_all(root);
 }
+
+// A light's animations follow the curve's `relative` (Wallpaper Engine's pictures of light-paused-animation: a colour
+// animation holding white keeps a white light white, where adding it to the light's colour doubles it).
+TEST(AnimationParsing, ALightsAnimationsFollowRelative) {
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {"center": "0 0 0", "eye": "0 0 10", "up": "0 1 0"},
+            "general": {"lightconfig": {"directional": 2}},
+            "objects": [
+                {"id": 1, "name": "absolute", "light": "ldirectional", "intensity": 1, "radius": 10,
+                 "origin": "0 0 0", "angles": "0 0 0", "color": {"value": "1 1 1", "animation": {
+                     "c0": [{"frame": 0, "value": 0.5}, {"frame": 6, "value": 0.5}],
+                     "c1": [{"frame": 0, "value": 0.5}, {"frame": 6, "value": 0.5}],
+                     "c2": [{"frame": 0, "value": 0.5}, {"frame": 6, "value": 0.5}],
+                     "options": {"fps": 30, "length": 6, "mode": "single"}, "relative": false}}},
+                {"id": 2, "name": "relative", "light": "ldirectional", "intensity": 1, "radius": 10,
+                 "origin": "0 0 0", "angles": "0 0 0", "color": {"value": "0.5 0.5 0.5", "animation": {
+                     "c0": [{"frame": 0, "value": 0.25}, {"frame": 6, "value": 0.25}],
+                     "c1": [{"frame": 0, "value": 0.25}, {"frame": 6, "value": 0.25}],
+                     "c2": [{"frame": 0, "value": 0.25}, {"frame": 6, "value": 0.25}],
+                     "options": {"fps": 30, "length": 6, "mode": "single"}, "relative": true}}}
+            ]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, std::move(assets).unwrap_unchecked()).is_ok());
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "light-animation"_str,
+        rstd::ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        rstd::mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        rstd::mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+    scene.scene->Runtime().Advance(rstd::f64(1.0));
+    scene.scene->TickNodeFieldAnimations();
+
+    auto absolute = scene.scene->RootMut()->FindByName("absolute"_str);
+    auto relative = scene.scene->RootMut()->FindByName("relative"_str);
+    ASSERT_NE(absolute, nullptr);
+    ASSERT_NE(relative, nullptr);
+    EXPECT_FLOAT_EQ(absolute->Color().x(), 0.5f);
+    EXPECT_FLOAT_EQ(relative->Color().x(), 0.75f);
+}
