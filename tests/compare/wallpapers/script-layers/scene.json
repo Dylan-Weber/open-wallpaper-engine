@@ -1,0 +1,68 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0.05 0.05 0.1",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "driver",
+      "image": "models/util/solidlayer.json",
+      "size": "10 10",
+      "color": "0 0 0",
+      "alpha": 0,
+      "origin": {
+        "value": "10 10 0",
+        "script": "'use strict';\nengine.registerAsset('models/util/solidlayer.json', true);\n\nexport function init(value) {\n    // layers made by the script: a row of squares that grows, coloured by their number\n    for (let i = 0; i < 6; i++) {\n        thisScene.createLayer({\n            image: 'models/util/solidlayer.json',\n            name: 'made ' + i,\n            origin: new Vec3(300 + i * 150, 900, 0),\n            size: new Vec2(100, 40 + i * 25),\n            color: new Vec3(i / 5, 0.5, 1 - i / 5),\n        });\n    }\n    // the canvas size places a marker in the middle\n    const centre = new Vec3(engine.canvasSize.x / 2, engine.canvasSize.y / 2, 0);\n    thisScene.createLayer({image: 'models/util/solidlayer.json', name: 'centre', origin: centre,\n                           size: new Vec2(60, 60), color: new Vec3(1, 1, 1)});\n    // localStorage keeps a value between scripts of this run\n    localStorage.set('x', 1500);\n    thisScene.getLayer('moved by script').origin = new Vec3(localStorage.get('x'), 540, 0);\n    // layers can be read and counted\n    const count = thisScene.getLayerCount();\n    thisScene.getLayer('counted').size = new Vec2(40 * count, 60);\n    return value;\n}\nexport function update(value) { return value; }\n",
+        "scriptproperties": {}
+      },
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 1,
+      "visible": true
+    },
+    {
+      "name": "moved by script",
+      "image": "models/util/solidlayer.json",
+      "origin": "100 200 0",
+      "size": "120 120",
+      "color": "1 0.5 0",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 2,
+      "visible": true
+    },
+    {
+      "name": "counted",
+      "image": "models/util/solidlayer.json",
+      "origin": "700 200 0",
+      "size": "10 60",
+      "color": "0.5 1 0.5",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 3,
+      "visible": true
+    }
+  ],
+  "version": 1
+}
