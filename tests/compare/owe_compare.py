@@ -49,6 +49,7 @@ Needs: SceneViewer (--viewer, default the debug build: lito build -p owe-scenevi
 .venv/bin/pip install -r requirements.txt).
 """
 import argparse
+import concurrent.futures
 import functools
 import importlib.util
 import json
@@ -57,6 +58,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 
 import numpy as np
 from PIL import Image
@@ -114,12 +116,40 @@ def labels_of(names):
     return labels
 
 
-def cached(cache, key, make):
-    """make()'s result, made once for each key: the pictures of a series often show the same frame (the screen is
-    copied faster than the wallpaper draws), and owe renders it once."""
-    if key not in cache:
-        cache[key] = make()
-    return cache[key]
+def default_jobs():
+    """How many viewers render at once unless --jobs or WPE_TEST_JOBS says: a few (each has a memory cap of its own,
+    WPE_TEST_MEMORY, 3G), not every core."""
+    return max(1, min(3, (os.cpu_count() or 2) // 2))
+
+
+_slots = threading.BoundedSemaphore(int(os.environ.get('WPE_TEST_JOBS', 0)) or default_jobs())
+
+
+def set_jobs(jobs):
+    """No more than `jobs` viewers run at once (every render waits for a slot)."""
+    global _slots
+    _slots = threading.BoundedSemaphore(max(1, jobs))
+
+
+class Renders:
+    """Renders started in the background, each once for each key: the pictures of a series often show the same frame
+    (the screen is copied faster than the wallpaper draws), and owe renders it once; renders given with submit() run
+    side by side (the limit is set_jobs'), and get() waits for one."""
+
+    def __init__(self, workers):
+        self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=max(1, workers))
+        self.futures = {}
+
+    def submit(self, key, make):
+        if key not in self.futures:
+            self.futures[key] = self.pool.submit(make)
+        return self.futures[key]
+
+    def get(self, key, make):
+        return self.submit(key, make).result()
+
+    def close(self):
+        self.pool.shutdown(wait=True, cancel_futures=True)
 
 
 def series_rows(results, name):
@@ -228,7 +258,7 @@ def render(name, size, viewer, frames=None, script_start=0.0, camera_path_delay=
                            ['--script-start', '%.4f' % script_start] if script_start > 0 else []) + (
                            ['--camera-path-delay', '%.4f' % camera_path_delay] if camera_path_delay > 0
                            else []) + shadows + list(inputs) + [ASSETS, scene_package(os.path.join(WALLPAPERS, folder_of(name)))]
-    with open(os.path.join(out, 'viewer.log'), 'w') as log:
+    with open(os.path.join(out, 'viewer.log'), 'w') as log, _slots:
         subprocess.run(command, env=env, stdout=log, stderr=subprocess.STDOUT, check=False)
     if not os.path.exists(frame):
         raise RuntimeError('no picture (see %s/viewer.log)' % out)
@@ -376,6 +406,50 @@ def save_pictures(name, reference, owe, difference, changed):
     sheet.save(os.path.join(folder, 'side-by-side.png'))
 
 
+def render_plan(name, reference, help_text, no_render, quiet=False):
+    """What owe's render of `name` is given, from what its reference's clock probe recorded: the frame, the scripts' start,
+    the viewer arguments and environment for the inputs, the camera path delay (or that it is to be searched for), and
+    the probe's readings for the report. `quiet`: without notes (a second look at a plan already printed)."""
+    say = (lambda *a, **k: None) if quiet else print
+    if not no_render:
+        os.makedirs(os.path.join(OUTPUT, name), exist_ok=True)
+    probe = settings_of(name).get('probe')
+    bands = settings_of(name).get('probe_bands', ())
+    frames, stamp, script_start = None, {}, 0.0
+    inputs, input_args, input_env = {}, [], {}
+    # Wallpaper Engine starts camera paths later than g_Time, by about what the wallpaper took to load: no
+    # picture shows a camera path's clock, so a compare.json gives it in frames, or "search" finds it
+    camera_setting = settings_of(name).get('camera_path_delay', 0)
+    search_camera = camera_setting == 'search'
+    camera_path_delay = 0.0 if search_camera else camera_setting / 30
+    if probe:
+        frames = clock_probe.read(reference)
+        stamp['reference'] = frames
+        if frames is None:
+            say('     %-28s the reference has no readable clock probe: the usual moment' % name, flush=True)
+        else:
+            # scripts read g_Time, but a heavy wallpaper's may not have started yet
+            scripts = clock_probe.read_script(reference)
+            stamp['reference_scripts'] = scripts
+            if scripts == clock_probe.NOT_STARTED:
+                script_start = (frames + 1) / 30
+            # what Wallpaper Engine gave the scene: the pointer, the spectrum, the scripts' clock, the eye
+            inputs = clock_probe.read_inputs(reference, bands, settings_of(name).get('probe_mirrored', False))
+            stamp['reference_inputs'] = {key: value for key, value in inputs.items() if key != 'bands'}
+            if inputs and not no_render:
+                input_args, input_env, notes = input_arguments(
+                    inputs, frames, help_text, os.path.join(OUTPUT, name))
+                for note in notes:
+                    say('     %-28s %s' % (name, note), flush=True)
+    if (script_start > 0 or camera_path_delay > 0) and not no_render and \
+            '--script-start' not in help_text:
+        say('     %-28s the viewer has no --script-start: scripts and camera paths on its clock' % name, flush=True)
+        script_start = camera_path_delay = 0.0
+    return {'frames': frames, 'stamp': stamp, 'script_start': script_start, 'inputs': inputs, 'input_args': input_args,
+            'input_env': input_env, 'camera_path_delay': camera_path_delay, 'search_camera': search_camera,
+            'bands': bands}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('wallpapers', nargs='*', help='names of the wallpapers (all with a reference.png by default)')
@@ -383,7 +457,12 @@ def main():
     parser.add_argument('--threshold', type=float, default=0.98, help='lowest acceptable ssim')
     parser.add_argument('--tolerance', type=int, default=24, help='channel difference that counts as a changed pixel')
     parser.add_argument('--no-render', action='store_true', help='compare the pictures of the last run again')
+    parser.add_argument('--jobs', type=int, default=None,
+                        help='how many viewers render at once (default %d, or WPE_TEST_JOBS); each has a memory cap of '
+                             'WPE_TEST_MEMORY (3G)' % default_jobs())
     args = parser.parse_args()
+    if args.jobs:
+        set_jobs(args.jobs)
 
     if not args.no_render:
         if not has_capture(args.viewer):
@@ -394,7 +473,23 @@ def main():
         if os.path.exists(os.path.join(WALLPAPERS, n, 'reference.png')) or shots_of(n)))
     results, counts = {}, {'ok': 0, 'near': 0, 'differ': 0, 'failed': 0, 'skipped': 0}
     help_text = '' if args.no_render else viewer_help(args.viewer)
-    rendered = {}
+    renders = Renders(max(1, int(os.environ.get('WPE_TEST_JOBS', 0)) or args.jobs or default_jobs()))
+    if not args.no_render:
+        # every plain render starts now, side by side (up to the job limit), and the loop below takes them in order
+        for label in names:
+            if skipped(label) or not os.path.exists(reference_of(label)):
+                continue
+            reference = Image.open(reference_of(label))
+            plan = render_plan(label, reference, help_text, False, quiet=True)
+            if plan['search_camera'] and '--camera-path-delay' in help_text:
+                continue
+            os.makedirs(os.path.join(OUTPUT, label), exist_ok=True)
+            renders.submit(
+                (folder_of(label), plan['frames'], plan['script_start'], plan['camera_path_delay'],
+                 tuple(plan['input_args'])),
+                lambda label=label, reference=reference, plan=plan: render(
+                    label, reference.size, args.viewer, plan['frames'], plan['script_start'],
+                    plan['camera_path_delay'], plan['input_args'], plan['input_env']))
     for name in names:
         why = skipped(name)
         if why:
@@ -403,39 +498,11 @@ def main():
             continue
         os.makedirs(os.path.join(OUTPUT, name), exist_ok=True)
         reference = Image.open(reference_of(name))
+        plan = render_plan(name, reference, help_text, args.no_render)
         probe = settings_of(name).get('probe')
-        bands = settings_of(name).get('probe_bands', ())
-        frames, stamp, script_start = None, {}, 0.0
-        inputs, input_args, input_env = {}, [], {}
-        # Wallpaper Engine starts camera paths later than g_Time, by about what the wallpaper took to load: no
-        # picture shows a camera path's clock, so a compare.json gives it in frames, or "search" finds it
-        camera_setting = settings_of(name).get('camera_path_delay', 0)
-        search_camera = camera_setting == 'search'
-        camera_path_delay = 0.0 if search_camera else camera_setting / 30
-        if probe:
-            frames = clock_probe.read(reference)
-            stamp['reference'] = frames
-            if frames is None:
-                print('     %-28s the reference has no readable clock probe: the usual moment' % name, flush=True)
-            else:
-                # scripts read g_Time, but a heavy wallpaper's may not have started yet
-                scripts = clock_probe.read_script(reference)
-                stamp['reference_scripts'] = scripts
-                if scripts == clock_probe.NOT_STARTED:
-                    script_start = (frames + 1) / 30
-                # what Wallpaper Engine gave the scene: the pointer, the spectrum, the scripts' clock, the eye
-                inputs = clock_probe.read_inputs(reference, bands, settings_of(name).get('probe_mirrored', False))
-                stamp['reference_inputs'] = {key: value for key, value in inputs.items() if key != 'bands'}
-                if inputs and not args.no_render:
-                    input_args, input_env, notes = input_arguments(
-                        inputs, frames, help_text, os.path.join(OUTPUT, name))
-                    for note in notes:
-                        print('     %-28s %s' % (name, note), flush=True)
-        if (script_start > 0 or camera_path_delay > 0) and not args.no_render and \
-                '--script-start' not in help_text:
-            print('     %-28s the viewer has no --script-start: scripts and camera paths on its clock' % name,
-                  flush=True)
-            script_start = camera_path_delay = 0.0
+        bands, frames, stamp, script_start = plan['bands'], plan['frames'], plan['stamp'], plan['script_start']
+        inputs, input_args, input_env = plan['inputs'], plan['input_args'], plan['input_env']
+        camera_path_delay, search_camera = plan['camera_path_delay'], plan['search_camera']
         try:
             if args.no_render:
                 engine = os.path.join(OUTPUT, name, 'engine')
@@ -452,9 +519,9 @@ def main():
                         name, reference, args.viewer, frames, script_start, args.tolerance, input_args, input_env,
                         probe_boxes(reference.size, inputs, bands, settings_of(name).get('probe_mirrored', False)))
                     stamp['camera_path_delay'] = round(camera_path_delay * 30)
-                frame = cached(rendered, (folder_of(name), frames, script_start, camera_path_delay, tuple(input_args)),
-                               lambda: render(name, reference.size, args.viewer, frames, script_start,
-                                              camera_path_delay, input_args, input_env))
+                frame = renders.get((folder_of(name), frames, script_start, camera_path_delay, tuple(input_args)),
+                                    lambda: render(name, reference.size, args.viewer, frames, script_start,
+                                                   camera_path_delay, input_args, input_env))
             owe = Image.open(frame)
             if owe.size != reference.size:
                 raise RuntimeError('sizes differ: reference %s, owe %s' % (reference.size, owe.size))
@@ -502,6 +569,7 @@ def main():
             '  (Wallpaper Engine against itself %.4f, frames %s and %s)' % (
                 floor['ssim'], *metrics['floor']['frames']) if floor else ''), flush=True)
 
+    renders.close()
     os.makedirs(OUTPUT, exist_ok=True)
     with open(os.path.join(OUTPUT, 'report.json'), 'w') as f:
         json.dump(results, f, indent=2)
