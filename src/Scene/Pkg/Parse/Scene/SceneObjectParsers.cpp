@@ -101,6 +101,8 @@ void ParseCamera(SceneParseContext& context, const wpscene::SceneMetadata& sc) {
         perspective_camera->SetAspect(rstd::as_cast<double>(context.ortho_w) /
                                       rstd::as_cast<double>(context.ortho_h));
         (void)scene.SetActiveCamera("global_perspective"_str);
+        // scripts see this camera, wherever a camera path moves the view
+        scene.SetScriptCameraTransforms(perspective_camera->AuthoredTransforms());
         LoadRootCameraPaths(context, sc);
     }
 }
