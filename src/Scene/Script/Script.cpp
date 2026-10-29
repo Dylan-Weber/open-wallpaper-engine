@@ -2,6 +2,7 @@ module;
 
 #include <rstd/macro.hpp>
 #include <rstd/enum.hpp>
+#include <cmath>
 #include "quickjs.h"
 
 module wescene.script;
@@ -550,6 +551,8 @@ struct EngineHostState {
     HashMap<owe::SceneNode*, Json>               initial_layer_configs;
     Option<JsRuntime::BoneIndexResolver>         bone_index_resolver;
     Option<JsRuntime::BoneTransformResolver>     bone_transform_resolver;
+    Option<JsRuntime::AttachmentIndexResolver>     attachment_index_resolver;
+    Option<JsRuntime::AttachmentTransformResolver> attachment_transform_resolver;
     owe::SceneNode*                              scene_root { nullptr };
 };
 
@@ -2674,6 +2677,71 @@ JSValue NodeGetBoneTransform(JSContext* ctx, JSValueConst this_val, int argc, JS
     return MakeBoneTransform(ctx, { bone->x, bone->y, bone->z });
 }
 
+// The attachment a script names, by name or by index.
+Option<uint32_t> AttachmentArgument(JSContext* ctx, EngineHostState* host, owe::SceneNode* node,
+                                    JSValueConst value) {
+    if (JS_IsString(value)) {
+        if (! host->attachment_index_resolver) return None();
+        const char* name = JS_ToCString(ctx, value);
+        if (! name) return None();
+        const auto label = rstd::cppstd::as_str(name).unwrap();
+        auto       index = (*host->attachment_index_resolver)->operator()(node, label);
+        JS_FreeCString(ctx, name);
+        return index;
+    }
+    int32_t index = -1;
+    if (JS_ToInt32(ctx, &index, value) != 0 || index < 0) return None();
+    return Some(uint32_t(index));
+}
+
+Option<AttachmentTransform> AttachmentOf(JSContext* ctx, JSValueConst this_val, int argc,
+                                         JSValueConst* argv) {
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    auto* n    = GetLayerNode(this_val);
+    if (! n || argc < 1 || ! host->attachment_transform_resolver) return None();
+    const auto index = AttachmentArgument(ctx, host, n, argv[0]);
+    if (index.is_none()) return None();
+    return (*host->attachment_transform_resolver)->operator()(n, *index, host->inputs.runtime);
+}
+
+// getAttachmentIndex(name): the attachment's index, -1 for a name the layer
+// does not have.
+JSValue NodeGetAttachmentIndex(JSContext* ctx, JSValueConst this_val, int argc,
+                               JSValueConst* argv) {
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    auto* n    = GetLayerNode(this_val);
+    if (! n || argc < 1 || ! JS_IsString(argv[0])) return JS_NewInt32(ctx, -1);
+    const auto index = AttachmentArgument(ctx, host, n, argv[0]);
+    return JS_NewInt32(ctx, index.is_some() ? int32_t(*index) : -1);
+}
+
+// getAttachmentOrigin(attachment): its place in the scene.
+JSValue NodeGetAttachmentOrigin(JSContext* ctx, JSValueConst this_val, int argc,
+                                JSValueConst* argv) {
+    const auto attachment = AttachmentOf(ctx, this_val, argc, argv);
+    if (attachment.is_none()) return MakeVecValue(ctx, 0.0, 0.0, 0.0, 3);
+    const auto& o = attachment->origin;
+    return MakeVecValue(ctx, o[usize(0)], o[usize(1)], o[usize(2)], 3);
+}
+
+// getAttachmentAngles(attachment): its turn in the scene in degrees, turned
+// about x, then y, then z as layer angles are.
+JSValue NodeGetAttachmentAngles(JSContext* ctx, JSValueConst this_val, int argc,
+                                JSValueConst* argv) {
+    const auto attachment = AttachmentOf(ctx, this_val, argc, argv);
+    if (attachment.is_none()) return MakeVecValue(ctx, 0.0, 0.0, 0.0, 3);
+    Eigen::Matrix3f m;
+    for (usize i {}; i < usize(9); ++i) m.data()[i.to_primitive()] = attachment->rotation[i];
+    const double z = std::atan2(m(1, 0), m(0, 0));
+    const double s = std::sin(z);
+    const double c = std::cos(z);
+    const double y = std::atan2(-m(2, 0), m(0, 0) * c + m(1, 0) * s);
+    const double x = std::atan2(s * m(0, 2) - c * m(1, 2), c * m(1, 1) - s * m(0, 1));
+
+    constexpr double kDegrees = 180.0 / 3.14159265358979;
+    return MakeVecValue(ctx, x * kDegrees, y * kDegrees, z * kDegrees, 3);
+}
+
 JSValue NodeGetChildren(JSContext* ctx, JSValueConst this_val, int, JSValueConst*) {
     auto*   n   = GetLayerNode(this_val);
     JSValue arr = JS_NewArray(ctx);
@@ -3529,6 +3597,9 @@ const JSCFunctionListEntry s_layer_proto_funcs[] = {
     JS_CFUNC_DEF("setCameraTransforms", 1, NodeSceneSetCameraTransforms),
     JS_CFUNC_DEF("getBoneIndex", 1, NodeGetBoneIndex),
     JS_CFUNC_DEF("getBoneTransform", 1, NodeGetBoneTransform),
+    JS_CFUNC_DEF("getAttachmentIndex", 1, NodeGetAttachmentIndex),
+    JS_CFUNC_DEF("getAttachmentOrigin", 1, NodeGetAttachmentOrigin),
+    JS_CFUNC_DEF("getAttachmentAngles", 1, NodeGetAttachmentAngles),
     JS_CFUNC_DEF("getTextureAnimation", 0, NodeGetTextureAnimation),
     JS_CFUNC_DEF("getVideoTexture", 0, NodeGetVideoTexture),
     JS_CFUNC_DEF("emitParticles", 1, NodeEmitParticles),
@@ -3919,6 +3990,12 @@ void JsRuntime::SetBoneResolvers(BoneIndexResolver     index_resolver,
                                  BoneTransformResolver transform_resolver) {
     m_impl->host.bone_index_resolver     = Some(rstd::move(index_resolver));
     m_impl->host.bone_transform_resolver = Some(rstd::move(transform_resolver));
+}
+
+void JsRuntime::SetAttachmentResolvers(AttachmentIndexResolver     index_resolver,
+                                       AttachmentTransformResolver transform_resolver) {
+    m_impl->host.attachment_index_resolver     = Some(rstd::move(index_resolver));
+    m_impl->host.attachment_transform_resolver = Some(rstd::move(transform_resolver));
 }
 
 void JsRuntime::SetPersistence(PathBuf path) {

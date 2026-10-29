@@ -234,6 +234,40 @@ script::ScriptScene& EnsureScriptScene(SceneParseContext& context) {
                         Eigen::Vector3f t     = (world * *bone).translation();
                         return Some(script::BoneTranslation { t.x(), t.y(), t.z() });
                     }));
+        (*context.script_scene)
+            ->runtime()
+            .SetAttachmentResolvers(
+                script::JsRuntime::AttachmentIndexResolver::make(
+                    [layers =
+                         layers.clone()](SceneNode* node, ref<str> name) -> Option<rstd::uint32_t> {
+                        auto layer = LookupPuppetLayer(layers, node);
+                        if (layer.is_none()) return None();
+                        auto index = (*layer)->attachmentIndex(name);
+                        if (index.is_none()) return None();
+                        return Some(rstd::uint32_t(index->to_primitive()));
+                    }),
+                script::JsRuntime::AttachmentTransformResolver::make(
+                    [layers = layers.clone()](SceneNode*     node,
+                                              rstd::uint32_t index,
+                                              double time) -> Option<script::AttachmentTransform> {
+                        auto layer = LookupPuppetLayer(layers, node);
+                        if (layer.is_none()) return None();
+                        auto attachment = (*layer)->attachmentTransform(usize(index), time);
+                        if (attachment.is_none()) return None();
+
+                        node->UpdateTrans();
+                        const Eigen::Matrix4f       model = node->ModelTrans().cast<float>();
+                        const Eigen::Affine3f       world(model * attachment->matrix());
+                        const Eigen::Vector3f       origin   = world.translation();
+                        const Eigen::Matrix3f       rotation = world.rotation();
+                        script::AttachmentTransform transform {
+                            .origin = { origin.x(), origin.y(), origin.z() },
+                        };
+                        for (usize i {}; i < usize(9); ++i) {
+                            transform.rotation[i] = rotation.data()[i.to_primitive()];
+                        }
+                        return Some(rstd::move(transform));
+                    }));
         if (context.user_properties.is_some())
             (*context.user_properties)->iter().for_each([&](auto entry) {
                 auto [entry_key, entry_value] = entry;

@@ -1171,3 +1171,17 @@ TEST(MdlMesh, NativeMaterialPathsShareResolutionAndPreserveDefaults) {
     EXPECT_EQ(short_ref->textures[usize()], "diffuse"_str);
     EXPECT_TRUE(owe::MdlParser::ParseMaterial("missing"_str, vfs).is_none());
 }
+
+TEST(Puppet, LayerFindsAttachmentsByName) {
+    auto  puppet     = Arc<owe::Puppet>::make();
+    auto& bone       = puppet->bones.emplace_back();
+    bone.local_bind  = Eigen::Affine3f(Eigen::Translation3f(0.0f, 10.0f, 0.0f));
+    auto& attachment = puppet->attachments.emplace_back();
+    attachment.name  = String::make("Head"_str);
+    puppet->prepared();
+    owe::PuppetLayer layer(puppet.clone());
+
+    ASSERT_TRUE(layer.attachmentIndex("Head"_str).is_some());
+    EXPECT_EQ(layer.attachmentIndex("Head"_str)->to_primitive(), 0u);
+    EXPECT_TRUE(layer.attachmentIndex("missing"_str).is_none());
+}
