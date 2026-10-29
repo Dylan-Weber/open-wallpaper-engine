@@ -561,7 +561,19 @@ struct TextLayouter::Impl {
         Vec<Quad>         quads;
         TextLayoutMetrics measured;
         const auto        bounds = output.typographic_bounds();
-        measured.text_width      = float(bounds.width);
+        // Wrapped text is as wide as its widest line (as in Wallpaper Engine), not its
+        // wrap width; its lines keep their alignment within that width.
+        float line_left {};
+        measured.text_width = float(bounds.width);
+        if (request.width.is_some() && ! output.lines().is_empty()) {
+            float line_right {};
+            line_left = float(output.lines()[usize()].logical.x);
+            for (auto& line : output.lines()) {
+                line_left  = rstd::cmp::min(line_left, float(line.logical.x));
+                line_right = rstd::cmp::max(line_right, float(line.logical.x + line.logical.width));
+            }
+            measured.text_width = rstd::cmp::max(line_right - line_left, 0.0f);
+        }
         measured.text_height     = float(bounds.height);
         measured.source_width    = measured.text_width;
         measured.source_height   = measured.text_height;
@@ -588,7 +600,8 @@ struct TextLayouter::Impl {
             if (raster.is_err()) return Err(raster.unwrap_err());
             auto atlas = raster.unwrap();
             if (! atlas.width || ! atlas.height) continue;
-            float left = float(glyph.position.x + atlas.origin.x) - measured.text_width / 2;
+            float left =
+                float(glyph.position.x + atlas.origin.x) - line_left - measured.text_width / 2;
             float top =
                 measured.text_height / 2 - float(glyph.position.y - bounds.y + atlas.origin.y);
             float right  = left + float(atlas.width / atlas.scale),
