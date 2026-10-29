@@ -189,6 +189,7 @@ void FinalizeUniformSources(SceneParseContext& context) {
         .point       = context.layer_resources->shader_environment.point_lights,
         .spot        = context.layer_resources->shader_environment.spot_lights,
         .directional = context.layer_resources->shader_environment.directional_lights,
+        .tube        = context.layer_resources->shader_environment.tube_lights,
     };
 
     const auto light_source = registrar->Register(Box<dyn<UniformSource>>::make(

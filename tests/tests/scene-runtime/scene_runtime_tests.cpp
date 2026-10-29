@@ -638,6 +638,29 @@ TEST(LightUniformSource, HiddenAncestorsDoNotConsumeLightSlots) {
     EXPECT_FLOAT_EQ(color[usize(1)], 0.0f);
 }
 
+// A tube light takes the light config's tube count, not the point lights': a scene with one tube light and no
+// point lights still lights through the newer interface.
+TEST(LightUniformSource, ATubeLightTakesTheTubeCount) {
+    auto node = Arc<owe::SceneNode>::make();
+
+    owe::SceneLight::Desc desc;
+    desc.type      = owe::SceneLightType::Tube;
+    desc.color     = { 1.0f, 1.0f, 1.0f };
+    desc.intensity = 2.0f;
+    owe::Scene scene;
+    auto       light = Box<owe::SceneLight>::make(desc);
+    light->setNode(node.as_ptr());
+    (void)scene.RegisterLight(rstd::move(light));
+    owe::LightKindLimits limits;
+    limits.tube = u32(1);
+    owe::LightUniformSource source(ref<owe::Scene>::from_raw_parts(&scene), Some(limits));
+    owe::SceneFrame         frame;
+
+    auto color = scene_test::Capture(frame, source, owe::LightUniformOutput::LightingV1ColorRadius);
+    ASSERT_EQ(color.size(), usize(32));
+    EXPECT_FLOAT_EQ(color[usize()], 2.0f);
+}
+
 // Scripts' thisScene.getCameraTransforms() is the scene's own camera and what scripts set, not where a camera path
 // has moved the view (Wallpaper Engine's camera-script-read: a path holds the eye 3 to the side, scripts see 0).
 TEST(SceneCamera, ScriptsSeeTheScenesCameraNotItsPath) {
