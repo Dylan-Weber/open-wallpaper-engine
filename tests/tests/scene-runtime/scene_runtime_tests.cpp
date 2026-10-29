@@ -466,7 +466,8 @@ TEST(LightUniformSource, PublishesWorldDirectionAndType) {
     EXPECT_NEAR(direction[usize(2)], 0.0f, 1e-5f);
     EXPECT_FLOAT_EQ(direction[usize(3)], static_cast<float>(owe::SceneLightType::Directional));
 
-    auto color = scene_test::Capture(frame, source, owe::LightUniformOutput::ColorRadius);
+    // a directional light of the newer kind reaches Lighting V1's colors
+    auto color = scene_test::Capture(frame, source, owe::LightUniformOutput::LightingV1ColorRadius);
     ASSERT_EQ(color.size(), usize(16));
     EXPECT_FLOAT_EQ(color[usize()], 0.5f);
     EXPECT_FLOAT_EQ(color[usize(1)], 1.0f);
@@ -2442,4 +2443,36 @@ TEST(UniformSourceParallax, PerspectiveWithAuthoredParallaxDepthAppliesShift) {
                          mvp_with_parallax[rstd::usize(12)]) > 1e-5f ||
                 std::abs(mvp_without_parallax[rstd::usize(13)] -
                          mvp_with_parallax[rstd::usize(13)]) > 1e-5f);
+}
+
+// The old four-light arrays (generic2, lit genericimage2 layers, custom shaders) get only the old
+// kind of light; lpoint and the other newer kinds reach Lighting V1 alone (model-light-legacy:
+// Wallpaper Engine lights a generic2 wall with its "point" light and not its "lpoint" one).
+TEST(LightUniformSource, NewerLightKindsStayOutOfTheOldArrays) {
+    auto                  newer = Arc<owe::SceneNode>::make();
+    auto                  older = Arc<owe::SceneNode>::make();
+    owe::SceneLight::Desc newer_desc;
+    newer_desc.color                 = { 1.0f, 0.0f, 0.0f };
+    newer_desc.radius                = 8.0f;
+    owe::SceneLight::Desc older_desc = newer_desc;
+    older_desc.color                 = { 0.0f, 0.0f, 1.0f };
+    older_desc.old_kind              = true;
+    owe::SceneLight newer_light(newer_desc);
+    owe::SceneLight older_light(older_desc);
+    newer_light.setNode(newer.as_ptr());
+    older_light.setNode(older.as_ptr());
+
+    auto lights = Vec<ref<owe::SceneLight>>::make();
+    lights.push(ref<owe::SceneLight>::from_raw_parts(rstd::addressof(newer_light)));
+    lights.push(ref<owe::SceneLight>::from_raw_parts(rstd::addressof(older_light)));
+    owe::LightUniformSource source(rstd::move(lights));
+    owe::SceneFrame         frame;
+
+    auto old_arrays = scene_test::Capture(frame, source, owe::LightUniformOutput::ColorRadius);
+    EXPECT_FLOAT_EQ(old_arrays[usize(0)], 0.0f);
+    EXPECT_FLOAT_EQ(old_arrays[usize(6)], 1.0f);
+    auto lighting_v1 =
+        scene_test::Capture(frame, source, owe::LightUniformOutput::LightingV1ColorRadius);
+    EXPECT_FLOAT_EQ(lighting_v1[usize(0)], 1.0f);
+    EXPECT_FLOAT_EQ(lighting_v1[usize(6)], 1.0f);
 }

@@ -851,6 +851,7 @@ auto LightUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
     constexpr usize  max_lights { 4 };
     array<float, 12> positions {};
     array<float, 16> colors_radius {};
+    array<float, 16> lighting_v1_colors_radius {};
     array<float, 12> colors_legacy {};
     array<float, 16> directions_type {};
     array<float, 16> cones_exponent {};
@@ -869,10 +870,14 @@ auto LightUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
         positions[index * usize(3)]                = position.x();
         positions[index * usize(3) + usize(1)]     = position.y();
         positions[index * usize(3) + usize(2)]     = position.z();
-        colors_radius[index * usize(4)]            = color.x();
-        colors_radius[index * usize(4) + usize(1)] = color.y();
-        colors_radius[index * usize(4) + usize(2)] = color.z();
-        colors_radius[index * usize(4) + usize(3)] = light.radius();
+        for (auto* colors : { &lighting_v1_colors_radius, &colors_radius }) {
+            // The old arrays get the old kind of light only.
+            if (colors == &colors_radius && ! light.desc().old_kind) continue;
+            (*colors)[index * usize(4)]            = color.x();
+            (*colors)[index * usize(4) + usize(1)] = color.y();
+            (*colors)[index * usize(4) + usize(2)] = color.z();
+            (*colors)[index * usize(4) + usize(3)] = light.radius();
+        }
         Eigen::Vector3d local_direction            = Eigen::Vector3d::UnitX();
         if (light.type() != SceneLightType::Spot) local_direction = -local_direction;
         const auto direction =
@@ -885,7 +890,7 @@ auto LightUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
         cones_exponent[index * usize(4) + usize(1)]  = light.desc().outer_cone_cos;
         cones_exponent[index * usize(4) + usize(2)]  = light.desc().exponent;
         cast_shadow[index]                           = light.desc().cast_shadow ? 1.0f : 0.0f;
-        if (index < usize(3)) {
+        if (index < usize(3) && light.desc().old_kind) {
             const auto premultiplied = color * light.radius() * light.radius();
             for (usize component {}; component < usize(3); ++component) {
                 colors_legacy[index * usize(4) + component] =
@@ -896,6 +901,7 @@ auto LightUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
     writer.Write(Output::Position, positions);
     writer.Write(Output::ColorLegacy, colors_legacy);
     writer.Write(Output::ColorRadius, colors_radius);
+    writer.Write(Output::LightingV1ColorRadius, lighting_v1_colors_radius);
     writer.Write(Output::DirectionType, directions_type);
     writer.Write(Output::ConeExponent, cones_exponent);
     writer.Write(Output::CastShadow, cast_shadow);

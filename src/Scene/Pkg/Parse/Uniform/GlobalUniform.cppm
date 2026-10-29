@@ -48,10 +48,10 @@ inline constexpr u32      kDrawUniformBinding { u32(0) };
 inline constexpr u64      kGlobalUniformSetIdentity { u64(0x5745474c4f424c03ULL) };
 inline constexpr u64      kFrameUniformSchemaIdentity { u64(0x57454652414d4501ULL) };
 inline constexpr u64      kAudioUniformSchemaIdentity { u64(0x5745415544494f01ULL) };
-inline constexpr u64      kLightingUniformSchemaIdentity { u64(0x57454c4947485401ULL) };
+inline constexpr u64      kLightingUniformSchemaIdentity { u64(0x57454c4947485402ULL) };
 inline constexpr usize    kFrameUniformBlockSize { usize(48) };
 inline constexpr usize    kAudioUniformBlockSize { usize(3584) };
-inline constexpr usize    kLightingUniformBlockSize { usize(800) };
+inline constexpr usize    kLightingUniformBlockSize { usize(864) };
 inline constexpr ref<str> kGlobalUniformBlockName { "ww_GlobalUniforms"_str };
 inline constexpr ref<str> kAudioUniformBlockName { "ww_AudioUniforms"_str };
 inline constexpr ref<str> kLightingUniformBlockName { "ww_LightingUniforms"_str };
@@ -108,7 +108,7 @@ inline auto FindGlobalUniformBlock(ref<str> name) -> Option<ref<GlobalUniformBlo
 }
 
 inline auto GlobalUniformFields() -> slice<GlobalUniformField> {
-    static const array<GlobalUniformField, 20> fields {
+    static const array<GlobalUniformField, 21> fields {
         GlobalUniformField { G_TIME,
                              {},
                              "float"_str,
@@ -249,6 +249,13 @@ inline auto GlobalUniformFields() -> slice<GlobalUniformField> {
                              UniformOutputId { u32(1) },
                              UniformValueShape::Float(u32(12)),
                              u32(752) },
+        GlobalUniformField { G_LIGHTINGV1COLORRADIUS,
+                             {},
+                             "vec4[4]"_str,
+                             GlobalUniformProducer::Light,
+                             UniformOutputId { u32(6) },
+                             UniformValueShape::Float(u32(16)),
+                             u32(800) },
     };
     return fields.as_slice();
 }
