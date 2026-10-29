@@ -1275,23 +1275,21 @@ auto SceneNode::NamedAnimation(ref<str> name) const -> Option<Arc<SceneAnimation
 
 void SceneNode::TickFieldAnimations(double runtime, Vec<SceneAnimationEventDispatch>& events) {
     m_animations.Advance(*this, runtime, events);
+    const bool follow = m_animations_follow_relative;
     for (const auto& binding : m_field_animation_tracks) {
+        const auto vector = [&] {
+            return follow ? binding.track.EvaluateVec3(binding.vector_base)
+                          : binding.track.EvaluateLayerVec3(binding.vector_base);
+        };
         switch (binding.target) {
-        case SceneNodeAnimationTarget::Origin:
-            SetTranslate(binding.track.EvaluateLayerVec3(binding.vector_base));
-            break;
-        case SceneNodeAnimationTarget::Scale:
-            SetScale(binding.track.EvaluateLayerVec3(binding.vector_base));
-            break;
-        case SceneNodeAnimationTarget::Rotation:
-            SetRotation(binding.track.EvaluateLayerVec3(binding.vector_base));
-            break;
+        case SceneNodeAnimationTarget::Origin: SetTranslate(vector()); break;
+        case SceneNodeAnimationTarget::Scale: SetScale(vector()); break;
+        case SceneNodeAnimationTarget::Rotation: SetRotation(vector()); break;
         case SceneNodeAnimationTarget::Alpha:
-            SetUserAlpha(binding.track.EvaluateLayerScalar(binding.scalar_base));
+            SetUserAlpha(follow ? binding.track.EvaluateScalar(binding.scalar_base)
+                                : binding.track.EvaluateLayerScalar(binding.scalar_base));
             break;
-        case SceneNodeAnimationTarget::Color:
-            SetColor(binding.track.EvaluateLayerVec3(binding.vector_base));
-            break;
+        case SceneNodeAnimationTarget::Color: SetColor(vector()); break;
         }
     }
 }

@@ -375,6 +375,7 @@ void ParseLightObj(SceneParseContext& context, wpscene::LightObject& light_obj) 
         light->setVisibleUserBinding(ToSceneUserVisibilityBinding(light_obj.visible_user));
     }
 
+    node->SetAnimationsFollowRelative(true);
     AssignNodeFieldAnimations(context, *node.as_ptr(), light_obj.field_bindings);
     WireFieldScripts(context, node, light_obj.field_bindings);
     RegisterNodeRef(
