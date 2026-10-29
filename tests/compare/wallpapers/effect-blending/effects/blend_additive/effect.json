@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "additive",
+  "passes": [
+    {
+      "material": "materials/effects/blend_additive.json"
+    }
+  ]
+}
