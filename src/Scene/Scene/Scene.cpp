@@ -2119,13 +2119,13 @@ void Scene::AttachRuntimeNode(SceneNode& parent, Arc<SceneNode> node) {
 }
 
 auto Scene::LayerIndex(const SceneNode& node) const -> Option<usize> {
-    auto* parent = node.Parent();
-    return parent ? parent->ChildIndex(node) : None<usize>();
+    auto* owner = node.Owner();
+    return owner ? owner->ChildIndex(node) : None<usize>();
 }
 
 bool Scene::SortLayer(SceneNode& node, usize index) {
-    auto* parent = node.Parent();
-    if (parent == nullptr || ! parent->MoveChild(node, index)) return false;
+    auto* owner = node.Owner();
+    if (owner == nullptr || ! owner->MoveChild(node, index)) return false;
     m_render_graph_dirty = true;
     return true;
 }
