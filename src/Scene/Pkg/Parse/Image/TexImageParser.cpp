@@ -310,6 +310,9 @@ auto LoadHeader(fs::BinaryReader& file, ImageHeader& header, ref<str> name)
             flags[TexFlagEnum::clampUVs] ? TextureWrap::CLAMP_TO_EDGE : TextureWrap::REPEAT;
         header.sample.minFilter = header.sample.magFilter =
             flags[TexFlagEnum::noInterpolation] ? TextureFilter::NEAREST : TextureFilter::LINEAR;
+        // Wallpaper Engine's textures filter anisotropically, 8 samples at most
+        header.sample.max_anisotropy =
+            flags[TexFlagEnum::noInterpolation] ? rstd::uint8_t(1) : kTextureAnisotropy;
         (void)header.extraHeader.insert("compo1"_Str,
                                         ImageExtra { .val = flags[TexFlagEnum::compo1] });
         (void)header.extraHeader.insert("compo2"_Str,
