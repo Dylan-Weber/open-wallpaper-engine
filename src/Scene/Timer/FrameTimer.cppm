@@ -22,6 +22,10 @@ public:
     double FrameTime() const;
     double TargetFrameTime() const;
     void   SetRequiredFps(u16);
+    // Fire as soon as the last frame is done instead of every 1 / fps (frames are still 1 / fps long to the scene): a
+    // capture's clock is frame-exact, so it can run as fast as the machine draws.
+    void   SetUnpaced(bool);
+    bool   Unpaced() const;
     void   FrameBegin();
     void   FrameEnd();
 
@@ -33,6 +37,7 @@ private:
     Mutex<Option<Callback>> m_callback;
     Mutex<Samples>          m_samples { Samples {} };
     Atomic<u16>             m_req_fps { u16(15) };
+    Atomic<bool>            m_unpaced { false };
     Atomic<u64>             m_frametime {};
     Atomic<u64>             m_ideatime {};
     Atomic<u32>             m_frame_busy_count {};
