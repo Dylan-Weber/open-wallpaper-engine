@@ -100,3 +100,22 @@ def puppet_mdl(material, vertices, indices, bones, animations=(), shading=False,
         head = b'MDLA0001\0'
         data += head + struct.pack('<II', len(data) + len(head) + 8 + len(track), len(animations)) + track
     return data
+
+
+def quad_mdl(material, size=1.0, normal=(0, 0, 1), tangent=(1, 0, 0)):
+    """A single square of edge 2*size in the xy plane, facing `normal` (counter-clockwise from there): a one-sided
+    surface, as a wall or a ceiling is in a game's level."""
+    corners = [(-1, -1, 0), (1, -1, 0), (1, 1, 0), (-1, 1, 0)]
+    uvs = [(0, 0), (1, 0), (1, 1), (0, 1)]
+    vertices, indices = b'', b''
+    for corner, uv in zip(corners, uvs):
+        position = [c * size for c in corner]
+        vertices += struct.pack('<12f', *position, *normal, *tangent, 1.0, *uv)
+    for i in (0, 1, 2, 0, 2, 3):
+        indices += struct.pack('<H', i)
+    data = b'MDLV0017\0' + struct.pack('<iiI', 15, 1, 1)
+    data += material.encode() + b'\0' + struct.pack('<I', 0)
+    data += struct.pack('<6f', -size, -size, 0, size, size, 0)
+    data += struct.pack('<I', 15) + struct.pack('<I', len(vertices)) + vertices
+    data += struct.pack('<I', len(indices)) + indices
+    return data
