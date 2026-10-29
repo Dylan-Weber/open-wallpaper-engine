@@ -8,7 +8,7 @@ rendered with SceneViewer at the reference's size and compared with it. Name wal
 folders below, e.g. _scratch/arsenal: _scratch/ is not committed, for wallpapers that aren't ours).
 
 The viewer renders the frame the reference shows offscreen, without a display (--capture): frame 350 at 30 a second
-(11.7 s, when the references are taken), or the "frames" of the wallpaper's compare.json. owe's clock advances one
+(11.7 s, when the references are taken), or the "frames" of the wallpaper's compare.json (and at the compare.json's "owe_fps" a second, 30 by default). owe's clock advances one
 frame time a frame, so loading time doesn't matter and the frame is exact.
 A wallpaper stamped with clock-probe.py records the frame its reference shows; the viewer renders that frame
 instead, owe's probe must read the same, and the probe's strip is left out of the scores (the report's "probe").
@@ -211,6 +211,9 @@ def render(name, size, viewer, frames=None, script_start=0.0, camera_path_delay=
     out = os.path.join(OUTPUT, name, 'engine')
     if frames is None:
         frames = settings_of(name).get('frames', REFERENCE_FRAMES)
+    # the frame rate the reference's physics stepped at (compare.json "owe_fps": Wallpaper Engine steps a bone's springs by the
+    # frame time, and a heavy wallpaper runs at 15 a second in the VM), the frame counted in 30ths of a second
+    fps = settings_of(name).get('owe_fps', 30)
     # in a memory cgroup of its own, so a viewer that runs away is killed, not the machine
     capped = ['systemd-run', '--user', '--scope', '-q', '-p', 'MemoryMax=' + os.environ.get('WPE_TEST_MEMORY', '3G'),
               '-p', 'MemorySwapMax=0']
@@ -224,7 +227,7 @@ def render(name, size, viewer, frames=None, script_start=0.0, camera_path_delay=
     shadows = ['--shadow-quality', settings_of(name)['shadow_quality']] \
         if 'shadow_quality' in settings_of(name) and '--shadow-quality' in viewer_help(viewer) else []
     command = capped + ['timeout', '900', viewer, '-C', shader_cache(viewer), '--resolution', '%dx%d' % size,
-                        '--fps', '30', '--capture', frame, '--capture-frame', str(frames)] + (
+                        '--fps', str(fps), '--capture', frame, '--capture-frame', str(round(frames * fps / 30))] + (
                            ['--script-start', '%.4f' % script_start] if script_start > 0 else []) + (
                            ['--camera-path-delay', '%.4f' % camera_path_delay] if camera_path_delay > 0
                            else []) + shadows + list(inputs) + [ASSETS, scene_package(os.path.join(WALLPAPERS, folder_of(name)))]

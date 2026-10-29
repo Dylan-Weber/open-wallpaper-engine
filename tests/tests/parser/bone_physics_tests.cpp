@@ -99,6 +99,18 @@ TEST(BonePhysics, AngularImpulseTurnsTheBoneAndTheSpringBringsItBack) {
     }
 }
 
+// A negative rotation stiffness (Gun Girl's gun bone has -5) is not none: it pushes the bone further from its pose, so a kick
+// grows (puppet-physics-gun) where it would otherwise swing back and forth.
+TEST(BonePhysics, ANegativeRotationStiffnessPushesTheBoneFurtherAway) {
+    const std::vector<float> frames(40, 1.0f / 30.0f);
+    std::string              text = Settings(true, false);
+    text.replace(text.find("\"rs\":300"), 8, "\"rs\":-50");
+    text.replace(text.find("\"rf\":20"), 7, "\"rf\":0");
+    const auto away = Run(Parse(text), frames, Eigen::Vector3f::Zero(), Eigen::Vector3f(0.0f, 0.0f, 10.0f));
+    // the tip points along -y, so its x is how far it has turned
+    EXPECT_GT(std::abs(away[39].x() - 0.5f), 1.5f * std::abs(away[10].x() - 0.5f));
+}
+
 TEST(BonePhysics, DirectionalImpulseMovesTheBoneWhichSwingsBack) {
     const std::vector<float> frames = { 0.074f, 0.066f, 0.082f, 0.082f, 0.061f, 0.072f, 0.066f };
     const auto               places = Run(Parse(Settings(false, true)),
