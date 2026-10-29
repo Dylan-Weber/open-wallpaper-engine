@@ -436,10 +436,10 @@ TEST(SceneRenderGraph, ASilentCasterKeepsTheAtlasWritten) {
 
     auto caster          = Arc<owe::SceneNode>::make();
     caster->shadow.cast  = true;
-    caster->shadow.silent = true;
     auto caster_mesh     = Arc<owe::SceneMesh>::make();
     auto caster_material = GraphMaterial();
     caster_material.name = "caster-main"_Str;
+    caster_material.shadow_silent = true;
     auto variant  = Arc<owe::SceneMaterial>::make(GraphMaterial());
     variant->name = "caster-shadow"_Str;
     caster_material.shadow_variants.push(rstd::move(variant));
@@ -454,6 +454,51 @@ TEST(SceneRenderGraph, ASilentCasterKeepsTheAtlasWritten) {
     auto graph = owe::BuildSceneRenderState(scene, snapshot);
     ASSERT_TRUE(graph.is_ok());
     EXPECT_TRUE(graph->graph.compile().is_ok());
+}
+
+// Silence belongs to a model's material, not the model: Ocarina of Time's courtyard is one model of 25 materials whose
+// last is a translucent window, and its walls still cast.
+TEST(SceneRenderGraph, OnlyTheTranslucentPartsOfAModelAreSilent) {
+    owe::Scene scene;
+    scene.RegisterRenderTarget(String::make("_rt_default"_str),
+                               owe::SceneRenderTarget { .width = i32(1280), .height = i32(720) });
+    scene.RegisterRenderTarget(String::make("_rt_shadowAtlas"_str),
+                               owe::SceneRenderTarget {
+                                   .width  = i32(256),
+                                   .height = i32(256),
+                                   .kind   = owe::SceneRenderTargetKind::DepthSampled,
+                               });
+    auto viewports = Vec<owe::SceneShadowViewport>::make();
+    viewports.push(owe::SceneShadowViewport {
+        .width  = rstd::f32(256.0f),
+        .height = rstd::f32(256.0f),
+    });
+    scene.RegisterShadowDefinition(owe::SceneShadowDefinition {
+        .target    = String::make("_rt_shadowAtlas"_str),
+        .viewports = rstd::move(viewports),
+    });
+
+    auto caster         = Arc<owe::SceneNode>::make();
+    caster->shadow.cast = true;
+    auto caster_mesh    = Arc<owe::SceneMesh>::make();
+    for (bool silent : { false, true }) {
+        auto material          = GraphMaterial();
+        material.name          = silent ? "window"_Str : "wall"_Str;
+        material.shadow_silent = silent;
+        auto variant           = Arc<owe::SceneMaterial>::make(GraphMaterial());
+        variant->name          = "caster-shadow"_Str;
+        material.shadow_variants.push(rstd::move(variant));
+        caster_mesh->AddMaterial(rstd::move(material));
+        caster_mesh->Submeshes().push(owe::SceneMesh::Submesh {});
+        caster_mesh->Submeshes().last_mut().unwrap().get_mut().material_slot = silent ? u32(1) : u32(0);
+    }
+    caster->AddMesh(rstd::move(caster_mesh));
+    scene.RootMut()->AppendChild(caster.clone());
+
+    auto snapshot = owe::ExtractRenderSceneSnapshot(scene);
+    ASSERT_EQ(snapshot.ShadowCasters().len(), usize(2));
+    EXPECT_FALSE(snapshot.ShadowCasters()[usize()].silent);
+    EXPECT_TRUE(snapshot.ShadowCasters()[usize(1)].silent);
 }
 
 TEST(SceneRenderGraph, OrdersShadowAtlasWriterBeforeReceiver) {
