@@ -2808,23 +2808,37 @@ Vec<SceneMaterialDirtyEvent> Scene::ConsumePreparedMaterialDirtyEvents() {
     return events;
 }
 
+namespace
+{
+// A camera layer drives its camera while it is visible and so is every layer above it: Wallpaper Engine hides the
+// children of a hidden layer.
+bool CameraPathActive(const SceneCameraPath& path) {
+    if (! path.enabled) return false;
+    for (SceneNode* parent = path.node != nullptr ? path.node->Parent() : nullptr; parent != nullptr;
+         parent            = parent->Parent()) {
+        if (! parent->Visible()) return false;
+    }
+    return true;
+}
+} // namespace
+
 void Scene::TickCameraPaths() {
     if (m_camera_paths.is_empty()) return;
 
     HashSet<String> has_enabled;
     for (const auto& path : m_camera_paths) {
-        if (path->enabled) has_enabled.insert(path->camera_name.clone());
+        if (CameraPathActive(*path)) has_enabled.insert(path->camera_name.clone());
     }
 
     HashSet<String> touched;
     HashSet<String> reset;
     for (const auto& path : m_camera_paths) {
-        if (! path->enabled) continue;
+        if (! CameraPathActive(*path)) continue;
         if (path->Tick(m_runtime.Frame().elapsed.to_primitive()))
             touched.insert(path->camera_name.clone());
     }
     for (const auto& path : m_camera_paths) {
-        if (path->enabled || has_enabled.contains(path->camera_name.as_str()) ||
+        if (CameraPathActive(*path) || has_enabled.contains(path->camera_name.as_str()) ||
             reset.contains(path->camera_name.as_str()))
             continue;
         if (path->ApplyDefault()) touched.insert(path->camera_name.clone());

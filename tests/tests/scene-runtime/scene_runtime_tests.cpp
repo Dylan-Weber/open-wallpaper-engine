@@ -1565,6 +1565,37 @@ TEST(SceneParserCameraLayer, OnlyADrivingLayerSetsTheFieldOfView) {
     EXPECT_DOUBLE_EQ((**camera).Fov(), 50.0);
 }
 
+// Wallpaper Engine hides a layer whose parent is hidden: a camera layer under a hidden group drives nothing, though
+// its own visible says true.
+TEST(SceneCameraPath, ALayerUnderAHiddenParentDoesNotDriveTheCamera) {
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": { "center": "0 0 0", "eye": "0 1 5", "up": "0 1 0" },
+            "general": { "orthogonalprojection": null, "fov": 50 },
+            "objects": [
+                { "id": 1, "name": "Events", "origin": "0 0 0", "visible": false },
+                { "id": 2, "name": "Cam Wide", "camera": "default", "origin": "4 5 6",
+                  "angles": "0 0 0", "fov": 75, "parent": 1 }
+            ]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    owe::fs::VFS                vfs;
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "hidden-parent"_str,
+        ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene  = rstd::move(parsed).unwrap();
+    auto camera = scene.scene->ActiveCamera();
+    ASSERT_TRUE(camera.is_some());
+    scene.scene->TickCameraPaths();
+    EXPECT_DOUBLE_EQ((**camera).Fov(), 50.0);
+}
+
 TEST(SceneCameraPath, UserBindingMutatesRegisteredArc) {
     owe::Scene scene;
     auto       path                = Arc<owe::SceneCameraPath>::make();
