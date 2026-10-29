@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test a real puppet bone: axes locked, gravity",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}
