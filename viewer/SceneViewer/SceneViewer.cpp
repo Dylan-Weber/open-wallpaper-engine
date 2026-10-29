@@ -16,6 +16,7 @@ import wescene.utils;
 import viewer.common;
 import viewer.audio;
 import viewer.stdin_control;
+import wescene.capture_surface;
 
 import viewer.glfw_vulkan;
 
@@ -30,10 +31,28 @@ using namespace rstd::prelude;
 using namespace rstd::literals;
 using rstd::io::eprintln;
 using rstd::io::println;
+using rstd::sync::Arc;
 using rstd::sync::atomic::Atomic;
 using rstd::sync::atomic::Ordering;
 using rstd::time::Duration;
 using rstd::time::Instant;
+
+// --capture's outcome, set by the render thread once the frame is written (or isn't).
+struct CaptureState {
+    Atomic<bool> done { false };
+    Atomic<bool> ok { false };
+};
+
+// Writes tightly packed RGBA rows as a binary PPM (P6: a short header, then RGB rows).
+bool WritePpm(const rstd::path::PathBuf& path, unsigned width, unsigned height, slice<u8> rgba) {
+    const auto header = rstd::format("P6\n{} {}\n255\n", width, height);
+    Vec<u8>    ppm;
+    for (auto byte : header.as_str().as_bytes()) ppm.push(u8(byte));
+    for (usize pixel {}; pixel * usize(4) < rgba.len(); ++pixel)
+        for (usize channel {}; channel < usize(3); ++channel)
+            ppm.push(u8(rgba[pixel * usize(4) + channel]));
+    return rstd::fs::write(path.as_path(), ppm.as_slice()).is_ok();
+}
 
 struct UserData {
     owe::SceneWallpaper* psw { nullptr };
@@ -84,6 +103,9 @@ int main(int argc, char** argv) {
 
     auto args                = viewer::ParseSceneViewerArgs(argc, argv);
     auto [w_width, w_height] = args.resolution;
+    // --capture renders offscreen, without a window, and exits once the frame is written.
+    const bool capture       = ! args.capture_output.is_empty();
+    auto       capture_state = Arc<CaptureState>::make();
 
     auto load_bench = owe::CreateSceneLoadBench(args.load_bench_output.as_str());
     Option<rstd::bench::probe::ProbeRecorder> startup_recorder;
@@ -122,9 +144,10 @@ int main(int argc, char** argv) {
         hl && ! hl->is_empty() && hl->as_os_str().as_encoded_bytes()[usize()] == u8('1')) {
         glfwWindowHint(viewer::glfw::Visible, viewer::glfw::FalseValue);
     }
-    GLFWwindow* window = glfwCreateWindow(w_width, w_height, "WP", nullptr, nullptr);
+    GLFWwindow* window =
+        capture ? nullptr : glfwCreateWindow(w_width, w_height, "WP", nullptr, nullptr);
 #if __is_target_os(macos)
-    if (window == nullptr) {
+    if (! capture && window == nullptr) {
         eprintln("Failed to create GLFW window");
         glfwTerminate();
         return -1;
@@ -133,7 +156,7 @@ int main(int argc, char** argv) {
     int render_width  = w_width;
     int render_height = w_height;
 #if __is_target_os(macos)
-    glfwGetFramebufferSize(window, &render_width, &render_height);
+    if (! capture) glfwGetFramebufferSize(window, &render_width, &render_height);
     if (render_width <= 0) render_width = w_width;
     if (render_height <= 0) render_height = w_height;
 #endif
@@ -148,7 +171,28 @@ int main(int argc, char** argv) {
     info.msaa_samples = args.msaa_samples.to_primitive();
 
     auto& sf_info = info.surface_info;
-    {
+    if (capture) {
+        info.offscreen = true;
+        sf_info.createSurfaceOp =
+            Some(owe::CreateSurfaceCallback::make([](VkInstance, VkSurfaceKHR*) -> VkResult {
+                return VK_SUCCESS;
+            }));
+        const auto width          = static_cast<unsigned>(render_width);
+        const auto height         = static_cast<unsigned>(render_height);
+        info.ex_swapchain_factory = Some(owe::MakeCaptureSurfaceFactory(
+            owe::CaptureRequest { .frame = args.capture_frame, .width = width, .height = height },
+            owe::CaptureCallback::make([state = capture_state.clone(),
+                                        path =
+                                            rstd::path::PathBuf::from(args.capture_output.as_str()),
+                                        width,
+                                        height](Option<Vec<u8>> pixels) {
+                bool ok = pixels.is_some() && WritePpm(path, width, height, pixels->as_slice());
+                if (! ok)
+                    eprintln("--capture: cannot write '{}'", path.as_path().as_os_str().display());
+                state->ok.store(ok, Ordering::Release);
+                state->done.store(true, Ordering::Release);
+            })));
+    } else {
         uint32_t glfwExtCount = 0;
         auto     exts         = glfwGetRequiredInstanceExtensions(&glfwExtCount);
 #if __is_target_os(macos)
@@ -178,7 +222,7 @@ int main(int argc, char** argv) {
     }
 
 #if ! __is_target_os(macos)
-    if (window == nullptr) {
+    if (! capture && window == nullptr) {
         println("Failed to create GLFW window");
         glfwTerminate();
         return -1;
@@ -256,12 +300,13 @@ int main(int argc, char** argv) {
     psw->configure(rstd::move(config));
     psw->initVulkan(rstd::move(info));
 
-    glfwSetWindowUserPointer(window, &data);
-
-    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
-    glfwSetMouseButtonCallback(window, mouse_button_callback);
-    glfwSetCursorPosCallback(window, cursor_position_callback);
-    glfwSetCursorEnterCallback(window, cursor_enter_callback);
+    if (window != nullptr) {
+        glfwSetWindowUserPointer(window, &data);
+        glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+        glfwSetMouseButtonCallback(window, mouse_button_callback);
+        glfwSetCursorPosCallback(window, cursor_position_callback);
+        glfwSetCursorEnterCallback(window, cursor_enter_callback);
+    }
 
     auto locked_mouse          = viewer::ParseMousePosition(args.mouse_position.as_str());
     data.mouse_position_locked = locked_mouse.is_some();
@@ -271,6 +316,7 @@ int main(int argc, char** argv) {
         psw->mouseInput((*locked_mouse)[usize()], (*locked_mouse)[usize(1)]);
         int window_width  = 0;
         int window_height = 0;
+        if (window == nullptr) return;
         glfwGetWindowSize(window, &window_width, &window_height);
         if (window_width > 0 && window_height > 0) {
             glfwSetCursorPos(window,
@@ -329,7 +375,15 @@ int main(int argc, char** argv) {
     // to let the async shader-compile pass drain, then exits. Skips the
     // render loop so no swapchain present is required (which would deadlock
     // with a hidden window). Use together with WP_HEADLESS=1.
-    if (auto co = rstd::env::var_os("WP_COMPILE_ONLY"_str); co && ! co->is_empty()) {
+    int exit_code = 0;
+    if (capture) {
+        while (! capture_state->done.load(Ordering::Acquire)) {
+            stdin_control.poll(*psw);
+            apply_locked_mouse();
+            rstd::thread::sleep(Duration::from_millis(u64(10)));
+        }
+        if (! capture_state->ok.load(Ordering::Acquire)) exit_code = 1;
+    } else if (auto co = rstd::env::var_os("WP_COMPILE_ONLY"_str); co && ! co->is_empty()) {
         auto text    = co->as_os_str().to_str();
         auto seconds = text ? rstd::from_str<i32>(*text).unwrap_or(i32(2)) : i32(2);
         if (seconds <= i32()) seconds = i32(2);
@@ -392,7 +446,7 @@ int main(int argc, char** argv) {
             eprintln("failed to write texture memory statistics");
     }
     // wgl.Clear();
-    glfwDestroyWindow(window);
+    if (window != nullptr) glfwDestroyWindow(window);
     glfwTerminate();
-    return 0;
+    return exit_code;
 }
