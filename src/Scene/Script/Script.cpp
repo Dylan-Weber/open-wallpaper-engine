@@ -477,6 +477,8 @@ struct AudioBufferSlot {
 };
 
 struct EngineHostState {
+    // A field script's init is running: Wallpaper Engine leaves the camera alone for what it sets then.
+    bool in_field_init { false };
     FrameInputs                     inputs;
     MediaStatus                     media;
     bool                            media_initialized { false };
@@ -3025,6 +3027,8 @@ JSValue NodeSceneSetCameraTransforms(JSContext* ctx, JSValueConst, int argc, JSV
     if (! host || ! host->scene) return JS_ThrowTypeError(ctx, "scene camera is not available");
     if (argc < 1 || ! JS_IsObject(argv[0]))
         return JS_ThrowTypeError(ctx, "camera transforms must be an object");
+    // measured in Wallpaper Engine: the camera a script sets in init is the scene's again once it has loaded
+    if (host->in_field_init) return JS_UNDEFINED;
     auto transforms = host->scene->ActiveCameraTransforms();
     if (transforms.is_none()) return JS_ThrowTypeError(ctx, "active scene camera is not available");
     if (! ReadOptionalCameraVector(ctx, argv[0], "eye", transforms->eye) ||
@@ -4370,7 +4374,10 @@ void RunFieldScriptInit(JSContext* ctx, JsRuntime::Impl* rt, FieldScript* fs) {
     if (! JS_IsUndefined(rt->wrapped_scene)) BindThisScene(ctx, rt->wrapped_scene);
     rt->host.active_field_script = fs;
     JSValue arg                  = JS_DupValue(ctx, I->current_value);
-    JSValue r                    = JS_Call(ctx, I->init_fn, JS_UNDEFINED, 1, &arg);
+    const bool was_in_init       = rt->host.in_field_init;
+    rt->host.in_field_init       = true;
+    JSValue    r                 = JS_Call(ctx, I->init_fn, JS_UNDEFINED, 1, &arg);
+    rt->host.in_field_init       = was_in_init;
     JS_FreeValue(ctx, arg);
     if (JS_IsException(r)) rt->LogError(ctx, I->sha.as_str(), "init threw");
     JS_FreeValue(ctx, r);
