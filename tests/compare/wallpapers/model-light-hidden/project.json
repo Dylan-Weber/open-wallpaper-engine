@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test a hidden light and a shown one, with one point light in the light config",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}
