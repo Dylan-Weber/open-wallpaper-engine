@@ -617,6 +617,51 @@ TEST(ScriptBones, IndicesCountFromZero) {
     EXPECT_EQ(asked, 1u);
 }
 
+TEST(ScriptBones, CountAndParents) {
+    // Measured in Wallpaper Engine: the count of a puppet's bones, and a bone's
+    // parent numbered from 0, -1 for a root, a missing name or an index past the
+    // last bone.
+    owe::SceneNode node;
+    JsRuntime      rt;
+    rt.SetBoneResolvers(
+        JsRuntime::BoneIndexResolver::make([](owe::SceneNode*, ref<str> name) -> uint32_t {
+            return name == "hair"_str ? 3 : 0;
+        }),
+        JsRuntime::BoneTransformResolver::make(
+            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTranslation> {
+                return None();
+            }));
+    // three bones: a root, its child, and that child's child (1-based, 0 for none)
+    rt.SetBoneParentsResolver(
+        JsRuntime::BoneParentsResolver::make([](owe::SceneNode*) -> Vec<uint32_t> {
+            Vec<uint32_t> parents;
+            for (uint32_t parent : { 0u, 1u, 2u }) parents.push(uint32_t(parent));
+            return parents;
+        }));
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            const results = [
+                thisLayer.getBoneCount(),
+                thisLayer.getBoneParentIndex(0),
+                thisLayer.getBoneParentIndex(2),
+                thisLayer.getBoneParentIndex('hair'),
+                thisLayer.getBoneParentIndex('missing'),
+                thisLayer.getBoneParentIndex(3),
+            ];
+            export function update() { return results.join(' ') === '3 -1 1 1 -1 -1' ? 1 : 0; }
+        )JS"_str,
+        "test/bone_count_parents"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+
+    rt.TickAll();
+
+    EXPECT_EQ(LastScalar(fs), 1.0);
+}
+
 TEST(ScriptNodeSoftMutation, VisibleAndAlphaWrites) {
     owe::SceneNode node;
     JsRuntime      rt;

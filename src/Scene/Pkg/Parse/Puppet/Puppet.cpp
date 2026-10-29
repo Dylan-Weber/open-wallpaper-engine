@@ -469,6 +469,15 @@ uint32_t PuppetLayer::boneIndex(ref<str> name) const noexcept {
     return 0;
 }
 
+// Each bone's parent in boneIndex's numbering: 0 for a root.
+Vec<uint32_t> PuppetLayer::boneParents() const {
+    Vec<uint32_t> parents;
+    for (const auto& bone : m_puppet->bones) {
+        parents.push(bone.file_parent == Puppet::NO_PARENT ? uint32_t(0) : bone.file_parent + 1);
+    }
+    return parents;
+}
+
 auto PuppetLayer::AnimationPlayback(i32 layer_id) const -> Option<Arc<SceneAnimationPlayback>> {
     for (const auto& layer : m_layers) {
         if (i32(layer.anim_layer.layer_id) == layer_id && layer.playback.is_some())

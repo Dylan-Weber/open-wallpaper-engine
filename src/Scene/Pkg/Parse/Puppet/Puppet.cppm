@@ -277,6 +277,7 @@ public:
     // Borrowed until this instance is evaluated, prepared, or destroyed again.
     slice<Eigen::Affine3f>  genFrame(double time) noexcept;
     rstd::uint32_t          boneIndex(ref<str> name) const noexcept;
+    Vec<rstd::uint32_t>     boneParents() const;
     Option<Eigen::Affine3f> boneTransform(rstd::uint32_t index, double time) noexcept;
     Option<Eigen::Affine3f> attachmentTransform(usize index, double time) noexcept;
     auto AnimationPlaybacks() const noexcept -> slice<Arc<SceneAnimationPlayback>>;
