@@ -2835,6 +2835,14 @@ public:
     bool SetImageEffectRuntimeVisible(const SceneImageEffectRef& ref, bool visible);
     void EnablePlanarReflection();
     bool PlanarReflectionEnabled() const { return m_planar_reflection_enabled; }
+    // The texture the cookie spot lights project (`_alias_lightCookie`): one for all of them.
+    auto LightCookieTexture() const -> Option<ref<str>> {
+        if (m_light_cookie_texture.is_none()) return None();
+        return Some(m_light_cookie_texture->as_str());
+    }
+    void SetLightCookieTexture(Option<String> texture) {
+        m_light_cookie_texture = rstd::move(texture);
+    }
     bool ConsumeRenderGraphDirty();
     bool ApplyUserNodeVisibilityBindings(ref<str> key, const Json& property);
     bool ApplyUserImageEffectVisibilityBindings(ref<str> key, const Json& property);
@@ -3131,6 +3139,7 @@ private:
     SceneResourceIndex                           m_resource_index;
     bool                                         m_render_graph_dirty { false };
     bool                                         m_planar_reflection_enabled { false };
+    Option<String>                               m_light_cookie_texture;
     HashMap<i32, String>                         m_render_group_cameras;
     HashMap<String, Vec<String>>                 m_linked_cameras;
     HashMap<i32, SceneNodeId>                    m_layer_link_source_ids;

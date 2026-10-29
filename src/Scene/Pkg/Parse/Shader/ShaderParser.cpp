@@ -305,6 +305,25 @@ float3 PerformLighting_V1(float3 worldPos, float3 albedo, float3 normal, float3 
             float cone = smoothstep(g_LightsConeExponent[i].y,
                                     g_LightsConeExponent[i].x,
                                     dot(lightToSurface, g_LightsDirectionType[i].xyz));
+#if LIGHTS_COOKIE
+            // A cookie light projects its cookie over its cone in place of the cone's falloff:
+            // the light's axis is the middle of the cookie, the edge of the cone its edge, and
+            // the cookie's top is up.
+            if (g_LightsConeExponent[i].w > 0.5) {
+                float3 forward = g_LightsDirectionType[i].xyz;
+                float3 worldUp = abs(forward.y) > 0.99 ? float3(0.0, 0.0, 1.0) : float3(0.0, 1.0, 0.0);
+                float3 right   = normalize(cross(forward, worldUp));
+                float3 up      = cross(right, forward);
+                float  depth   = dot(lightToSurface, forward);
+                float  outer   = g_LightsConeExponent[i].y;
+                float  tangent = sqrt(max(1.0 - outer * outer, 0.0)) / max(outer, 0.0001);
+                float2 ndc = float2(dot(lightToSurface, right), dot(lightToSurface, up)) /
+                             max(depth * tangent, 0.0001);
+                float inside = step(0.0, depth) * step(abs(ndc.x), 1.0) * step(abs(ndc.y), 1.0);
+                cone = inside;
+                color *= texSample2D(COOKIE_SAMPLER, float2(0.5, 0.5) + float2(0.5, -0.5) * ndc).rgb;
+            }
+#endif
             color *= cone;
         }
         light += ComputePBRLightShadow(
@@ -1890,7 +1909,7 @@ constexpr array<rstd::uint8_t, 8> kShaderCacheMagic { rstd::uint8_t('O'), rstd::
                                                       rstd::uint8_t('P'), rstd::uint8_t('V'),
                                                       rstd::uint8_t('3'), rstd::uint8_t(0) };
 constexpr rstd::uint32_t          kShaderCacheFormatVersion = 3;
-constexpr rstd::uint32_t          kShaderCacheAbiVersion    = 19;
+constexpr rstd::uint32_t          kShaderCacheAbiVersion    = 20;
 // 8-byte magic, six u32 fields, and four SHA-1 digests total 112 bytes.
 constexpr rstd::uint32_t kShaderCacheHeaderSize = static_cast<rstd::uint32_t>(
     kShaderCacheMagic.len().to_primitive() + 6 * sizeof(rstd::uint32_t) +

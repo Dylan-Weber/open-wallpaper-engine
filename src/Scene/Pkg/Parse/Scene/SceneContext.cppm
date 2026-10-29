@@ -205,6 +205,8 @@ struct SceneParseContext {
     HashSet<i32>         linked_source_ids;
     HashSet<i32>         hidden_link_source_ids;
     bool                 scene_has_scripts { false };
+    // The spot lights that project the light cookie: the first spotcookie-many with usecookie.
+    HashSet<i32>         light_cookie_ids;
     bool                 scene_layer_text_writes { false };
 
     bool IsLinkedSource(i32 id) const { return linked_source_ids.contains(i32(id)); }

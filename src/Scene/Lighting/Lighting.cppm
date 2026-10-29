@@ -39,6 +39,8 @@ public:
         float cascade_distances[3] { 0.0f, 0.0f, 0.0f };
         bool  cast_shadow { false };
         bool  cast_volumetrics { false };
+        // A spot light projecting the scene's light cookie over its cone.
+        bool cookie { false };
     };
 
     explicit SceneLight(const Desc& d)

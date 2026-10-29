@@ -66,6 +66,7 @@ bool SceneLightConfig::FromJson(const owe::Json& json) {
     owe::GetJsonValue(json, "pointshadow"_str, pointshadow, false);
     owe::GetJsonValue(json, "spot"_str, spot, false);
     owe::GetJsonValue(json, "spotshadow"_str, spotshadow, false);
+    owe::GetJsonValue(json, "spotcookie"_str, spotcookie, false);
     return true;
 }
 

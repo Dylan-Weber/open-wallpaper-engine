@@ -2443,3 +2443,19 @@ TEST(UniformSourceParallax, PerspectiveWithAuthoredParallaxDepthAppliesShift) {
                 std::abs(mvp_without_parallax[rstd::usize(13)] -
                          mvp_with_parallax[rstd::usize(13)]) > 1e-5f);
 }
+
+// A spot light projecting its cookie tells Lighting V1 so in its cone's w.
+TEST(LightUniformSource, MarksCookieSpotLights) {
+    auto                  node = Arc<owe::SceneNode>::make();
+    owe::SceneLight::Desc desc;
+    desc.type   = owe::SceneLightType::Spot;
+    desc.cookie = true;
+    owe::SceneLight light(desc);
+    light.setNode(node.as_ptr());
+    auto lights = Vec<ref<owe::SceneLight>>::make();
+    lights.push(ref<owe::SceneLight>::from_raw_parts(rstd::addressof(light)));
+    owe::LightUniformSource source(rstd::move(lights));
+    owe::SceneFrame         frame;
+    auto cones = scene_test::Capture(frame, source, owe::LightUniformOutput::ConeExponent);
+    EXPECT_FLOAT_EQ(cones[usize(3)], 1.0f);
+}
