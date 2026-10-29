@@ -1,0 +1,65 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 12",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": null,
+    "fov": 50,
+    "nearz": 0.1,
+    "farz": 100,
+    "clearcolor": "0.05 0.05 0.1",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "bloom": false,
+    "zoom": 1,
+    "ambientcolor": "1 1 1",
+    "skylightcolor": "1 1 1",
+    "lightconfig": {
+      "point": 0,
+      "spot": 0,
+      "tube": 0,
+      "directional": 0
+    }
+  },
+  "objects": [
+    {
+      "name": "left",
+      "particle": "particles/single.json",
+      "origin": "-3 0 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 1
+    },
+    {
+      "name": "far",
+      "particle": "particles/single.json",
+      "origin": "0 0 -6",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 2
+    },
+    {
+      "name": "right",
+      "particle": "particles/single.json",
+      "origin": "3 0 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 3
+    },
+    {
+      "name": "cube",
+      "model": "models/white.mdl",
+      "origin": "0 -2.5 0",
+      "angles": "0.3 0.5 0",
+      "scale": "1 1 1",
+      "id": 4,
+      "visible": true
+    }
+  ],
+  "version": 3
+}
