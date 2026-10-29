@@ -1,0 +1,93 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0 0 0",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": true,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3",
+    "bloomstrength": 2.0,
+    "bloomthreshold": 0.5,
+    "bloomtint": "1 1 1"
+  },
+  "objects": [
+    {
+      "name": "white",
+      "image": "models/util/solidlayer.json",
+      "origin": "400 700 0",
+      "size": "200 200",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 1,
+      "visible": true
+    },
+    {
+      "name": "red",
+      "image": "models/util/solidlayer.json",
+      "origin": "960 700 0",
+      "size": "200 200",
+      "color": "1 0 0",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 2,
+      "visible": true
+    },
+    {
+      "name": "dim",
+      "image": "models/util/solidlayer.json",
+      "origin": "1500 700 0",
+      "size": "200 200",
+      "color": "0.3 0.3 0.3",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 3,
+      "visible": true
+    },
+    {
+      "name": "thin line",
+      "image": "models/util/solidlayer.json",
+      "origin": "960 300 0",
+      "size": "800 8",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 4,
+      "visible": true
+    },
+    {
+      "name": "blue",
+      "image": "models/util/solidlayer.json",
+      "origin": "400 300 0",
+      "size": "120 120",
+      "color": "0.2 0.2 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 5,
+      "visible": true
+    }
+  ],
+  "version": 1
+}
