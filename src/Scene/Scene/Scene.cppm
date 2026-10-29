@@ -1619,6 +1619,8 @@ class SceneNode : NoCopy, NoMove {
 public:
     struct ShadowParticipation {
         bool cast { false };
+        // a translucent or additive model: its caster draws no pixels (Wallpaper Engine casts no shadow from it)
+        bool silent { false };
     };
 
     ShadowParticipation shadow;
@@ -2586,6 +2588,8 @@ struct RenderShadowCasterRecord {
     RenderItemId       render_item;
     Arc<SceneMaterial> material;
     u32                instance_count { 1 };
+    // drawn through an empty scissor: it only keeps the atlas written
+    bool silent { false };
     // the shadow definition it is drawn into
     usize definition {};
 };

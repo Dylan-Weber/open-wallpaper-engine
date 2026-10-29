@@ -703,6 +703,7 @@ static void EmitShadowPasses(ExtraInfo& extra) {
              draw,
              material       = caster.material.clone(),
              instance_count = caster.instance_count,
+             silent         = caster.silent,
              clear_depth    = first,
              target](fg::PassId pass, vulkan::SceneDraw::Input& input) {
                 auto& pdesc            = input.description;
@@ -731,8 +732,8 @@ static void EmitShadowPasses(ExtraInfo& extra) {
                     pdesc.scissors.push(VkRect2D {
                         .offset = { viewport.scissor_x.to_primitive(),
                                     viewport.scissor_y.to_primitive() },
-                        .extent = { viewport.scissor_width.to_primitive(),
-                                    viewport.scissor_height.to_primitive() },
+                        .extent = { silent ? 0u : viewport.scissor_width.to_primitive(),
+                                    silent ? 0u : viewport.scissor_height.to_primitive() },
                     });
                 }
 
