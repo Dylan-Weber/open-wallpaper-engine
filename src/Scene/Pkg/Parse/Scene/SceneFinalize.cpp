@@ -153,8 +153,14 @@ void FinalizeUniformSources(SceneParseContext& context) {
             shadow_light = Some(owned_lights[index].as_ref());
         }
     }
-    const auto light_source = registrar->Register(
-        Box<dyn<UniformSource>>::make(LightUniformSource { rstd::move(lights) }));
+    LightKindLimits light_limits {
+        .point       = context.shader_environment.point_lights,
+        .spot        = context.shader_environment.spot_lights,
+        .directional = context.shader_environment.directional_lights,
+    };
+
+    const auto light_source     = registrar->Register(Box<dyn<UniformSource>>::make(
+        LightUniformSource { rstd::move(lights), Some(light_limits) }));
     auto lighting_sources = Vec<UniformSourceAttachment>::make();
     lighting_sources.push(UniformSourceAttachment { .source = light_source });
     if (context.shader_environment.directional_shadow && shadow_light.is_some()) {
