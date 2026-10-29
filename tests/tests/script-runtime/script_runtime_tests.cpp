@@ -662,6 +662,61 @@ TEST(ScriptBones, CountAndParents) {
     EXPECT_EQ(LastScalar(fs), 1.0);
 }
 
+TEST(ScriptBones, LocalOriginAndAngles) {
+    // A bone's origin and angles (radians) relative to its parent, by name or index; setting one
+    // keeps the other.
+    owe::SceneNode node;
+    JsRuntime      rt;
+    rt.SetBoneResolvers(
+        JsRuntime::BoneIndexResolver::make([](owe::SceneNode*, ref<str> name) -> uint32_t {
+            return name == "hand"_str ? 2 : 0;
+        }),
+        JsRuntime::BoneTransformResolver::make(
+            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTranslation> {
+                return None();
+            }));
+    BoneLocalPose pose { .origin = { 1.0f, 2.0f, 3.0f }, .angles = { 0.0f, 0.0f, 0.5f } };
+    uint32_t      asked = 0, set = 0;
+    rt.SetBoneLocalResolvers(
+        JsRuntime::BoneLocalGetter::make(
+            [&](owe::SceneNode*, uint32_t index, double) -> Option<BoneLocalPose> {
+                asked = index;
+                if (index != 2) return None();
+                return Some(pose);
+            }),
+        JsRuntime::BoneLocalSetter::make(
+            [&](owe::SceneNode*, uint32_t index, BoneLocalPose value, double) {
+                set  = index;
+                pose = value;
+            }));
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            export function update() {
+                const origin = thisLayer.getLocalBoneOrigin('hand');
+                const angles = thisLayer.getLocalBoneAngles(1);
+                thisLayer.setLocalBoneAngles('hand', new Vec3(0, 0, 1.5));
+                thisLayer.setLocalBoneOrigin(1, new Vec3(4, 5, 6));
+                const missing = thisLayer.getLocalBoneOrigin('missing');
+                const read = [origin.x, origin.y, origin.z, angles.z, missing.x].join(' ');
+                return read === '1 2 3 0.5 0' ? 1 : 0;
+            }
+        )JS"_str,
+        "test/bone_local"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+
+    rt.TickAll();
+
+    EXPECT_EQ(LastScalar(fs), 1.0);
+    EXPECT_EQ(set, 2u);
+    EXPECT_FLOAT_EQ(pose.origin.x, 4.0f);
+    EXPECT_FLOAT_EQ(pose.origin.z, 6.0f);
+    EXPECT_FLOAT_EQ(pose.angles.z, 1.5f);
+}
+
 TEST(ScriptNodeSoftMutation, VisibleAndAlphaWrites) {
     owe::SceneNode node;
     JsRuntime      rt;

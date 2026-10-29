@@ -551,6 +551,8 @@ struct EngineHostState {
     Option<JsRuntime::BoneIndexResolver>         bone_index_resolver;
     Option<JsRuntime::BoneTransformResolver>     bone_transform_resolver;
     Option<JsRuntime::BoneParentsResolver>       bone_parents_resolver;
+    Option<JsRuntime::BoneLocalGetter>           bone_local_getter;
+    Option<JsRuntime::BoneLocalSetter>           bone_local_setter;
     owe::SceneNode*                              scene_root { nullptr };
 };
 
@@ -2710,6 +2712,74 @@ JSValue NodeGetBoneParentIndex(JSContext* ctx, JSValueConst this_val, int argc,
     return JS_NewInt32(ctx, int32_t(parents[usize(uint32_t(child))]) - 1);
 }
 
+// A bone named, or numbered as getBoneIndex numbers it: -1 for none.
+int32_t ScriptBoneIndex(JSContext* ctx, JSValueConst this_val, JSValueConst bone) {
+    int32_t index = -1;
+    if (JS_IsString(bone)) {
+        JSValue found = NodeGetBoneIndex(ctx, this_val, 1, &bone);
+        JS_ToInt32(ctx, &index, found);
+        JS_FreeValue(ctx, found);
+    } else {
+        JS_ToInt32(ctx, &index, bone);
+    }
+    return index;
+}
+
+// The local pose of the bone in argv[0], and its resolver number.
+Option<owe::script::BoneLocalPose> ScriptBoneLocalPose(JSContext* ctx, JSValueConst this_val,
+                                                       int argc, JSValueConst* argv,
+                                                       uint32_t& bone) {
+    auto*         host  = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    auto*         n     = GetLayerNode(this_val);
+    const int32_t index = argc > 0 ? ScriptBoneIndex(ctx, this_val, argv[0]) : -1;
+    if (! n || index < 0 || ! host->bone_local_getter) return None();
+    bone = uint32_t(index) + 1;
+    return (*host->bone_local_getter)->operator()(n, bone, host->inputs.runtime);
+}
+
+// get/setLocalBoneOrigin and get/setLocalBoneAngles (radians), relative to the bone's parent. A
+// bone the layer doesn't have reads as a zero vector.
+JSValue LocalBonePart(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv,
+                      bool angles) {
+    uint32_t bone = 0;
+    auto     pose = ScriptBoneLocalPose(ctx, this_val, argc, argv, bone);
+    if (pose.is_none()) return MakeVec3(ctx, 0, 0, 0);
+    const auto& part = angles ? pose->angles : pose->origin;
+    return MakeVec3(ctx, part.x, part.y, part.z);
+}
+
+JSValue SetLocalBonePart(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv,
+                         bool angles) {
+    auto*    host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    uint32_t bone = 0;
+    auto     pose = ScriptBoneLocalPose(ctx, this_val, argc, argv, bone);
+    double   x = 0, y = 0, z = 0;
+    if (pose.is_none() || argc < 2 || ! ReadXYZ(ctx, argv[1], x, y, z) || ! host->bone_local_setter)
+        return JS_UNDEFINED;
+    auto& part = angles ? pose->angles : pose->origin;
+    part       = { float(x), float(y), float(z) };
+    (*host->bone_local_setter)
+        ->operator()(GetLayerNode(this_val), bone, *pose, host->inputs.runtime);
+    return JS_UNDEFINED;
+}
+
+JSValue NodeGetLocalBoneOrigin(JSContext* ctx, JSValueConst this_val, int argc,
+                               JSValueConst* argv) {
+    return LocalBonePart(ctx, this_val, argc, argv, false);
+}
+JSValue NodeGetLocalBoneAngles(JSContext* ctx, JSValueConst this_val, int argc,
+                               JSValueConst* argv) {
+    return LocalBonePart(ctx, this_val, argc, argv, true);
+}
+JSValue NodeSetLocalBoneOrigin(JSContext* ctx, JSValueConst this_val, int argc,
+                               JSValueConst* argv) {
+    return SetLocalBonePart(ctx, this_val, argc, argv, false);
+}
+JSValue NodeSetLocalBoneAngles(JSContext* ctx, JSValueConst this_val, int argc,
+                               JSValueConst* argv) {
+    return SetLocalBonePart(ctx, this_val, argc, argv, true);
+}
+
 JSValue NodeGetChildren(JSContext* ctx, JSValueConst this_val, int, JSValueConst*) {
     auto*   n   = GetLayerNode(this_val);
     JSValue arr = JS_NewArray(ctx);
@@ -3567,6 +3637,10 @@ const JSCFunctionListEntry s_layer_proto_funcs[] = {
     JS_CFUNC_DEF("getBoneTransform", 1, NodeGetBoneTransform),
     JS_CFUNC_DEF("getBoneCount", 0, NodeGetBoneCount),
     JS_CFUNC_DEF("getBoneParentIndex", 1, NodeGetBoneParentIndex),
+    JS_CFUNC_DEF("getLocalBoneOrigin", 1, NodeGetLocalBoneOrigin),
+    JS_CFUNC_DEF("getLocalBoneAngles", 1, NodeGetLocalBoneAngles),
+    JS_CFUNC_DEF("setLocalBoneOrigin", 2, NodeSetLocalBoneOrigin),
+    JS_CFUNC_DEF("setLocalBoneAngles", 2, NodeSetLocalBoneAngles),
     JS_CFUNC_DEF("getTextureAnimation", 0, NodeGetTextureAnimation),
     JS_CFUNC_DEF("getVideoTexture", 0, NodeGetVideoTexture),
     JS_CFUNC_DEF("emitParticles", 1, NodeEmitParticles),
@@ -3961,6 +4035,11 @@ void JsRuntime::SetBoneResolvers(BoneIndexResolver     index_resolver,
 
 void JsRuntime::SetBoneParentsResolver(BoneParentsResolver resolver) {
     m_impl->host.bone_parents_resolver = Some(rstd::move(resolver));
+}
+
+void JsRuntime::SetBoneLocalResolvers(BoneLocalGetter getter, BoneLocalSetter setter) {
+    m_impl->host.bone_local_getter = Some(rstd::move(getter));
+    m_impl->host.bone_local_setter = Some(rstd::move(setter));
 }
 
 void JsRuntime::SetPersistence(PathBuf path) {

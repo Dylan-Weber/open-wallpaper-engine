@@ -197,6 +197,45 @@ Option<Arc<PuppetLayer>> FindPuppetLayerWithBone(const Arc<PuppetLayerRegistry>&
     return None();
 }
 
+// A bone's angles turn it about z, then y, then x (radians), as puppet animations do.
+Matrix3f BoneRotation(const script::BoneTranslation& angles) {
+    return (AngleAxisf(angles.z, Vector3f::UnitZ()) * AngleAxisf(angles.y, Vector3f::UnitY()) *
+            AngleAxisf(angles.x, Vector3f::UnitX()))
+        .toRotationMatrix();
+}
+
+// Each scale axis's length, the first one negative for a mirrored bone.
+Vector3f BoneScale(const Affine3f& local) {
+    Vector3f scale(
+        local.linear().col(0).norm(), local.linear().col(1).norm(), local.linear().col(2).norm());
+    if (local.linear().determinant() < 0.0f) scale.x() = -scale.x();
+    return scale;
+}
+
+// Its origin and angles, each angle between -pi and pi.
+script::BoneLocalPose BoneLocalPoseOf(const Affine3f& local) {
+    const Vector3f scale = BoneScale(local);
+    Matrix3f       rotation;
+    for (int axis = 0; axis < 3; ++axis)
+        rotation.col(axis) = scale[axis] != 0.0f ? Vector3f(local.linear().col(axis) / scale[axis])
+                                                 : Vector3f::Unit(axis);
+    const Vector3f origin = local.translation();
+    return script::BoneLocalPose {
+        .origin = { origin.x(), origin.y(), origin.z() },
+        .angles = { f32(rotation(2, 1)).atan2(f32(rotation(2, 2))).to_primitive(),
+                    f32(-rotation(2, 0)).clamp(f32(-1.0f), f32(1.0f)).asin().to_primitive(),
+                    f32(rotation(1, 0)).atan2(f32(rotation(0, 0))).to_primitive() },
+    };
+}
+
+// The bone posed at that origin and those angles, keeping its scale.
+Affine3f WithBoneLocalPose(const Affine3f& local, const script::BoneLocalPose& pose) {
+    Affine3f posed      = Affine3f::Identity();
+    posed.linear()      = BoneRotation(pose.angles) * BoneScale(local).asDiagonal();
+    posed.translation() = Vector3f(pose.origin.x, pose.origin.y, pose.origin.z);
+    return posed;
+}
+
 script::ScriptScene& EnsureScriptScene(SceneParseContext& context) {
     if (context.script_scene.is_none()) {
         context.script_scene =
@@ -242,6 +281,31 @@ script::ScriptScene& EnsureScriptScene(SceneParseContext& context) {
                     if (layer.is_none()) return {};
                     return (*layer)->boneParents();
                 }));
+        (*context.script_scene)
+            ->runtime()
+            .SetBoneLocalResolvers(
+                script::JsRuntime::BoneLocalGetter::make(
+                    [layers = layers.clone()](SceneNode*     node,
+                                              rstd::uint32_t index,
+                                              double time) -> Option<script::BoneLocalPose> {
+                        auto layer = LookupPuppetLayer(layers, node);
+                        if (layer.is_none()) return None();
+                        auto local = (*layer)->localBoneTransform(index, time);
+                        if (local.is_none()) return None();
+                        return Some(BoneLocalPoseOf(*local));
+                    }),
+                script::JsRuntime::BoneLocalSetter::make(
+                    [layers = layers.clone()](SceneNode*            node,
+                                              rstd::uint32_t        index,
+                                              script::BoneLocalPose pose,
+                                              double                time) {
+                        auto layer = LookupPuppetLayer(layers, node);
+                        if (layer.is_none()) return;
+                        auto local = (*layer)->localBoneTransform(index, time);
+                        if (local.is_none()) return;
+                        (void)(*layer)->setLocalBoneTransform(
+                            index, WithBoneLocalPose(*local, pose), time);
+                    }));
         if (context.user_properties.is_some())
             (*context.user_properties)->iter().for_each([&](auto entry) {
                 auto [entry_key, entry_value] = entry;
