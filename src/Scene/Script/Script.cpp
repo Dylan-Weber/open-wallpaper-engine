@@ -1643,6 +1643,145 @@ class Vec4 {
 globalThis.Vec2 = Vec2;
 globalThis.Vec3 = Vec3;
 globalThis.Vec4 = Vec4;
+// The SceneScript vector methods the classes above leave out
+// (https://docs.wallpaperengine.io/en/scene/scenescript/reference/class/Vec3). Angles are in degrees.
+(function () {
+  const COMPONENTS = { 2: ['x', 'y'], 3: ['x', 'y', 'z'], 4: ['x', 'y', 'z', 'w'] };
+  const CLASSES = { 2: Vec2, 3: Vec3, 4: Vec4 };
+  const RAD = Math.PI / 180;
+  const DEG = 180 / Math.PI;
+
+  function define(target, name, fn) {
+    Object.defineProperty(target, name, { value: fn, writable: true, configurable: true, enumerable: false });
+  }
+
+  function dot(a, b) {
+    return a.reduce((sum, x, i) => sum + x * b[i], 0);
+  }
+
+  function clamp01(x) {
+    return Math.min(Math.max(x, 0), 1);
+  }
+
+  for (const n of [2, 3, 4]) {
+    const keys = COMPONENTS[n];
+    const Class = CLASSES[n];
+    const proto = Class.prototype;
+    const numbers = (vector) => keys.map((key) => vector[key]);
+    // a number for every component, or a vector's components (0 for those a shorter one lacks)
+    const operand = (value) =>
+      typeof value === 'number' ? keys.map(() => value) : keys.map((key) => value[key] ?? 0);
+    const make = (values) => new Class(...values);
+    const each = (vector, fn) => make(numbers(vector).map(fn));
+    const pair = (vector, other, fn) => {
+      const b = operand(other);
+      return make(numbers(vector).map((x, i) => fn(x, b[i])));
+    };
+
+    define(proto, 'dot', function (other) { return dot(numbers(this), operand(other)); });
+    define(proto, 'min', function (other) { return pair(this, other, Math.min); });
+    define(proto, 'max', function (other) { return pair(this, other, Math.max); });
+    define(proto, 'abs', function () { return each(this, Math.abs); });
+    define(proto, 'sign', function () { return each(this, Math.sign); });
+    define(proto, 'round', function () { return each(this, Math.round); });
+    define(proto, 'floor', function () { return each(this, Math.floor); });
+    define(proto, 'ceil', function () { return each(this, Math.ceil); });
+    define(proto, 'negate', function () { return each(this, (x) => -x); });
+    define(proto, 'fract', function () { return each(this, (x) => x - Math.floor(x)); });
+    define(proto, 'equals', function (other) {
+      const b = operand(other);
+      return numbers(this).every((x, i) => x === b[i]);
+    });
+    define(proto, 'isFinite', function () { return numbers(this).every(Number.isFinite); });
+    define(proto, 'distanceSqr', function (other) {
+      const b = operand(other);
+      return numbers(this).reduce((sum, x, i) => sum + (x - b[i]) * (x - b[i]), 0);
+    });
+    define(proto, 'distance', function (other) { return Math.sqrt(this.distanceSqr(other)); });
+    define(proto, 'reflect', function (normal) {
+      const a = numbers(this);
+      const b = operand(normal);
+      const d = 2 * dot(a, b);
+      return make(a.map((x, i) => x - d * b[i]));
+    });
+    define(proto, 'project', function (other) {
+      const a = numbers(this);
+      const b = operand(other);
+      const lengthSqr = dot(b, b);
+      const scale = lengthSqr === 0 ? 0 : dot(a, b) / lengthSqr;
+      return make(b.map((x) => x * scale));
+    });
+    define(proto, 'clamp', function (min, max) {
+      const low = operand(min);
+      const high = operand(max);
+      return make(numbers(this).map((x, i) => Math.min(Math.max(x, low[i]), high[i])));
+    });
+    define(proto, 'mod', function (value) { return pair(this, value, (x, y) => x - y * Math.floor(x / y)); });
+    define(proto, 'step', function (edge) { return pair(this, edge, (x, e) => (x < e ? 0 : 1)); });
+    define(proto, 'smoothStep', function (min, max) {
+      const low = operand(min);
+      const high = operand(max);
+      return make(numbers(this).map((x, i) => {
+        const t = clamp01((x - low[i]) / (high[i] - low[i]));
+        return t * t * (3 - 2 * t);
+      }));
+    });
+    // mix takes a number as the amount, or a vector of amounts
+    const mixByNumber = proto.mix;
+    define(proto, 'mix', function (other, amount) {
+      if (typeof amount === 'number') return mixByNumber.call(this, other, amount);
+      const b = operand(other);
+      const t = operand(amount);
+      return make(numbers(this).map((x, i) => x + (b[i] - x) * t[i]));
+    });
+  }
+
+  // Vec2: angles are counter-clockwise from +x
+  define(Vec2.prototype, 'perpendicular', function () { return new Vec2(-this.y, this.x); });
+  define(Vec2.prototype, 'angle', function () { return Math.atan2(this.y, this.x) * DEG; });
+  define(Vec2.prototype, 'angleBetween', function (other) {
+    // signed: positive when `other` is counter-clockwise from this vector
+    return Math.atan2(this.x * other.y - this.y * other.x, this.x * other.x + this.y * other.y) * DEG;
+  });
+  define(Vec2.prototype, 'rotate', function (angle) {
+    const c = Math.cos(angle * RAD);
+    const s = Math.sin(angle * RAD);
+    return new Vec2(this.x * c - this.y * s, this.x * s + this.y * c);
+  });
+
+  // Vec3
+  define(Vec3.prototype, 'cross', function (other) {
+    return new Vec3(
+      this.y * other.z - this.z * other.y,
+      this.z * other.x - this.x * other.z,
+      this.x * other.y - this.y * other.x
+    );
+  });
+  define(Vec3.prototype, 'angleBetween', function (other) {
+    const lengths = this.length() * other.length();
+    if (lengths === 0) return 0;
+    return Math.acos(Math.min(Math.max(this.dot(other) / lengths, -1), 1)) * DEG;
+  });
+  define(Vec3.prototype, 'refract', function (normal, eta) {
+    // GLSL semantics: the zero vector for total internal reflection
+    const d = this.dot(normal);
+    const k = 1 - eta * eta * (1 - d * d);
+    if (k < 0) return new Vec3(0, 0, 0);
+    const scale = eta * d + Math.sqrt(k);
+    return new Vec3(eta * this.x - scale * normal.x, eta * this.y - scale * normal.y, eta * this.z - scale * normal.z);
+  });
+  // theta is the polar angle from +y, phi the azimuth around y measured from +x towards +z
+  define(Vec3.prototype, 'toSpherical', function () {
+    const r = this.length();
+    if (r === 0) return new Vec3(0, 0, 0);
+    return new Vec3(r, Math.acos(Math.min(Math.max(this.y / r, -1), 1)) * DEG, Math.atan2(this.z, this.x) * DEG);
+  });
+  define(Vec3, 'fromSpherical', function (r, theta, phi) {
+    const t = theta * RAD;
+    const p = phi * RAD;
+    return new Vec3(r * Math.sin(t) * Math.cos(p), r * Math.cos(t), r * Math.sin(t) * Math.sin(p));
+  });
+})();
 globalThis.__wwSerializeLayerConfig = function(config) {
   return JSON.stringify(config, function(_key, value) {
     if (value instanceof Vec2 || value instanceof Vec3 || value instanceof Vec4)
