@@ -187,6 +187,9 @@ void ParseCameraObj(SceneParseContext& context, wpscene::CameraObject& cam) {
     if (use_perspective && cam.fov > 0.0f) path->own_fov = Some(cam.fov);
     path->perspective         = use_perspective;
     path->enabled             = cam.visible;
+    // a visible layer's node took the camera above: if a hidden layer above it keeps it from driving, the first tick
+    // gives the scene's view back
+    path->restore_default     = cam.visible;
     if (! cam.visible_user.empty())
         path->visible_user_binding = ToSceneUserVisibilityBinding(cam.visible_user);
     AssignCameraFieldAnimations(context, *node, *path, cam.field_bindings);

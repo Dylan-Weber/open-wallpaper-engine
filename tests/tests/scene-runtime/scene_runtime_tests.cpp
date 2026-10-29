@@ -1594,6 +1594,11 @@ TEST(SceneCameraPath, ALayerUnderAHiddenParentDoesNotDriveTheCamera) {
     ASSERT_TRUE(camera.is_some());
     scene.scene->TickCameraPaths();
     EXPECT_DOUBLE_EQ((**camera).Fov(), 50.0);
+    // and the camera keeps the scene's view, not the layer's place
+    EXPECT_TRUE((**camera).IsLookAt());
+    EXPECT_FLOAT_EQ(static_cast<float>((**camera).GetPosition().x()), 0.0f);
+    EXPECT_FLOAT_EQ(static_cast<float>((**camera).GetPosition().y()), 1.0f);
+    EXPECT_FLOAT_EQ(static_cast<float>((**camera).GetPosition().z()), 5.0f);
 }
 
 TEST(SceneCameraPath, UserBindingMutatesRegisteredArc) {
@@ -2548,6 +2553,8 @@ TEST(SceneParserCameraLayer, HiddenLayerRestoresTheSceneLookAtCamera) {
     EXPECT_FLOAT_EQ(static_cast<float>((**camera).GetPosition().x()), 0.0f);
     EXPECT_FLOAT_EQ(static_cast<float>((**camera).GetPosition().y()), 1.0f);
     EXPECT_FLOAT_EQ(static_cast<float>((**camera).GetPosition().z()), 5.0f);
+}
+
 // Ocarina of Time's "Look At Events" camera layers are hidden unless that camera type is chosen,
 // while its manual camera script sets the camera each frame: a hidden layer must not take it back.
 TEST(SceneCameraPath, HiddenCameraLayerLeavesTheCameraToOthers) {
