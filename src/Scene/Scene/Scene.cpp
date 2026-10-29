@@ -1293,7 +1293,8 @@ void SceneCameraPath::ResetQueue() {
 
 void SceneCameraPath::SetEnabled(bool value) {
     if (enabled == value) return;
-    enabled = value;
+    enabled         = value;
+    restore_default = ! value;
     ResetQueue();
 }
 
@@ -1359,6 +1360,7 @@ bool SceneCameraPath::ApplyQueueClip(float frame) {
 bool SceneCameraPath::TickQueue(double runtime) {
     if (queue.is_empty()) return false;
     if (queue_last_runtime.is_none() || runtime < *queue_last_runtime) {
+        if (own_fov.is_some() && camera.is_some()) (**camera).SetFov(*own_fov);
         SelectQueueClip(true);
         queue_last_runtime = Some(runtime);
         return ApplyQueueClip(0.0f);
@@ -1408,8 +1410,11 @@ bool SceneCameraPath::ApplyDefault() {
         node->SetTranslate(default_translate);
         node->SetRotation(default_rotation);
     }
-    value.SetWidth(default_width);
-    value.SetHeight(default_height);
+    // a perspective camera's aspect comes from its width over its height, which only an orthographic one keeps
+    if (! perspective) {
+        value.SetWidth(default_width);
+        value.SetHeight(default_height);
+    }
     if (default_fov > 0.0) value.SetFov(default_fov);
     value.Update();
     return true;
@@ -2807,23 +2812,39 @@ Vec<SceneMaterialDirtyEvent> Scene::ConsumePreparedMaterialDirtyEvents() {
     return events;
 }
 
+namespace
+{
+// A camera layer drives its camera while it is visible and so is every layer above it: Wallpaper Engine hides the
+// children of a hidden layer.
+bool CameraPathActive(const SceneCameraPath& path) {
+    if (! path.enabled) return false;
+    for (SceneNode* parent = path.node != nullptr ? path.node->Parent() : nullptr; parent != nullptr;
+         parent            = parent->Parent()) {
+        if (! parent->Visible()) return false;
+    }
+    return true;
+}
+} // namespace
+
 void Scene::TickCameraPaths() {
     if (m_camera_paths.is_empty()) return;
 
     HashSet<String> has_enabled;
     for (const auto& path : m_camera_paths) {
-        if (path->enabled) has_enabled.insert(path->camera_name.clone());
+        if (CameraPathActive(*path)) has_enabled.insert(path->camera_name.clone());
     }
 
     HashSet<String> touched;
     HashSet<String> reset;
     for (const auto& path : m_camera_paths) {
-        if (! path->enabled) continue;
+        if (! CameraPathActive(*path)) continue;
         if (path->Tick(m_runtime.Frame().elapsed.to_primitive()))
             touched.insert(path->camera_name.clone());
     }
     for (const auto& path : m_camera_paths) {
-        if (path->enabled || has_enabled.contains(path->camera_name.as_str()) ||
+        if (CameraPathActive(*path) || ! path->restore_default) continue;
+        path->restore_default = false;
+        if (has_enabled.contains(path->camera_name.as_str()) ||
             reset.contains(path->camera_name.as_str()))
             continue;
         if (path->ApplyDefault()) touched.insert(path->camera_name.clone());

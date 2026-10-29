@@ -1528,6 +1528,86 @@ TEST(ShadowUniformSource, CascadeCentersUseFinalCameraPosition) {
         EXPECT_FLOAT_EQ(translated[index], explicit_camera[index]);
 }
 
+// A camera layer's field of view is its own: one that doesn't drive the camera leaves the
+// scene's (Ocarina of Time has ten camera layers on the default camera, from 25 to 73 degrees;
+// before any drives it, Wallpaper Engine shows the scene's 50).
+TEST(SceneParserCameraLayer, OnlyADrivingLayerSetsTheFieldOfView) {
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": { "center": "0 0 0", "eye": "0 1 5", "up": "0 1 0" },
+            "general": { "orthogonalprojection": null, "fov": 50 },
+            "objects": [
+                { "id": 1, "name": "Events", "origin": "0 0 0", "visible": false },
+                { "id": 2, "name": "Cam Guest", "camera": "default", "origin": "1 2 3",
+                  "angles": "0 0 0", "fov": 30, "parent": 1,
+                  "visible": { "value": false,
+                               "script": "export function update(value) { return true; }" } },
+                { "id": 3, "name": "Cam Time", "camera": "default", "origin": "4 5 6",
+                  "angles": "0 0 0", "fov": 70, "visible": false }
+            ]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    owe::fs::VFS                vfs;
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "camera-layer-fov"_str,
+        ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene  = rstd::move(parsed).unwrap();
+    auto camera = scene.scene->ActiveCamera();
+    ASSERT_TRUE(camera.is_some());
+    EXPECT_DOUBLE_EQ((**camera).Fov(), 50.0);
+    scene.scene->TickCameraPaths();
+    EXPECT_DOUBLE_EQ((**camera).Fov(), 50.0);
+}
+
+// Wallpaper Engine hides a layer whose parent is hidden: a camera layer under a hidden group drives nothing, though
+// its own visible says true.
+TEST(SceneCameraPath, ALayerUnderAHiddenParentDoesNotDriveTheCamera) {
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": { "center": "0 0 0", "eye": "0 1 5", "up": "0 1 0" },
+            "general": { "orthogonalprojection": null, "fov": 50 },
+            "objects": [
+                { "id": 1, "name": "Events", "origin": "0 0 0", "visible": false },
+                { "id": 2, "name": "Cam Wide", "camera": "default", "origin": "4 5 6",
+                  "angles": "0 0 0", "fov": 75, "parent": 1 }
+            ]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    owe::fs::VFS                vfs;
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "hidden-parent"_str,
+        ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene  = rstd::move(parsed).unwrap();
+    auto camera = scene.scene->ActiveCamera();
+    ASSERT_TRUE(camera.is_some());
+    const double aspect = (**camera).Aspect();
+    scene.scene->TickCameraPaths();
+    EXPECT_DOUBLE_EQ((**camera).Fov(), 50.0);
+    EXPECT_DOUBLE_EQ((**camera).Aspect(), aspect);
+    // and the camera keeps the scene's view, not the layer's place
+    EXPECT_TRUE((**camera).IsLookAt());
+    EXPECT_FLOAT_EQ(static_cast<float>((**camera).GetPosition().x()), 0.0f);
+    EXPECT_FLOAT_EQ(static_cast<float>((**camera).GetPosition().y()), 1.0f);
+    EXPECT_FLOAT_EQ(static_cast<float>((**camera).GetPosition().z()), 5.0f);
+    const auto view = (**camera).Transforms();
+    EXPECT_NEAR(view.center.x(), 0.0, 1e-9);
+    EXPECT_NEAR(view.center.y(), 0.0, 1e-9);
+    EXPECT_NEAR(view.center.z(), 0.0, 1e-9);
+    EXPECT_NEAR(view.up.y(), 1.0, 1e-9);
+}
+
 TEST(SceneCameraPath, UserBindingMutatesRegisteredArc) {
     owe::Scene scene;
     auto       path                = Arc<owe::SceneCameraPath>::make();
@@ -2442,4 +2522,97 @@ TEST(UniformSourceParallax, PerspectiveWithAuthoredParallaxDepthAppliesShift) {
                          mvp_with_parallax[rstd::usize(12)]) > 1e-5f ||
                 std::abs(mvp_without_parallax[rstd::usize(13)] -
                          mvp_with_parallax[rstd::usize(13)]) > 1e-5f);
+}
+
+// In a 3D scene the camera looks from the scene's eye at its center; a camera layer that drove it
+// and is hidden gives it that view back (it fell back to the 2D perspective camera's place).
+TEST(SceneParserCameraLayer, HiddenLayerRestoresTheSceneLookAtCamera) {
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": { "center": "0 0 0", "eye": "0 1 5", "up": "0 1 0" },
+            "general": { "orthogonalprojection": null, "fov": 50 },
+            "objects": [
+                { "id": 1, "name": "Cam", "camera": "default", "origin": "10 20 30",
+                  "angles": "0 0 0", "fov": 50, "visible": { "user": "cam", "value": true } }
+            ]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    owe::fs::VFS                vfs;
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "camera-layer"_str,
+        ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+    scene.scene->TickCameraPaths();
+    auto camera = scene.scene->ActiveCamera();
+    ASSERT_TRUE(camera.is_some());
+    EXPECT_FLOAT_EQ(static_cast<float>((**camera).GetPosition().x()), 10.0f);
+
+    auto hidden = owe::ParseJson(R"({"value":false})"_str).unwrap();
+    scene.scene->ApplyUserCameraPathVisibilityBindings("cam"_str, hidden);
+    scene.scene->TickCameraPaths();
+    EXPECT_TRUE((**camera).IsLookAt());
+    EXPECT_FLOAT_EQ(static_cast<float>((**camera).GetPosition().x()), 0.0f);
+    EXPECT_FLOAT_EQ(static_cast<float>((**camera).GetPosition().y()), 1.0f);
+    EXPECT_FLOAT_EQ(static_cast<float>((**camera).GetPosition().z()), 5.0f);
+}
+
+// Ocarina of Time's "Look At Events" camera layers are hidden unless that camera type is chosen,
+// while its manual camera script sets the camera each frame: a hidden layer must not take it back.
+TEST(SceneCameraPath, HiddenCameraLayerLeavesTheCameraToOthers) {
+    owe::Scene scene;
+    auto       camera = Arc<owe::SceneCamera>::make(
+        owe::SceneCamera::MakePerspective(16.0 / 9.0, 0.01, 1000.0, 50.0));
+    auto node = Arc<owe::SceneNode>::make();
+    node->SetTranslate({ 100.0f, 200.0f, 300.0f });
+
+    auto path               = Arc<owe::SceneCameraPath>::make();
+    path->camera_name       = "global_perspective"_Str;
+    path->camera            = Some(camera.clone());
+    path->node              = node.as_ptr();
+    path->default_translate = node->Translate();
+    path->perspective       = true;
+    path->enabled           = false;
+    scene.RegisterCameraPath(path.clone());
+
+    camera->SetLookAt({ 1.0, 2.0, 3.0 }, { 0.0, 0.0, 0.0 }, { 0.0, 1.0, 0.0 });
+    camera->Update();
+    scene.TickCameraPaths();
+
+    EXPECT_TRUE(camera->IsLookAt());
+    EXPECT_DOUBLE_EQ(camera->Transforms().eye.x(), 1.0);
+    EXPECT_DOUBLE_EQ(camera->Transforms().eye.y(), 2.0);
+    EXPECT_DOUBLE_EQ(camera->Transforms().eye.z(), 3.0);
+}
+
+TEST(SceneCameraPath, CameraLayerRestoresTheDefaultWhenHidden) {
+    owe::Scene scene;
+    auto       camera = Arc<owe::SceneCamera>::make(
+        owe::SceneCamera::MakePerspective(16.0 / 9.0, 0.01, 1000.0, 50.0));
+    auto node = Arc<owe::SceneNode>::make();
+    node->SetTranslate({ 100.0f, 200.0f, 300.0f });
+
+    auto path            = Arc<owe::SceneCameraPath>::make();
+    path->camera_name    = "global_perspective"_Str;
+    path->camera         = Some(camera.clone());
+    path->node           = node.as_ptr();
+    path->perspective    = true;
+    path->default_lookat = true;
+    path->default_eye    = { 0.0f, 0.0f, 5.0f };
+    path->default_center = { 0.0f, 0.0f, 0.0f };
+    path->default_up     = { 0.0f, 1.0f, 0.0f };
+    scene.RegisterCameraPath(path.clone());
+
+    scene.TickCameraPaths();
+    EXPECT_FALSE(camera->IsLookAt());
+
+    path->SetEnabled(false);
+    scene.TickCameraPaths();
+    EXPECT_TRUE(camera->IsLookAt());
+    EXPECT_DOUBLE_EQ(camera->Transforms().eye.z(), 5.0);
 }
