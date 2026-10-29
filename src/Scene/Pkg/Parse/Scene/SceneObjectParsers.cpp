@@ -397,6 +397,7 @@ void ParseModelObjImpl(SceneParseContext& context, wpscene::ModelObject& model_o
                                       Vector3f(model_obj.angles.data()),
                                       model_obj.name.as_str());
     node->ID() = model_obj.id;
+    node->SetDrawsAsModel(true);
     node->SetPerspective(model_obj.perspective);
     node->SetReflected(model_obj.reflected);
     node->shadow.cast = context.shader_environment.directional_shadow && model_obj.castshadow;
@@ -632,6 +633,7 @@ BuildContext(fs::VFS& vfs, ref<str> scene_id, const wpscene::SceneMetadata& sc,
         context, vfs, sc, ortho_extent, rstd::move(image_ready), rstd::move(texture_memory));
     ParseCamera(context, sc);
     context.pkg_version               = sc.pkg_version;
+    context.scene->SetTransparentSorting(sc.general.transparentsorting);
     context.user_properties           = user_properties;
     context.shader_cache              = Arc<ShaderCache>::make(rstd::move(shader_cache_dir));
     context.geometry_shader_limits    = geometry_limits;
