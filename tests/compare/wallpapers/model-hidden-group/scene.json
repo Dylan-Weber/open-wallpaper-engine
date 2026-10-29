@@ -1,0 +1,70 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 12",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": null,
+    "fov": 50,
+    "nearz": 0.1,
+    "farz": 100,
+    "clearcolor": "0.05 0.05 0.1",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "bloom": false,
+    "zoom": 1,
+    "ambientcolor": "0.2 0.2 0.2",
+    "skylightcolor": "0.2 0.2 0.2",
+    "lightconfig": {
+      "point": 0,
+      "spot": 0,
+      "tube": 0,
+      "directional": 0
+    }
+  },
+  "objects": [
+    {
+      "name": "set",
+      "origin": "0 0 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "visible": false,
+      "id": 1
+    },
+    {
+      "name": "face",
+      "image": "models/util/solidlayer.json",
+      "origin": "0 0 0",
+      "size": "64 64",
+      "color": "1 0.8 0.2",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "parent": 1,
+      "id": 2,
+      "visible": true
+    },
+    {
+      "name": "character",
+      "model": "models/worn.mdl",
+      "origin": "-2 0 0",
+      "angles": "0.3 0.6 0",
+      "scale": "1 1 1",
+      "parent": 1,
+      "id": 3,
+      "visible": true
+    },
+    {
+      "name": "shown",
+      "model": "models/shown.mdl",
+      "origin": "2.5 0 0",
+      "angles": "0.3 0.6 0",
+      "scale": "1 1 1",
+      "id": 4,
+      "visible": true
+    }
+  ],
+  "version": 3
+}
