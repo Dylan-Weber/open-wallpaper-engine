@@ -550,6 +550,7 @@ struct EngineHostState {
     HashMap<owe::SceneNode*, Json>               initial_layer_configs;
     Option<JsRuntime::BoneIndexResolver>         bone_index_resolver;
     Option<JsRuntime::BoneTransformResolver>     bone_transform_resolver;
+    Option<JsRuntime::BonePhysicsHandler>        bone_physics_handler;
     owe::SceneNode*                              scene_root { nullptr };
 };
 
@@ -2674,6 +2675,73 @@ JSValue NodeGetBoneTransform(JSContext* ctx, JSValueConst this_val, int argc, JS
     return MakeBoneTransform(ctx, { bone->x, bone->y, bone->z });
 }
 
+array<float, 3> ReadVec3Argument(JSContext* ctx, JSValueConst value) {
+    array<float, 3> out {};
+    if (! JS_IsObject(value)) return out;
+    const char* names[] = { "x", "y", "z" };
+    for (usize i {}; i < usize(3); ++i) {
+        JSValue component = JS_GetPropertyStr(ctx, value, names[i.to_primitive()]);
+        double  number    = 0.0;
+        if (JS_ToFloat64(ctx, &number, component) == 0) out[i] = float(number);
+        JS_FreeValue(ctx, component);
+    }
+    return out;
+}
+
+// Reads the bone a physics call names, a name or an index as getBoneIndex
+// returns them, into `bone` in the bone index resolver's numbering (None when
+// no bone is named: every bone with physics). False when the layer has no such
+// bone.
+bool ReadPhysicsBone(JSContext* ctx, EngineHostState* host, owe::SceneNode* node,
+                     JSValueConst value, Option<uint32_t>& bone) {
+    if (JS_IsUndefined(value) || JS_IsNull(value)) return true;
+    uint32_t index = 0;
+    if (JS_IsString(value)) {
+        if (! host->bone_index_resolver) return false;
+        const char* name = JS_ToCString(ctx, value);
+        if (! name) return false;
+        index = (*host->bone_index_resolver)->operator()(node, rstd::cppstd::as_str(name).unwrap());
+        JS_FreeCString(ctx, name);
+    } else {
+        int32_t number = 0;
+        if (JS_ToInt32(ctx, &number, value) != 0 || number <= 0) return false;
+        index = uint32_t(number);
+    }
+    if (index == 0) return false;
+    bone = Some(uint32_t(index));
+    return true;
+}
+
+// applyBonePhysicsImpulse([bone], directionalImpulse, angularImpulse): without
+// the bone, every bone with physics.
+JSValue NodeApplyBonePhysicsImpulse(JSContext* ctx, JSValueConst this_val, int argc,
+                                    JSValueConst* argv) {
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    auto* n    = GetLayerNode(this_val);
+    if (! n || ! host->bone_physics_handler) return JS_UNDEFINED;
+    const bool         named = argc >= 3;
+    BonePhysicsRequest request;
+    if (! ReadPhysicsBone(ctx, host, n, named ? argv[0] : JS_UNDEFINED, request.bone))
+        return JS_UNDEFINED;
+    if (argc > (named ? 1 : 0)) request.directional = ReadVec3Argument(ctx, argv[named ? 1 : 0]);
+    if (argc > (named ? 2 : 1)) request.angular = ReadVec3Argument(ctx, argv[named ? 2 : 1]);
+    (*host->bone_physics_handler)->operator()(n, request);
+    return JS_UNDEFINED;
+}
+
+// resetBonePhysicsSimulation([bone]): without the bone, every bone with physics.
+JSValue NodeResetBonePhysicsSimulation(JSContext* ctx, JSValueConst this_val, int argc,
+                                       JSValueConst* argv) {
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    auto* n    = GetLayerNode(this_val);
+    if (! n || ! host->bone_physics_handler) return JS_UNDEFINED;
+    BonePhysicsRequest request { .reset = true };
+    if (! ReadPhysicsBone(ctx, host, n, argc > 0 ? argv[0] : JS_UNDEFINED, request.bone))
+        return JS_UNDEFINED;
+    (*host->bone_physics_handler)->operator()(n, request);
+    return JS_UNDEFINED;
+}
+
 JSValue NodeGetChildren(JSContext* ctx, JSValueConst this_val, int, JSValueConst*) {
     auto*   n   = GetLayerNode(this_val);
     JSValue arr = JS_NewArray(ctx);
@@ -3529,6 +3597,8 @@ const JSCFunctionListEntry s_layer_proto_funcs[] = {
     JS_CFUNC_DEF("setCameraTransforms", 1, NodeSceneSetCameraTransforms),
     JS_CFUNC_DEF("getBoneIndex", 1, NodeGetBoneIndex),
     JS_CFUNC_DEF("getBoneTransform", 1, NodeGetBoneTransform),
+    JS_CFUNC_DEF("applyBonePhysicsImpulse", 3, NodeApplyBonePhysicsImpulse),
+    JS_CFUNC_DEF("resetBonePhysicsSimulation", 1, NodeResetBonePhysicsSimulation),
     JS_CFUNC_DEF("getTextureAnimation", 0, NodeGetTextureAnimation),
     JS_CFUNC_DEF("getVideoTexture", 0, NodeGetVideoTexture),
     JS_CFUNC_DEF("emitParticles", 1, NodeEmitParticles),
@@ -3919,6 +3989,10 @@ void JsRuntime::SetBoneResolvers(BoneIndexResolver     index_resolver,
                                  BoneTransformResolver transform_resolver) {
     m_impl->host.bone_index_resolver     = Some(rstd::move(index_resolver));
     m_impl->host.bone_transform_resolver = Some(rstd::move(transform_resolver));
+}
+
+void JsRuntime::SetBonePhysicsHandler(BonePhysicsHandler handler) {
+    m_impl->host.bone_physics_handler = Some(rstd::move(handler));
 }
 
 void JsRuntime::SetPersistence(PathBuf path) {

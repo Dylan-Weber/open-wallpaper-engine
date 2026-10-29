@@ -61,6 +61,18 @@ struct BoneTranslation {
     float x { 0.0f }, y { 0.0f }, z { 0.0f };
 };
 
+// A layer script's applyBonePhysicsImpulse or resetBonePhysicsSimulation.
+struct BonePhysicsRequest {
+    // the bone as the bone index resolver numbers it; None for every bone
+    // with physics
+    Option<uint32_t> bone;
+    bool             reset { false };
+    // the impulse: a movement (units a second) and a turn (degrees a sixtieth
+    // of a second)
+    array<float, 3> directional {};
+    array<float, 3> angular {};
+};
+
 // What kind of value a FieldScript is expected to produce. Set at parse
 // time based on the field name's well-known type — see the per-field-kind
 // table in the API doc.
@@ -241,6 +253,8 @@ public:
         Box<dyn<FnMut<Option<BoneTranslation>(owe::SceneNode*, uint32_t, double)>>>;
     void SetBoneResolvers(BoneIndexResolver     index_resolver,
                           BoneTransformResolver transform_resolver);
+    using BonePhysicsHandler = Box<dyn<FnMut<void(owe::SceneNode*, const BonePhysicsRequest&)>>>;
+    void SetBonePhysicsHandler(BonePhysicsHandler handler);
 
     // Drive every alive FieldScript once. Invokes their cached `update`
     // export and stores the coerced return into FieldScript::last_value().

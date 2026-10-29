@@ -286,6 +286,11 @@ public:
     auto AnimationPlaybacks() const noexcept -> slice<Arc<SceneAnimationPlayback>>;
     auto AnimationPlayback(i32 layer_id) const -> Option<Arc<SceneAnimationPlayback>>;
     void SetAnimationVisible(i32 layer_id, bool visible);
+    // applyBonePhysicsImpulse and resetBonePhysicsSimulation; `bone` as
+    // boneIndex numbers it, None for every bone with physics
+    void ApplyBoneImpulse(Option<rstd::uint32_t> bone, const Eigen::Vector3f& directional,
+                          const Eigen::Vector3f& angular);
+    void ResetBonePhysics(Option<rstd::uint32_t> bone);
     auto TextureChannelBlendMap(double time) noexcept -> slice<float>;
 
     struct PartOrder {
