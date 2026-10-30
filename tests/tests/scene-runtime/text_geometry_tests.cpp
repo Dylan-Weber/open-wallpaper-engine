@@ -470,3 +470,40 @@ TEST(TextAtlas, InvalidPageExtentHasNoPixels) {
     page.AcknowledgeUpdates(1);
     EXPECT_TRUE(page.DirtyRects().is_empty());
 }
+
+// Wallpaper Engine centres a line on its origin by the font's ascent: the baseline sits half the
+// ascent below the origin, so the line's box sits half the descent below it (text-metrics: fonts
+// with ascent/descent 800/200, 1000/0, 500/500 and 1100/400 all fit within a unit, a fixed
+// 0.11 em only the first). Left, right, top and bottom put that edge of the box on the origin.
+TEST(TextGeometry, CentredTextSitsHalfItsDescentBelowTheOrigin) {
+    using owe::text::TextAnchorOffset;
+    const auto expect = [](array<float, 2> offset, float x, float y) {
+        EXPECT_FLOAT_EQ(offset[usize(0)], x);
+        EXPECT_FLOAT_EQ(offset[usize(1)], y);
+    };
+    expect(TextAnchorOffset("center"_str, "center"_str, 300, 125, 25), 0, -12.5f);
+    expect(TextAnchorOffset("center"_str, "center"_str, 300, 125, 0), 0, 0);
+    expect(TextAnchorOffset("left"_str, "center"_str, 300, 125, 62.5f), 150, -31.25f);
+    expect(TextAnchorOffset("right"_str, "top"_str, 300, 125, 25), -150, -62.5f);
+    expect(TextAnchorOffset("center"_str, "bottom"_str, 300, 125, 25), 0, 62.5f);
+}
+
+// The layout reports its last line's descent, at the layout size (LineGap.ttf: 200 of 1000).
+TEST(TextLayouter, MetricsGiveTheLastLinesDescent) {
+    auto source      = rstd::path::PathBuf::from(__FILE__ ""_str);
+    auto root        = source.as_path().parent().unwrap().parent().unwrap().parent().unwrap();
+    auto path        = rstd::path::PathBuf::from(root).join("fixtures/fonts/LineGap.ttf"_str);
+    auto bytes       = rstd::fs::read(path.as_path()).unwrap();
+    auto resources   = TextResources();
+    auto font_source = resources->RegisterFont(bytes.as_slice()).unwrap();
+    auto mesh        = Arc<owe::SceneMesh>::make();
+    owe::text::TextLayoutStyle style;
+    style.mesh_origin = owe::text::TextMeshOrigin::Layout;
+    owe::text::TextLayouter layouter(resources.clone(),
+                                     { .source = Some(font_source), .size = 100 },
+                                     mesh.clone(),
+                                     rstd::move(style),
+                                     8);
+    ASSERT_TRUE(layouter.SetText("A\ng"_str).is_ok());
+    EXPECT_FLOAT_EQ(layouter.Metrics().descent, 20.0f);
+}
