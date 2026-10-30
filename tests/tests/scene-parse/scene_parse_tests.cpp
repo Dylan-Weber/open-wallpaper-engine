@@ -1337,9 +1337,10 @@ TEST(BloomParsing, PreservesPassBindingsAndAuthoredConstants) {
     EXPECT_EQ(steps[rstd::usize(4)].as_Copy().value.dst, "_rt_default"_str);
 }
 
-// An effect's render target can have a size of its own and repeat its texture coordinates
-// (glitter's tiles: 256 x 256, "uvs": "repeat"): the picture's size and clamped edges it got
-// before left streaks where the effect samples past the first tile (effect-glitter).
+// An effect's render target can have a size of its own (glitter's tiles: 256 x 256) and say how its
+// texture coordinates wrap ("uvs"; they repeat unless it says "clamp"): the picture's size and
+// clamped edges it got before left streaks where the effect samples past the first tile
+// (effect-fbo-wrap, effect-glitter).
 TEST(EffectFboJson, ReadsItsFixedSizeAndWrap) {
     owe::wpscene::EffectFbo tiles;
     auto                    json = owe::ParseJson(
