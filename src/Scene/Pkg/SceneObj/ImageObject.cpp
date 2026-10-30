@@ -24,6 +24,22 @@ auto LoadJsonFile(owe::fs::VFS& vfs, ref<str> path) -> Option<owe::Json> {
     return Some(rstd::move(parsed).unwrap_unchecked());
 }
 
+// The image size a texture's header gives (TEXV, TEXI, then format, flags, texture width and height, image width and
+// height), or None.
+auto TextureImageSize(owe::fs::VFS& vfs, ref<str> texture) -> Option<array<float, 2>> {
+    auto file =
+        owe::fs::OpenBinary(vfs, owe::fs::Path(rstd::format("/assets/materials/{}.tex", texture).as_str()));
+    if (file.is_err()) return None();
+    auto f = rstd::move(file).unwrap_unchecked();
+    (void)f.ReadStr();
+    (void)f.ReadStr();
+    for (int i = 0; i < 4; ++i) (void)f.ReadUint32();
+    const auto width  = f.ReadUint32();
+    const auto height = f.ReadUint32();
+    if (width == 0 || height == 0) return None();
+    return Some(array<float, 2> { static_cast<float>(width), static_cast<float>(height) });
+}
+
 constexpr ref<str>     kFoliageSwayEffect = "effects/foliagesway/effect.json"_str;
 constexpr SceneVersion kNormalizedFoliageSwayStrengthVersion = 9;
 
@@ -326,6 +342,13 @@ bool ImageObject::FromJson(const owe::Json& json, fs::VFS& vfs, SceneVersion v) 
             owe::GetJsonValue(json, "size"_str, size);
         } else {
             size = { origin[usize(0)] * 2, origin[usize(1)] * 2 };
+        }
+        // a model that says "autosize" is drawn at its first texture's size, whatever the layer's
+        bool autosize { false };
+        owe::GetJsonValue(*jImage, "autosize"_str, autosize, false);
+        if (autosize && ! material.textures.is_empty()) {
+            if (auto texture = TextureImageSize(vfs, material.textures[usize()].as_str()); texture.is_some())
+                size = *texture;
         }
     }
     owe::GetJsonValue(json, "color"_str, color, false);
