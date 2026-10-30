@@ -393,6 +393,65 @@ TEST(TextLayouter, BackgroundKeepsTheLastLineGapBelow) {
     }
 }
 
+// A background box takes in ink that reaches past the line: Wallpaper Engine places the text by
+// its line, but grows the box to hold a letter above the font's ascent (text-metrics: an H 0.7 em
+// tall in a font of ascent 0.5 em, aligned top, reaches 0.2 em above the origin, and so does its
+// box).
+TEST(TextLayouter, BackgroundTakesInInkAboveTheLine) {
+    auto source      = rstd::path::PathBuf::from(__FILE__ ""_str);
+    auto root        = source.as_path().parent().unwrap().parent().unwrap().parent().unwrap();
+    auto path        = rstd::path::PathBuf::from(root).join("fixtures/fonts/TallInk.ttf"_str);
+    auto bytes       = rstd::fs::read(path.as_path()).unwrap();
+    auto resources   = TextResources();
+    auto font_source = resources->RegisterFont(bytes.as_slice()).unwrap();
+    const rstd::initializer_list<owe::SceneVertexArray::SceneVertexAttribute> attributes {
+        { .name = "a_Position"_Str, .type = owe::VertexType::FLOAT3 },
+        { .name = "a_TexCoord"_Str, .type = owe::VertexType::FLOAT2 },
+        { .name = "a_Color"_Str, .type = owe::VertexType::FLOAT4 },
+    };
+    auto mesh = Arc<owe::SceneMesh>::make();
+    mesh->AddVertexArray(owe::SceneVertexArray(attributes, rstd::usize(8 * 4)));
+    mesh->AddIndexArray(owe::SceneIndexArray(rstd::usize(8 * 6)));
+    owe::text::TextLayoutStyle style;
+    style.mesh_origin      = owe::text::TextMeshOrigin::Layout;
+    style.padding          = 10;
+    style.opaquebackground = true;
+    owe::text::TextLayouter layouter(resources.clone(),
+                                     { .source = Some(font_source), .size = 100 },
+                                     mesh.clone(),
+                                     rstd::move(style),
+                                     8);
+    ASSERT_TRUE(layouter.SetText("H"_str).is_ok());
+    // the line is 100 pixels (50 above the baseline, 50 below); the H reaches 70 above
+    const auto metrics = layouter.Metrics();
+    EXPECT_FLOAT_EQ(metrics.text_height, 100.0f);
+    EXPECT_NEAR(metrics.background_overflow, 20.0f, 1.0f);
+    const auto& vertices = mesh->GetVertexArray(rstd::usize());
+    const auto  stride   = vertices.OneSize().to_primitive();
+    EXPECT_NEAR(vertices.Data()[1], 50.0f + 20.0f + 10.0f, 1.0f);
+    EXPECT_FLOAT_EQ(vertices.Data()[2 * stride + 1], -50.0f - 10.0f);
+}
+
+// ...and its render target, centred on the line, reaches as far below as the ink does above.
+TEST(TextGeometry, BackgroundTextHoldsInkAboveItsLine) {
+    const owe::text::TextGeometryPolicy policy {
+        .frame_width        = 500.0f,
+        .frame_height       = 50.0f,
+        .preserve_text_bbox = true,
+    };
+    const owe::text::TextLayoutMetrics metrics {
+        .text_width          = 300.0f,
+        .text_height         = 100.0f,
+        .source_width        = 50.0f,
+        .source_height       = 70.0f,
+        .padding             = 10.0f,
+        .background_overflow = 20.0f,
+    };
+    const auto geometry = owe::text::ResolveTextGeometry(policy, metrics);
+    EXPECT_FLOAT_EQ(geometry.rt_height, 100.0f + 2 * 10.0f + 2 * 20.0f);
+    EXPECT_FLOAT_EQ(geometry.draw_height, 100.0f + 2 * 10.0f + 2 * 20.0f);
+}
+
 // The render target of background text is centred on the text, so it holds the box's gap below
 // by reaching as far above (where the box leaves it clear).
 TEST(TextGeometry, BackgroundTextHoldsTheGapBelowItsBox) {
