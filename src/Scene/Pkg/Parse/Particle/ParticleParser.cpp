@@ -314,6 +314,24 @@ struct NoopSpawnProgram {
                     ref<dyn<rstd::any::Any>>) {}
 };
 
+// inheritcontrolpointvelocity: the particle starts with its control point's velocity times a factor from min to max
+// (particles-controlpoint-velocity: the object's speed, 100 a second for 200 at 0.5; a control point at rest gives none).
+struct InheritControlpointVelocityProgram {
+    i32    controlpoint { 0 };
+    double min { 0.0 }, max { 1.0 };
+
+    void Initialize(ParticleSpawnColumns& columns, particle::ParticleSpawnRequest request,
+                    ref<dyn<rstd::any::Any>> frame_context) {
+        auto frame = ParticleFrameFrom(frame_context);
+        const Eigen::Vector3d world =
+            frame->controlpoint_velocity.col(rstd::as_cast<usize>(controlpoint % i32(8)).to_primitive());
+        const Eigen::Vector3d local = frame->world_space ? world : Eigen::Vector3d(frame->local_from_world_dir * world);
+        const double          factor = algorism::lerp(Random::get(0.0, 1.0), min, max);
+        columns.velocities[request.slot.index] =
+            (columns.velocities[request.slot.index].cast<double>() + local * factor).cast<float>();
+    }
+};
+
 struct ColorRandomProgram {
     array<float, 3> min;
     array<float, 3> max;
@@ -465,7 +483,8 @@ class ParticleSpawnInstructionValue {
               (RemapInitialValue, (RemapInitialValueProgram value;)),
               (HsvColorRandom, (HsvColorRandomProgram value;)),
               (Override, (OverrideSpawnProgram value;)),
-              (ColorList, (ColorListProgram value;)))
+              (ColorList, (ColorListProgram value;)),
+              (InheritControlpointVelocity, (InheritControlpointVelocityProgram value;)))
 };
 
 template<typename T>
@@ -494,6 +513,8 @@ auto MakeParticleSpawnInstructionValue(T value) -> ParticleSpawnInstructionValue
         return ParticleSpawnInstructionValue::HsvColorRandom(rstd::move(value));
     else if constexpr (same_as<T, ColorListProgram>)
         return ParticleSpawnInstructionValue::ColorList(rstd::move(value));
+    else if constexpr (same_as<T, InheritControlpointVelocityProgram>)
+        return ParticleSpawnInstructionValue::InheritControlpointVelocity(rstd::move(value));
     else {
         static_assert(same_as<T, OverrideSpawnProgram>);
         return ParticleSpawnInstructionValue::Override(rstd::move(value));
@@ -530,6 +551,7 @@ auto ParticleSpawnInstruction::SequenceCount() const -> Option<u32> {
         RSTD_CASE(HsvColorRandom) { return None(); }
         RSTD_CASE(Override) { return None(); }
         RSTD_CASE(ColorList) { return None(); }
+        RSTD_CASE(InheritControlpointVelocity) { return None(); }
     }
     rstd::unreachable();
 }
@@ -562,6 +584,9 @@ void ParticleSpawnInstruction::Initialize(ParticleSpawnColumns&          columns
         RSTD_CASE(HsvColorRandom, instruction) { instruction.Initialize(columns, request, frame); }
         RSTD_CASE(Override, instruction) { instruction.Initialize(columns, request, frame); }
         RSTD_CASE(ColorList, instruction) { instruction.Initialize(columns, request, frame); }
+        RSTD_CASE(InheritControlpointVelocity, instruction) {
+            instruction.Initialize(columns, request, frame);
+        }
     }
 }
 
@@ -599,6 +624,7 @@ auto ParticleSpawnInstruction::RunsLast() const -> bool {
         RSTD_CASE(RemapInitialValue) { return false; }
         RSTD_CASE(HsvColorRandom) { return false; }
         RSTD_CASE(Override) { return false; }
+        RSTD_CASE(InheritControlpointVelocity) { return false; }
     }
     rstd::unreachable();
 }
@@ -656,6 +682,14 @@ ParticleSpawnInstruction ParticleParser::GenInitializer(const Json& wpj,
                 }
             }
             return ParticleSpawnInstruction::Make(ColorListProgram { .colors = rstd::move(colors) });
+        } else if (name == "inheritcontrolpointvelocity"_str) {
+            i32   controlpoint { 0 };
+            float min { 0.0f }, max { 1.0f };
+            owe::GetJsonValue(wpj, "controlpoint"_str, controlpoint, false);
+            owe::GetJsonValue(wpj, "min"_str, min, false);
+            owe::GetJsonValue(wpj, "max"_str, max, false);
+            return ParticleSpawnInstruction::Make(InheritControlpointVelocityProgram {
+                .controlpoint = controlpoint, .min = double(min), .max = double(max) });
         } else if (name == "lifetimerandom"_str) {
             SingleRandom r = { 0.0f, 1.0f };
             SingleRandom::ReadFromJson(wpj, r);
