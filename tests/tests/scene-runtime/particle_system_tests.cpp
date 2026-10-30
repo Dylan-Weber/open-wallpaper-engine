@@ -797,6 +797,23 @@ TEST(ParticleRemap, MapsTheDistanceOntoTheOutputRange) {
                     .is_none());
 }
 
+// remapinitialvalue reads the same settings as remapvalue (particles-remapinitialvalue); one
+// without an output it can set (thunderbolt_beam_child's, distance to control point 1 with no
+// output) does nothing.
+TEST(ParticleRemap, TheInitialValueFormReadsTheSameSettings) {
+    auto size = owe::ParticleRemap::FromJson(
+                    owe::ParseJson(
+                        R"({"name":"remapinitialvalue","input":"distancetocontrolpoint","inputcontrolpoint0":0,"inputrangemin":0,"inputrangemax":400,"operation":"remap","output":"size","outputrangemin":10,"outputrangemax":80})"_str)
+                        .unwrap())
+                    .unwrap();
+    EXPECT_NEAR(size.Apply(Eigen::Vector3d::Constant(40), 400).x(), 160.0, 1e-4);
+    EXPECT_TRUE(owe::ParticleRemap::FromJson(
+                    owe::ParseJson(
+                        R"({"name":"remapinitialvalue","input":"distancetocontrolpoint","inputcontrolpoint0":1,"inputrangemax":50,"operation":"multiply"})"_str)
+                        .unwrap())
+                    .is_none());
+}
+
 TEST(ParticleSubSystem, AppliesTurbulenceMaskAsAxisWeights) {
     auto simulate = [](ref<str> config) -> Eigen::Vector3f {
         owe::Scene             scene;
