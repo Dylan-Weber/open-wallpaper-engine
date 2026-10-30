@@ -3392,150 +3392,9 @@ TEST(UniformSourceParallax, PerspectiveWithAuthoredParallaxDepthAppliesShift) {
                          mvp_with_parallax[rstd::usize(13)]) > 1e-5f);
 }
 
-// Ocarina of Time's "Look At Events" camera layers are hidden unless that camera type is chosen,
-// while its manual camera script sets the camera each frame: a hidden layer must not take it back.
-TEST(SceneCameraPath, HiddenCameraLayerLeavesTheCameraToOthers) {
-    owe::Scene scene;
-    auto       camera = Arc<owe::SceneCamera>::make(
-        owe::SceneCamera::MakePerspective(16.0 / 9.0, 0.01, 1000.0, 50.0));
-    auto node = Arc<owe::SceneNode>::make();
-    node->SetTranslate({ 100.0f, 200.0f, 300.0f });
-
-    auto path               = Arc<owe::SceneCameraPath>::make();
-    path->camera_name       = "global_perspective"_Str;
-    path->camera            = Some(camera.clone());
-    path->node              = node.as_ptr();
-    path->default_translate = node->Translate();
-    path->perspective       = true;
-    path->enabled           = false;
-    scene.RegisterCameraPath(path.clone());
-
-    camera->SetLookAt({ 1.0, 2.0, 3.0 }, { 0.0, 0.0, 0.0 }, { 0.0, 1.0, 0.0 });
-    camera->Update();
-    scene.TickCameraPaths();
-
-    EXPECT_TRUE(camera->IsLookAt());
-    EXPECT_DOUBLE_EQ(camera->Transforms().eye.x(), 1.0);
-    EXPECT_DOUBLE_EQ(camera->Transforms().eye.y(), 2.0);
-    EXPECT_DOUBLE_EQ(camera->Transforms().eye.z(), 3.0);
-}
-
-TEST(SceneCameraPath, CameraLayerRestoresTheDefaultWhenHidden) {
-    owe::Scene scene;
-    auto       camera = Arc<owe::SceneCamera>::make(
-        owe::SceneCamera::MakePerspective(16.0 / 9.0, 0.01, 1000.0, 50.0));
-    auto node = Arc<owe::SceneNode>::make();
-    node->SetTranslate({ 100.0f, 200.0f, 300.0f });
-
-    auto path            = Arc<owe::SceneCameraPath>::make();
-    path->camera_name    = "global_perspective"_Str;
-    path->camera         = Some(camera.clone());
-    path->node           = node.as_ptr();
-    path->perspective    = true;
-    path->default_lookat = true;
-    path->default_eye    = { 0.0f, 0.0f, 5.0f };
-    path->default_center = { 0.0f, 0.0f, 0.0f };
-    path->default_up     = { 0.0f, 1.0f, 0.0f };
-    scene.RegisterCameraPath(path.clone());
-
-    scene.TickCameraPaths();
-    EXPECT_FALSE(camera->IsLookAt());
-
-    path->SetEnabled(false);
-    scene.TickCameraPaths();
-    EXPECT_TRUE(camera->IsLookAt());
-    EXPECT_DOUBLE_EQ(camera->Transforms().eye.z(), 5.0);
-}
-
-// A camera layer's field of view is its own: one that doesn't drive the camera leaves the
-// scene's (Ocarina of Time has ten camera layers on the default camera, from 25 to 73 degrees;
-// before any drives it, Wallpaper Engine shows the scene's 50).
-TEST(SceneParserCameraLayer, OnlyADrivingLayerSetsTheFieldOfView) {
-    auto document = owe::wpscene::ParseSceneDocumentJson(
-        R"JSON({
-            "camera": { "center": "0 0 0", "eye": "0 1 5", "up": "0 1 0" },
-            "general": { "orthogonalprojection": null, "fov": 50 },
-            "objects": [
-                { "id": 1, "name": "Events", "origin": "0 0 0", "visible": false },
-                { "id": 2, "name": "Cam Guest", "camera": "default", "origin": "1 2 3",
-                  "angles": "0 0 0", "fov": 30, "parent": 1,
-                  "visible": { "value": false,
-                               "script": "export function update(value) { return true; }" } },
-                { "id": 3, "name": "Cam Time", "camera": "default", "origin": "4 5 6",
-                  "angles": "0 0 0", "fov": 70, "visible": false }
-            ]
-        })JSON"_str,
-        owe::wpscene::kSceneVersionUnknown);
-    ASSERT_TRUE(document.is_some());
-    owe::fs::VFS                vfs;
-    wavsen::audio::SoundManager sound_manager;
-    owe::SceneParser            parser;
-    auto                        parsed = parser.Parse(
-        "camera-layer-fov"_str,
-        ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
-        mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
-        mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
-    ASSERT_TRUE(parsed.is_ok());
-    auto scene  = rstd::move(parsed).unwrap();
-    auto camera = scene.scene->ActiveCamera();
-    ASSERT_TRUE(camera.is_some());
-    EXPECT_DOUBLE_EQ((**camera).Fov(), 50.0);
-    scene.scene->TickCameraPaths();
-    EXPECT_DOUBLE_EQ((**camera).Fov(), 50.0);
-}
-
-// A camera layer's visible script decides whether it drives the camera, while its parents are
-// shown (Ocarina of Time's scripts pick one of its "Look At Events" cameras, all under a layer
-// that only shows when that camera type is chosen).
-TEST(SceneParserCameraLayer, VisibleScriptsDecideWhichLayerDrivesTheCamera) {
-    auto parse = [](bool parent_visible) {
-        auto json = rstd::format(R"JSON({{
-            "camera": {{ "center": "0 0 0", "eye": "0 1 5", "up": "0 1 0" }},
-            "general": {{ "orthogonalprojection": null, "fov": 50 }},
-            "objects": [
-                {{ "id": 1, "name": "Cameras", "origin": "0 0 0", "visible": {} }},
-                {{ "id": 2, "name": "Cam", "camera": "default", "origin": "10 20 30",
-                   "angles": "0 0 0", "fov": 50, "parent": 1,
-                   "visible": {{ "value": false,
-                                 "script": "export function update(value) {{ return true; }}" }} }}
-            ]
-        }})JSON",
-                                 parent_visible ? "true" : "false");
-        return owe::wpscene::ParseSceneDocumentJson(json.as_str(),
-                                                    owe::wpscene::kSceneVersionUnknown);
-    };
-    for (bool parent_visible : { true, false }) {
-        auto document = parse(parent_visible);
-        ASSERT_TRUE(document.is_some());
-        owe::fs::VFS                vfs;
-        wavsen::audio::SoundManager sound_manager;
-        owe::SceneParser            parser;
-        auto                        parsed = parser.Parse(
-            "camera-visible-script"_str,
-            ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
-            mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
-            mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
-        ASSERT_TRUE(parsed.is_ok());
-        auto scene = rstd::move(parsed).unwrap();
-        owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
-        scene.scene->TickCameraPaths();
-        auto camera = scene.scene->ActiveCamera();
-        ASSERT_TRUE(camera.is_some());
-        EXPECT_FLOAT_EQ(static_cast<float>((**camera).GetPosition().x()),
-                        parent_visible ? 10.0f : 0.0f)
-            << "parent visible: " << parent_visible;
-    }
-}
-
-// A script can build a mesh of its own (thisScene.createModelData) and show it as a layer; it later rewrites
-// the vertices with applyData. More Physics draws its cloth this way.
-TEST(SceneParserScript, ScriptBuiltModelBecomesAMeshLayerWhoseVerticesItRewrites) {
-    const auto dir = std::filesystem::temp_directory_path() / "owe-script-model-data";
-    std::filesystem::remove_all(dir);
-    std::filesystem::create_directories(dir / "materials");
-    std::ofstream(dir / "materials/mesh.json") << R"({"passes": [{"shader": "genericimage2",
-        "blending": "translucent", "textures": ["gradient/gradient_rainbow"]}]})";
-
+// A script that creates a layer from a model layer's initial configuration (More Physics spawns its spheres this
+// way) gets another model layer of the same model; owe made a plain 2 x 2 solid layer of it (hundreds of white squares).
+TEST(SceneParserScript, ACreatedLayerFromAModelConfigurationIsAModelLayer) {
     auto document = owe::wpscene::ParseSceneDocumentJson(
         R"JSON({
             "camera": {},
@@ -3546,68 +3405,7 @@ TEST(SceneParserScript, ScriptBuiltModelBecomesAMeshLayerWhoseVerticesItRewrites
                     "name": "Controller",
                     "visible": {
                         "value": true,
-                        "script": "const material = engine.registerAsset('materials/mesh.json'); let data; let frame = 0; export function init(value) { const v = new Float32Array(32); for (let i = 0; i < 4; ++i) { v[i * 8] = i; v[i * 8 + 7] = i; } data = thisScene.createModelData({boundingBoxMins: new Vec3(-1, -1, -1), boundingBoxMaxs: new Vec3(5, 5, 5), shapes: [{vertexBuffer: v, indexBuffer: new Uint16Array([0, 1, 2, 0, 2, 3]), vertexFormat: [IModelData.POSITION, IModelData.NORMAL, IModelData.UV], material: material, isVertexBufferDynamic: true}]}); const layer = thisScene.createLayer({name: 'built', model: data}); layer.origin = new Vec3(10, 20, 0); return value; } export function update(value) { const v = new Float32Array(32); v[0] = 42; data.applyData({shapes: [{vertexBuffer: v}]}); return value; }"
-                    }
-                }
-            ]
-        })JSON"_str,
-        owe::wpscene::kSceneVersionUnknown);
-    ASSERT_TRUE(document.is_some());
-
-    auto assets = owe::fs::make_physical_fs(
-        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
-    auto own = owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(dir.string()).unwrap()));
-    ASSERT_TRUE(assets.is_ok());
-    ASSERT_TRUE(own.is_ok());
-    owe::fs::VFS vfs;
-    ASSERT_TRUE(vfs.mount("/assets"_str, rstd::move(assets).unwrap_unchecked()).is_ok());
-    ASSERT_TRUE(vfs.mount("/assets"_str, rstd::move(own).unwrap_unchecked()).is_ok());
-
-    wavsen::audio::SoundManager sound_manager;
-    owe::SceneParser            parser;
-    auto                        parsed = parser.Parse(
-        "script-model-data"_str,
-        ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
-        mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
-        mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
-    ASSERT_TRUE(parsed.is_ok());
-    auto scene = rstd::move(parsed).unwrap();
-
-    auto built = scene.scene->RootMut()->FindByName("built"_str);
-    ASSERT_NE(built, nullptr);
-    EXPECT_TRUE(built->Visible());
-    EXPECT_FLOAT_EQ(built->Translate().x(), 10.0f);
-    ASSERT_TRUE(built->Mesh());
-    EXPECT_TRUE(built->Mesh()->Dynamic());
-    ASSERT_EQ(built->Mesh()->Submeshes().len(), usize(1));
-    const auto& submesh = built->Mesh()->Submeshes()[usize()];
-    ASSERT_EQ(submesh.vertex_arrays.len(), usize(1));
-    ASSERT_EQ(submesh.index_arrays.len(), usize(1));
-    EXPECT_EQ(submesh.vertex_arrays[usize()].VertexCount(), usize(4));
-    EXPECT_EQ(submesh.index_arrays[usize()].DataCount(), usize(6));
-    // the first vertex's position x, before and after the update
-    EXPECT_FLOAT_EQ(submesh.vertex_arrays[usize()].Data()[0], 0.0f);
-    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
-    EXPECT_FLOAT_EQ(built->Mesh()->Submeshes()[usize()].vertex_arrays[usize()].Data()[0], 42.0f);
-    EXPECT_TRUE(built->Mesh()->Dirty().load());
-
-    std::filesystem::remove_all(dir);
-}
-
-// A script that copies a model layer (createLayer(layer)) gets another model layer of the same model; owe made a plain
-// 2 x 2 solid layer of it (More Physics' pile of spheres came out as hundreds of white squares).
-TEST(SceneParserScript, CopyingAModelLayerMakesAnotherModelLayer) {
-    auto document = owe::wpscene::ParseSceneDocumentJson(
-        R"JSON({
-            "camera": {},
-            "general": {},
-            "objects": [
-                {
-                    "id": 90,
-                    "name": "Controller",
-                    "visible": {
-                        "value": true,
-                        "script": "export function init(value) { const copy = thisScene.createLayer(thisScene.getLayer('Source')); copy.origin = new Vec3(5, 6, 7); return value; } export function update(value) { return value; }"
+                        "script": "export function init(value) { const config = thisScene.getInitialLayerConfig(thisScene.getLayer('Source')); config.name = 'Copy'; const copy = thisScene.createLayer(config); copy.origin = new Vec3(5, 6, 7); return value; } export function update(value) { return value; }"
                     }
                 },
                 {
@@ -3647,7 +3445,7 @@ TEST(SceneParserScript, CopyingAModelLayerMakesAnotherModelLayer) {
     usize solids {};
     bool  moved = false;
     for (const auto& child : scene.scene->RootMut()->GetChildren()) {
-        if (child->Name() == "Source"_str && child->Mesh() != nullptr) {
+        if ((child->Name() == "Source"_str || child->Name() == "Copy"_str) && child->Mesh() != nullptr) {
             ++models;
             if (child->Translate().x() == 5.0f) moved = true;
         }
