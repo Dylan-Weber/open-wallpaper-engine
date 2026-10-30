@@ -95,6 +95,12 @@ Arc<SceneNode> CloneRegisteredNode(Scene& scene, ref<SceneNode> source, ref<str>
     if (! source->Camera().is_empty()) node->SetCamera(source->Camera());
     if (source->Mesh()) {
         auto mesh = source->Mesh()->CloneInstance();
+        // the copies keep their materials' user property bindings (a material's Alpha bound to "opacity")
+        const auto& from = source->Mesh()->MaterialSlots();
+        const auto& to   = mesh->MaterialSlots();
+        for (usize slot {}; slot < from.len() && slot < to.len(); ++slot) {
+            if (from[slot] && to[slot]) scene.CopyShaderUserBindings(*from[slot], to[slot]);
+        }
         mesh->RegisterAnimations(*node);
         node->AddMesh(rstd::move(mesh));
     }
