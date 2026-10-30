@@ -570,6 +570,20 @@ void ParticleSubSystem::UpdateFrameInput(f64 frame_time) {
     m_frame.local_from_world_dir   = local_from_world_dir;
     m_frame.world_from_spawn_space = world_from_spawn_space;
     m_frame.local_from_world       = local_from_world;
+    {
+        Eigen::Matrix<double, 3, 8> world_positions;
+        for (usize index {}; index < usize(8); ++index) {
+            const Eigen::Vector3d offset = m_controlpoints[index].offset;
+            world_positions.col(index.to_primitive()) =
+                (world_from_spawn_space * offset.homogeneous()).head<3>();
+        }
+        const double seconds          = frame_time.to_primitive();
+        m_frame.controlpoint_velocity = Eigen::Matrix<double, 3, 8>::Zero();
+        if (m_has_controlpoint_previous && seconds > 0.0)
+            m_frame.controlpoint_velocity = (world_positions - m_controlpoint_previous) / seconds;
+        m_controlpoint_previous     = world_positions;
+        m_has_controlpoint_previous = true;
+    }
     m_frame.world_space            = m_world_space;
     m_frame.time                   = m_time;
     m_frame.delta                  = frame_time;
