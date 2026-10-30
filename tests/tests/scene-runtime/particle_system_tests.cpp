@@ -760,6 +760,62 @@ TEST(ParticleSubSystem, AppliesVortexAroundWorldSpaceOwner) {
     EXPECT_GT(std::abs(positions[usize()].z()), 0.01f);
 }
 
+// A frame of Wallpaper Engine's drag takes drag dt / (1 + (dt / 0.065)^2) of a particle's speed
+// (particles-drag-rest at 15, 30 and 60 frames a second: a particle thrown at drag/2 x D stops at
+// 0.51, 0.80 and 0.95 x D for drag 0.5 to 2, where a drag of exactly drag a second would say 1):
+// at 60 frames a second and drag 0.5 a frame takes 0.78%, so in 2 s a particle thrown at 200
+// has gone 200/60 (1 - r^120) / (1 - r) = 260 units and stops at 200/60 / 0.0078 = 426.
+TEST(ParticleSubSystem, DragSlowsEachFrameByItsLoss) {
+    owe::Scene             scene;
+    auto                   mesh = Arc<owe::SceneMesh>::make();
+    owe::ParticleSubSystem subsystem(scene,
+                                     mesh.clone(),
+                                     u32(1),
+                                     f64(),
+                                     u32(1),
+                                     f64(1.0),
+                                     owe::ParticleSubSystem::SpawnType::STATIC,
+                                     owe::ParticleAnimationSpec {},
+                                     {},
+                                     u32(),
+                                     f64(),
+                                     f64(),
+                                     true);
+    auto owner    = rstd::sync::Arc<owe::SceneNode>::make(
+        Eigen::Vector3f::Zero(), Eigen::Vector3f::Ones(), Eigen::Vector3f::Zero());
+    auto override = rstd::sync::Arc<owe::wpscene::ParticleInstanceoverride>::make();
+    subsystem.SetOwnerNode(owner.as_ptr());
+    auto modifiers = owe::ParticleInstanceModifiers(
+        override.clone(), owe::wpscene::Particle::EFlags { 0 }, true);
+    subsystem.SetInstanceModifiers(modifiers.Clone());
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"lifetimerandom","min":1000,"max":1000})"_str).unwrap(), u32(1)));
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"velocityrandom","min":"200 0 0","max":"200 0 0"})"_str).unwrap(),
+        u32(2)));
+    subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+        owe::BoxEmitterProgram(subsystem.SpawnPipeline(),
+                               owe::ParticleBoxEmitterArgs {
+                                   .instantaneous = u32(1),
+                               },
+                               usize())));
+    subsystem.AddOperator(owe::ParticleParser::GenOperator(
+        owe::ParseJson(R"({"name":"movement","drag":0.5,"gravity":"0 0 0"})"_str).unwrap(),
+        modifiers.Clone(),
+        subsystem,
+        usize()));
+    subsystem.Finalize();
+    for (int frame = 0; frame < 120; ++frame) subsystem.Tick(f64(1.0 / 60.0), false);
+
+    auto positions = subsystem.System().Instance(usize()).Binding().Read().Positions();
+    ASSERT_EQ(positions.len(), usize(1));
+    EXPECT_NEAR(positions[usize()].x(), 260.1f, 4.0f);
+    // ...and it stops at its speed over a frame's loss from the move before the slowing
+    for (int frame = 0; frame < 3000; ++frame) subsystem.Tick(f64(1.0 / 60.0), false);
+    const auto rest = subsystem.System().Instance(usize()).Binding().Read().Positions();
+    EXPECT_NEAR(rest[usize()].x(), 426.3f, 3.0f);
+}
+
 TEST(ParticleSubSystem, AppliesTurbulenceMaskAsAxisWeights) {
     auto simulate = [](ref<str> config) -> Eigen::Vector3f {
         owe::Scene             scene;

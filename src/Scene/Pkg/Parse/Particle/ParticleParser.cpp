@@ -919,17 +919,21 @@ struct MovementOperator {
         auto delta      = context.delta.to_primitive();
         auto speed      = modifiers.Speed();
         for (auto slot : context.slots) {
-            auto world_velocity =
-                frame->world_from_local_dir * velocities[slot.index].cast<double>();
-            Eigen::Vector3d acceleration =
-                frame->local_from_world_dir * algorism::DragForce(world_velocity, drag);
-            acceleration +=
-                speed * (frame->world_space ? frame->local_from_world_dir * gravity : gravity);
-            velocities[slot.index] =
-                (velocities[slot.index].cast<double>() + acceleration * delta).cast<float>();
+            // Wallpaper Engine moves a particle by its velocity, then slows it: a frame takes
+            // drag dt / (1 + (dt / 0.065)^2) of its speed, so drag is the rate a second at high
+            // frame rates and gentler at low ones (particles-drag-rest at 15, 30 and 60 frames a
+            // second: a thrown particle stops at 0.51, 0.80 and 0.95 of what the drag's rate says
+            // for drag 0.5 to 2; at 60 frames a second 0.95 x the drag).
             positions[slot.index] = (positions[slot.index].cast<double>() +
                                      velocities[slot.index].cast<double>() * delta)
                                         .cast<float>();
+            const Eigen::Vector3d pulled =
+                velocities[slot.index].cast<double>() +
+                speed * (frame->world_space ? frame->local_from_world_dir * gravity : gravity) *
+                    delta;
+            const double loss = rstd::cmp::min(
+                1.0, double(drag) * delta / (1.0 + (delta / 0.065) * (delta / 0.065)));
+            velocities[slot.index] = (pulled * (1.0 - loss)).cast<float>();
         }
     }
 };
