@@ -200,6 +200,9 @@ void HandleUniformLine(ShaderInfo* info, slice<ShaderTexInfo> texinfos, ref<str>
                 GetJsonValue(**value, sv[usize()]);
             }
             (void)info->svs.insert(rstd::into(tn->name), sv);
+            // the declaration's own size: a later declaration of the name in an #if branch may
+            // be another size (ChooseDefaultsByUniformType)
+            (void)info->svs.insert(rstd::format("{}#{}", tn->name, sv.size()), sv);
         }
         if (auto combo = sv_json.get("combo"_str); combo.is_some()) {
             String cname;
