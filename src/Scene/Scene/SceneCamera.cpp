@@ -65,8 +65,11 @@ auto SceneCamera::RenderTransforms(SceneRenderViewKind view) const -> SceneCamer
     transforms.eye += m_view_offset;
     transforms.center += m_view_offset;
     if (view == SceneRenderViewKind::Reflection) {
+        // the mirror image in the plane y 0: the up too (only a tilted up changes)
         transforms.eye.y()    = -transforms.eye.y();
         transforms.center.y() = -transforms.center.y();
+        transforms.up.x()     = -transforms.up.x();
+        transforms.up.z()     = -transforms.up.z();
     }
     return transforms;
 }
