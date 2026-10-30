@@ -1726,6 +1726,18 @@ void Scene::RegisterShaderUserBinding(String key, Arc<SceneMaterial> material, S
     });
 }
 
+void Scene::CopyShaderUserBindings(const SceneMaterial& from, const Arc<SceneMaterial>& to) {
+    m_shader_user_index.iter_mut().for_each([&](auto entry) {
+        auto [key, bindings] = entry;
+        const usize count    = bindings->len();
+        for (usize index {}; index < count; ++index) {
+            if ((*bindings)[index].material.as_ptr().as_raw_ptr() != rstd::addressof(from)) continue;
+            auto uniform = (*bindings)[index].uniform.clone();
+            bindings->push(ShaderUserBinding { .material = to.clone(), .uniform = rstd::move(uniform) });
+        }
+    });
+}
+
 auto Scene::ShaderUserBindings(ref<str> key) const -> slice<ShaderUserBinding> {
     auto bindings = m_shader_user_index.get(key);
     return bindings.is_some() ? (*bindings)->as_slice() : slice<ShaderUserBinding> {};

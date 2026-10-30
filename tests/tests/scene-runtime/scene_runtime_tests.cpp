@@ -1,6 +1,8 @@
 #include <rstd/test/gtest.hpp>
 
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 
 import eigen;
 import rstd;
@@ -922,6 +924,68 @@ TEST(SceneParserScript, DynamicObjectsUseSceneIdentity) {
 
     EXPECT_TRUE(scene.scene->SetNodeVisible(*dynamic, true));
     EXPECT_TRUE(scene.scene->ConsumeRenderGraphDirty());
+}
+
+// A layer a script creates from a registered model keeps its material's user property bindings: Reze's audio visualizer
+// bars have their Alpha bound to "opacity" (0) and Wallpaper Engine draws them transparent (material-user-alpha); owe's
+// copies kept Alpha 1.
+TEST(SceneParserScript, CreatedLayerKeepsMaterialUserBindings) {
+    const auto dir = std::filesystem::temp_directory_path() / "owe-created-user-binding";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir / "models");
+    std::filesystem::create_directories(dir / "materials");
+    std::ofstream(dir / "models/faded.json") << R"({"material": "materials/faded.json"})";
+    std::ofstream(dir / "materials/faded.json") << R"({"passes": [{"shader": "genericimage2",
+        "blending": "translucent", "textures": ["gradient/gradient_rainbow"],
+        "constantshadervalues": {"Alpha": {"user": "opacity", "value": 1}}}]})";
+
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {},
+            "general": {},
+            "objects": [
+                {
+                    "id": 90,
+                    "name": "Controller",
+                    "visible": {
+                        "value": true,
+                        "script": "engine.registerAsset('models/faded.json'); export function init(value) { thisScene.createLayer('models/faded.json'); return value; } export function update(value) { return value; }"
+                    }
+                }
+            ]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    auto own = owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(dir.string()).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    ASSERT_TRUE(own.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, rstd::move(assets).unwrap_unchecked()).is_ok());
+    ASSERT_TRUE(vfs.mount("/assets"_str, rstd::move(own).unwrap_unchecked()).is_ok());
+
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "created-user-binding"_str,
+        ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+
+    auto property = rstd::json::from_str(R"({"type": "slider", "value": 0})"_str).unwrap();
+    (void)owe::SceneUserPropertyApplier::Apply(*scene.scene, "opacity"_str, property);
+
+    auto created = scene.scene->RootMut()->FindByName("models/faded.json"_str);
+    ASSERT_NE(created, nullptr);
+    ASSERT_NE(created->Mesh(), nullptr);
+    auto alpha = created->Mesh()->Material()->customShader.constValues.get("g_UserAlpha"_str);
+    ASSERT_TRUE(alpha.is_some());
+    EXPECT_FLOAT_EQ((**alpha)[rstd::usize()], 0.0f);
+    std::filesystem::remove_all(dir);
 }
 
 TEST(SceneParserText, EmptyStaticTextPreservesLayerHierarchy) {

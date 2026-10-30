@@ -1692,6 +1692,13 @@ public:
         return m_alpha_overridden || m_visible_overridden ||
                (m_alpha_source != nullptr && m_alpha_source->IsAlphaOverridden());
     }
+    // Whether the runtime alpha replaces the material's own g_UserAlpha: a script's alpha, a hidden
+    // layer, or a hidden alpha source. A layer a script only showed (createLayer does) keeps its
+    // material's value, which may be bound to a user property (Reze's audio visualizer bars).
+    bool IsUserAlphaOverridden() const {
+        return m_alpha_overridden || (m_visible_overridden && ! m_node.Visible()) ||
+               (m_alpha_source != nullptr && m_alpha_source->IsAlphaOverridden());
+    }
     float EffectiveAlpha() const {
         float alpha = ! m_node.Visible() && m_visibility_affects_alpha
                           ? 0.0f
@@ -2752,6 +2759,9 @@ public:
     };
 
     void RegisterShaderUserBinding(String key, Arc<SceneMaterial> material, String uniform);
+    // Gives `to` (a copy of `from`, as a layer a script creates from a registered asset) the user
+    // property bindings of `from`'s shader values, so the project's values reach it too.
+    void CopyShaderUserBindings(const SceneMaterial& from, const Arc<SceneMaterial>& to);
     auto ShaderUserBindings(ref<str> key) const -> slice<ShaderUserBinding>;
 
     struct ShaderComboUserBinding {

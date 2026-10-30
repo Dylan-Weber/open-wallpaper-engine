@@ -815,7 +815,7 @@ auto ColorUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
         writer.Write(Output::Color, array<float, 3> { color.x(), color.y(), color.z() });
     };
     if (node.IsAlphaOverridden()) {
-        if (has_user_alpha) writer.Write(Output::UserAlpha, node.EffectiveAlpha());
+        if (has_user_alpha && node.IsUserAlphaOverridden()) writer.Write(Output::UserAlpha, node.EffectiveAlpha());
         if (has_alpha) writer.Write(Output::Alpha, node.EffectiveAlpha());
         if (has_color4) {
             if (! has_user_alpha) {
