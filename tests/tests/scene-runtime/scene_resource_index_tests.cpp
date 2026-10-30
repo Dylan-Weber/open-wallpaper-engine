@@ -701,7 +701,8 @@ TEST(SceneTextureAnimation, AdvancesOncePerRuntimeFrame) {
     EXPECT_FLOAT_EQ(initial->translation[rstd::usize()], 0.0f);
     EXPECT_EQ(initial->image_slot, rstd::usize());
 
-    scene.Runtime().Advance(rstd::f64(0.01));
+    // the first frame lasts its 0.1 s: a little over it moves on to the second
+    scene.Runtime().Advance(rstd::f64(0.11));
     auto first_query  = scene.TextureFrame(*draw_id, rstd::usize());
     auto second_query = scene.TextureFrame(*draw_id, rstd::usize());
     auto shared_query = scene.TextureFrame(*second_draw_id, rstd::usize());
@@ -2268,4 +2269,35 @@ TEST(SceneTextures, CapturedImageSourcesReuseParsedContentAndPreserveOldRuntimeI
     EXPECT_EQ(replaced->Describe("asset"_str).unwrap().header.width, 128);
     EXPECT_EQ(before->Describe("asset"_str).unwrap().header.width, 32);
     EXPECT_TRUE(Arc<owe::Image>::ptr_eq(parsed, before->Parse("asset"_str).unwrap()));
+}
+
+// A sprite sheet's animation plays at the rate its frames say: frames of 0.1 s show 10 a second whatever the update rate.
+// owe moved on at most one frame an update and threw the overshoot away, so at 30 updates a second a frame lasted four
+// updates (7.5 frames a second) and at 60 seven (8.6).
+TEST(SpriteAnimation, PlaysAtTheRateOfItsFramesWhateverTheUpdateRate) {
+    auto make = [] {
+        owe::SpriteAnimation animation;
+        for (int i = 0; i < 300; ++i) {
+            owe::SpriteFrame frame;
+            frame.frametime = 0.1f;
+            animation.AppendFrame(frame);
+        }
+        return animation;
+    };
+    for (int updates_per_second : { 30, 60, 144 }) {
+        auto animation = make();
+        // two seconds and a little over, as updates of equal length
+        const int steps = updates_per_second * 2 + 1;
+        for (int i = 0; i < steps; ++i) (void)animation.GetAnimateFrame(1.0 / updates_per_second);
+        EXPECT_EQ(animation.CurrentFrameIndex(), usize(20)) << updates_per_second << " updates a second";
+    }
+    // a frame can last less than an update: two frames go by in one
+    auto fast = owe::SpriteAnimation();
+    for (int i = 0; i < 10; ++i) {
+        owe::SpriteFrame frame;
+        frame.frametime = 0.02f;
+        fast.AppendFrame(frame);
+    }
+    (void)fast.GetAnimateFrame(0.05);
+    EXPECT_EQ(fast.CurrentFrameIndex(), usize(2));
 }

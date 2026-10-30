@@ -232,6 +232,7 @@ public:
     SpriteAnimation(const SpriteAnimation& other)
         : m_curFrame(other.m_curFrame),
           m_remainTime(other.m_remainTime),
+          m_started(other.m_started),
           m_frames(other.m_frames.clone()) {}
     SpriteAnimation(SpriteAnimation&&) noexcept            = default;
     SpriteAnimation& operator=(SpriteAnimation&&) noexcept = default;
@@ -241,13 +242,23 @@ public:
     }
     auto        clone() const -> SpriteAnimation { return SpriteAnimation(*this); }
     const auto& GetAnimateFrame(double newtime) {
-        if ((m_remainTime -= newtime) < 0.0f) {
-            SwitchToNext();
-            const auto& frame = m_frames.at(m_curFrame);
-            m_remainTime      = frame.frametime;
+        // the first frame lasts its own time from the start; a frame can end within one update (or several can), and what
+        // is left of the update belongs to the next frame: the animation plays at its frames' rate whatever the update rate
+        if (! m_started) {
+            m_started    = true;
+            m_remainTime = m_frames.at(m_curFrame).frametime;
         }
-        const auto& frame = m_frames.at(m_curFrame);
-        return frame;
+        m_remainTime -= newtime;
+        while (m_remainTime <= 0.0) {
+            SwitchToNext();
+            const double frametime = m_frames.at(m_curFrame).frametime;
+            if (! (frametime > 0.0)) {
+                m_remainTime = 0.0;
+                break;
+            }
+            m_remainTime += frametime;
+        }
+        return m_frames.at(m_curFrame);
     }
     const auto& GetCurFrame() const { return m_frames.at(m_curFrame); }
     void        AppendFrame(const SpriteFrame& frame) { m_frames.emplace_back(frame); }
@@ -267,6 +278,7 @@ private:
     }
     usize  m_curFrame;
     double m_remainTime { 0 };
+    bool   m_started { false };
 
     Vec<SpriteFrame> m_frames;
 };
