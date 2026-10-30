@@ -1,0 +1,68 @@
+{
+  "material": "materials/particle/halo.json",
+  "maxcount": 40,
+  "starttime": 0,
+  "flags": 0,
+  "controlpoint": [
+    {
+      "id": 0,
+      "flags": 0,
+      "offset": "0 0 0"
+    },
+    {
+      "id": 1,
+      "flags": 0,
+      "offset": "420 0 0"
+    }
+  ],
+  "emitter": [
+    {
+      "id": 1,
+      "name": "sphererandom",
+      "distancemin": 120,
+      "distancemax": 120,
+      "directions": "1 1 0",
+      "origin": "0 0 0",
+      "rate": 0,
+      "instantaneous": 10,
+      "speedmin": 0,
+      "speedmax": 0
+    }
+  ],
+  "initializer": [
+    {
+      "id": 2,
+      "name": "lifetimerandom",
+      "min": 100000,
+      "max": 100000
+    },
+    {
+      "id": 3,
+      "name": "sizerandom",
+      "min": 36,
+      "max": 36
+    },
+    {
+      "id": 4,
+      "name": "colorrandom",
+      "min": "255 200 80",
+      "max": "255 200 80"
+    },
+    {
+      "name": "mapsequencearoundcontrolpoint",
+      "controlpoint": 0,
+      "count": 10,
+      "speedmin": "0 0 0",
+      "speedmax": "0 0 0",
+      "id": 10
+    }
+  ],
+  "operator": [],
+  "renderer": [
+    {
+      "name": "rope",
+      "subdivision": 4,
+      "id": 90
+    }
+  ]
+}

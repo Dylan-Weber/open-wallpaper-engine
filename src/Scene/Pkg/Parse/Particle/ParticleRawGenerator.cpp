@@ -300,7 +300,9 @@ void GenRopeParticleData(slice<ExtractInstance> instances, const ParticleSubSyst
                 sequence_offset =
                     -rstd::cmp::min(1.0f, rstd::cmp::max(0.0f, newest_age / emit_period));
 
-            auto segment_count = end - begin - 1;
+            // the rope's length in points: its vertex shader spreads the texture over length - 1
+            // segments (particles-rope-count)
+            auto segment_count = end - begin;
             for (rstd::size_t index = begin; index < end - 1; ++index) {
                 auto previous_index = index == begin ? begin : index - 1;
                 auto next_index     = index + 1;
