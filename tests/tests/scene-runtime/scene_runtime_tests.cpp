@@ -1293,6 +1293,16 @@ TEST(SceneCameraState, ReflectionPreservesUpAndDoesNotReplacePrimary) {
               reflected.revision + u64(1));
 }
 
+TEST(SceneCameraState, ReflectionMirrorsATiltedUp) {
+    // fantasticcar's camera path tilts its up: Wallpaper Engine's mirror camera mirrors it too
+    auto                  camera = owe::SceneCamera::MakePerspective(1.5, 0.1, 1000, 60);
+    const Eigen::Vector3d eye(3, 4, 9), center(0, 0, 0), up(-0.25, 0.92, -0.3);
+    camera.SetLookAt(eye, center, up);
+    const auto            reflected = camera.CameraSnapshot(owe::SceneRenderViewKind::Reflection);
+    const Eigen::Vector3d reflected_eye(3, -4, 9), reflected_center(0, 0, 0), reflected_up(0.25, 0.92, 0.3);
+    EXPECT_TRUE(reflected.view.isApprox(Eigen::LookAt(reflected_eye, reflected_center, reflected_up)));
+}
+
 TEST(FrameUniformSource, PublishesUpdatedAmbientAndSkylightColors) {
     auto state = Arc<owe::UniformSceneState>::make(Arc<owe::AudioResponseDemand>::make());
     owe::FrameUniformSource source(state.clone());
