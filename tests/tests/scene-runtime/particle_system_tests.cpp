@@ -760,6 +760,16 @@ TEST(ParticleSubSystem, AppliesVortexAroundWorldSpaceOwner) {
     EXPECT_GT(std::abs(positions[usize()].z()), 0.01f);
 }
 
+// hsvcolorrandom's colours: hue around the circle, saturation and value (particles-hsvcolor:
+// Wallpaper Engine draws hue 0.6 at saturation 0.5, value 0.5 as 0.25 0.35 0.5).
+TEST(ParticleColor, HsvToRgbGoesAroundTheHueCircle) {
+    EXPECT_TRUE(owe::HsvToRgb(0, 1, 1).isApprox(Eigen::Vector3d(1, 0, 0)));
+    EXPECT_TRUE(owe::HsvToRgb(1.0 / 3.0, 1, 1).isApprox(Eigen::Vector3d(0, 1, 0)));
+    EXPECT_TRUE(owe::HsvToRgb(2.0 / 3.0, 1, 1).isApprox(Eigen::Vector3d(0, 0, 1)));
+    EXPECT_TRUE(owe::HsvToRgb(1.0, 1, 1).isApprox(Eigen::Vector3d(1, 0, 0)));
+    EXPECT_TRUE(owe::HsvToRgb(0.6, 0.5, 0.5).isApprox(Eigen::Vector3d(0.25, 0.35, 0.5)));
+}
+
 TEST(ParticleSubSystem, AppliesTurbulenceMaskAsAxisWeights) {
     auto simulate = [](ref<str> config) -> Eigen::Vector3f {
         owe::Scene             scene;
