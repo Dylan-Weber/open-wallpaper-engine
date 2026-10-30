@@ -721,9 +721,10 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
                     // as render targets instead of disk textures.
                     auto rtname = scene.EffectResourceKey(effect_id, wpfbo.name.as_str());
                     // how the target's texture coordinates wrap where an effect samples it past
-                    // [0, 1]: glitter's tiles repeat ("uvs": "repeat")
-                    const auto wrap = wpfbo.uvs == "repeat"_str ? TextureWrap::REPEAT
-                                                                : TextureWrap::CLAMP_TO_EDGE;
+                    // [0, 1]: Wallpaper Engine repeats them unless the target says "uvs": "clamp"
+                    // (effect-fbo-wrap: targets with no "uvs" tile as ones with "repeat" do)
+                    const auto wrap = wpfbo.uvs == "clamp"_str ? TextureWrap::CLAMP_TO_EDGE
+                                                               : TextureWrap::REPEAT;
                     const TextureSample sample { wrap, wrap, TextureFilter::LINEAR, TextureFilter::LINEAR };
                     if (wpfbo.width > u32() && wpfbo.height > u32()) {
                         // a target of a size of its own
