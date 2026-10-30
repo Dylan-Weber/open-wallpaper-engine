@@ -239,9 +239,14 @@ struct NoopSpawnProgram {
                     ref<dyn<rstd::any::Any>>) {}
 };
 
-// The colour of the parent particle a child system's instance was made for (inheritinitialvaluefromevent and
-// inheritvaluefromevent, particles-inherit-event: only the colour is taken; not the size, opacity or velocity).
-inline auto ParentParticleColor(const ParticleFrame& frame) -> Option<Eigen::Vector3f> {
+// The colour and opacity of the parent particle a child system's instance was made for (inheritinitialvaluefromevent
+// takes only the colour, inheritvaluefromevent both; particles-inherit-event: not the size or velocity).
+struct ParentLook {
+    Eigen::Vector3f color;
+    float           alpha {};
+};
+
+inline auto ParentParticleLook(const ParticleFrame& frame) -> Option<ParentLook> {
     const auto& bounded = frame.subsystem->InstanceState(frame.instance_index).bounded;
     if (bounded.parent == nullptr || bounded.parent_subsystem == nullptr || bounded.particle_index < isize())
         return None();
@@ -249,17 +254,19 @@ inline auto ParentParticleColor(const ParticleFrame& frame) -> Option<Eigen::Vec
     auto  index   = rstd::as_cast<usize>(bounded.particle_index);
     if (index >= storage.Len()) return None();
     particle::ParticleSlotReader reader(storage, particle::ParticleSlot { .index = index });
-    return Some(Eigen::Vector3f(reader.Read(bounded.parent_subsystem->Attributes().color)));
+    const auto&                  attributes = bounded.parent_subsystem->Attributes();
+    return Some(ParentLook { .color = Eigen::Vector3f(reader.Read(attributes.color)),
+                             .alpha = float(reader.Read(attributes.alpha)) });
 }
 
 // inheritinitialvaluefromevent: the colour of the particle whose event made this system
 struct InheritInitialValueFromEventProgram {
     void Initialize(ParticleSpawnColumns& columns, particle::ParticleSpawnRequest request,
                     ref<dyn<rstd::any::Any>> frame_context) {
-        auto color = ParentParticleColor(*ParticleFrameFrom(frame_context));
-        if (color.is_none()) return;
-        columns.colors[request.slot.index]         = *color;
-        columns.initial_colors[request.slot.index] = *color;
+        auto look = ParentParticleLook(*ParticleFrameFrom(frame_context));
+        if (look.is_none()) return;
+        columns.colors[request.slot.index]         = look->color;
+        columns.initial_colors[request.slot.index] = look->color;
     }
 };
 
@@ -1416,18 +1423,27 @@ struct ControlPointAttractOperator {
     }
 };
 
-// inheritvaluefromevent: the colour of the particle the system follows, every frame (particles-inherit-event)
+// inheritvaluefromevent: the colour and opacity of the particle the system follows, every frame
+// (particles-inherit-event: a child of a half-transparent parent is half as bright)
 struct InheritValueFromEventOperator {
     ParticleAttributes                                     attributes;
     particle::ParticleWriteIndex<particle::ColorAttribute> color;
+    particle::ParticleWriteIndex<particle::AlphaAttribute> alpha;
 
-    void Compile(particle::ParticleViewCompiler& compiler) { color = compiler.Write(attributes.color); }
+    void Compile(particle::ParticleViewCompiler& compiler) {
+        color = compiler.Write(attributes.color);
+        alpha = compiler.Write(attributes.alpha);
+    }
 
     void Update(particle::ParticleUpdateContext& context) {
-        auto inherited = ParentParticleColor(*ParticleFrameFrom(context.frame));
+        auto inherited = ParentParticleLook(*ParticleFrameFrom(context.frame));
         if (inherited.is_none()) return;
-        auto values = context.view.Write(color);
-        for (auto slot : context.slots) values[slot.index] = *inherited;
+        auto colors = context.view.Write(color);
+        auto alphas = context.view.Write(alpha);
+        for (auto slot : context.slots) {
+            colors[slot.index] = inherited->color;
+            alphas[slot.index] = inherited->alpha;
+        }
     }
 };
 

@@ -650,7 +650,7 @@ TEST(ParticleSubSystem, AnEventSpawnChildStaysWhereTheParticleWasBornAndAFollowC
 // inheritinitialvaluefromevent and inheritvaluefromevent give a child's particle its parent particle's colour, and nothing
 // else (particles-inherit-event).
 TEST(ParticleSubSystem, ChildParticlesInheritTheirParentsColourFromTheEvent) {
-    auto child_color = [](owe::ParticleSubSystem::SpawnType type, ref<str> initializer, ref<str> operator_json) {
+    auto child_look = [](owe::ParticleSubSystem::SpawnType type, ref<str> initializer, ref<str> operator_json) {
         owe::Scene scene;
         auto       parent_node = rstd::sync::Arc<owe::SceneNode>::make();
         auto       child_node  = rstd::sync::Arc<owe::SceneNode>::make();
@@ -668,6 +668,8 @@ TEST(ParticleSubSystem, ChildParticlesInheritTheirParentsColourFromTheEvent) {
             owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(1)));
         parent.AddInitializer(owe::ParticleParser::GenInitializer(
             owe::ParseJson(R"({"name":"colorrandom","min":"255 128 0","max":"255 128 0"})"_str).unwrap(), u32(1)));
+        parent.AddInitializer(owe::ParticleParser::GenInitializer(
+            owe::ParseJson(R"({"name":"alpharandom","min":0.5,"max":0.5})"_str).unwrap(), u32(1)));
         parent.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
             owe::BoxEmitterProgram(parent.SpawnPipeline(),
                                    owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) },
@@ -706,15 +708,22 @@ TEST(ParticleSubSystem, ChildParticlesInheritTheirParentsColourFromTheEvent) {
         for (int tick = 0; tick < 4; ++tick) parent.Tick(f64(1.0 / 60.0), false);
         auto&                        storage = child_system->System().Instance(usize()).Storage();
         particle::ParticleSlotReader value(storage, particle::ParticleSlot {});
-        return Eigen::Vector3f(value.Read(child_system->Attributes().color));
+        return std::pair<Eigen::Vector3f, float>(Eigen::Vector3f(value.Read(child_system->Attributes().color)),
+                                                 float(value.Read(child_system->Attributes().alpha)));
     };
     const auto spawn  = owe::ParticleSubSystem::SpawnType::EVENT_SPAWN;
     const auto follow = owe::ParticleSubSystem::SpawnType::EVENT_FOLLOW;
-    EXPECT_TRUE(child_color(spawn, ""_str, ""_str).isApprox(Eigen::Vector3f(1, 1, 1)));
-    EXPECT_TRUE(child_color(spawn, R"({"name":"inheritinitialvaluefromevent"})"_str, ""_str)
-                    .isApprox(Eigen::Vector3f(1, 128.0f / 255.0f, 0)));
-    EXPECT_TRUE(child_color(follow, ""_str, R"({"name":"inheritvaluefromevent"})"_str)
-                    .isApprox(Eigen::Vector3f(1, 128.0f / 255.0f, 0)));
+    auto alone = child_look(spawn, ""_str, ""_str);
+    EXPECT_TRUE(alone.first.isApprox(Eigen::Vector3f(1, 1, 1)));
+    EXPECT_NEAR(alone.second, 1.0f, 1e-5f);
+    // the initializer takes the colour only
+    auto initial = child_look(spawn, R"({"name":"inheritinitialvaluefromevent"})"_str, ""_str);
+    EXPECT_TRUE(initial.first.isApprox(Eigen::Vector3f(1, 128.0f / 255.0f, 0)));
+    EXPECT_NEAR(initial.second, 1.0f, 1e-5f);
+    // the operator the colour and the opacity
+    auto each_frame = child_look(follow, ""_str, R"({"name":"inheritvaluefromevent"})"_str);
+    EXPECT_TRUE(each_frame.first.isApprox(Eigen::Vector3f(1, 128.0f / 255.0f, 0)));
+    EXPECT_NEAR(each_frame.second, 0.5f, 1e-5f);
 }
 
 TEST(ParticleInstanceOverride, TracksProvidedControlpoints) {
