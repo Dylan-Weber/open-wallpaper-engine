@@ -1,9 +1,0 @@
-{
-  "title": "wpe-test kerning from the kern table and from GPOS",
-  "type": "scene",
-  "file": "scene.json",
-  "version": 1,
-  "general": {
-    "properties": {}
-  }
-}

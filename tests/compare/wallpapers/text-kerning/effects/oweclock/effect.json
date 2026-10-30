@@ -1,9 +1,0 @@
-{
-  "version": 1,
-  "name": "oweclock",
-  "passes": [
-    {
-      "material": "materials/effects/oweclock.json"
-    }
-  ]
-}
