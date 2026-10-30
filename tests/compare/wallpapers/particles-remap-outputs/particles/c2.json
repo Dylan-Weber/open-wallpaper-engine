@@ -56,7 +56,7 @@
       "inputrangemin": 0,
       "inputrangemax": 1,
       "output": "color",
-      "operation": "subtract",
+      "operation": "add",
       "outputrangemin": "0 0 0",
       "outputrangemax": "1 1 1"
     }

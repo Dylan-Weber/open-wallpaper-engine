@@ -37,6 +37,11 @@ struct ParticleRemap {
     enum class Input
     {
         DistanceToControlPoint,
+        // from the particle to a control point (a vector), its direction (unit length), and how far along the line from one
+        // control point to another the particle is, by its shadow on the line (0 at the first, 1 at the second)
+        DeltaToControlPoint,
+        DirectionToControlPoint,
+        PositionBetweenControlPoints,
         Lifetime,
         // the particle's speed along each axis, its opacity, rotation (about z) and angular speed (about z)
         Velocity,
@@ -76,6 +81,7 @@ struct ParticleRemap {
     };
     Input           input { Input::DistanceToControlPoint };
     i32             controlpoint { 0 };
+    i32             controlpoint1 { 1 };
     double          input_min { 0.0 }, input_max { 1.0 };
     Output          output { Output::Color };
     Operation       operation { Operation::Remap };
@@ -100,6 +106,12 @@ struct ParticleRemap {
         GetJsonValue(json, "input"_str, text, false);
         if (text == "distancetocontrolpoint"_str)
             remap.input = Input::DistanceToControlPoint;
+        else if (text == "deltatocontrolpoint"_str)
+            remap.input = Input::DeltaToControlPoint;
+        else if (text == "directiontocontrolpoint"_str)
+            remap.input = Input::DirectionToControlPoint;
+        else if (text == "positionbetweentwocontrolpoints"_str)
+            remap.input = Input::PositionBetweenControlPoints;
         else if (text == "lifetimefraction"_str || text == "particlelifetime"_str)
             remap.input = Input::Lifetime;
         else if (text == "velocity"_str)
@@ -149,6 +161,8 @@ struct ParticleRemap {
             return None();
         GetJsonValue(json, "inputcontrolpoint0"_str, remap.controlpoint, false);
         remap.controlpoint = ((remap.controlpoint % i32(8)) + i32(8)) % i32(8);
+        GetJsonValue(json, "inputcontrolpoint1"_str, remap.controlpoint1, false);
+        remap.controlpoint1 = ((remap.controlpoint1 % i32(8)) + i32(8)) % i32(8);
         float min { 0.0f }, max { 1.0f };
         GetJsonValue(json, "inputrangemin"_str, min, false);
         GetJsonValue(json, "inputrangemax"_str, max, false);
@@ -208,7 +222,7 @@ struct ParticleRemap {
 
     auto Apply(const Eigen::Vector3d& current, const Eigen::Vector3d& value) const -> Eigen::Vector3d {
         Eigen::Vector3d mapped = Map(value);
-        if (output == Output::Size && operation == Operation::Remap) mapped *= 2.0;
+        if (output == Output::Size && operation != Operation::Multiply) mapped *= 2.0;
         switch (operation) {
         case Operation::Multiply: return current.cwiseProduct(mapped);
         case Operation::Add: return current + mapped;
