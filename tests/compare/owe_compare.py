@@ -211,9 +211,32 @@ def camera_delay_from_eye_log(log, eye, frames):
     return best
 
 
+def camera_delays_near_eye(log, eye, frames):
+    """The camera path delays (seconds) whose eye, in owe's --camera-eye-log, the reference's could have been: it is
+    kept in 1/256ths, so on a slow path several frames' eyes round alike (the nearest isn't the likeliest). A camera
+    that holds still leaves only the shortest delay: its pictures are all alike."""
+    nearest = camera_delay_from_eye_log(log, eye, frames)
+    if nearest is None:
+        return []
+    delays = set()
+    for line in log.splitlines():
+        parts = line.split()
+        if len(parts) != 4:
+            continue
+        time, x, y, z = (float(part) for part in parts)
+        if time > frames / 30 + 1e-6:
+            continue
+        # each coordinate is off by up to half of 1/256
+        if math.dist((x, y, z), eye) <= nearest[1] + math.sqrt(3) / 512:
+            delays.add(max(round((frames / 30 - time) * 30), 0))
+    if max(delays) - min(delays) > 15:
+        return [nearest[0]]
+    return [delay / 30 for delay in sorted(delays)]
+
+
 def eye_camera_delay(name, size, viewer, frames, script_start, inputs, env, eye):
-    """The camera path delay (seconds) at which owe's camera stands where the reference's eye was, from one run's
-    --camera-eye-log; None when no moment comes near it."""
+    """The camera path delays (seconds) at which owe's camera stands where the reference's eye was, from one run's
+    --camera-eye-log (camera_delays_near_eye); None when no moment comes near it."""
     log = os.path.join(OUTPUT, name, 'camera-eye.log')
     if os.path.exists(log):
         os.remove(log)
@@ -221,14 +244,17 @@ def eye_camera_delay(name, size, viewer, frames, script_start, inputs, env, eye)
     if not os.path.exists(log):
         return None
     with open(log) as f:
-        found = camera_delay_from_eye_log(f.read(), eye, frames)
+        text = f.read()
+    found = camera_delay_from_eye_log(text, eye, frames)
     if found is None or found[1] > 0.05:
         print('     %-28s no moment of owe\'s camera comes near the reference\'s eye %s%s' % (
             name, tuple(round(v, 3) for v in eye), ' (nearest %.3f off)' % found[1] if found else ''), flush=True)
         return None
-    print('     %-28s camera paths %d frames behind (its eye %.4f off)' % (name, round(found[0] * 30), found[1]),
-          flush=True)
-    return found[0]
+    delays = camera_delays_near_eye(text, eye, frames)
+    print('     %-28s camera paths %s frames behind (its eye %.4f off)' % (
+        name, '%d' % round(found[0] * 30) if len(delays) == 1 else
+        '%d to %d' % (round(delays[0] * 30), round(delays[-1] * 30)), found[1]), flush=True)
+    return delays
 
 
 def without_bar_jitter(regions, bar_width):
@@ -245,6 +271,26 @@ def near_floor(ssim, floor, frames_apart=3):
     return ssim >= floor['ssim']
 
 
+def score_camera_delay(name, reference, viewer, frames, script_start, tolerance, delay, inputs=(), env=None,
+                       masked=()):
+    """How like the reference owe's picture is with camera paths `delay` seconds behind."""
+    frame = render(name, reference.size, viewer, frames, script_start, delay, inputs, env)
+    return compare(reference, Image.open(frame), tolerance, masked)[0]['ssim']
+
+
+def best_camera_delay(name, reference, viewer, frames, script_start, tolerance, delays, inputs=(), env=None,
+                      masked=None):
+    """Of `delays` (seconds), the one whose picture matches the reference best."""
+    if len(delays) == 1:
+        return delays[0]
+    masked = masked if masked is not None else probe_boxes(reference.size)
+    scores = {delay: score_camera_delay(name, reference, viewer, frames, script_start, tolerance, delay, inputs, env,
+                                        masked) for delay in delays}
+    best = max(scores, key=scores.get)
+    print('     %-28s of those, %d frames behind (ssim %.4f)' % (name, round(best * 30), scores[best]), flush=True)
+    return best
+
+
 def search_camera_delay(name, reference, viewer, frames, script_start, tolerance, inputs=(), env=None,
                         masked=None):
     """The camera path delay (seconds) whose picture matches the reference best: every 15 frames up to 5 s,
@@ -252,8 +298,8 @@ def search_camera_delay(name, reference, viewer, frames, script_start, tolerance
     masked = masked if masked is not None else probe_boxes(reference.size)
 
     def score(delay_frames):
-        frame = render(name, reference.size, viewer, frames, script_start, delay_frames / 30, inputs, env)
-        return compare(reference, Image.open(frame), tolerance, masked)[0]['ssim']
+        return score_camera_delay(name, reference, viewer, frames, script_start, tolerance, delay_frames / 30,
+                                  inputs, env, masked)
 
     scores = {d: score(d) for d in range(0, 151, 15)}
     best = max(scores, key=scores.get)
@@ -370,12 +416,15 @@ def main():
                     # the reference's eye says where its camera path was: one run finds that moment in owe's;
                     # without it, pictures at one delay after another are scored
                     found = None
+                    masked = probe_boxes(reference.size, inputs, bands, settings_of(name).get('probe_mirrored', False))
                     if 'eye' in inputs and '--camera-eye-log' in help_text:
                         found = eye_camera_delay(name, reference.size, args.viewer, frames, script_start,
                                                  input_args, input_env, inputs['eye'])
-                    camera_path_delay = found if found is not None else search_camera_delay(
+                    camera_path_delay = best_camera_delay(
+                        name, reference, args.viewer, frames, script_start, args.tolerance, found, input_args,
+                        input_env, masked) if found else search_camera_delay(
                         name, reference, args.viewer, frames, script_start, args.tolerance, input_args, input_env,
-                        probe_boxes(reference.size, inputs, bands, settings_of(name).get('probe_mirrored', False)))
+                        masked)
                     stamp['camera_path_delay'] = round(camera_path_delay * 30)
                 frame = render(name, reference.size, args.viewer, frames, script_start, camera_path_delay,
                                input_args, input_env)
