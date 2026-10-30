@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test clouds effect settings",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}
