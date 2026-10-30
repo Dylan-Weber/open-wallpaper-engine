@@ -61,9 +61,10 @@ Option<array<float, 2>> ResolveImageAssetSize(SceneParseContext& context, ref<st
     auto info = wpscene::LoadImageAssetInfo(*context.vfs, asset);
     if (! info) return None();
     if (info->size) return Some(*info->size);
-    // a solid layer has no texture to take a size from: Wallpaper Engine makes it 1 x 1
-    if (info->first_texture.is_empty())
-        return info->solid_layer ? Some(array<float, 2> { 1.0f, 1.0f }) : None();
+    // Wallpaper Engine makes a layer created by its path 1 x 1 (a solid layer, or a model that doesn't say "autosize"),
+    // and an autosize model's its texture's size
+    if (info->solid_layer || ! info->autosize) return Some(array<float, 2> { 1.0f, 1.0f });
+    if (info->first_texture.is_empty()) return None();
 
     auto parsed = context.scene->ParseImageHeader(info->first_texture.as_str());
     if (parsed.is_err()) return None();
@@ -94,6 +95,12 @@ Arc<SceneNode> CloneRegisteredNode(Scene& scene, ref<SceneNode> source, ref<str>
     if (! source->Camera().is_empty()) node->SetCamera(source->Camera());
     if (source->Mesh()) {
         auto mesh = source->Mesh()->CloneInstance();
+        // the copies keep their materials' user property bindings (a material's Alpha bound to "opacity")
+        const auto& from = source->Mesh()->MaterialSlots();
+        const auto& to   = mesh->MaterialSlots();
+        for (usize slot {}; slot < from.len() && slot < to.len(); ++slot) {
+            if (from[slot] && to[slot]) scene.CopyShaderUserBindings(*from[slot], to[slot]);
+        }
         mesh->RegisterAnimations(*node);
         node->AddMesh(rstd::move(mesh));
     }

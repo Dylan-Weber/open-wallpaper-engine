@@ -89,6 +89,23 @@
       "visible": true
     },
     {
+      "name": "a misspelt alignment",
+      "image": "models/util/solidlayer.json",
+      "size": "10 10",
+      "color": "1 0.6 0.2",
+      "alpha": 1,
+      "origin": {
+        "value": "1700 540 0",
+        "script": "'use strict';\nexport function init(value) {\n    const layer = thisLayer;\n    try {\n        layer.alignment = 'centre';\n                layer.scale = new Vec3(20, 20, 1);\n    } catch (error) { console.error(error); }\n    return value;\n}\nexport function update(value) { return value; }\n",
+        "scriptproperties": {}
+      },
+      "angles": "0 0 0",
+      "alignment": "center",
+      "scale": "1 1 1",
+      "id": 5,
+      "visible": true
+    },
+    {
       "name": "creator",
       "image": "models/util/solidlayer.json",
       "size": "10 10",
@@ -96,17 +113,17 @@
       "alpha": 1,
       "origin": {
         "value": "1700 900 0",
-        "script": "'use strict';\nengine.registerAsset('models/util/solidlayer.json', true);\nexport function init(value) {\n    let made = thisScene.createLayer('models/util/solidlayer.json');\n    made.origin = new Vec3(1700, 540, 0);\n    try {\n        made.alignment = 'center';\n        made.scale = new Vec3(20, 20, 1);\n    } catch (error) { console.error(error); }\n    return value;\n}\nexport function update(value) { return value; }\n",
+        "script": "'use strict';\nengine.registerAsset('models/util/solidlayer.json', true);\nexport function init(value) {\n    let made = thisScene.createLayer('models/util/solidlayer.json');\n    made.origin = new Vec3(1700, 200, 0);\n    try {\n        made.alignment = 'center';\n        made.scale = new Vec3(20, 20, 1);\n    } catch (error) { console.error(error); }\n    return value;\n}\nexport function update(value) { return value; }\n",
         "scriptproperties": {}
       },
       "angles": "0 0 0",
       "scale": "1 1 1",
       "alignment": "center",
-      "id": 5,
+      "id": 6,
       "visible": true
     },
     {
-      "id": 6,
+      "id": 7,
       "name": "owe clock probe",
       "image": "models/util/fullscreenlayer.json",
       "origin": "0 0 0",
@@ -118,12 +135,12 @@
       "effects": [
         {
           "file": "effects/oweclock/effect.json",
-          "id": 7,
+          "id": 8,
           "name": "oweclock",
           "visible": true,
           "passes": [
             {
-              "id": 8,
+              "id": 9,
               "constantshadervalues": {
                 "scriptframe": {
                   "script": "'use strict';\n\nexport function update(value) {\n\treturn Math.floor(engine.runtime * 30 + 0.5);\n}\n",

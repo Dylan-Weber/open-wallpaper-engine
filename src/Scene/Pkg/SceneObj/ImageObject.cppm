@@ -195,6 +195,7 @@ public:
     Option<array<float, 2>> size;
     String                  first_texture;
     bool                    solid_layer { false };
+    bool                    autosize { false };
 };
 
 Option<ImageAssetInfo> LoadImageAssetInfo(fs::VFS& vfs, ref<str> image);
