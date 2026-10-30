@@ -1094,7 +1094,7 @@ TEST(ScriptCursor, ClickAndDownUpInside) {
 
 // getAnimationLayer returns the animation layer: its playback controls, and getAnimation for its
 // animation (Ocarina of Time: getAnimationLayer("Surprise").getAnimation("surprise").isPlaying()).
-TEST(ScriptAnimationLayer, LayerControlsAndGetsItsAnimation) {
+TEST(ScriptAnimationLayer, LayerControlsItsAnimation) {
     owe::SceneNode node;
     auto           clip     = Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {
         .name = String::make("Surprise"_str),
@@ -1112,13 +1112,13 @@ TEST(ScriptAnimationLayer, LayerControlsAndGetsItsAnimation) {
             export function update() {
                 const layer = thisLayer.getAnimationLayer("Surprise");
                 layer.pause();
-                const before = layer.getAnimation("surprise").isPlaying();
+                const before = layer.isPlaying();
                 layer.play();
-                const after = layer.getAnimation("surprise").isPlaying();
+                const after = layer.isPlaying();
                 return (before ? 10 : 0) + (after ? 1 : 0);
             }
         )JS"_str,
-        "test/animation_layer_get_animation"_str,
+        "test/animation_layer_controls"_str,
         FieldKind::Scalar,
         owe::MakeObject(),
         owe::IntoJson(0),
@@ -1182,6 +1182,44 @@ TEST(ScriptCursor, ClickRestartsNamedAnimationLayer) {
     EXPECT_TRUE(playback->IsPlaying());
     EXPECT_EQ(playback->Frame(), i32());
     EXPECT_EQ(LastScalar(fs), 1000.0);
+}
+
+TEST(ScriptAnimationLayer, GetAnimationGivesNothing) {
+    // In Wallpaper Engine an animation layer has a getAnimation that returns undefined, whatever it is asked
+    // (puppet-layer-getanimation), and a layer's getAnimation(name) is undefined for a name no property animation
+    // has. Ocarina of Time's getAnimationLayer("Surprise").getAnimation("surprise").isPlaying() therefore throws, and
+    // Link keeps his angle.
+    owe::SceneNode node;
+    auto           clip     = Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {
+        .name = String::make("Arona Drool"_str),
+        .mode = String::make("loop"_str),
+        .fps  = 30.0f,
+        .end  = i32(60),
+    });
+    auto           playback = Arc<owe::SceneAnimationPlayback>::make(rstd::move(clip));
+    node.RegisterAnimation(playback.clone());
+
+    JsRuntime rt;
+    rt.SetFrameInputs(MakeFi());
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            export function update() {
+                const layer = thisLayer.getAnimationLayer("Arona Drool");
+                return (typeof layer.getAnimation === 'function' ? 1 : 0) +
+                       (layer.getAnimation() === undefined ? 10 : 0) +
+                       (layer.getAnimation("Arona Drool") === undefined ? 100 : 0) +
+                       (thisLayer.getAnimation("nothing") === undefined ? 1000 : 0);
+            }
+        )JS"_str,
+        "test/animation_layer_get_animation"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+    rt.SetSceneRoot(&node);
+    rt.TickAll();
+    EXPECT_EQ(LastScalar(fs), 1111.0);
 }
 
 TEST(ScriptCursor, ClickOutsideIsIgnored) {

@@ -3338,15 +3338,15 @@ JSValue PropertyObjectGetAnimation(JSContext* ctx, JSValueConst, int argc, JSVal
 }
 
 // An animation layer (IAnimationLayer): its playback's controls (play, pause, stop, isPlaying,
-// getFrame, setFrame, rate, ...) and getAnimation, which gives that same animation.
+// getFrame, setFrame, rate, ...) and getAnimation, which in Wallpaper Engine returns undefined,
+// whatever it is asked (puppet-layer-getanimation).
 JSValue WrapAnimationLayer(JSContext* ctx, Option<Arc<owe::SceneAnimationPlayback>> playback) {
     JSValue layer = WrapAnimation(ctx, rstd::move(playback));
     if (JS_IsException(layer)) return layer;
     JSValue getter = JS_NewCFunctionData(
         ctx,
-        [](JSContext* context, JSValueConst this_val, int, JSValueConst*, int, JSValue*)
-            -> JSValue {
-            return JS_DupValue(context, this_val);
+        [](JSContext*, JSValueConst, int, JSValueConst*, int, JSValue*) -> JSValue {
+            return JS_UNDEFINED;
         },
         0,
         0,
@@ -3372,6 +3372,8 @@ JSValue NodeGetAnimation(JSContext* ctx, JSValueConst this_val, int argc, JSValu
     }
     auto playback = node->NamedAnimation(rstd::cppstd::as_str(name).unwrap());
     JS_FreeCString(ctx, name);
+    // a name no property animation has gives undefined, as in Wallpaper Engine
+    if (playback.is_none()) return JS_UNDEFINED;
     return WrapAnimation(ctx, rstd::move(playback));
 }
 
