@@ -217,6 +217,9 @@ auto FontKerning::Read(slice<u8> bytes) -> FontKerning {
         const auto record = start + 12 + i * 16;
         const auto tag    = font.U32(record);
         if (tag == Tag("head")) kerning.m_units_per_em = font.U16(font.U32(record + 8) + 18);
+        if (tag == Tag("hhea")) kerning.m_hmetrics = font.U16(font.U32(record + 8) + 34);
+        if (tag == Tag("maxp")) kerning.m_glyphs = font.U16(font.U32(record + 8) + 4);
+        if (tag == Tag("hmtx")) kerning.m_hmtx = font.U32(record + 8);
         if (tag == Tag("GPOS")) gpos = font.U32(record + 8);
         if (tag == Tag("kern")) kern = font.U32(record + 8);
     }
@@ -274,7 +277,16 @@ auto FontKerning::Read(slice<u8> bytes) -> FontKerning {
 }
 
 auto FontKerning::Empty() const -> bool {
-    return m_subtables.is_empty() && m_kern_tables.is_empty();
+    return m_subtables.is_empty() && m_kern_tables.is_empty() && (m_hmtx == 0 || m_hmetrics == 0);
+}
+
+auto FontKerning::Advance(rstd::uint32_t glyph) const -> Option<rstd::uint32_t> {
+    if (m_hmtx == 0 || m_hmetrics == 0 || glyph >= rstd::cmp::max(m_glyphs, m_hmetrics))
+        return None();
+    const FontBytes font { m_bytes.as_slice().as_raw_ptr(),
+                           rstd::size_t(m_bytes.len().to_primitive()) };
+    // glyphs past the last metric share its advance
+    return Some(font.U16(m_hmtx + rstd::size_t(rstd::cmp::min(glyph, m_hmetrics - 1)) * 4));
 }
 
 auto FontKerning::Pair(rstd::uint32_t left, rstd::uint32_t right) const -> rstd::int32_t {
@@ -790,7 +802,7 @@ struct TextLayouter::Impl {
         // widest span, and ink left of a pen moves every line right by that much. Wrapped text
         // is no wider than its lines either.
         // It also moves the pen by whole pixels, each letter's advance rounded down, and kerns
-        // letter pairs (text-kerning).
+        // letter pairs (text-kerning); the advance is the font's own, unhinted (text-advance-round).
         const auto  glyphs  = output.glyphs();
         const auto* kerning = font.source.is_some() ? resources->Kerning(*font.source) : nullptr;
         const auto  kern    = [&](usize index, usize end) -> float {
@@ -803,6 +815,13 @@ struct TextLayouter::Impl {
             return float(kerning->Pair(rstd::uint32_t(left.glyph), rstd::uint32_t(right.glyph)) *
                          size / kerning->UnitsPerEm());
         };
+        const auto advance = [&](const vectext::TextGlyph& glyph) -> float {
+            // (the layout's first font is the one asked for; others are fallbacks)
+            if (kerning != nullptr && glyph.font == 0 && ! glyph.missing && ! glyph.synthetic)
+                if (auto own = kerning->Advance(rstd::uint32_t(glyph.glyph)); own.is_some())
+                    return float(double(*own) * size / kerning->UnitsPerEm());
+            return float(glyph.advance);
+        };
         Vec<float> glyph_pen;  // each glyph's pen, from its line's start
         Vec<float> line_shift; // how far that moves each line's last letter
         glyph_pen.resize(glyphs.len(), 0.0f);
@@ -812,7 +831,7 @@ struct TextLayouter::Impl {
                 const auto& glyph = glyphs[index];
                 glyph_pen[index]  = pen;
                 if (glyph.drawable) shift = pen - float(glyph.position.x - line.logical.x);
-                pen += f32(float(glyph.advance) + kern(index, usize(line.glyph_end)))
+                pen += f32(advance(glyph) + kern(index, usize(line.glyph_end)))
                            .floor()
                            .to_primitive();
             }

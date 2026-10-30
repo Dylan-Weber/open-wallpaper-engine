@@ -699,3 +699,20 @@ TEST(TextLayouter, LettersAreKernedFromGposOrTheKernTable) {
                 << name << " " << glyph;
     }
 }
+
+// Wallpaper Engine moves the pen by the font's own advance at the layout size, rounded down, not
+// by an advance hinting has already rounded (text-advance-round: DejaVu Sans' M, 0.8628 em, at 40
+// points is 143.8 pixels; its Ms are 143 apart there, owe's were 144 apart): the font's
+// horizontal metrics give each glyph's advance (Bearings.ttf: L 600, o 500, j 300 units).
+TEST(TextLayouter, TheFontGivesEachGlyphsOwnAdvance) {
+    auto source = rstd::path::PathBuf::from(__FILE__ ""_str);
+    auto root   = source.as_path().parent().unwrap().parent().unwrap().parent().unwrap();
+    auto path   = rstd::path::PathBuf::from(root).join("fixtures/fonts/Bearings.ttf"_str);
+    auto bytes  = rstd::fs::read(path.as_path()).unwrap();
+    auto font   = owe::text::FontKerning::Read(bytes.as_slice());
+    EXPECT_EQ(font.UnitsPerEm(), 1000u);
+    EXPECT_EQ(font.Advance(2), Some(600u)); // L
+    EXPECT_EQ(font.Advance(3), Some(500u)); // o
+    EXPECT_EQ(font.Advance(4), Some(300u)); // j
+    EXPECT_EQ(font.Advance(400), None<rstd::uint32_t>());
+}
