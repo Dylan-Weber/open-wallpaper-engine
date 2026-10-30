@@ -77,6 +77,35 @@ class CameraDelay(unittest.TestCase):
     def test_no_log_gives_nothing(self):
         self.assertIsNone(owe_compare.camera_delay_from_eye_log('', (0, 0, 0), 10))
 
+    def test_every_eye_the_rounding_allows_is_a_candidate(self):
+        # a slow camera (0.001 a frame): the reference's eye, kept in 1/256ths, can't tell frames 54 to 61 apart
+        log = ''.join('%g %g 0 12\n' % (frame / 30, frame * 0.001) for frame in range(101))
+        eye = (round(0.058 * 256) / 256, 0.0, 12.0)
+        delays = [round(delay * 30) for delay in owe_compare.camera_delays_near_eye(log, eye, 100)]
+        self.assertIn(42, delays)
+        self.assertEqual(delays, list(range(delays[0], delays[-1] + 1)))
+        self.assertGreater(len(delays), 5)
+
+    def test_a_fast_camera_has_one_candidate(self):
+        log = ''.join('%g %g 0 12\n' % (frame / 30, frame * 0.1) for frame in range(101))
+        self.assertEqual(owe_compare.camera_delays_near_eye(log, (5.8, 0.0, 12.0), 100), [42 / 30])
+
+    def test_a_camera_that_holds_has_only_the_shortest_delay(self):
+        # every picture from frame 40 on is the same: nothing to choose between
+        log = ''.join('%g %g 0 12\n' % (frame / 30, min(frame, 40) * 0.1) for frame in range(101))
+        self.assertEqual(owe_compare.camera_delays_near_eye(log, (4.0, 0.0, 12.0), 100), [0.0])
+
+    def test_of_several_delays_the_picture_most_like_the_reference_wins(self):
+        scores = {10: 0.95, 11: 0.99, 12: 0.97}
+        with mock.patch.object(owe_compare, 'render', lambda name, size, viewer, frames, start, delay, *rest:
+                               round(delay * 30)), \
+                mock.patch.object(owe_compare.Image, 'open', lambda frame: frame), \
+                mock.patch.object(owe_compare, 'compare', lambda reference, owe, tolerance, masked:
+                                  ({'ssim': scores[owe]}, None, None)):
+            best = owe_compare.best_camera_delay('x', mock.Mock(size=(4, 4)), 'viewer', 100, 0.0, 10,
+                                                 [d / 30 for d in scores], masked=())
+        self.assertAlmostEqual(best, 11 / 30)
+
 
 class Floor(unittest.TestCase):
     def test_a_second_take_at_about_the_same_moment_is_a_floor(self):
