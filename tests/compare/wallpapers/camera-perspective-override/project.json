@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test perspective layer, override fov 30",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}
