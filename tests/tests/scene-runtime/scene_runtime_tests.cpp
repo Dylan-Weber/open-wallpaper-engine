@@ -2444,9 +2444,9 @@ TEST(UniformSourceParallax, PerspectiveWithAuthoredParallaxDepthAppliesShift) {
                          mvp_with_parallax[rstd::usize(13)]) > 1e-5f);
 }
 
-// A script that copies a model layer (createLayer(layer)) gets another model layer of the same model; owe made a plain
-// 2 x 2 solid layer of it (More Physics' pile of spheres came out as hundreds of white squares).
-TEST(SceneParserScript, CopyingAModelLayerMakesAnotherModelLayer) {
+// A script that creates a layer from a model layer's initial configuration (More Physics spawns its spheres this
+// way) gets another model layer of the same model; owe made a plain 2 x 2 solid layer of it (hundreds of white squares).
+TEST(SceneParserScript, ACreatedLayerFromAModelConfigurationIsAModelLayer) {
     auto document = owe::wpscene::ParseSceneDocumentJson(
         R"JSON({
             "camera": {},
@@ -2457,7 +2457,7 @@ TEST(SceneParserScript, CopyingAModelLayerMakesAnotherModelLayer) {
                     "name": "Controller",
                     "visible": {
                         "value": true,
-                        "script": "export function init(value) { const copy = thisScene.createLayer(thisScene.getLayer('Source')); copy.origin = new Vec3(5, 6, 7); return value; } export function update(value) { return value; }"
+                        "script": "export function init(value) { const config = thisScene.getInitialLayerConfig(thisScene.getLayer('Source')); config.name = 'Copy'; const copy = thisScene.createLayer(config); copy.origin = new Vec3(5, 6, 7); return value; } export function update(value) { return value; }"
                     }
                 },
                 {
@@ -2497,7 +2497,7 @@ TEST(SceneParserScript, CopyingAModelLayerMakesAnotherModelLayer) {
     usize solids {};
     bool  moved = false;
     for (const auto& child : scene.scene->RootMut()->GetChildren()) {
-        if (child->Name() == "Source"_str && child->Mesh() != nullptr) {
+        if ((child->Name() == "Source"_str || child->Name() == "Copy"_str) && child->Mesh() != nullptr) {
             ++models;
             if (child->Translate().x() == 5.0f) moved = true;
         }
