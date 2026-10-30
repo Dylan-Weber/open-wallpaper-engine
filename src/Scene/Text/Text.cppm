@@ -51,6 +51,21 @@ public:
     // Only for synchronous callers without an outstanding snapshot.
     void ClearDirtyRects();
 };
+// Letter-pair kerning read from a font file: the pair adjustments of its GPOS 'kern' feature, or
+// its legacy 'kern' table when it has no such feature, in font units.
+class FontKerning {
+    Vec<unsigned char>    m_bytes;
+    Vec<rstd::uint32_t>   m_subtables;   // GPOS pair adjustment subtables, from the file's start
+    Vec<rstd::uint32_t>   m_lookup_ends; // where each kern lookup's subtables end in m_subtables
+    Vec<rstd::uint32_t>   m_kern_tables; // legacy format 0 subtables, from the file's start
+    rstd::uint32_t        m_units_per_em { 1000 };
+
+public:
+    static auto Read(slice<u8> font) -> FontKerning;
+    auto        Empty() const -> bool;
+    auto        UnitsPerEm() const -> rstd::uint32_t { return m_units_per_em; }
+    auto        Pair(rstd::uint32_t left, rstd::uint32_t right) const -> rstd::int32_t;
+};
 class TextResources {
     struct Impl;
     Box<Impl> m_impl;
@@ -60,6 +75,8 @@ public:
     TextResources(vectext::FontCollection collection, AtlasOptions options = {});
     ~TextResources();
     auto RegisterFont(slice<u8> bytes) -> Result<vectext::FontSource, vectext::TextError>;
+    // The kerning of a font RegisterFont took, if it has any.
+    auto Kerning(const vectext::FontSource& source) const -> const FontKerning*;
     auto Layout(vectext::TextRequest request) -> Result<vectext::TextLayout, vectext::TextError>;
     auto Rasterize(const vectext::FontInstance& font, vectext::Index glyph, double scale = 1)
         -> Result<AtlasGlyph, vectext::TextError>;
