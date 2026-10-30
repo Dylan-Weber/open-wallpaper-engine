@@ -1,11 +1,12 @@
 # script-layer-alignment: a script sets a layer's alignment, then its scale, inside try/catch (as Reze's audio visualizer,
 # whose 63 bars Wallpaper Engine leaves at their tiny default size and owe scales). Squares: scaled only; alignment set to
-# its own value first; alignment set to another value first; alignment read and compared first (as Reze); and, for a
-# layer the script created, alignment then scale.
+# its own value first; alignment set to another value first; alignment read and compared first; alignment set to
+# 'centre' (Reze's spelling); and, for a layer the script created, alignment then scale.
 w = Wallpaper('script-layer-alignment', "setting a layer's alignment from a script", clear='0.05 0.05 0.1')
 cases = (('scale only', 300, ''), ('same alignment first', 650, "layer.alignment = 'center';\n"),
          ('other alignment first', 1000, "layer.alignment = 'bottom';\n"),
-         ('compared, then set', 1350, "if (layer.alignment !== 'top') { layer.alignment = 'top'; }\n"))
+         ('compared, then set', 1350, "if (layer.alignment !== 'top') { layer.alignment = 'top'; }\n"),
+         ('a misspelt alignment', 1700, "layer.alignment = 'centre';\n"))
 for name, x, before in cases:
     script = """'use strict';
 export function init(value) {
@@ -30,7 +31,7 @@ created = """'use strict';
 engine.registerAsset('models/util/solidlayer.json', true);
 export function init(value) {
     let made = thisScene.createLayer('models/util/solidlayer.json');
-    made.origin = new Vec3(1700, 540, 0);
+    made.origin = new Vec3(1700, 200, 0);
     try {
         made.alignment = 'center';
         made.scale = new Vec3(20, 20, 1);
