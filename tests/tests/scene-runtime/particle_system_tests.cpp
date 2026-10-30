@@ -815,6 +815,49 @@ TEST(ParticleSubSystem, AppliesTurbulenceMaskAsAxisWeights) {
     EXPECT_FLOAT_EQ(defaults.z(), 0.0f);
 }
 
+// colorlist (particles-colorlist): the particle's colour is multiplied by a colour picked from the list, whatever
+// order the initializers come in (Wallpaper Engine paints a yellow colorrandom + list as yellow, red or dark green).
+TEST(ParticleSubSystem, ColorlistMultipliesTheColourWhateverTheOrder) {
+    auto spawn = [](ref<str> first, ref<str> second) -> Eigen::Vector3f {
+        owe::Scene             scene;
+        auto                   mesh = Arc<owe::SceneMesh>::make();
+        owe::ParticleSubSystem subsystem(scene,
+                                         mesh.clone(),
+                                         u32(1),
+                                         f64(1.0),
+                                         u32(1),
+                                         f64(1.0),
+                                         owe::ParticleSubSystem::SpawnType::STATIC,
+                                         owe::ParticleAnimationSpec {});
+        subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+            owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(1)));
+        subsystem.AddInitializer(
+            owe::ParticleParser::GenInitializer(owe::ParseJson(first).unwrap(), u32(1)));
+        subsystem.AddInitializer(
+            owe::ParticleParser::GenInitializer(owe::ParseJson(second).unwrap(), u32(1)));
+        subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+            owe::BoxEmitterProgram(subsystem.SpawnPipeline(),
+                                   owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) },
+                                   usize())));
+        subsystem.Finalize();
+        subsystem.Tick(f64(1.0 / 60.0), false);
+        auto&                        storage = subsystem.System().Instance(usize()).Storage();
+        particle::ParticleSlotReader value(storage, particle::ParticleSlot {});
+        return value.Read(subsystem.Attributes().color);
+    };
+    const auto list   = R"({"name":"colorlist","colors":["0.5 1 0.25"]})"_str;
+    const auto yellow = R"({"name":"colorrandom","min":"255 255 0","max":"255 255 0"})"_str;
+    auto       alone  = spawn(list, R"({"name":"lifetimerandom","min":10,"max":10})"_str);
+    EXPECT_NEAR(alone.x(), 0.5f, 1e-5f);
+    EXPECT_NEAR(alone.y(), 1.0f, 1e-5f);
+    EXPECT_NEAR(alone.z(), 0.25f, 1e-5f);
+    for (auto colour : { spawn(yellow, list), spawn(list, yellow) }) {
+        EXPECT_NEAR(colour.x(), 0.5f, 1e-5f);
+        EXPECT_NEAR(colour.y(), 1.0f, 1e-5f);
+        EXPECT_NEAR(colour.z(), 0.0f, 1e-5f);
+    }
+}
+
 TEST(ParticleSubSystem, UsesEmitterPeriodLimitForImplicitControlpointSequenceCount) {
     owe::Scene             scene;
     auto                   mesh = Arc<owe::SceneMesh>::make();
