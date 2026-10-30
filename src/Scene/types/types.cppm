@@ -232,6 +232,7 @@ public:
     SpriteAnimation(const SpriteAnimation& other)
         : m_curFrame(other.m_curFrame),
           m_remainTime(other.m_remainTime),
+          m_started(other.m_started),
           m_frames(other.m_frames.clone()) {}
     SpriteAnimation(SpriteAnimation&&) noexcept            = default;
     SpriteAnimation& operator=(SpriteAnimation&&) noexcept = default;
@@ -241,13 +242,21 @@ public:
     }
     auto        clone() const -> SpriteAnimation { return SpriteAnimation(*this); }
     const auto& GetAnimateFrame(double newtime) {
-        if ((m_remainTime -= newtime) < 0.0f) {
-            SwitchToNext();
-            const auto& frame = m_frames.at(m_curFrame);
-            m_remainTime      = frame.frametime;
+        // the first frame lasts its own time from the start; a frame that ends moves the animation on by one frame, and what
+        // is left of the update belongs to the next frame, so the animation plays at its frames' rate (10 frames a second
+        // for 0.1 s frames at any update rate). Like Wallpaper Engine's it never moves on by more than one frame an update:
+        // frames shorter than an update (a gif of 0.03 s frames at 30 updates a second) play at the update rate.
+        if (! m_started) {
+            m_started    = true;
+            m_remainTime = m_frames.at(m_curFrame).frametime;
         }
-        const auto& frame = m_frames.at(m_curFrame);
-        return frame;
+        m_remainTime -= newtime;
+        if (m_remainTime <= 0.0) {
+            SwitchToNext();
+            m_remainTime += m_frames.at(m_curFrame).frametime;
+            if (m_remainTime < 0.0) m_remainTime = 0.0;
+        }
+        return m_frames.at(m_curFrame);
     }
     const auto& GetCurFrame() const { return m_frames.at(m_curFrame); }
     void        AppendFrame(const SpriteFrame& frame) { m_frames.emplace_back(frame); }
@@ -267,6 +276,7 @@ private:
     }
     usize  m_curFrame;
     double m_remainTime { 0 };
+    bool   m_started { false };
 
     Vec<SpriteFrame> m_frames;
 };

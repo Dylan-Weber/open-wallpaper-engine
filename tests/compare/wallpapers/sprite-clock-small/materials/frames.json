@@ -1,0 +1,18 @@
+{
+  "passes": [
+    {
+      "shader": "genericimage2",
+      "blending": "normal",
+      "cullmode": "nocull",
+      "depthtest": "disabled",
+      "depthwrite": "disabled",
+      "combos": {
+        "SPRITESHEET": 1,
+        "VERSION": 2
+      },
+      "textures": [
+        "frames"
+      ]
+    }
+  ]
+}
