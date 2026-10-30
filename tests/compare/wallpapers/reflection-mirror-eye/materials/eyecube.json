@@ -1,0 +1,14 @@
+{
+  "passes": [
+    {
+      "shader": "eyecolor",
+      "blending": "normal",
+      "cullmode": "normal",
+      "depthtest": "enabled",
+      "depthwrite": "enabled",
+      "textures": [
+        null
+      ]
+    }
+  ]
+}
