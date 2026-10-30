@@ -1,0 +1,17 @@
+{
+  "passes": [
+    {
+      "blending": "translucent",
+      "cullmode": "nocull",
+      "depthtest": "disabled",
+      "depthwrite": "disabled",
+      "shader": "genericimage2",
+      "textures": [
+        "gradient/gradient_rainbow"
+      ],
+      "constantshadervalues": {
+        "Brightness": 0.5
+      }
+    }
+  ]
+}
