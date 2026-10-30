@@ -815,6 +815,132 @@ TEST(ParticleSubSystem, AppliesTurbulenceMaskAsAxisWeights) {
     EXPECT_FLOAT_EQ(defaults.z(), 0.0f);
 }
 
+// collisionplane (particles-collisionplane): a particle may not go below the plane n . x = distance (n is the
+// "plane" key, up by default). One below it is put on the plane and its speed along n becomes |v_n| * bouncefactor
+// (so one already moving away is sent up the same); "slide" zeroes v_n, "delete" removes the particle. The sideways
+// speed is kept.
+struct CollidedParticle {
+    bool            alive { false };
+    Eigen::Vector3f position;
+    Eigen::Vector3f velocity;
+    float           alpha { 1.0f };
+};
+
+static CollidedParticle CollideWithPlane(ref<str> collision, Eigen::Vector3f origin, ref<str> velocity,
+                                        int ticks = 1) {
+    owe::Scene             scene;
+    auto                   mesh = Arc<owe::SceneMesh>::make();
+    owe::ParticleSubSystem subsystem(scene,
+                                     mesh.clone(),
+                                     u32(1),
+                                     f64(1.0),
+                                     u32(1),
+                                     f64(1.0),
+                                     owe::ParticleSubSystem::SpawnType::STATIC,
+                                     owe::ParticleAnimationSpec {});
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(1)));
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(velocity).unwrap(), u32(1)));
+    subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+        owe::BoxEmitterProgram(subsystem.SpawnPipeline(),
+                               owe::ParticleBoxEmitterArgs {
+                                   .origin        = { origin.x(), origin.y(), origin.z() },
+                                   .instantaneous = u32(1),
+                               },
+                               usize())));
+    owe::ParticleInstanceModifiers modifiers(Arc<owe::wpscene::ParticleInstanceoverride>::make(),
+                                             owe::wpscene::Particle::EFlags { 0 },
+                                             false);
+    subsystem.AddOperator(owe::ParticleParser::GenOperator(
+        owe::ParseJson(R"({"name":"movement"})"_str).unwrap(), modifiers.Clone(), subsystem, usize()));
+    subsystem.AddOperator(owe::ParticleParser::GenOperator(
+        owe::ParseJson(collision).unwrap(), modifiers.Clone(), subsystem, usize(1)));
+    subsystem.Finalize();
+    for (int tick = 0; tick < ticks; ++tick) subsystem.Tick(f64(1.0 / 60.0), false);
+    CollidedParticle result;
+    result.alive = subsystem.System().Instance(usize()).Binding().Read().Positions().len() != usize();
+    if (! result.alive) return result;
+    auto&                        storage = subsystem.System().Instance(usize()).Storage();
+    particle::ParticleSlotReader value(storage, particle::ParticleSlot {});
+    result.position = value.Read(subsystem.Attributes().position);
+    result.velocity = value.Read(subsystem.Attributes().velocity);
+    result.alpha    = value.Read(subsystem.Attributes().alpha);
+    return result;
+}
+
+TEST(ParticleSubSystem, CollisionPlaneBouncesAParticleThatFellThrough) {
+    const auto bounce = R"({"name":"collisionplane","distance":-100,"bouncefactor":0.5})"_str;
+    auto       hit    = CollideWithPlane(bounce, { 0, -100, 0 }, R"({"name":"velocityrandom","min":"20 -60 0","max":"20 -60 0"})"_str);
+    ASSERT_TRUE(hit.alive);
+    EXPECT_NEAR(hit.position.y(), -100.0f, 1e-4f);
+    EXPECT_NEAR(hit.velocity.y(), 30.0f, 1e-3f);
+    EXPECT_NEAR(hit.velocity.x(), 20.0f, 1e-3f);
+    auto above = CollideWithPlane(bounce, { 0, -50, 0 }, R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
+    EXPECT_NEAR(above.position.y(), -51.0f, 1e-4f);
+    EXPECT_NEAR(above.velocity.y(), -60.0f, 1e-3f);
+    auto under = CollideWithPlane(bounce, { 0, -150, 0 }, R"({"name":"velocityrandom","min":"0 40 0","max":"0 40 0"})"_str);
+    EXPECT_NEAR(under.position.y(), -100.0f, 1e-4f);
+    EXPECT_NEAR(under.velocity.y(), 20.0f, 1e-3f);
+}
+
+TEST(ParticleSubSystem, CollisionPlaneSlidesDeletesAndTakesAnyNormal) {
+    auto slide = CollideWithPlane(
+        R"({"name":"collisionplane","distance":-100,"bouncefactor":0.5,"collisionbehavior":"slide"})"_str,
+        { 0, -100, 0 }, R"({"name":"velocityrandom","min":"20 -60 0","max":"20 -60 0"})"_str);
+    EXPECT_NEAR(slide.velocity.y(), 0.0f, 1e-3f);
+    EXPECT_NEAR(slide.velocity.x(), 20.0f, 1e-3f);
+    EXPECT_NEAR(slide.position.y(), -100.0f, 1e-4f);
+    auto gone = CollideWithPlane(
+        R"({"name":"collisionplane","distance":-100,"collisionbehavior":"delete"})"_str, { 0, -100, 0 },
+        R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
+    EXPECT_FLOAT_EQ(gone.alive ? gone.alpha : 0.0f, 0.0f); // hidden at once, removed with the lifecycle
+    auto wall = CollideWithPlane(R"({"name":"collisionplane","plane":"1 0 0","distance":-100,"bouncefactor":0.5})"_str,
+                                 { -100, 0, 0 }, R"({"name":"velocityrandom","min":"-60 7 0","max":"-60 7 0"})"_str);
+    EXPECT_NEAR(wall.position.x(), -100.0f, 1e-4f);
+    EXPECT_NEAR(wall.velocity.x(), 30.0f, 1e-3f);
+    EXPECT_NEAR(wall.velocity.y(), 7.0f, 1e-3f);
+}
+
+// collisionsphere / collisionquad (particles-collisionshapes, particles-collisionquad-sides)
+TEST(ParticleSubSystem, CollisionSphereKeepsParticlesOutAlongTheSurfaceNormal) {
+    const auto sphere = R"({"name":"collisionsphere","origin":"0 0 0","radius":100,"bouncefactor":0.5})"_str;
+    auto       top    = CollideWithPlane(sphere, { 0, 101, 0 },
+                                         R"({"name":"velocityrandom","min":"0 -120 0","max":"0 -120 0"})"_str);
+    EXPECT_NEAR(top.position.y(), 100.0f, 1e-3f);
+    EXPECT_NEAR(top.velocity.y(), 60.0f, 1e-3f);
+    auto side = CollideWithPlane(sphere, { 60, 80, 0 },
+                                 R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
+    const Eigen::Vector3f moved(60.0f, 80.0f - 1.0f, 0.0f);
+    const Eigen::Vector3f normal = moved.normalized();
+    EXPECT_NEAR((side.position - normal * 100.0f).norm(), 0.0f, 1e-3f);
+    const float along = normal.dot(Eigen::Vector3f(0, -60, 0));
+    const Eigen::Vector3f expected = Eigen::Vector3f(0, -60, 0) + normal * (-along * 0.5f - along);
+    EXPECT_NEAR((side.velocity - expected).norm(), 0.0f, 1e-3f);
+    auto away = CollideWithPlane(sphere, { 0, 150, 0 },
+                                 R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
+    EXPECT_NEAR(away.velocity.y(), -60.0f, 1e-3f);
+}
+
+TEST(ParticleSubSystem, CollisionQuadCatchesAParticleFallingOnItButNotOneRisingThroughIt) {
+    const auto quad =
+        R"({"name":"collisionquad","origin":"0 -100 0","size":"200 100","bouncefactor":0.5})"_str;
+    auto landed = CollideWithPlane(quad, { 50, -100, 0 },
+                                   R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
+    EXPECT_NEAR(landed.position.y(), -100.0f, 1e-4f);
+    EXPECT_NEAR(landed.velocity.y(), 30.0f, 1e-3f);
+    auto rising = CollideWithPlane(quad, { 50, -100.5f, 0 },
+                                   R"({"name":"velocityrandom","min":"0 60 0","max":"0 60 0"})"_str);
+    EXPECT_NEAR(rising.velocity.y(), 60.0f, 1e-3f);
+    auto beside = CollideWithPlane(quad, { 150, -100, 0 },
+                                   R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
+    EXPECT_NEAR(beside.velocity.y(), -60.0f, 1e-3f);
+    auto angled = CollideWithPlane(
+        R"({"name":"collisionquad","origin":"0 -100 0","size":"200 100","angles":"0 0 30","bouncefactor":0.5})"_str,
+        { 50, -100, 0 }, R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
+    EXPECT_NEAR(angled.velocity.y(), 30.0f, 1e-3f);
+}
+
 TEST(ParticleSubSystem, UsesEmitterPeriodLimitForImplicitControlpointSequenceCount) {
     owe::Scene             scene;
     auto                   mesh = Arc<owe::SceneMesh>::make();
