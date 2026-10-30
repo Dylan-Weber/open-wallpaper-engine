@@ -27,4 +27,6 @@ for k, reduction in enumerate((3, 10, 30)):
     w.add({"name": "reduction %d" % reduction, "particle": "particles/r%d.json" % k,
            "origin": "300 %d 0" % (850 - 220 * k), "scale": "1 1 1", "angles": "0 0 0", "visible": True})
 w.save()
+with open(os.path.join(HERE, 'particles-reduce-near-rest', 'compare.json'), 'w') as f:
+    json.dump({"fps": 30}, f)
 clock_probe.stamp(os.path.join(HERE, 'particles-reduce-near-rest'))
