@@ -279,6 +279,25 @@ TEST(TextObjectJson, ReadsReflectionParticipation) {
     EXPECT_FALSE(text.reflected);
 }
 
+// A number pads every side alike; a pair ("x y", as Ocarina of Time's text layers have it) pads
+// the left and right by x, the top and bottom by y (text-padding-pair: "40 10" grows the box by
+// 80 across and 20 down, "20 20" as 20 does).
+TEST(TextObjectJson, ReadsPaddingAsANumberOrAPair) {
+    owe::fs::VFS vfs;
+    const auto   check = [&](rstd::ref<rstd::str> json, float x, float y) {
+        auto parsed = owe::ParseJson(json);
+        ASSERT_TRUE(parsed.is_ok());
+        owe::wpscene::TextObject text;
+        ASSERT_TRUE(text.FromJson(parsed.unwrap(), vfs));
+        EXPECT_FLOAT_EQ(text.padding[rstd::usize(0)], x);
+        EXPECT_FLOAT_EQ(text.padding[rstd::usize(1)], y);
+    };
+    check(R"({"padding":20})"_str, 20.0f, 20.0f);
+    check(R"({"padding":"40 10"})"_str, 40.0f, 10.0f);
+    check(R"({"padding":"32.00000 32.00000"})"_str, 32.0f, 32.0f);
+    check(R"({})"_str, 0.0f, 0.0f);
+}
+
 TEST(TextRenderMode, UsesDirectRenderingOnlyWithoutIndependentSurfaceRequirements) {
     EXPECT_EQ(owe::ResolveTextRenderMode({}), owe::TextRenderMode::Direct);
     EXPECT_EQ(owe::ResolveTextRenderMode({ .color_blend = true }), owe::TextRenderMode::Offscreen);

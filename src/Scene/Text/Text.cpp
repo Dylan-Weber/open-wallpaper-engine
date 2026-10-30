@@ -459,6 +459,7 @@ TextGeometry ResolveTextGeometry(const TextGeometryPolicy& policy,
     const float src_w   = positive(metrics.source_width, text_w);
     const float src_h   = positive(metrics.source_height, text_h);
     const float pad     = rstd::cmp::max(metrics.padding, 0.0f);
+    const float pad_y   = metrics.padding_y < 0.0f ? pad : metrics.padding_y;
     const float src_cx  = f32(metrics.source_center_x).is_finite() ? metrics.source_center_x : 0.0f;
     const float src_cy  = f32(metrics.source_center_y).is_finite() ? metrics.source_center_y : 0.0f;
 
@@ -466,9 +467,9 @@ TextGeometry ResolveTextGeometry(const TextGeometryPolicy& policy,
     // text, so it reaches as far above, where the box leaves it clear.
     const float gap         = rstd::cmp::max(metrics.background_gap, 0.0f);
     const float text_bbox_w = text_w + 2.0f * pad;
-    const float text_bbox_h = text_h + 2.0f * pad + 2.0f * gap;
+    const float text_bbox_h = text_h + 2.0f * pad_y + 2.0f * gap;
     const float src_bbox_w  = src_w + 2.0f * pad;
-    const float src_bbox_h  = src_h + 2.0f * pad;
+    const float src_bbox_h  = src_h + 2.0f * pad_y;
 
     const float dynamic_w = rstd::cmp::max(
         1024.0f, rstd::cmp::max(frame_w * 3.0f, rstd::cmp::max(text_bbox_w, src_bbox_w)));
@@ -575,18 +576,20 @@ struct TextLayouter::Impl {
         measured.source_width    = measured.text_width;
         measured.source_height   = measured.text_height;
         measured.padding         = style.padding;
+        measured.padding_y       = style.padding_y;
         if (style.opaquebackground)
             measured.background_gap =
                 rstd::cmp::max(float(output.logical_bounds().height - bounds.height), 0.0f);
         auto pages               = resources->Pages();
         if (pages.is_empty()) return Err(vectext::TextError::Limit);
         if (style.opaquebackground) {
-            auto pad = style.padding;
+            auto pad   = style.padding;
+            auto pad_y = style.padding_y < 0.0f ? pad : style.padding_y;
             quads.push(Quad { AtlasGlyph { .x = 1, .y = 1, .width = 2, .height = 2 },
                               -measured.text_width / 2 - pad,
                               measured.text_width / 2 + pad,
-                              -measured.text_height / 2 - pad - measured.background_gap,
-                              measured.text_height / 2 + pad,
+                              -measured.text_height / 2 - pad_y - measured.background_gap,
+                              measured.text_height / 2 + pad_y,
                               { style.background_color[usize()] * style.background_brightness,
                                 style.background_color[usize(1)] * style.background_brightness,
                                 style.background_color[usize(2)] * style.background_brightness,
