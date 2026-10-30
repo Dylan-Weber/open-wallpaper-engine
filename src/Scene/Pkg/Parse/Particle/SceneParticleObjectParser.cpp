@@ -283,7 +283,7 @@ struct LayerImagePixelSet {
     float                jitter { 0.5f };
 };
 
-// The pixels of a layer's texture that are opaque enough (the layer's opacity times the pixel's, about half or more), as
+// The pixels of a layer's texture that are opaque enough (the layer's opacity times the pixel's, half or more; particles-layerimage-alpha: the halo's disc matches at 0.5), as
 // points from the image's centre in pixels, for the ones stored as 8-bit colour with or without alpha; None for a format
 // not read (the layer then emits from its texture's rectangle). A large image is sampled every few pixels.
 Option<LayerImagePixelSet> LayerImagePixels(const TexImageParser& textures, ref<str> name, float layer_alpha) {
@@ -311,7 +311,7 @@ Option<LayerImagePixelSet> LayerImagePixels(const TexImageParser& textures, ref<
             const auto* pixel = data + (static_cast<std::size_t>(row) * static_cast<std::size_t>(base.width) +
                                         static_cast<std::size_t>(column)) * static_cast<std::size_t>(channels);
             const float alpha = channels == 4 ? static_cast<float>(pixel[3]) / 255.0f : 1.0f;
-            if (alpha * layer_alpha < 0.4f) continue;
+            if (alpha * layer_alpha < 0.5f) continue;
             const float first = static_cast<float>(pixel[0]) / 255.0f;
             const float third = static_cast<float>(pixel[2]) / 255.0f;
             set.points.push(LayerImagePoint {
