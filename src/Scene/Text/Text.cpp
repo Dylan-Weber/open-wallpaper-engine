@@ -711,6 +711,17 @@ auto TextUniformSource::Evaluate(rstd::ref<rstd::dyn<UniformUpdateContext>>,
     return write(TextUniformOutput::EffectModelViewProjection, effect_view * effect_model);
 }
 
+auto TextAnchorOffset(ref<str> horizontal, ref<str> vertical, float width, float height,
+                      float descent) -> array<float, 2> {
+    array<float, 2> offset { 0.0f, 0.0f };
+    if (horizontal->contains("left"_str)) offset[usize(0)] += width * 0.5f;
+    if (horizontal->contains("right"_str)) offset[usize(0)] -= width * 0.5f;
+    if (vertical->contains("top"_str)) offset[usize(1)] -= height * 0.5f;
+    else if (vertical->contains("bottom"_str)) offset[usize(1)] += height * 0.5f;
+    else offset[usize(1)] -= descent * 0.5f;
+    return offset;
+}
+
 TextGeometry ResolveTextGeometry(const TextGeometryPolicy& policy,
                                  const TextLayoutMetrics&  metrics) {
     auto positive = [](float value, float fallback) {
@@ -906,6 +917,8 @@ struct TextLayouter::Impl {
         if (style.opaquebackground)
             measured.background_gap =
                 rstd::cmp::max(float(output.logical_bounds().height - bounds.height), 0.0f);
+        if (! output.lines().is_empty())
+            measured.descent = float(output.lines()[output.lines().len() - usize(1)].descent);
         auto pages               = resources->Pages();
         if (pages.is_empty()) return Err(vectext::TextError::Limit);
         if (style.opaquebackground) {
