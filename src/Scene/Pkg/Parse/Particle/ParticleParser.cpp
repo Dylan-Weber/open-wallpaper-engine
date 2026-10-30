@@ -182,6 +182,23 @@ struct MapSequenceBetweenControlPointsProgram {
     }
 };
 
+// colorlist: a colour picked from a list, which multiplies the particle's colour (particles-colorlist: Wallpaper
+// Engine paints a yellow colorrandom and the list's cyan as dark green, its yellow as yellow, its magenta as red,
+// in either order, so the list is applied after the other initializers).
+struct ColorListProgram {
+    Vec<Eigen::Vector3f> colors;
+
+    void Initialize(ParticleSpawnColumns& columns, particle::ParticleSpawnRequest request,
+                    ref<dyn<rstd::any::Any>>) {
+        if (colors.is_empty()) return;
+        auto pick = static_cast<usize>(Random::get(0.0, 1.0) * static_cast<double>(colors.len().to_primitive()));
+        if (pick >= colors.len()) pick = colors.len() - usize(1);
+        auto& color                                = columns.colors[request.slot.index];
+        color                                      = color.cwiseProduct(colors[pick]);
+        columns.initial_colors[request.slot.index] = color;
+    }
+};
+
 inline float UiColorToLinear(float value) { return value * value; }
 
 inline float UiScalarToLinear(float value) { return value; }
@@ -387,7 +404,8 @@ class ParticleSpawnInstructionValue {
               (TurbulentVelocityRandom, (TurbulentVelocityRandomProgram value;)),
               (MapSequenceAroundControlPoint, (MapSequenceAroundControlPointProgram value;)),
               (MapSequenceBetweenControlPoints, (MapSequenceBetweenControlPointsProgram value;)),
-              (Override, (OverrideSpawnProgram value;)))
+              (Override, (OverrideSpawnProgram value;)),
+              (ColorList, (ColorListProgram value;)))
 };
 
 template<typename T>
@@ -410,6 +428,8 @@ auto MakeParticleSpawnInstructionValue(T value) -> ParticleSpawnInstructionValue
         return ParticleSpawnInstructionValue::MapSequenceAroundControlPoint(rstd::move(value));
     else if constexpr (same_as<T, MapSequenceBetweenControlPointsProgram>)
         return ParticleSpawnInstructionValue::MapSequenceBetweenControlPoints(rstd::move(value));
+    else if constexpr (same_as<T, ColorListProgram>)
+        return ParticleSpawnInstructionValue::ColorList(rstd::move(value));
     else {
         static_assert(same_as<T, OverrideSpawnProgram>);
         return ParticleSpawnInstructionValue::Override(rstd::move(value));
@@ -443,6 +463,7 @@ auto ParticleSpawnInstruction::SequenceCount() const -> Option<u32> {
             return Some(rstd::as_cast<u32>(instruction.config.count));
         }
         RSTD_CASE(Override) { return None(); }
+        RSTD_CASE(ColorList) { return None(); }
     }
     rstd::unreachable();
 }
@@ -472,7 +493,26 @@ void ParticleSpawnInstruction::Initialize(ParticleSpawnColumns&          columns
             instruction.Initialize(columns, request, frame);
         }
         RSTD_CASE(Override, instruction) { instruction.Initialize(columns, request, frame); }
+        RSTD_CASE(ColorList, instruction) { instruction.Initialize(columns, request, frame); }
     }
+}
+
+// the list's colour multiplies what the other initializers made, so it runs after them
+auto ParticleSpawnInstruction::RunsLast() const -> bool {
+    RSTD_MATCH(m_impl->value) {
+        RSTD_CASE(ColorList) { return true; }
+        RSTD_CASE(Noop) { return false; }
+        RSTD_CASE(ColorRandom) { return false; }
+        RSTD_CASE(LifetimeRandom) { return false; }
+        RSTD_CASE(SizeRandom) { return false; }
+        RSTD_CASE(AlphaRandom) { return false; }
+        RSTD_CASE(VectorRandom) { return false; }
+        RSTD_CASE(TurbulentVelocityRandom) { return false; }
+        RSTD_CASE(MapSequenceAroundControlPoint) { return false; }
+        RSTD_CASE(MapSequenceBetweenControlPoints) { return false; }
+        RSTD_CASE(Override) { return false; }
+    }
+    rstd::unreachable();
 }
 
 ParticleSpawnInstruction ParticleParser::GenInitializer(const Json& wpj,
@@ -495,6 +535,18 @@ ParticleSpawnInstruction ParticleParser::GenInitializer(const Json& wpj,
                     return value / 255.0f;
                 }),
             });
+        } else if (name == "colorlist"_str) {
+            Vec<Eigen::Vector3f> colors;
+            if (auto listed = wpj.get("colors"_str); listed.is_some()) {
+                if (auto items = (*listed)->as_array(); items.is_some()) {
+                    for (const auto& item : **items) {
+                        array<float, 3> color { 1.0f, 1.0f, 1.0f };
+                        owe::GetJsonValue(item, color);
+                        colors.push(Eigen::Vector3f(color[usize(0)], color[usize(1)], color[usize(2)]));
+                    }
+                }
+            }
+            return ParticleSpawnInstruction::Make(ColorListProgram { .colors = rstd::move(colors) });
         } else if (name == "lifetimerandom"_str) {
             SingleRandom r = { 0.0f, 1.0f };
             SingleRandom::ReadFromJson(wpj, r);
