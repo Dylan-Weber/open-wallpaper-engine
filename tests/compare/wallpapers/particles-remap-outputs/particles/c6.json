@@ -55,10 +55,10 @@
       "input": "lifetimefraction",
       "inputrangemin": 0,
       "inputrangemax": 1,
-      "output": "color",
-      "operation": "average",
-      "outputrangemin": "0 0 0",
-      "outputrangemax": "1 1 1"
+      "output": "size",
+      "operation": "subtract",
+      "outputrangemin": 0,
+      "outputrangemax": 40
     }
   ],
   "renderer": [

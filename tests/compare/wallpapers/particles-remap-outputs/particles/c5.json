@@ -55,8 +55,7 @@
       "input": "lifetimefraction",
       "inputrangemin": 0,
       "inputrangemax": 1,
-      "output": "color",
-      "operation": "square",
+      "output": "multiplycolor",
       "outputrangemin": "0 0 0",
       "outputrangemax": "1 1 1"
     }

@@ -833,6 +833,10 @@ TEST(ParticleRemap, ReadsTheInputsWallpaperEngineOffers) {
     EXPECT_EQ(read("layertime"_str).unwrap().input, owe::ParticleRemap::Input::LayerTime);
     EXPECT_EQ(read("runtime"_str).unwrap().input, owe::ParticleRemap::Input::Runtime);
     EXPECT_EQ(read("timeofday"_str).unwrap().input, owe::ParticleRemap::Input::TimeOfDay);
+    EXPECT_EQ(read("deltatocontrolpoint"_str).unwrap().input, owe::ParticleRemap::Input::DeltaToControlPoint);
+    EXPECT_EQ(read("directiontocontrolpoint"_str).unwrap().input, owe::ParticleRemap::Input::DirectionToControlPoint);
+    EXPECT_EQ(read("positionbetweentwocontrolpoints"_str).unwrap().input,
+              owe::ParticleRemap::Input::PositionBetweenControlPoints);
     EXPECT_TRUE(read("nothing"_str).is_none());
     // a vector input maps each axis over the range
     auto velocity = read("velocity"_str).unwrap();
@@ -867,6 +871,20 @@ TEST(ParticleRemap, SubtractsAndShapesTheInput) {
     EXPECT_EQ(square.Map(0.72).x(), 0.0);
     EXPECT_EQ(square.Map(0.9).x(), 1.0);
     EXPECT_TRUE(read(R"(,"transformfunction":"simplexnoise")"_str).is_none());
+}
+
+// A size a remapvalue sets, adds or takes is a radius, drawn twice as large (particles-remap-outputs: adding up to 40 to
+// a size of 60 draws it 105, taking 22.5 draws 15); one it multiplies is a factor.
+TEST(ParticleRemap, SizeAddsAndSubtractsRadii) {
+    auto read = [](ref<str> operation) {
+        auto json = rstd::format(
+            R"({{"name":"remapvalue","input":"lifetimefraction","inputrangemax":1,"output":"size","outputrangemax":40,"operation":"{}"}})",
+            operation);
+        return owe::ParticleRemap::FromJson(owe::ParseJson(json.as_str()).unwrap()).unwrap();
+    };
+    EXPECT_NEAR(read("add"_str).Apply(Eigen::Vector3d::Constant(60), 0.5625).x(), 105.0, 1e-9);
+    EXPECT_NEAR(read("subtract"_str).Apply(Eigen::Vector3d::Constant(60), 0.5625).x(), 15.0, 1e-9);
+    EXPECT_NEAR(read("multiply"_str).Apply(Eigen::Vector3d::Constant(60), 0.5).x(), 1200.0, 1e-9);
 }
 
 TEST(ParticleSubSystem, RemapValueMapsTheParticlesVelocityOpacityAndRotation) {

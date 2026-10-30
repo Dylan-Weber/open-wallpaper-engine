@@ -21,43 +21,61 @@
   },
   "objects": [
     {
-      "name": "velocity 0",
+      "name": "delta to cp 1",
       "particle": "particles/c0.json",
-      "origin": "960 900 0",
+      "origin": "200 850 0",
       "scale": "1 1 1",
       "angles": "0 0 0",
       "visible": true,
       "id": 1
     },
     {
-      "name": "velocity 1",
+      "name": "direction to cp 1",
       "particle": "particles/c1.json",
-      "origin": "960 680 0",
+      "origin": "700 850 0",
       "scale": "1 1 1",
       "angles": "0 0 0",
       "visible": true,
       "id": 2
     },
     {
-      "name": "velocity 2",
+      "name": "between 0 and 1 at 100",
       "particle": "particles/c2.json",
-      "origin": "960 460 0",
+      "origin": "1200 850 0",
       "scale": "1 1 1",
       "angles": "0 0 0",
       "visible": true,
       "id": 3
     },
     {
-      "name": "velocity 3",
+      "name": "between at 50",
       "particle": "particles/c3.json",
-      "origin": "960 240 0",
+      "origin": "200 550 0",
       "scale": "1 1 1",
       "angles": "0 0 0",
       "visible": true,
       "id": 4
     },
     {
-      "id": 5,
+      "name": "between at 250",
+      "particle": "particles/c4.json",
+      "origin": "700 550 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 5
+    },
+    {
+      "name": "delta to cp 0",
+      "particle": "particles/c5.json",
+      "origin": "1200 550 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 6
+    },
+    {
+      "id": 7,
       "name": "owe clock probe",
       "image": "models/util/fullscreenlayer.json",
       "origin": "0 0 0",
@@ -69,12 +87,12 @@
       "effects": [
         {
           "file": "effects/oweclock/effect.json",
-          "id": 6,
+          "id": 8,
           "name": "oweclock",
           "visible": true,
           "passes": [
             {
-              "id": 7,
+              "id": 9,
               "constantshadervalues": {
                 "scriptframe": {
                   "script": "'use strict';\n\nexport function update(value) {\n\treturn Math.floor(engine.runtime * 30 + 0.5);\n}\n",

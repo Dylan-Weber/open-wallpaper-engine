@@ -182,6 +182,26 @@ struct MapSequenceBetweenControlPointsProgram {
     }
 };
 
+// the control point inputs, from a particle's position and the control points' (in the particles' space)
+inline auto RemapControlpointInput(const ParticleRemap& remap, const Eigen::Vector3d& position,
+                                   const Eigen::Vector3d& first, const Eigen::Vector3d& second)
+    -> Eigen::Vector3d {
+    switch (remap.input) {
+    case ParticleRemap::Input::DistanceToControlPoint: return Eigen::Vector3d::Constant((position - first).norm());
+    case ParticleRemap::Input::DeltaToControlPoint: return first - position;
+    case ParticleRemap::Input::DirectionToControlPoint: {
+        const Eigen::Vector3d delta = first - position;
+        return delta.norm() > 1e-12 ? Eigen::Vector3d(delta.normalized()) : Eigen::Vector3d(Eigen::Vector3d::Zero());
+    }
+    case ParticleRemap::Input::PositionBetweenControlPoints: {
+        const Eigen::Vector3d line = second - first;
+        const double          span = line.squaredNorm();
+        return Eigen::Vector3d::Constant(span > 1e-12 ? (position - first).dot(line) / span : 0.0);
+    }
+    default: return Eigen::Vector3d::Zero();
+    }
+}
+
 // the values of remapvalue's inputs that don't come from the particle
 inline auto RemapFrameInput(const ParticleRemap& remap, const ParticleFrame& frame) -> Eigen::Vector3d {
     switch (remap.input) {
@@ -207,10 +227,15 @@ struct RemapInitialValueProgram {
         auto            slot  = request.slot.index;
         Eigen::Vector3d input = RemapFrameInput(remap, *frame);
         switch (remap.input) {
-        case ParticleRemap::Input::DistanceToControlPoint: {
+        case ParticleRemap::Input::DistanceToControlPoint:
+        case ParticleRemap::Input::DeltaToControlPoint:
+        case ParticleRemap::Input::DirectionToControlPoint:
+        case ParticleRemap::Input::PositionBetweenControlPoints: {
             auto controlpoints = frame->subsystem->Controlpoints();
-            auto center        = controlpoints[rstd::as_cast<usize>(remap.controlpoint)].offset;
-            input = Eigen::Vector3d::Constant((columns.positions[slot].cast<double>() - center).norm());
+            input              = RemapControlpointInput(
+                remap, columns.positions[slot].cast<double>(),
+                controlpoints[rstd::as_cast<usize>(remap.controlpoint)].offset,
+                controlpoints[rstd::as_cast<usize>(remap.controlpoint1)].offset);
             break;
         }
         case ParticleRemap::Input::Velocity: input = columns.velocities[slot].cast<double>(); break;
@@ -1500,8 +1525,10 @@ struct RemapValueOperator {
         auto initial    = context.view.Read(initial_lifetime);
         auto rotations  = context.view.Read(rotation);
         auto spins      = context.view.Read(angular_velocity);
-        auto center =
+        const Eigen::Vector3d center =
             frame->subsystem->SimulationControlpoint(rstd::as_cast<usize>(remap.controlpoint)).center;
+        const Eigen::Vector3d center1 =
+            frame->subsystem->SimulationControlpoint(rstd::as_cast<usize>(remap.controlpoint1)).center;
         const Eigen::Vector3d frame_input = RemapFrameInput(remap, *frame);
         auto                  input       = [&](particle::ParticleSlot slot) -> Eigen::Vector3d {
             switch (remap.input) {
@@ -1509,7 +1536,10 @@ struct RemapValueOperator {
                 return Eigen::Vector3d::Constant(
                     LifetimePosition(lifetimes[slot.index], initial[slot.index]));
             case ParticleRemap::Input::DistanceToControlPoint:
-                return Eigen::Vector3d::Constant((positions[slot.index].cast<double>() - center).norm());
+            case ParticleRemap::Input::DeltaToControlPoint:
+            case ParticleRemap::Input::DirectionToControlPoint:
+            case ParticleRemap::Input::PositionBetweenControlPoints:
+                return RemapControlpointInput(remap, positions[slot.index].cast<double>(), center, center1);
             case ParticleRemap::Input::Velocity:
                 return remap.output == ParticleRemap::Output::Velocity
                            ? Eigen::Vector3d(context.view.Write(output_velocity)[slot.index].cast<double>())

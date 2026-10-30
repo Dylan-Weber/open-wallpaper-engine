@@ -55,10 +55,10 @@
       "input": "lifetimefraction",
       "inputrangemin": 0,
       "inputrangemax": 1,
-      "output": "color",
-      "operation": "fbmnoise",
-      "outputrangemin": "0 0 0",
-      "outputrangemax": "1 1 1"
+      "output": "opacity",
+      "operation": "multiply",
+      "outputrangemin": 0,
+      "outputrangemax": 1
     }
   ],
   "renderer": [

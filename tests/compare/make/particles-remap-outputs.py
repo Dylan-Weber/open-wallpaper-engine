@@ -1,4 +1,5 @@
-# particles-remap-outputs: remapvalue's outputs and operations. One particle per cell, living 20 s, whose lifetime fraction
+# particles-remap-outputs: remapvalue's outputs and operations (set, multiply, add, subtract; names that aren't outputs or
+# operations do nothing). One particle per cell, living 20 s, whose lifetime fraction
 # (0 to 1) is mapped onto a range; at the capture (~11.3 s) the fraction is 0.56. Colour cells start from the colour
 # 1 0.5 0.25 so that "set" and "multiply" differ; size cells show the size; velocity cells (movement on) show how far it
 # went.
@@ -23,19 +24,18 @@ def cell(remap, initializers=()):
 
 grey = {"outputrangemin": "0 0 0", "outputrangemax": "1 1 1"}
 cells = (
-    ("velocity remap", dict(output="velocity", operation="remap", outputrangemin="0 0 0",
-                            outputrangemax="200 0 0")),
-    ("velocity add", dict(output="velocity", operation="add", outputrangemin="0 0 0", outputrangemax="20 0 0")),
-    ("subtract", dict(output="color", operation="subtract", **grey)),
-    ("triangle", dict(output="color", operation="triangle", **grey)),
-    ("sine", dict(output="color", operation="sine", **grey)),
-    ("square", dict(output="color", operation="square", **grey)),
-    ("average", dict(output="color", operation="average", **grey)),
-    ("simplexnoise", dict(output="color", operation="simplexnoise", **grey)),
-    ("fbmnoise", dict(output="color", operation="fbmnoise", **grey)),
-    ("transform triangle", dict(output="color", operation="remap", transformfunction="triangle", **grey)),
-    ("transform sine", dict(output="color", operation="remap", transformfunction="sine", **grey)),
-    ("transform square", dict(output="color", operation="remap", transformfunction="square", **grey)),
+    ("set colour", dict(output="color", operation="remap", **grey)),
+    ("multiply colour", dict(output="color", operation="multiply", **grey)),
+    ("add colour", dict(output="color", operation="add", **grey)),
+    ("subtract colour", dict(output="color", operation="subtract", **grey)),
+    ("setcolor (not an output)", dict(output="setcolor", **grey)),
+    ("multiplycolor (not an output)", dict(output="multiplycolor", **grey)),
+    ("size subtract", dict(output="size", operation="subtract", outputrangemin=0, outputrangemax=40)),
+    ("size add", dict(output="size", operation="add", outputrangemin=0, outputrangemax=40)),
+    ("opacity multiply", dict(output="opacity", operation="multiply", outputrangemin=0, outputrangemax=1)),
+    ("triangle (not an operation)", dict(output="color", operation="triangle", **grey)),
+    ("sine (not an operation)", dict(output="color", operation="sine", **grey)),
+    ("average (not an operation)", dict(output="color", operation="average", **grey)),
 )
 w = Wallpaper('particles-remap-outputs', 'remapvalue outputs', clear='0 0 0')
 for k, (name, remap) in enumerate(cells):
