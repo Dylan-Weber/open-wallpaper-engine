@@ -1337,6 +1337,29 @@ TEST(BloomParsing, PreservesPassBindingsAndAuthoredConstants) {
     EXPECT_EQ(steps[rstd::usize(4)].as_Copy().value.dst, "_rt_default"_str);
 }
 
+// An effect's render target can have a size of its own (glitter's tiles: 256 x 256) and say how its
+// texture coordinates wrap ("uvs"; they repeat unless it says "clamp"): the picture's size and
+// clamped edges it got before left streaks where the effect samples past the first tile
+// (effect-fbo-wrap, effect-glitter).
+TEST(EffectFboJson, ReadsItsFixedSizeAndWrap) {
+    owe::wpscene::EffectFbo tiles;
+    auto                    json = owe::ParseJson(
+        R"({"name":"_rt_GlitterTiles","format":"r8","width":256,"height":128,"uvs":"repeat"})"_str);
+    ASSERT_TRUE(json.is_ok());
+    ASSERT_TRUE(tiles.FromJson(*json));
+    EXPECT_EQ(tiles.width, rstd::u32(256));
+    EXPECT_EQ(tiles.height, rstd::u32(128));
+    EXPECT_EQ(tiles.uvs, "repeat"_str);
+
+    owe::wpscene::EffectFbo plain;
+    auto                    other = owe::ParseJson(R"({"name":"_rt_x","format":"rgba8","scale":2})"_str);
+    ASSERT_TRUE(other.is_ok());
+    ASSERT_TRUE(plain.FromJson(*other));
+    EXPECT_EQ(plain.width, rstd::u32());
+    EXPECT_EQ(plain.height, rstd::u32());
+    EXPECT_TRUE(plain.uvs.is_empty());
+}
+
 TEST(ImageEffectJson, PreservesCopyPositionsAndComposeBindings) {
     auto json = owe::ParseJson(R"({
         "name":"compose-test", "version":1,
