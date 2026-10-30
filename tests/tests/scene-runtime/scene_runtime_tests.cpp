@@ -2443,3 +2443,45 @@ TEST(UniformSourceParallax, PerspectiveWithAuthoredParallaxDepthAppliesShift) {
                 std::abs(mvp_without_parallax[rstd::usize(13)] -
                          mvp_with_parallax[rstd::usize(13)]) > 1e-5f);
 }
+
+// A script can read the scene's field of view (thisScene.fov) and set a camera layer's (thisLayer.fov): More Physics'
+// camera layer says 60 and its script copies the scene's 80 into it in init, so the view is drawn with 80.
+TEST(SceneParserScript, ACameraLayerTakesTheScenesFieldOfViewFromItsScript) {
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {"center": "0 0 0", "eye": "0 0 12", "up": "0 1 0"},
+            "general": {"orthogonalprojection": null, "fov": 80},
+            "objects": [{
+                "id": 5,
+                "name": "cam",
+                "camera": "default",
+                "origin": "0 0 6",
+                "angles": {
+                    "script": "export function init() { thisLayer.fov = thisScene.fov; } export function update(value) { return value; }",
+                    "value": "0 0 0"
+                },
+                "fov": 60,
+                "zoom": 1
+            }]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+
+    owe::fs::VFS                vfs;
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "camera-layer-fov-script"_str,
+        ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+    scene.scene->Runtime().Advance(rstd::f64(1.0));
+    scene.scene->TickCameraPaths();
+    auto camera = scene.scene->ActiveCamera();
+    ASSERT_TRUE(camera.is_some());
+    EXPECT_DOUBLE_EQ((**camera).Fov(), 80.0);
+}
