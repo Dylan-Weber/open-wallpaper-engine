@@ -2269,3 +2269,26 @@ TEST(SceneTextures, CapturedImageSourcesReuseParsedContentAndPreserveOldRuntimeI
     EXPECT_EQ(before->Describe("asset"_str).unwrap().header.width, 32);
     EXPECT_TRUE(Arc<owe::Image>::ptr_eq(parsed, before->Parse("asset"_str).unwrap()));
 }
+
+// Camera shake moves the view of the layers drawn through the perspective camera too (an orthographic scene's layers with
+// "perspective": true): owe shook only the active orthographic camera, so those layers sat a few pixels from where
+// Wallpaper Engine draws them (ws2959390130's orbs, 7 px).
+TEST(SceneCameras, TheViewOffsetOfTheActiveCameraAlsoMovesThePerspectiveCamera) {
+    owe::Scene scene;
+    scene.RegisterCamera(
+        String::make("global"_str),
+        Arc<owe::SceneCamera>::make(owe::SceneCamera::MakeOrthographic(1920.0, 1080.0, -5000.0, 5000.0)));
+    auto perspective = Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.7778, 15000.0, 5.0, 50.0));
+    perspective->SetLookAt({ 960.0, 540.0, 1000.0 }, { 960.0, 540.0, 0.0 }, { 0.0, 1.0, 0.0 });
+    scene.RegisterCamera(String::make("global_perspective"_str), perspective.clone());
+    ASSERT_TRUE(scene.SetActiveCamera("global"_str));
+
+    const Eigen::Vector3d before = perspective->GetPosition();
+    scene.SetActiveCameraViewOffset({ 10.0, -5.0, 0.0 });
+    auto moved = scene.Camera("global_perspective"_str);
+    ASSERT_TRUE(moved.is_some());
+    const Eigen::Vector3d after = (**moved).GetPosition();
+    EXPECT_NEAR(after.x() - before.x(), 10.0, 1e-9);
+    EXPECT_NEAR(after.y() - before.y(), -5.0, 1e-9);
+    EXPECT_NEAR(after.z() - before.z(), 0.0, 1e-9);
+}
