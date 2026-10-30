@@ -1,0 +1,83 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 12",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": null,
+    "fov": 50,
+    "nearz": 0.1,
+    "farz": 100,
+    "clearcolor": "0.05 0.05 0.1",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "bloom": false,
+    "zoom": 1,
+    "ambientcolor": "0.2 0.2 0.2",
+    "skylightcolor": "0.2 0.2 0.2",
+    "lightconfig": {
+      "point": 0,
+      "spot": 0,
+      "tube": 0,
+      "directional": 0
+    }
+  },
+  "objects": [
+    {
+      "name": "cube 0",
+      "model": "models/cube0.mdl",
+      "origin": "-4 0 0",
+      "angles": "0.3 0.6 0",
+      "scale": "1 1 1",
+      "id": 1,
+      "visible": true
+    },
+    {
+      "name": "cube 1",
+      "model": "models/cube1.mdl",
+      "origin": "0 0 0",
+      "angles": "0.3 0.6 0",
+      "scale": "1 1 1",
+      "id": 2,
+      "visible": true
+    },
+    {
+      "name": "cube 2",
+      "model": "models/cube2.mdl",
+      "origin": "4 0 0",
+      "angles": "0.3 0.6 0",
+      "scale": "1 1 1",
+      "id": 3,
+      "visible": true
+    },
+    {
+      "name": "cam close",
+      "camera": "default",
+      "origin": "0 0 5",
+      "angles": "0 0 0",
+      "fov": 50,
+      "zoom": 1,
+      "id": 4,
+      "visible": true
+    },
+    {
+      "name": "hider",
+      "image": "models/util/solidlayer.json",
+      "size": "10 10",
+      "color": "0 0 0",
+      "alpha": 0,
+      "origin": {
+        "value": "10 10 0",
+        "script": "'use strict';\n\nexport function init() {\n\tthisScene.getLayer('cam close').visible = false;\n}\n",
+        "scriptproperties": {}
+      },
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 5,
+      "visible": true
+    }
+  ],
+  "version": 3
+}

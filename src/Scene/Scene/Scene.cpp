@@ -2482,6 +2482,10 @@ bool Scene::SetNodeVisible(SceneNode& node, bool visible) {
     const bool publishes_output     = node.HasLayer() && node.Layer()->PublishesOutput();
     node.m_visibility_affects_alpha = ! publishes_output;
     node.SetVisible(visible);
+    // a camera layer shown or hidden (a script's layer.visible) drives the camera or gives the scene's view back
+    // (camera-layer-restore)
+    for (const auto& path : m_camera_paths)
+        if (path->node == &node) path->SetEnabled(visible);
     if (publishes_output) {
         node.Layer()->SetVisibleOutputEnabled(visible);
     }

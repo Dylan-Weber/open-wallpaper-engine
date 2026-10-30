@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test a script hides the camera layer that drives the camera",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}
