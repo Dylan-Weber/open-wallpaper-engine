@@ -531,10 +531,15 @@ void WireGeneralFieldScripts(SceneParseContext& context, const wpscene::FieldBin
         const auto&       sb    = *binding.script;
         auto              field = binding.field.as_str();
         script::FieldKind kind  = script::FieldKind::Scalar;
+        bool              is_fov = false;
         if (field == "camerashake"_str) {
             kind = script::FieldKind::Bool;
         } else if (field == "ambientcolor"_str || field == "skylightcolor"_str) {
             kind = script::FieldKind::Vec3;
+        } else if (field == "fov"_str) {
+            // a perspective scene's camera; an orthographic scene's fov does nothing
+            if (context.orthographic_scene) continue;
+            is_fov = true;
         } else if (field != "camerashakeamplitude"_str && field != "camerashakespeed"_str &&
                    field != "camerashakeroughness"_str) {
             continue;
@@ -557,6 +562,27 @@ void WireGeneralFieldScripts(SceneParseContext& context, const wpscene::FieldBin
                                           nullptr, binding.field.as_str(), rstd::move(animation)));
         if (! fs) continue;
         TrackRegisteredAssets(context, fs);
+
+        if (is_fov) {
+            // Only a change of the value moves the camera: a script that keeps returning the authored fov (Ocarina of
+            // Time's, while it doesn't zoom) leaves camera layers and paths their own fovs. The camera is looked up
+            // when the script runs: general scripts are wired before the scene's camera is set up.
+            const auto   number   = sb.initial_value.as_f64();
+            const double authored = number.is_some() ? number->to_primitive() : 0.0;
+            ss.AddActuator({ fs,
+                             [scene = context.scene.get(), last = authored](
+                                 const script::ScriptValue& value) mutable {
+                                 auto fov = ScriptValueAsFloat(value);
+                                 if (! fov || ! (*fov > 0.0f && *fov < 180.0f)) return;
+                                 if (static_cast<double>(*fov) == last) return;
+                                 auto camera = scene->CameraHandle("global_perspective"_str);
+                                 if (camera.is_none()) return;
+                                 last = *fov;
+                                 (**camera).SetFov(*fov);
+                                 (**camera).Update();
+                             } });
+            continue;
+        }
 
         auto state      = context.uniform_state.clone();
         auto field_name = binding.field.clone();
