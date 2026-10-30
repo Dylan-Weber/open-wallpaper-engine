@@ -594,6 +594,129 @@ TEST(ParticleSubSystem, ConvertsWorldSpaceFollowAnchorsIntoChildLocalSpace) {
     EXPECT_TRUE(resolved.head<3>().cast<float>().isApprox(parent_position));
 }
 
+// A child made by eventspawn stays where its parent's particle was born; one made by eventfollow goes with the particle
+// (particles-event-children).
+TEST(ParticleSubSystem, AnEventSpawnChildStaysWhereTheParticleWasBornAndAFollowChildMoves) {
+    auto child_position = [](owe::ParticleSubSystem::SpawnType type) {
+        owe::Scene scene;
+        auto       parent_node = rstd::sync::Arc<owe::SceneNode>::make();
+        auto       child_node  = rstd::sync::Arc<owe::SceneNode>::make();
+        parent_node->AppendChild(child_node.clone());
+        owe::ParticleSubSystem parent(scene,
+                                      Arc<owe::SceneMesh>::make(),
+                                      u32(1),
+                                      f64(1.0),
+                                      u32(1),
+                                      f64(1.0),
+                                      owe::ParticleSubSystem::SpawnType::STATIC,
+                                      owe::ParticleAnimationSpec {});
+        parent.SetOwnerNode(parent_node.as_ptr());
+        parent.AddInitializer(owe::ParticleParser::GenInitializer(
+            owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(1)));
+        parent.AddInitializer(owe::ParticleParser::GenInitializer(
+            owe::ParseJson(R"({"name":"velocityrandom","min":"30 0 0","max":"30 0 0"})"_str).unwrap(), u32(1)));
+        parent.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+            owe::BoxEmitterProgram(parent.SpawnPipeline(),
+                                   owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) },
+                                   usize())));
+        owe::ParticleInstanceModifiers modifiers(Arc<owe::wpscene::ParticleInstanceoverride>::make(),
+                                                 owe::wpscene::Particle::EFlags { 0 },
+                                                 false);
+        parent.AddOperator(owe::ParticleParser::GenOperator(
+            owe::ParseJson(R"({"name":"movement"})"_str).unwrap(), modifiers.Clone(), parent, usize()));
+        auto child = Box<owe::ParticleSubSystem>::make(scene,
+                                                       Arc<owe::SceneMesh>::make(),
+                                                       u32(1),
+                                                       f64(),
+                                                       u32(1),
+                                                       f64(1.0),
+                                                       type,
+                                                       owe::ParticleAnimationSpec {});
+        child->SetOwnerNode(child_node.as_ptr());
+        child->Finalize();
+        auto* child_system = child.get();
+        parent.AddChild(rstd::move(child));
+        parent.Finalize();
+        for (int tick = 0; tick < 12; ++tick) parent.Tick(f64(1.0 / 4.0), false);
+        EXPECT_EQ(child_system->System().InstanceCount(), usize(1));
+        EXPECT_GT(parent.System().Instance(usize()).Binding().Read().Positions()[usize()].x(), 60.0f);
+        return child_system->InstanceState(usize()).bounded.position;
+    };
+    // the particle has gone 30 a second for 3 seconds by the end
+    EXPECT_NEAR(child_position(owe::ParticleSubSystem::SpawnType::EVENT_SPAWN).x(), 0.0f, 1.0f);
+    EXPECT_GT(child_position(owe::ParticleSubSystem::SpawnType::EVENT_FOLLOW).x(), 60.0f);
+}
+
+// inheritinitialvaluefromevent and inheritvaluefromevent give a child's particle its parent particle's colour, and nothing
+// else (particles-inherit-event).
+TEST(ParticleSubSystem, ChildParticlesInheritTheirParentsColourFromTheEvent) {
+    auto child_color = [](owe::ParticleSubSystem::SpawnType type, ref<str> initializer, ref<str> operator_json) {
+        owe::Scene scene;
+        auto       parent_node = rstd::sync::Arc<owe::SceneNode>::make();
+        auto       child_node  = rstd::sync::Arc<owe::SceneNode>::make();
+        parent_node->AppendChild(child_node.clone());
+        owe::ParticleSubSystem parent(scene,
+                                      Arc<owe::SceneMesh>::make(),
+                                      u32(1),
+                                      f64(),
+                                      u32(1),
+                                      f64(1.0),
+                                      owe::ParticleSubSystem::SpawnType::STATIC,
+                                      owe::ParticleAnimationSpec {});
+        parent.SetOwnerNode(parent_node.as_ptr());
+        parent.AddInitializer(owe::ParticleParser::GenInitializer(
+            owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(1)));
+        parent.AddInitializer(owe::ParticleParser::GenInitializer(
+            owe::ParseJson(R"({"name":"colorrandom","min":"255 128 0","max":"255 128 0"})"_str).unwrap(), u32(1)));
+        parent.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+            owe::BoxEmitterProgram(parent.SpawnPipeline(),
+                                   owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) },
+                                   usize())));
+        auto child = Box<owe::ParticleSubSystem>::make(scene,
+                                                       Arc<owe::SceneMesh>::make(),
+                                                       u32(1),
+                                                       f64(),
+                                                       u32(1),
+                                                       f64(1.0),
+                                                       type,
+                                                       owe::ParticleAnimationSpec {});
+        child->SetOwnerNode(child_node.as_ptr());
+        child->AddInitializer(owe::ParticleParser::GenInitializer(
+            owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(1)));
+        child->AddInitializer(owe::ParticleParser::GenInitializer(
+            owe::ParseJson(R"({"name":"colorrandom","min":"255 255 255","max":"255 255 255"})"_str).unwrap(), u32(1)));
+        if (initializer.len() != usize())
+            child->AddInitializer(
+                owe::ParticleParser::GenInitializer(owe::ParseJson(initializer).unwrap(), u32(1)));
+        child->AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+            owe::BoxEmitterProgram(child->SpawnPipeline(),
+                                   owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) },
+                                   usize())));
+        if (operator_json.len() != usize()) {
+            owe::ParticleInstanceModifiers modifiers(Arc<owe::wpscene::ParticleInstanceoverride>::make(),
+                                                     owe::wpscene::Particle::EFlags { 0 },
+                                                     false);
+            child->AddOperator(owe::ParticleParser::GenOperator(
+                owe::ParseJson(operator_json).unwrap(), modifiers.Clone(), *child, usize()));
+        }
+        child->Finalize();
+        auto* child_system = child.get();
+        parent.AddChild(rstd::move(child));
+        parent.Finalize();
+        for (int tick = 0; tick < 4; ++tick) parent.Tick(f64(1.0 / 60.0), false);
+        auto&                        storage = child_system->System().Instance(usize()).Storage();
+        particle::ParticleSlotReader value(storage, particle::ParticleSlot {});
+        return Eigen::Vector3f(value.Read(child_system->Attributes().color));
+    };
+    const auto spawn  = owe::ParticleSubSystem::SpawnType::EVENT_SPAWN;
+    const auto follow = owe::ParticleSubSystem::SpawnType::EVENT_FOLLOW;
+    EXPECT_TRUE(child_color(spawn, ""_str, ""_str).isApprox(Eigen::Vector3f(1, 1, 1)));
+    EXPECT_TRUE(child_color(spawn, R"({"name":"inheritinitialvaluefromevent"})"_str, ""_str)
+                    .isApprox(Eigen::Vector3f(1, 128.0f / 255.0f, 0)));
+    EXPECT_TRUE(child_color(follow, ""_str, R"({"name":"inheritvaluefromevent"})"_str)
+                    .isApprox(Eigen::Vector3f(1, 128.0f / 255.0f, 0)));
+}
+
 TEST(ParticleInstanceOverride, TracksProvidedControlpoints) {
     auto json = owe::ParseJson(R"({"size":2,"controlpoint1":"120 240 0"})"_str).unwrap();
     owe::wpscene::ParticleInstanceoverride override;

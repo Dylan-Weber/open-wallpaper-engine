@@ -675,7 +675,8 @@ void ParticleSubSystem::UpdateBoundedState(ParticleInstanceRef current) {
     if (bounded.particle_index >= isize() &&
         rstd::as_cast<usize>(bounded.particle_index) < parent_storage.Len()) {
         particle::ParticleSlot slot { .index = rstd::as_cast<usize>(bounded.particle_index) };
-        if (m_spawn_type != SpawnType::STATIC_CONTROLPOINT) {
+        // eventspawn's child stays where the particle was born; follow's goes with it (particles-event-children)
+        if (m_spawn_type != SpawnType::STATIC_CONTROLPOINT && m_spawn_type != SpawnType::EVENT_SPAWN) {
             bounded.position = OwnerWorldToLocal(bounded.parent_subsystem->FollowWorldPosition(
                 *bounded.parent, bounded.parent_instance_index, slot));
         }
