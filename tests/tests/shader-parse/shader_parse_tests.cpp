@@ -666,8 +666,11 @@ TEST(ShaderParser, ComboDependenciesPropagateWithoutMutatingInputs) {
     (void)inputs.insert("B"_Str, "7"_Str);
     (void)inputs.insert("Z"_Str, "0"_Str);
     auto resolved = owe::ShaderParser::ResolveShaderCombos(info, inputs);
-    EXPECT_FALSE(resolved.contains_key("A"_str));
-    EXPECT_FALSE(resolved.contains_key("MISSING"_str));
+    // Hidden combos compile at their default, zero too: a shader may read `float(SHARP)`.
+    ASSERT_TRUE(resolved.contains_key("A"_str));
+    EXPECT_EQ((**resolved.get("A"_str)).as_str(), "0"_str);
+    ASSERT_TRUE(resolved.contains_key("MISSING"_str));
+    EXPECT_EQ((**resolved.get("MISSING"_str)).as_str(), "0"_str);
     ASSERT_TRUE(resolved.contains_key("B"_str));
     EXPECT_EQ((**resolved.get("B"_str)).as_str(), "2"_str);
     ASSERT_TRUE(resolved.contains_key("NEGATIVE"_str));
@@ -676,6 +679,22 @@ TEST(ShaderParser, ComboDependenciesPropagateWithoutMutatingInputs) {
     EXPECT_EQ((**inputs.get("B"_str)).as_str(), "7"_str);
     (void)resolved.insert("Z"_Str, "changed"_Str);
     EXPECT_EQ((**inputs.get("Z"_str)).as_str(), "0"_str);
+}
+
+TEST(ShaderParser, AZeroComboIsUndefinedWhereTheShaderAliasesIt) {
+    owe::Combos combos;
+    (void)combos.insert("SHARP"_Str, "0"_Str);
+    const auto header = rstd::cppstd::to_string(
+        owe::ShaderParser::PreShaderHeader(
+            rstd::cppstd::as_str("#define SHARP 1\nvoid main(){}").unwrap(), combos,
+            owe::ShaderType::VERTEX)
+            .as_str());
+    const auto def   = header.find("#define SHARP 0\n");
+    const auto undef = header.find("#undef SHARP");
+    ASSERT_NE(def, std::string::npos);
+    ASSERT_NE(undef, std::string::npos);
+    EXPECT_LT(def, undef);
+    EXPECT_LT(undef, header.find("#define SHARP 1"));
 }
 
 TEST(ShaderParser, ComboHeadersUseSortedKeysAndLatestValues) {
@@ -1958,7 +1977,9 @@ void main() {
     const auto   result = owe::ShaderParser::CompileSceneShaderVariant(desc, vfs);
 
     ASSERT_TRUE(result.ok) << rstd::cppstd::as_string_view(result.error.as_str());
-    EXPECT_FALSE(result.variant.resolved_combos.contains_key("LINE_STYLE2"_str));
+    // The hidden zero combo is defined as 0; the shader's own alias is undefined first, so it still wins.
+    ASSERT_TRUE(result.variant.resolved_combos.contains_key("LINE_STYLE2"_str));
+    EXPECT_EQ((**result.variant.resolved_combos.get("LINE_STYLE2"_str)).as_str(), "0"_str);
     ASSERT_TRUE(result.variant.resolved_combos.contains_key("LINE_STYLE3"_str));
     EXPECT_EQ((**result.variant.resolved_combos.get("LINE_STYLE3"_str)).as_str(), "3"_str);
     ASSERT_TRUE(result.variant.resolved_combos.contains_key("SHAPE_VARIATION"_str));

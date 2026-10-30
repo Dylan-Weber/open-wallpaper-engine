@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "hiddencombo",
+  "passes": [
+    {
+      "material": "materials/effects/hiddencombo.json"
+    }
+  ]
+}
