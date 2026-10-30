@@ -109,8 +109,10 @@ bool AppendLayerCompositePassthroughEffect(fs::VFS& vfs, wpscene::ImageObject& i
     return true;
 }
 
-Arc<PuppetLayer> MakePuppetLayer(Arc<Puppet> puppet, slice<wpscene::PuppetAnimationLayer> layers) {
+Arc<PuppetLayer> MakePuppetLayer(Arc<Puppet> puppet, slice<wpscene::PuppetAnimationLayer> layers,
+                                 const array<float, 3>& scale) {
     auto                             out = Arc<PuppetLayer>::make(rstd::move(puppet));
+    out->SetObjectScale({ scale[usize(0)], scale[usize(1)], scale[usize(2)] });
     Vec<PuppetLayer::AnimationLayer> playback_layers;
     for (const auto& layer : layers) playback_layers.push(layer.playback.Clone());
     out->prepared(playback_layers.as_slice());
