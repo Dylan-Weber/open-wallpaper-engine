@@ -384,6 +384,9 @@ struct InheritControlpointVelocityProgram {
         const double          factor = algorism::lerp(Random::get(0.0, 1.0), min, max);
         columns.velocities[request.slot.index] =
             (columns.velocities[request.slot.index].cast<double>() + local * factor).cast<float>();
+    }
+};
+
 // The colour of the parent particle a child system's instance was made for (inheritinitialvaluefromevent and
 // inheritvaluefromevent, particles-inherit-event: only the colour is taken; not the size, opacity or velocity).
 inline auto ParentParticleColor(const ParticleFrame& frame) -> Option<Eigen::Vector3f> {
