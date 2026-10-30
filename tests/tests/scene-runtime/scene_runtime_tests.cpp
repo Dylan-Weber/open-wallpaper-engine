@@ -1984,6 +1984,26 @@ TEST(SceneParserScript, GeneralFovScriptSetsThePerspectiveCamerasFov) {
             "orthogonalprojection": null,
             "fov": {"value": 50, "script": "shared.fovscript = 1; export function update(value) { return 30; }"}
         }, "objects": []
+    })JSON"_str,
+                                                         owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    owe::fs::VFS                vfs;
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed =
+        parser.Parse("general-fov"_str,
+                     ref<owe::wpscene::SceneDocument>::from_raw_parts(&*document),
+                     mut_ref<owe::fs::VFS>::from_raw_parts(&vfs),
+                     mut_ref<wavsen::audio::SoundManager>::from_raw_parts(&sound_manager));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene  = rstd::move(parsed).unwrap();
+    auto camera = scene.scene->Camera("global_perspective"_str);
+    ASSERT_TRUE(camera.is_some());
+    EXPECT_DOUBLE_EQ((**camera).Fov(), 50.0);
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+    EXPECT_DOUBLE_EQ((**camera).Fov(), 30.0);
+}
+
 TEST(SceneParserScript, VisibleScriptsReturnTheLayersVisibility) {
     // Wallpaper Engine shows a layer, a model or a group by what its visible script returns
     auto document = owe::wpscene::ParseSceneDocumentJson(R"JSON({
@@ -2006,18 +2026,11 @@ TEST(SceneParserScript, VisibleScriptsReturnTheLayersVisibility) {
     wavsen::audio::SoundManager sound_manager;
     owe::SceneParser            parser;
     auto                        parsed =
-        parser.Parse("general-fov"_str,
         parser.Parse("visible-scripts"_str,
                      ref<owe::wpscene::SceneDocument>::from_raw_parts(&*document),
                      mut_ref<owe::fs::VFS>::from_raw_parts(&vfs),
                      mut_ref<wavsen::audio::SoundManager>::from_raw_parts(&sound_manager));
     ASSERT_TRUE(parsed.is_ok());
-    auto scene  = rstd::move(parsed).unwrap();
-    auto camera = scene.scene->Camera("global_perspective"_str);
-    ASSERT_TRUE(camera.is_some());
-    EXPECT_DOUBLE_EQ((**camera).Fov(), 50.0);
-    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
-    EXPECT_DOUBLE_EQ((**camera).Fov(), 30.0);
     auto  scene      = rstd::move(parsed).unwrap();
     auto* hidden     = scene.scene->RootMut()->FindByName("Hidden"_str);
     auto* kept       = scene.scene->RootMut()->FindByName("Kept"_str);
