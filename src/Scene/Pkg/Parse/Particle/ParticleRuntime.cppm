@@ -243,6 +243,8 @@ struct ParticleFrame {
     Eigen::Matrix3d          local_from_world_dir { Eigen::Matrix3d::Identity() };
     Eigen::Matrix4d          world_from_spawn_space { Eigen::Matrix4d::Identity() };
     Eigen::Matrix4d          local_from_world { Eigen::Matrix4d::Identity() };
+    // each control point's velocity in the particles' space (per second), measured between frames
+    Eigen::Matrix<double, 3, 8> controlpoint_velocity { Eigen::Matrix<double, 3, 8>::Zero() };
     f64                      time {};
     f64                      delta {};
     f64                      emitter_delta {};
@@ -549,6 +551,8 @@ private:
                     Eigen::Vector3f position = Eigen::Vector3f::Zero(), bool fixed = false);
 
     Scene&                                                        m_scene;
+    Eigen::Matrix<double, 3, 8>                                   m_controlpoint_previous { Eigen::Matrix<double, 3, 8>::Zero() };
+    bool                                                          m_has_controlpoint_previous { false };
     Arc<SceneMesh>                                                m_mesh;
     SceneNode*                                                    m_owner_node { nullptr };
     particle::ParticleSchemaBuilder                               m_schema_builder;
