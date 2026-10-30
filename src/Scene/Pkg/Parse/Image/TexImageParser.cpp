@@ -912,3 +912,10 @@ auto TexImageParser::Prepare(ref<str> name) const -> Result<Arc<PreparedImage>, 
     (void)cache->insert(String::make(name), prepared.clone());
     return Ok(rstd::move(prepared));
 }
+
+auto owe::SpriteFrameSize(const ImageHeader& header) -> Option<array<float, 2>> {
+    if (! header.isSprite || header.spriteAnim.numFrames() == usize()) return None();
+    const auto& frame = header.spriteAnim.GetFrame(usize());
+    if (! (frame.width > 0.0f && frame.height > 0.0f)) return None();
+    return Some(array<float, 2> { frame.width, frame.height });
+}

@@ -1454,7 +1454,8 @@ TEST(ImageObjectJson, AutosizeModelTakesItsTexturesSize) {
     const auto sized = layer("models/plain.json");
     EXPECT_EQ(sized[rstd::usize(0)], 256.0f);
     EXPECT_EQ(sized[rstd::usize(1)], 256.0f);
-    // a sprite sheet's image holds all its frames: autosize doesn't take it (Dino Run's 24 x 24 dinos are 144 x 24 sheets)
+    // a sprite sheet's image holds all its frames: autosize doesn't take it (Dino Run's 24 x 24 dinos are 144 x 24 sheets);
+    // the layer is drawn at one frame's size, which the image parser reads from the sheet's frames
     std::ofstream(dir / "models/sprite.json") << R"({"autosize": true, "material": "materials/sprite.json"})";
     std::ofstream(dir / "materials/sprite.json")
         << R"({"passes": [{"shader": "genericimage2", "textures": ["sheet"]}]})";
@@ -1467,6 +1468,18 @@ TEST(ImageObjectJson, AutosizeModelTakesItsTexturesSize) {
     const auto sprite = layer("models/sprite.json");
     EXPECT_EQ(sprite[rstd::usize(0)], 256.0f);
     EXPECT_EQ(sprite[rstd::usize(1)], 256.0f);
+    {
+        auto json = owe::ParseJson(
+            R"({"image": "models/sprite.json", "size": "256 256", "origin": "0 0 0"})"_str);
+        owe::wpscene::ImageObject image;
+        EXPECT_TRUE(image.FromJson(json.unwrap(), vfs));
+        EXPECT_TRUE(image.autosize_sprite_sheet);
+        auto plain_json = owe::ParseJson(
+            R"({"image": "models/sq.json", "size": "256 256", "origin": "0 0 0"})"_str);
+        owe::wpscene::ImageObject plain;
+        EXPECT_TRUE(plain.FromJson(plain_json.unwrap(), vfs));
+        EXPECT_FALSE(plain.autosize_sprite_sheet);
+    }
     std::filesystem::remove_all(dir);
 }
 

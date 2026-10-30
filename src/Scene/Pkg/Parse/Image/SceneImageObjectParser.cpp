@@ -68,6 +68,11 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
     const bool alpha_can_change   = ! wpimgobj.alpha_user_key.is_empty() ||
                                     wpimgobj.field_bindings.HasAnimation("alpha"_str) ||
                                     wpimgobj.field_bindings.HasScript("alpha"_str);
+    if (wpimgobj.autosize_sprite_sheet && ! wpimgobj.material.textures.is_empty()) {
+        auto header = context.scene->ParseImageHeader(wpimgobj.material.textures[usize()].as_str());
+        if (header.is_ok())
+            if (auto frame = SpriteFrameSize(*header); frame.is_some()) wpimgobj.size = *frame;
+    }
     const auto geometry_size      = wpimgobj.size;
     const auto effect_target_size = ImageEffectTargetSize(context, wpimgobj);
 
