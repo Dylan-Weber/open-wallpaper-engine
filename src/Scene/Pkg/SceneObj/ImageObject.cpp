@@ -25,7 +25,7 @@ auto LoadJsonFile(owe::fs::VFS& vfs, ref<str> path) -> Option<owe::Json> {
 }
 
 // The image size a texture's header gives (TEXV, TEXI, then format, flags, texture width and height, image width and
-// height), or None.
+// height), or None, also for a sprite sheet.
 auto TextureImageSize(owe::fs::VFS& vfs, ref<str> texture) -> Option<array<float, 2>> {
     auto file =
         owe::fs::OpenBinary(vfs, owe::fs::Path(rstd::format("/assets/materials/{}.tex", texture).as_str()));
@@ -33,7 +33,11 @@ auto TextureImageSize(owe::fs::VFS& vfs, ref<str> texture) -> Option<array<float
     auto f = rstd::move(file).unwrap_unchecked();
     (void)f.ReadStr();
     (void)f.ReadStr();
-    for (int i = 0; i < 4; ++i) (void)f.ReadUint32();
+    (void)f.ReadUint32();
+    // a sprite sheet (flag 4) holds every frame in its image: not one frame's size
+    if ((f.ReadUint32() & 4u) != 0u) return None();
+    (void)f.ReadUint32();
+    (void)f.ReadUint32();
     const auto width  = f.ReadUint32();
     const auto height = f.ReadUint32();
     if (width == 0 || height == 0) return None();

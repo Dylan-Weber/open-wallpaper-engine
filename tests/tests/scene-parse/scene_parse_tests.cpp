@@ -1454,6 +1454,19 @@ TEST(ImageObjectJson, AutosizeModelTakesItsTexturesSize) {
     const auto sized = layer("models/plain.json");
     EXPECT_EQ(sized[rstd::usize(0)], 256.0f);
     EXPECT_EQ(sized[rstd::usize(1)], 256.0f);
+    // a sprite sheet's image holds all its frames: autosize doesn't take it (Dino Run's 24 x 24 dinos are 144 x 24 sheets)
+    std::ofstream(dir / "models/sprite.json") << R"({"autosize": true, "material": "materials/sprite.json"})";
+    std::ofstream(dir / "materials/sprite.json")
+        << R"({"passes": [{"shader": "genericimage2", "textures": ["sheet"]}]})";
+    {
+        std::ofstream tex(dir / "materials/sheet.tex", std::ios::binary);
+        tex.write("TEXV0005\0TEXI0001\0", 18);
+        const std::uint32_t header[] = { 0, 5, 256, 32, 144, 24, 0 };  // flags 4: a sprite sheet
+        tex.write(reinterpret_cast<const char*>(header), sizeof(header));
+    }
+    const auto sprite = layer("models/sprite.json");
+    EXPECT_EQ(sprite[rstd::usize(0)], 256.0f);
+    EXPECT_EQ(sprite[rstd::usize(1)], 256.0f);
     std::filesystem::remove_all(dir);
 }
 
