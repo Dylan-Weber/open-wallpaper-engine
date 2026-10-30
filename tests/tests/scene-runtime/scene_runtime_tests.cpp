@@ -1781,6 +1781,41 @@ TEST(UniformSourceParallax, HostSwitchOnlyRemovesMouseContribution) {
     EXPECT_FLOAT_EQ(position[usize(1)], 0.5f);
 }
 
+TEST(UniformSourceParallax, APointerOutsideTheWindowParallaxesFromItsEdge) {
+    // camera-parallax: with the pointer parked outside the window (the probe reads 2.87, 1.79), Wallpaper Engine's layers
+    // move as if it were at the window's corner; the shaders' pointer stays outside
+    auto state = Arc<owe::UniformSceneState>::make(Arc<owe::AudioResponseDemand>::make());
+    state->CameraParallax() = { true, 0.5f, 0.0f, 0.25f };
+    state->SetOrtho(100.0f, 80.0f);
+    auto camera =
+        Arc<owe::SceneCamera>::make(owe::SceneCamera::MakeOrthographic(100, 80, -1.0, 1.0));
+    auto camera_node = Arc<owe::SceneNode>::make(
+        Eigen::Vector3f { 10.0f, 20.0f, 0.0f }, Eigen::Vector3f::Ones(), Eigen::Vector3f::Zero());
+    camera->AttatchNode(camera_node.as_ptr());
+    auto node = Arc<owe::SceneNode>::make(
+        Eigen::Vector3f { 30.0f, 50.0f, 0.0f }, Eigen::Vector3f::Ones(), Eigen::Vector3f::Zero());
+    auto                  resolver = Arc<owe::UniformCameraResolver>::make(camera.clone());
+    owe::UniformNodeState node_state(node.clone(), resolver.clone());
+    node_state.parallax.authored = true;
+    node_state.parallax.depth    = { 1.0f, 1.0f };
+    owe::UniformRuntimeInput input(state.clone());
+    owe::FrameUniformSource  frame_source(state.clone());
+    auto                     offset = [&] {
+        return state->ComputeParallaxOffset(node_state, *camera, owe::SceneRenderViewKind::Primary);
+    };
+    input.SetPointerInput(1.0, 1.0);
+    state->Advance(owe::SceneFrame {});
+    const auto corner = offset();
+    input.SetPointerInput(2.0, 1.5);
+    state->Advance(owe::SceneFrame {});
+    const auto outside = offset();
+    EXPECT_FLOAT_EQ(outside[usize()], corner[usize()]);
+    EXPECT_FLOAT_EQ(outside[usize(1)], corner[usize(1)]);
+    auto pointer = scene_test::Capture(owe::SceneFrame {}, frame_source, owe::FrameUniformOutput::PointerPosition);
+    EXPECT_FLOAT_EQ(pointer[usize()], 2.0f);
+    EXPECT_FLOAT_EQ(pointer[usize(1)], 1.5f);
+}
+
 TEST(UniformSourceParallax, UserPropertiesDriveEveryParallaxField) {
     auto state = Arc<owe::UniformSceneState>::make(Arc<owe::AudioResponseDemand>::make());
     state->CameraParallax() = { true, 0.03f, 0.1f, 0.36f };
