@@ -320,8 +320,10 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
         material.name    = "text"_Str;
         material.defines = Vec<String>::make();
         material.defines.push("g_Texture0"_Str);
-        material.SetBlendMode(direct_text || copy_background_seed || has_bg ? BlendMode::Translucent
-                                                                            : BlendMode::Normal);
+        // (letters blend over their outline, which they would otherwise wipe out)
+        material.SetBlendMode(direct_text || copy_background_seed || has_bg || obj.outline
+                                  ? BlendMode::Translucent
+                                  : BlendMode::Normal);
         material.customShader.shader = shader.clone();
         sp_mesh->AddMaterial(rstd::move(material));
     }
