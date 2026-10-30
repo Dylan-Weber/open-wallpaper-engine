@@ -1,6 +1,6 @@
 # particles-collisionbounds-rest: single particles that come to rest against the screen's edges under collisionbounds
-# (bouncefactor 0.5): the right wall, the left wall, the floor, the ceiling; then the right wall with behaviour slide
-# and the floor with behaviour delete.
+# (bouncefactor 0, so they stay where they meet it): the right wall, the left wall and floor (a corner), the floor, the
+# ceiling; then the right wall and floor with behaviour slide and the floor with behaviour delete.
 def cell(operator, origin, velocity, gravity):
     return {
         "material": "materials/particle/halo.json", "maxcount": 4, "starttime": 0, "flags": 0,
@@ -18,10 +18,10 @@ def cell(operator, origin, velocity, gravity):
     }
 
 
-bounds = {"name": "collisionbounds", "bouncefactor": 0.5}
+bounds = {"name": "collisionbounds", "bouncefactor": 0}
 cells = (
     (bounds, "1700 700", "300 0 0", "0 0 0"),
-    (bounds, "200 700", "-300 0 0", "0 0 0"),
+    (bounds, "200 700", "-300 -100 0", "0 0 0"),
     (bounds, "960 300", "0 0 0", "0 -500 0"),
     (bounds, "960 800", "0 400 0", "0 0 0"),
     (dict(bounds, collisionbehavior="slide"), "1700 300", "300 0 0", "0 -500 0"),
