@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test when a sprite sheet animation starts (small sheet)",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}
