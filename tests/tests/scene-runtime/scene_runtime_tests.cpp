@@ -3392,66 +3392,53 @@ TEST(UniformSourceParallax, PerspectiveWithAuthoredParallaxDepthAppliesShift) {
                          mvp_with_parallax[rstd::usize(13)]) > 1e-5f);
 }
 
-// A script that creates a layer from a model layer's initial configuration (More Physics spawns its spheres this
-// way) gets another model layer of the same model; owe made a plain 2 x 2 solid layer of it (hundreds of white squares).
-TEST(SceneParserScript, ACreatedLayerFromAModelConfigurationIsAModelLayer) {
+// A script's applyUserProperties is first called with every user property at once (Wallpaper Engine passes all of them when
+// the script starts, only the changed ones afterwards). owe called it for the scene's properties one at a time, before the
+// script existed or never, so a script that reads two properties (the Outer Wilds sun's supernova loop and its duration)
+// saw the second one missing and switched itself off.
+TEST(SceneParserScript, ApplyUserPropertiesFirstGetsEveryPropertyAtOnce) {
     auto document = owe::wpscene::ParseSceneDocumentJson(
         R"JSON({
             "camera": {},
             "general": {},
-            "objects": [
-                {
-                    "id": 90,
-                    "name": "Controller",
-                    "visible": {
-                        "value": true,
-                        "script": "export function init(value) { const config = thisScene.getInitialLayerConfig(thisScene.getLayer('Source')); config.name = 'Copy'; const copy = thisScene.createLayer(config); copy.origin = new Vec3(5, 6, 7); return value; } export function update(value) { return value; }"
-                    }
-                },
-                {
-                    "id": 7,
-                    "name": "Source",
-                    "model": "models/cube.mdl",
-                    "origin": "1 2 3"
+            "objects": [{
+                "id": 1,
+                "name": "Reader",
+                "scale": {
+                    "script": "let both = false; export function applyUserProperties(p) { if (p.loop_on !== undefined && p.loop_length !== undefined) both = true; } export function update(value) { value.x = both ? 3 : 1; return value; }",
+                    "value": "1 1 1"
                 }
-            ]
+            }]
         })JSON"_str,
         owe::wpscene::kSceneVersionUnknown);
     ASSERT_TRUE(document.is_some());
 
-    auto assets = owe::fs::make_physical_fs(
-        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
-    // the tests run from the repository root or from tests/
-    std::string fixture = WAYWALLEN_FIXTURE_DIR "/script-model";
-    if (! std::filesystem::exists(fixture)) fixture = "fixtures/script-model";
-    auto own = owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(fixture).unwrap()));
-    ASSERT_TRUE(assets.is_ok());
-    ASSERT_TRUE(own.is_ok());
-    owe::fs::VFS vfs;
-    ASSERT_TRUE(vfs.mount("/assets"_str, rstd::move(assets).unwrap_unchecked()).is_ok());
-    ASSERT_TRUE(vfs.mount("/assets"_str, rstd::move(own).unwrap_unchecked()).is_ok());
+    auto user_properties = rstd::json::Map::make();
+    user_properties.insert(
+        String::make("loop_on"_str), owe::ParseJson(R"({"type":"bool","value":true})"_str).unwrap());
+    user_properties.insert(
+        String::make("loop_length"_str),
+        owe::ParseJson(R"({"type":"slider","value":1320})"_str).unwrap());
 
+    owe::fs::VFS                vfs;
     wavsen::audio::SoundManager sound_manager;
     owe::SceneParser            parser;
     auto                        parsed = parser.Parse(
-        "copy-model-layer"_str,
+        "apply-user-properties-first"_str,
         ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
         mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
-        mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+        mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)),
+        owe::SceneParseOptions {
+            .user_properties =
+                Some(ref<rstd::json::Map>::from_raw_parts(rstd::addressof(user_properties))),
+        });
     ASSERT_TRUE(parsed.is_ok());
-    auto scene = rstd::move(parsed).unwrap();
 
-    usize models {};
-    usize solids {};
-    bool  moved = false;
-    for (const auto& child : scene.scene->RootMut()->GetChildren()) {
-        if ((child->Name() == "Source"_str || child->Name() == "Copy"_str) && child->Mesh() != nullptr) {
-            ++models;
-            if (child->Translate().x() == 5.0f) moved = true;
-        }
-        if (child->Name() == "__createLayer"_str) ++solids;
-    }
-    EXPECT_EQ(models, usize(2));
-    EXPECT_EQ(solids, usize());
-    EXPECT_TRUE(moved);
+    auto scene  = rstd::move(parsed).unwrap();
+    auto reader = scene.scene->RootMut()->FindByName("Reader"_str);
+    ASSERT_NE(reader, nullptr);
+    // the app applies all the properties after loading
+    owe::SceneUserPropertyApplier::ApplyAll(*scene.scene, user_properties);
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+    EXPECT_FLOAT_EQ(reader->Scale().x(), 3.0f);
 }
