@@ -306,15 +306,24 @@ void LayerImageEmitterProgram::Emit(particle::ParticleEmitterContext& context) {
     source.node->UpdateTrans();
     const Eigen::Matrix4d model = source.node->ModelTrans();
     for (auto request : requests) {
-        const Eigen::Vector4d point(algorism::lerp(Random::get(0.0, 1.0), -source.half_width, source.half_width),
-                                    algorism::lerp(Random::get(0.0, 1.0), -source.half_height, source.half_height),
-                                    0.0,
-                                    1.0);
+        Eigen::Vector4d point(0.0, 0.0, 0.0, 1.0);
+        Eigen::Vector3f color = source.color;
+        if (! source.points.is_empty()) {
+            auto pick   = static_cast<usize>(Random::get(0.0, 1.0) * static_cast<double>(source.points.len().to_primitive()));
+            if (pick >= source.points.len()) pick = source.points.len() - usize(1);
+            const auto& pixel = source.points[pick];
+            point.x() = pixel.x + algorism::lerp(Random::get(0.0, 1.0), -source.jitter, source.jitter);
+            point.y() = pixel.y + algorism::lerp(Random::get(0.0, 1.0), -source.jitter, source.jitter);
+            color     = pixel.color.cwiseProduct(source.color);
+        } else {
+            point.x() = algorism::lerp(Random::get(0.0, 1.0), -source.half_width, source.half_width);
+            point.y() = algorism::lerp(Random::get(0.0, 1.0), -source.half_height, source.half_height);
+        }
         Eigen::Vector3f world = (model * point).head<3>().cast<float>();
         columns.positions[request.slot.index] =
             frame->world_space ? world : frame->subsystem->OwnerWorldToLocal(world);
-        columns.colors[request.slot.index]         = source.color;
-        columns.initial_colors[request.slot.index] = source.color;
+        columns.colors[request.slot.index]         = color;
+        columns.initial_colors[request.slot.index] = color;
         m_pipeline->Initialize(columns, request, context.Frame());
     }
     auto emitted       = rstd::as_cast<u32>(requests.len());

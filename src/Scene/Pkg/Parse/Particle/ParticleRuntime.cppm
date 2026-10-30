@@ -358,12 +358,21 @@ struct ParticleSphereEmitterArgs {
 // An image layer a layerimage emitter emits from (particles-layerimage): the layer's rectangle, its size's half-extents before
 // the layer's scale, turned and moved by the layer's node; the particles take the layer's colour; a layer less than about
 // half opaque emits nothing.
+// a pixel of a layer's image that emits: its place in layer units from the centre, and its colour
+struct LayerImagePoint {
+    float           x {}, y {};
+    Eigen::Vector3f color { 1.0f, 1.0f, 1.0f };
+};
+
 struct LayerImageSource {
     Arc<SceneNode>  node;
     double          half_width {};
     double          half_height {};
     Eigen::Vector3f color { 1.0f, 1.0f, 1.0f };
     float           alpha { 1.0f };
+    // the opaque pixels of the layer's image, when it has some: the emitter picks one at random (a jitter of half a pixel)
+    Vec<LayerImagePoint> points;
+    float                jitter { 0.5f };
 };
 
 struct ParticleLayerImageEmitterArgs {

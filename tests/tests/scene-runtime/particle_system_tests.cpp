@@ -659,6 +659,57 @@ TEST(ParticleSubSystem, LayerImageEmitterFillsTheLayersRectangleInItsColour) {
     EXPECT_EQ(emit(0.5f).count, usize(40));
 }
 
+// A layer with pixels (a texture's opaque ones) emits from those: here two points, 10 left of the layer's centre (green) and
+// 10 right (blue), each within half a unit; the layer's colour multiplies theirs.
+TEST(ParticleSubSystem, LayerImageEmitterEmitsFromThePixelsOfAnImage) {
+    owe::Scene scene;
+    auto       layer = rstd::sync::Arc<owe::SceneNode>::make(Eigen::Vector3f { 100.0f, 50.0f, 0.0f },
+                                                       Eigen::Vector3f { 1.0f, 1.0f, 1.0f },
+                                                       Eigen::Vector3f::Zero());
+    owe::ParticleSubSystem subsystem(scene,
+                                     Arc<owe::SceneMesh>::make(),
+                                     u32(64),
+                                     f64(1.0),
+                                     u32(1),
+                                     f64(1.0),
+                                     owe::ParticleSubSystem::SpawnType::STATIC,
+                                     owe::ParticleAnimationSpec {});
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(64)));
+    owe::wpscene::Emitter emitter;
+    emitter.name          = String::make("layerimage"_str);
+    emitter.instantaneous = u32(40);
+    owe::LayerImageSource image {
+        .node = layer.clone(), .half_width = 20.0, .half_height = 10.0,
+        .color = Eigen::Vector3f(1.0f, 1.0f, 0.5f), .alpha = 1.0f };
+    image.points.push(owe::LayerImagePoint { .x = -10.0f, .y = 0.0f, .color = Eigen::Vector3f(0, 1, 0) });
+    image.points.push(owe::LayerImagePoint { .x = 10.0f, .y = 0.0f, .color = Eigen::Vector3f(0, 0, 1) });
+    subsystem.AddEmitter(owe::ParticleParser::GenEmitter(
+        emitter, subsystem, usize(), Some(Arc<owe::LayerImageSource>::make(rstd::move(image)))));
+    subsystem.Finalize();
+    subsystem.Tick(f64(1.0 / 60.0), false);
+    ASSERT_EQ(LiveParticleCount(subsystem), usize(40));
+    auto& storage = subsystem.System().Instance(usize()).Storage();
+    int   left {}, right {};
+    for (usize index {}; index < usize(40); ++index) {
+        particle::ParticleSlotReader value(storage, particle::ParticleSlot { .index = index });
+        auto position = Eigen::Vector3f(value.Read(subsystem.Attributes().position));
+        auto color    = Eigen::Vector3f(value.Read(subsystem.Attributes().color));
+        EXPECT_NEAR(position.y(), 50.0f, 0.51f);
+        if (position.x() < 100.0f) {
+            ++left;
+            EXPECT_NEAR(position.x(), 90.0f, 0.51f);
+            EXPECT_TRUE(color.isApprox(Eigen::Vector3f(0, 1, 0)));
+        } else {
+            ++right;
+            EXPECT_NEAR(position.x(), 110.0f, 0.51f);
+            EXPECT_TRUE(color.isApprox(Eigen::Vector3f(0, 0, 0.5f)));
+        }
+    }
+    EXPECT_GT(left, 0);
+    EXPECT_GT(right, 0);
+}
+
 TEST(ParticleInstanceOverride, TracksProvidedControlpoints) {
     auto json = owe::ParseJson(R"({"size":2,"controlpoint1":"120 240 0"})"_str).unwrap();
     owe::wpscene::ParticleInstanceoverride override;
