@@ -2016,6 +2016,9 @@ struct RemapValueOperator {
             break;
         }
         }
+    }
+};
+
 // inheritvaluefromevent: the colour of the particle the system follows, every frame (particles-inherit-event)
 struct InheritValueFromEventOperator {
     ParticleAttributes                                     attributes;
