@@ -61,7 +61,9 @@ Option<array<float, 2>> ResolveImageAssetSize(SceneParseContext& context, ref<st
     auto info = wpscene::LoadImageAssetInfo(*context.vfs, asset);
     if (! info) return None();
     if (info->size) return Some(*info->size);
-    if (info->first_texture.is_empty()) return None();
+    // a solid layer has no texture to take a size from: Wallpaper Engine makes it 1 x 1
+    if (info->first_texture.is_empty())
+        return info->solid_layer ? Some(array<float, 2> { 1.0f, 1.0f }) : None();
 
     auto parsed = context.scene->ParseImageHeader(info->first_texture.as_str());
     if (parsed.is_err()) return None();
