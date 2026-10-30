@@ -369,8 +369,10 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
         obj.verticalalign.as_str(), obj.alignment.as_str(), "top"_str, "bottom"_str);
     style.halign = rstd::into(initial_halign);
 
-    const float text_padding   = style.padding;
-    const float text_padding_y = style.padding_y;
+    // The render target of text faded as a whole holds its outline, which its ink doesn't count.
+    const float outline_room   = alpha_at_compose ? obj.outlinethickness + 2.0f : 0.0f;
+    const float text_padding   = style.padding + outline_room;
+    const float text_padding_y = style.padding_y + outline_room;
     const float wrap_width   = style.wrap_width;
     auto        layouter     = Arc<text::TextLayouter>::make(resources.clone(),
                                                              rstd::move(font),
