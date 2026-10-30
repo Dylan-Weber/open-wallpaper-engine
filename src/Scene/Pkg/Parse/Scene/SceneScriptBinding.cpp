@@ -417,11 +417,7 @@ void WireFieldScripts(SceneParseContext& context, const Arc<SceneNode>& node_sp,
             tgt  = script::NodeTransformTarget::Rotation;
             kind = script::FieldKind::Vec3;
         } else if (field == "visible"_str) {
-            // Side-effect-only script bound to visibility. update() may
-            // drive other layers via createLayer + property writes; we
-            // don't write a return value back to the node.
-            kind         = script::FieldKind::Bool;
-            has_actuator = false;
+            kind = script::FieldKind::Bool;
         } else if (field == "alpha"_str) {
             kind     = script::FieldKind::Scalar;
             is_alpha = true;
@@ -454,6 +450,22 @@ void WireFieldScripts(SceneParseContext& context, const Arc<SceneNode>& node_sp,
         SetScriptInitializationOrder(context, *fs, node);
         TrackRegisteredAssets(context, fs);
         if (! has_actuator) continue;
+        if (field == "visible"_str) {
+            // What the script returns shows or hides the node. Only a change of the returned value does: a script
+            // that returns the value it is given doesn't undo another script's `layer.visible = ...`.
+            ss.AddActuator({ fs,
+                             [scene = context.scene.get(), node,
+                              last  = sb.initial_value.as_bool().unwrap_or(true)](
+                                 const script::ScriptValue& value) mutable {
+                                 auto shown = ScriptValueAsFloat(value);
+                                 if (! shown) return;
+                                 const bool visible = *shown != 0.0f;
+                                 if (visible == last) return;
+                                 last = visible;
+                                 scene->SetNodeVisible(*node, visible);
+                             } });
+            continue;
+        }
         if (is_alpha)
             ss.AddActuator({ fs, script::MakeNodeAlphaApply(node_sp.clone()) });
         else if (is_color)
