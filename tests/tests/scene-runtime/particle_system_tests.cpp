@@ -8,6 +8,7 @@ import wescene.particle;
 import wescene.particle.program;
 import wescene.pkg.parse;
 import wescene.scene;
+import wescene.types;
 
 using namespace rstd::prelude;
 using rstd::sync::Arc;
@@ -758,6 +759,65 @@ TEST(ParticleSubSystem, AppliesVortexAroundWorldSpaceOwner) {
     auto positions = subsystem.System().Instance(usize()).Binding().Read().Positions();
     ASSERT_EQ(positions.len(), usize(1));
     EXPECT_GT(std::abs(positions[usize()].z()), 0.01f);
+}
+
+// A plain rope's vertex shader takes the length of the rope, in points, from the fourth component of
+// each segment's end point, and spreads its texture over length - 1 segments: a rope of n particles
+// has n - 1 segments and says n (particles-rope-count: owe said n - 1, so the last segment's
+// texture ran off the end and a rope of two particles, whose length - 1 came to 0, drew nothing).
+TEST(ParticleSubSystem, ARopeSaysItsLengthInPoints) {
+    owe::Scene scene;
+    auto       mesh = Arc<owe::SceneMesh>::make();
+    // the plain rope's geometry-shader layout (SetRopeParticleMesh's)
+    const rstd::initializer_list<owe::SceneVertexArray::SceneVertexAttribute> attributes {
+        { .name = "a_PositionVec4"_Str, .type = owe::VertexType::FLOAT4 },
+        { .name = "a_TexCoordVec4"_Str, .type = owe::VertexType::FLOAT4 },
+        { .name = "a_TexCoordVec4C1"_Str, .type = owe::VertexType::FLOAT4 },
+        { .name = "a_TexCoordVec3C2"_Str, .type = owe::VertexType::FLOAT3, .padding = false },
+        { .name = "a_Color"_Str, .type = owe::VertexType::FLOAT4 },
+    };
+    mesh->AddVertexArray(owe::SceneVertexArray(attributes, rstd::usize(10)));
+    mesh->GetVertexArray(usize(0)).SetOption("PRENDER_ROPE"_str, true);
+    mesh->GetVertexArray(usize(0)).SetOption("THICKFORMAT"_str, false);
+    mesh->GetVertexArray(usize(0)).SetOption("GS_ENABLED"_str, true);
+    owe::ParticleSubSystem subsystem(scene,
+                                     mesh.clone(),
+                                     u32(10),
+                                     f64(),
+                                     u32(1),
+                                     f64(1.0),
+                                     owe::ParticleSubSystem::SpawnType::STATIC,
+                                     owe::ParticleAnimationSpec {},
+                                     {},
+                                     u32(),
+                                     f64(),
+                                     f64(),
+                                     true);
+    auto owner    = rstd::sync::Arc<owe::SceneNode>::make(
+        Eigen::Vector3f::Zero(), Eigen::Vector3f::Ones(), Eigen::Vector3f::Zero());
+    auto override = rstd::sync::Arc<owe::wpscene::ParticleInstanceoverride>::make();
+    subsystem.SetOwnerNode(owner.as_ptr());
+    auto modifiers = owe::ParticleInstanceModifiers(
+        override.clone(), owe::wpscene::Particle::EFlags { 0 }, true);
+    subsystem.SetInstanceModifiers(modifiers.Clone());
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"lifetimerandom","min":1000,"max":1000})"_str).unwrap(), u32(1)));
+    subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+        owe::BoxEmitterProgram(subsystem.SpawnPipeline(),
+                               owe::ParticleBoxEmitterArgs {
+                                   .max_distance  = { 100.0f, 0.0f, 0.0f },
+                                   .instantaneous = u32(4),
+                               },
+                               usize())));
+    subsystem.Finalize();
+    subsystem.Tick(f64(1.0 / 60.0), true);
+    subsystem.Tick(f64(1.0 / 60.0), true);
+
+    // position (4 floats), end point (4), previous point (4), next point (3), colour (4)
+    const auto& vertices = mesh->GetVertexArray(usize());
+    ASSERT_EQ(vertices.OneSize(), usize(19));
+    ASSERT_EQ(vertices.VertexCount(), usize(3));
+    for (std::size_t v = 0; v < 3; ++v) EXPECT_FLOAT_EQ(vertices.Data()[v * 19 + 7], 4.0f) << v;
 }
 
 TEST(ParticleSubSystem, AppliesTurbulenceMaskAsAxisWeights) {
