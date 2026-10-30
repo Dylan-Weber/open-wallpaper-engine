@@ -788,7 +788,7 @@ TEST(ParticleSubSystem, DragSlowsAtHalfItsValue) {
         override.clone(), owe::wpscene::Particle::EFlags { 0 }, true);
     subsystem.SetInstanceModifiers(modifiers.Clone());
     subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
-        owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(1)));
+        owe::ParseJson(R"({"name":"lifetimerandom","min":1000,"max":1000})"_str).unwrap(), u32(1)));
     subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
         owe::ParseJson(R"({"name":"velocityrandom","min":"200 0 0","max":"200 0 0"})"_str).unwrap(),
         u32(2)));
@@ -809,6 +809,12 @@ TEST(ParticleSubSystem, DragSlowsAtHalfItsValue) {
     auto positions = subsystem.System().Instance(usize()).Binding().Read().Positions();
     ASSERT_EQ(positions.len(), usize(1));
     EXPECT_NEAR(positions[usize()].x(), 314.8f, 3.0f);
+    // ...and moves before it slows: at rest it is v0 / k (1 + k dt) away, a little past v0 / k
+    // (particles-drag-rest: thrown at 300 units/s with drag 2, it stops 306 units out at about
+    // 60 frames a second; slowing first stopped it at 290)
+    for (int frame = 0; frame < 3000; ++frame) subsystem.Tick(f64(1.0 / 60.0), false);
+    const auto rest = subsystem.System().Instance(usize()).Binding().Read().Positions();
+    EXPECT_NEAR(rest[usize()].x(), 800.0f * (1.0f + 0.25f / 60.0f), 1.0f);
 }
 
 TEST(ParticleSubSystem, AppliesTurbulenceMaskAsAxisWeights) {
