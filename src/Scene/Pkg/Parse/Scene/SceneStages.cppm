@@ -69,11 +69,13 @@ struct TextSurfaceRequirements {
     bool copy_background { false };
     bool opaque_background { false };
     bool linked_source { false };
+    bool translucent_outline { false };
 };
 
 constexpr auto ResolveTextRenderMode(TextSurfaceRequirements requirements) -> TextRenderMode {
     return requirements.color_blend || requirements.has_effect || requirements.copy_background ||
-                   requirements.opaque_background || requirements.linked_source
+                   requirements.opaque_background || requirements.linked_source ||
+                   requirements.translucent_outline
                ? TextRenderMode::Offscreen
                : TextRenderMode::Direct;
 }

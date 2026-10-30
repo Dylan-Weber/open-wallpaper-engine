@@ -289,6 +289,10 @@ TEST(TextRenderMode, UsesDirectRenderingOnlyWithoutIndependentSurfaceRequirement
               owe::TextRenderMode::Offscreen);
     EXPECT_EQ(owe::ResolveTextRenderMode({ .linked_source = true }),
               owe::TextRenderMode::Offscreen);
+    // Wallpaper Engine fades translucent outlined text as a whole, so the outline doesn't show
+    // through the letters (text-outline): it is drawn opaque offscreen and faded as it is laid on.
+    EXPECT_EQ(owe::ResolveTextRenderMode({ .translucent_outline = true }),
+              owe::TextRenderMode::Offscreen);
 }
 
 TEST(SceneObjectExpansion, PreservesHiddenTextLayers) {

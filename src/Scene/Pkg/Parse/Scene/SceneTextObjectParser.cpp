@@ -191,7 +191,8 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
         .has_effect        = has_text_effect,
         .copy_background   = obj.copybackground,
         .opaque_background = obj.opaquebackground,
-        .linked_source     = linked_source,
+        .linked_source       = linked_source,
+        .translucent_outline = obj.outline && obj.alpha < 1.0f,
     });
     const bool direct_text          = text_render_mode == TextRenderMode::Direct;
     const bool copy_background_seed = has_text_effect || obj.copybackground;
@@ -329,7 +330,9 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
     style.mesh_origin =
         direct_text ? text::TextMeshOrigin::Layout : text::TextMeshOrigin::InkBounds;
     style.color                 = { obj.color[usize(0)], obj.color[usize(1)], obj.color[usize(2)] };
-    style.alpha                 = obj.alpha;
+    // Translucent outlined text is drawn opaque and faded as a whole when it is laid on the scene.
+    const bool alpha_at_compose = obj.outline && obj.alpha < 1.0f && ! direct_text;
+    style.alpha                 = alpha_at_compose ? 1.0f : obj.alpha;
     style.brightness            = obj.brightness;
     style.opaquebackground      = has_bg;
     style.background_color      = { obj.backgroundcolor[usize(0)],
@@ -584,6 +587,9 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
             UniformNodeConfigDraft sv;
             ShaderInfo             si;
             si.baseConstSvs      = effect_base.clone();
+            if (final_composite && alpha_at_compose)
+                (void)si.baseConstSvs.insert(rstd::into(G_COLOR4),
+                                             ShaderValue(array<float, 4> { 1.0f, 1.0f, 1.0f, obj.alpha }));
             auto material_result = BuildMaterial(*context.vfs,
                                                  *context.shader_cache,
                                                  context.shader_environment,
