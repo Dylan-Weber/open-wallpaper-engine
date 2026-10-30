@@ -1984,6 +1984,21 @@ TEST(SceneParserScript, GeneralFovScriptSetsThePerspectiveCamerasFov) {
             "orthogonalprojection": null,
             "fov": {"value": 50, "script": "shared.fovscript = 1; export function update(value) { return 30; }"}
         }, "objects": []
+TEST(SceneParserScript, VisibleScriptsReturnTheLayersVisibility) {
+    // Wallpaper Engine shows a layer, a model or a group by what its visible script returns
+    auto document = owe::wpscene::ParseSceneDocumentJson(R"JSON({
+        "camera": {},
+        "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+        "objects": [
+            {"id": 1, "name": "Hidden", "origin": "0 0 0",
+             "visible": {"value": true, "script": "export function update(value) { return false; }"}},
+            {"id": 2, "name": "Kept", "origin": "0 0 0",
+             "visible": {"value": true, "script": "export function update(value) { return value; }"}},
+            {"id": 3, "name": "Turned off", "origin": "0 0 0",
+             "visible": {"value": true, "script": "export function update(value) { return value; }"}},
+            {"id": 4, "name": "Driver",
+             "origin": {"value": "0 0 0", "script": "export function update(value) { thisScene.getLayer('Turned off').visible = false; return value; }"}}
+        ]
     })JSON"_str,
                                                          owe::wpscene::kSceneVersionUnknown);
     ASSERT_TRUE(document.is_some());
@@ -1992,6 +2007,7 @@ TEST(SceneParserScript, GeneralFovScriptSetsThePerspectiveCamerasFov) {
     owe::SceneParser            parser;
     auto                        parsed =
         parser.Parse("general-fov"_str,
+        parser.Parse("visible-scripts"_str,
                      ref<owe::wpscene::SceneDocument>::from_raw_parts(&*document),
                      mut_ref<owe::fs::VFS>::from_raw_parts(&vfs),
                      mut_ref<wavsen::audio::SoundManager>::from_raw_parts(&sound_manager));
@@ -2002,6 +2018,19 @@ TEST(SceneParserScript, GeneralFovScriptSetsThePerspectiveCamerasFov) {
     EXPECT_DOUBLE_EQ((**camera).Fov(), 50.0);
     owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
     EXPECT_DOUBLE_EQ((**camera).Fov(), 30.0);
+    auto  scene      = rstd::move(parsed).unwrap();
+    auto* hidden     = scene.scene->RootMut()->FindByName("Hidden"_str);
+    auto* kept       = scene.scene->RootMut()->FindByName("Kept"_str);
+    auto* turned_off = scene.scene->RootMut()->FindByName("Turned off"_str);
+    ASSERT_NE(hidden, nullptr);
+    ASSERT_NE(kept, nullptr);
+    ASSERT_NE(turned_off, nullptr);
+    for (int frame = 0; frame < 3; ++frame)
+        owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+    EXPECT_FALSE(hidden->Visible());
+    EXPECT_TRUE(kept->Visible());
+    // returning the value it was given doesn't undo another script's change
+    EXPECT_FALSE(turned_off->Visible());
 }
 
 TEST(SceneParserScript, GeneralLightingPublishesFieldScriptResults) {
