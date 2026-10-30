@@ -5,6 +5,7 @@
 #include <vector>
 
 import rstd;
+import eigen;
 import rstd.cppstd;
 import wescene.scene;
 import wescene.text;
@@ -469,4 +470,19 @@ TEST(TextAtlas, InvalidPageExtentHasNoPixels) {
     EXPECT_TRUE(snapshot.rects.is_empty());
     page.AcknowledgeUpdates(1);
     EXPECT_TRUE(page.DirtyRects().is_empty());
+}
+
+// The background seed of text with effects samples the scene at the text's place on screen: the
+// top of the screen (NDC y = 1) is the top row of the scene's texture (v = 0). It sampled the
+// scene upside down, so frames showed the text of layers mirrored across the middle of the
+// screen (text-effect-frame, text-effect-backdrop).
+TEST(TextUniforms, TheBackgroundSeedSamplesTheSceneTheRightWayUp) {
+    const Eigen::Matrix4d to_texture = owe::text::NdcToTexture();
+    const auto            uv         = [&](double x, double y, double w) {
+        const Eigen::Vector4d p = to_texture * Eigen::Vector4d(x * w, y * w, 0.0, w);
+        return Eigen::Vector2d(p.x() / p.w(), p.y() / p.w());
+    };
+    EXPECT_TRUE(uv(0, 1, 1).isApprox(Eigen::Vector2d(0.5, 0.0)));
+    EXPECT_TRUE(uv(-1, -1, 2).isApprox(Eigen::Vector2d(0.0, 1.0)));
+    EXPECT_TRUE(uv(1, 0.5, 3).isApprox(Eigen::Vector2d(1.0, 0.25)));
 }

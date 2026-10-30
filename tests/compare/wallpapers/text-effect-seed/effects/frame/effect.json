@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "frame",
+  "passes": [
+    {
+      "material": "materials/effects/frame.json"
+    }
+  ]
+}
