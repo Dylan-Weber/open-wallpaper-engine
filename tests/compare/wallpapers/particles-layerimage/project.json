@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test particles emitted from a layer's pixels",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}

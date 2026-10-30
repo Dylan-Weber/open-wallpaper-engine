@@ -355,6 +355,41 @@ struct ParticleSphereEmitterArgs {
     ParticleAudioResponse audio_response;
 };
 
+// An image layer a layerimage emitter emits from (particles-layerimage): the layer's rectangle, its size's half-extents before
+// the layer's scale, turned and moved by the layer's node; the particles take the layer's colour; a layer less than about
+// half opaque emits nothing.
+struct LayerImageSource {
+    Arc<SceneNode>  node;
+    double          half_width {};
+    double          half_height {};
+    Eigen::Vector3f color { 1.0f, 1.0f, 1.0f };
+    float           alpha { 1.0f };
+};
+
+struct ParticleLayerImageEmitterArgs {
+    float                  emit_speed {};
+    bool                   one_per_frame { false };
+    u32                    instantaneous {};
+    float                  duration {};
+    i32                    controlpoint {};
+    ParticleAudioResponse  audio_response;
+    Option<Arc<LayerImageSource>> source;
+};
+
+class LayerImageEmitterProgram {
+public:
+    LayerImageEmitterProgram(ParticleSpawnPipeline& pipeline, ParticleLayerImageEmitterArgs args, usize index)
+        : m_pipeline(rstd::addressof(pipeline)), m_args(rstd::move(args)), m_index(index) {}
+
+    void Compile(particle::ParticleViewCompiler&);
+    void Emit(particle::ParticleEmitterContext&);
+
+private:
+    ParticleSpawnPipeline*        m_pipeline;
+    ParticleLayerImageEmitterArgs m_args;
+    usize                         m_index {};
+};
+
 class BoxEmitterProgram {
 public:
     BoxEmitterProgram(ParticleSpawnPipeline& pipeline, ParticleBoxEmitterArgs args, usize index)
@@ -511,6 +546,7 @@ public:
     void CompileRuntimeView(particle::ParticleViewCompiler&);
     auto FollowWorldPosition(particle::ParticleInstance&, usize parent_instance_index,
                              particle::ParticleSlot) const -> Eigen::Vector3f;
+    auto OwnerWorldToLocal(const Eigen::Vector3f& position) const -> Eigen::Vector3f;
     bool LifetimeAlive(particle::ParticleInstance&, particle::ParticleSlot) const;
     auto InstanceState(usize index) const -> const ParticleInstanceState& {
         return m_instance_states[index];
@@ -542,7 +578,6 @@ private:
     void UpdateControlpoints(ParticleInstanceRef);
     void UpdateBoundedState(ParticleInstanceRef);
     auto OwnerLocalToWorld(const Eigen::Vector3f& position) const -> Eigen::Vector3f;
-    auto OwnerWorldToLocal(const Eigen::Vector3f& position) const -> Eigen::Vector3f;
     auto HasBoundInstance(particle::ParticleInstance*, usize, particle::ParticleSlot) const -> bool;
     void ReleaseBoundInstances(particle::ParticleInstance*, usize, particle::ParticleSlot);
     void SpawnChild(ParticleInstanceRef, ParticleSubSystem&, particle::ParticleSlot,

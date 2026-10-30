@@ -270,3 +270,55 @@ void SphereEmitterProgram::Emit(particle::ParticleEmitterContext& context) {
     CommitEmitCount(
         emitter.timer, emit_speed, timed_emit_count, timed_emitted, m_args.one_per_frame);
 }
+
+void LayerImageEmitterProgram::Compile(particle::ParticleViewCompiler& compiler) {
+    m_pipeline->Compile(compiler);
+}
+
+void LayerImageEmitterProgram::Emit(particle::ParticleEmitterContext& context) {
+    auto frame = ParticleFrameFrom(context.Frame());
+    if (! InstanceCanEmit(frame)) return;
+
+    auto pending_count = m_index == usize() ? frame->subsystem->TakePendingEmitCount() : u32();
+
+    auto& emitter = frame->subsystem->InstanceStateMut(frame->instance_index).Emitter(m_index);
+    emitter.elapsed += frame->emitter_delta;
+    if (m_args.duration > 0.0f && emitter.elapsed > f64(m_args.duration) && pending_count == u32())
+        return;
+    const bool timed_emission = TimedEmissionEnabled(frame, m_args.controlpoint);
+    if (timed_emission) emitter.timer += frame->emitter_delta;
+
+    float emit_speed = m_args.emit_speed *
+                       AudioResponseScale(frame->audio_average.as_slice(), m_args.audio_response);
+    auto  timed_emit_count = timed_emission ? ResolveEmitCount(emitter.timer,
+                                                               emit_speed,
+                                                               m_args.instantaneous,
+                                                               m_args.one_per_frame,
+                                                               context.Empty())
+                                            : u32();
+    auto  emit_count       = timed_emit_count.saturating_add(pending_count);
+    auto& source           = **m_args.source;
+    // a layer less than about half opaque gives the image nothing to emit from
+    const bool visible  = source.alpha >= 0.4f;
+    auto       requests = context.Acquire(rstd::as_cast<usize>(visible ? emit_count : u32()),
+                                    EmitDuration(emit_speed));
+    auto       columns  = m_pipeline->Bind(context.View());
+    source.node->UpdateTrans();
+    const Eigen::Matrix4d model = source.node->ModelTrans();
+    for (auto request : requests) {
+        const Eigen::Vector4d point(algorism::lerp(Random::get(0.0, 1.0), -source.half_width, source.half_width),
+                                    algorism::lerp(Random::get(0.0, 1.0), -source.half_height, source.half_height),
+                                    0.0,
+                                    1.0);
+        Eigen::Vector3f world = (model * point).head<3>().cast<float>();
+        columns.positions[request.slot.index] =
+            frame->world_space ? world : frame->subsystem->OwnerWorldToLocal(world);
+        columns.colors[request.slot.index]         = source.color;
+        columns.initial_colors[request.slot.index] = source.color;
+        m_pipeline->Initialize(columns, request, context.Frame());
+    }
+    auto emitted       = rstd::as_cast<u32>(requests.len());
+    auto timed_emitted = emitted.saturating_sub(pending_count);
+    CommitEmitCount(
+        emitter.timer, emit_speed, timed_emit_count, timed_emitted, m_args.one_per_frame);
+}

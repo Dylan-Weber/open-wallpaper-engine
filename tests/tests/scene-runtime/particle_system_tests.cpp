@@ -594,6 +594,71 @@ TEST(ParticleSubSystem, ConvertsWorldSpaceFollowAnchorsIntoChildLocalSpace) {
     EXPECT_TRUE(resolved.head<3>().cast<float>().isApprox(parent_position));
 }
 
+// The layerimage emitter (particles-layerimage) emits from the shape of an image layer: a solid layer's rectangle (its size,
+// moved with the layer), in the layer's colour, and nothing from a layer less than about half opaque.
+TEST(ParticleSubSystem, LayerImageEmitterFillsTheLayersRectangleInItsColour) {
+    struct Emitted {
+        usize                        count {};
+        bool                         inside { true };
+        bool                         red { true };
+        float                        min_x { 1e9f }, max_x { -1e9f }, min_y { 1e9f }, max_y { -1e9f };
+    };
+    auto emit = [](float alpha) {
+        owe::Scene scene;
+        auto       layer = rstd::sync::Arc<owe::SceneNode>::make(Eigen::Vector3f { 100.0f, 50.0f, 0.0f },
+                                                           Eigen::Vector3f { 1.0f, 1.0f, 1.0f },
+                                                           Eigen::Vector3f::Zero());
+        owe::ParticleSubSystem subsystem(scene,
+                                         Arc<owe::SceneMesh>::make(),
+                                         u32(64),
+                                         f64(1.0),
+                                         u32(1),
+                                         f64(1.0),
+                                         owe::ParticleSubSystem::SpawnType::STATIC,
+                                         owe::ParticleAnimationSpec {});
+        subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+            owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(64)));
+        owe::wpscene::Emitter emitter;
+        emitter.name          = String::make("layerimage"_str);
+        emitter.instantaneous = u32(40);
+        auto source = Arc<owe::LayerImageSource>::make(owe::LayerImageSource {
+            .node = layer.clone(), .half_width = 20.0, .half_height = 10.0,
+            .color = Eigen::Vector3f(1.0f, 0.0f, 0.0f), .alpha = alpha });
+        subsystem.AddEmitter(
+            owe::ParticleParser::GenEmitter(emitter, subsystem, usize(), Some(rstd::move(source))));
+        subsystem.Finalize();
+        subsystem.Tick(f64(1.0 / 60.0), false);
+        Emitted result;
+        result.count = LiveParticleCount(subsystem);
+        auto& storage = subsystem.System().Instance(usize()).Storage();
+        for (usize index {}; index < result.count; ++index) {
+            particle::ParticleSlotReader value(storage, particle::ParticleSlot { .index = index });
+            auto                         position = Eigen::Vector3f(value.Read(subsystem.Attributes().position));
+            auto                         color    = Eigen::Vector3f(value.Read(subsystem.Attributes().color));
+            result.inside = result.inside && position.x() >= 80.0f - 1e-3f && position.x() <= 120.0f + 1e-3f &&
+                            position.y() >= 40.0f - 1e-3f && position.y() <= 60.0f + 1e-3f;
+            result.red    = result.red && color.isApprox(Eigen::Vector3f(1, 0, 0));
+            result.min_x  = std::min(result.min_x, position.x());
+            result.max_x  = std::max(result.max_x, position.x());
+            result.min_y  = std::min(result.min_y, position.y());
+            result.max_y  = std::max(result.max_y, position.y());
+        }
+        return result;
+    };
+    auto opaque = emit(1.0f);
+    EXPECT_EQ(opaque.count, usize(40));
+    EXPECT_TRUE(opaque.inside);
+    EXPECT_TRUE(opaque.red);
+    EXPECT_GT(opaque.max_x - opaque.min_x, 20.0f);
+    EXPECT_GT(opaque.min_x, 79.9f);
+    EXPECT_LT(opaque.max_x, 120.1f);
+    EXPECT_GT(opaque.min_y, 39.9f);
+    EXPECT_LT(opaque.max_y, 60.1f);
+    EXPECT_GT(opaque.max_y - opaque.min_y, 8.0f);
+    EXPECT_EQ(emit(0.3f).count, usize());
+    EXPECT_EQ(emit(0.5f).count, usize(40));
+}
+
 TEST(ParticleInstanceOverride, TracksProvidedControlpoints) {
     auto json = owe::ParseJson(R"({"size":2,"controlpoint1":"120 240 0"})"_str).unwrap();
     owe::wpscene::ParticleInstanceoverride override;

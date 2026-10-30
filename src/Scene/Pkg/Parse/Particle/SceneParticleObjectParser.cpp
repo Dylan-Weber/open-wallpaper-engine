@@ -266,13 +266,72 @@ void LoadOperator(ParticleSubSystem& system, const wpscene::Particle& particle,
     }
 }
 void LoadEmitter(ParticleSubSystem& system, const wpscene::Particle& particle,
-                 const ParticleInstanceModifiers& modifiers) {
+                 const ParticleInstanceModifiers&             modifiers,
+                 const Option<Arc<LayerImageSource>>& layer_image) {
     usize emitter_index {};
     for (const auto& em : particle.emitters) {
         auto newEm = em.clone();
         newEm.rate *= modifiers.Count();
-        system.AddEmitter(ParticleParser::GenEmitter(newEm, system, emitter_index++));
+        system.AddEmitter(ParticleParser::GenEmitter(
+            newEm, system, emitter_index++,
+            layer_image.is_some() ? Some((*layer_image).clone()) : None()));
     }
+}
+
+// The layer a layerimage emitter emits from, by the object id of the particle object's emitterimage dependency: its
+// rectangle (a solid layer's size; for another image the size of its texture, whose pixels are not read), colour and
+// opacity (particles-layerimage).
+Option<Arc<LayerImageSource>> BuildLayerImageSource(SceneParseContext& context, i32 id) {
+    auto node_ref = context.node_id_map.get(id);
+    auto config   = context.initial_layer_configs.get(id);
+    if (node_ref.is_none() || (*node_ref)->node.is_none() || config.is_none()) return None();
+    const Json&     json = **config;
+    array<float, 2> size { 0.0f, 0.0f };
+    array<float, 3> color { 1.0f, 1.0f, 1.0f };
+    float           alpha { 1.0f };
+    owe::GetJsonValue(json, "size"_str, size, false);
+    owe::GetJsonValue(json, "color"_str, color, false);
+    owe::GetJsonValue(json, "alpha"_str, alpha, false);
+    if (! context.solid_layer_ids.contains(id)) {
+        TexImageParser textures(context.vfs);
+        String         model, material, texture;
+        owe::GetJsonValue(json, "image"_str, model, false);
+        auto model_json = ReadAssetJsonFile(*context.vfs, model.as_str());
+        if (model_json.is_ok()) owe::GetJsonValue(*model_json, "material"_str, material, false);
+        auto material_json = ReadAssetJsonFile(*context.vfs, material.as_str());
+        if (material_json.is_ok()) {
+            if (auto passes = material_json->get("passes"_str); passes.is_some()) {
+                if (auto list = (*passes)->as_array(); list.is_some()) {
+                    for (const auto& pass : **list) {
+                        auto names = pass.get("textures"_str);
+                        if (names.is_none()) break;
+                        auto entries = (*names)->as_array();
+                        if (entries.is_none()) break;
+                        for (const auto& entry : **entries) {
+                            if (auto name = entry.as_str(); name.is_some()) texture = String::make(*name);
+                            break;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        if (! texture.is_empty()) {
+            auto header = textures.ParseHeader(texture.as_str());
+            if (header.is_ok()) {
+                auto description = rstd::move(header).unwrap_unchecked();
+                size             = { static_cast<float>(description.width),
+                                     static_cast<float>(description.height) };
+            }
+        }
+    }
+    return Some(Arc<LayerImageSource>::make(LayerImageSource {
+        .node        = (*(*node_ref)->node).clone(),
+        .half_width  = size[usize()] * 0.5,
+        .half_height = size[usize(1)] * 0.5,
+        .color       = Eigen::Vector3f(color[usize()], color[usize(1)], color[usize(2)]),
+        .alpha       = alpha,
+    }));
 }
 
 ParticleSubSystem::SpawnType ParseSpawnType(ref<str> str) {
@@ -573,7 +632,10 @@ void BuildParticleObjectNode(ParticleObjectParseServices& services,
     particleSub->SetPlaybackState(playback_state.clone());
     if (child_data.controlpointstartindex.is_some())
         particleSub->SetParentControlpointStartIndex(*child_data.controlpointstartindex);
-    LoadEmitter(*particleSub, particle_obj, modifiers);
+    Option<Arc<LayerImageSource>> layer_image;
+    if (! is_child && wppartobj.emitterimage_layer.is_some() && services.construction_context != nullptr)
+        layer_image = BuildLayerImageSource(*services.construction_context, *wppartobj.emitterimage_layer);
+    LoadEmitter(*particleSub, particle_obj, modifiers, layer_image);
     LoadInitializer(*particleSub, particle_obj, modifiers.Clone());
     LoadOperator(*particleSub, particle_obj, modifiers.Clone());
     LoadControlPoint(*services.construction_context, *particleSub, particle_obj, modifiers.Clone());
