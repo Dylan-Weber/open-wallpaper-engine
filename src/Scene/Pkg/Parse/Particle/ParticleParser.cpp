@@ -1383,6 +1383,46 @@ struct ControlPointAttractOperator {
     }
 };
 
+// reducemovementnearcontrolpoint: a drag near a control point, reductioninner within
+// distanceinner, falling to reductionouter at distanceouter by the squared distance, applied as
+// v / (1 + reduction dt) (particles-reduce-near).
+struct ReduceMovementNearControlPointOperator {
+    ParticleAttributes                                        attributes;
+    i32                                                       controlpoint { 0 };
+    double                                                    inner { 0 }, outer { 0 };
+    double                                                    reduction_inner { 0 }, reduction_outer { 0 };
+    particle::ParticleWriteIndex<particle::VelocityAttribute> velocity;
+
+    void Compile(particle::ParticleViewCompiler& compiler) {
+        compiler.ReadBase(attributes.position);
+        velocity = compiler.Write(attributes.velocity);
+    }
+
+    void Update(particle::ParticleUpdateContext& context) {
+        auto frame      = ParticleFrameFrom(context.frame);
+        auto positions  = context.view.Positions();
+        auto velocities = context.view.Write(velocity);
+        auto center =
+            frame->subsystem->SimulationControlpoint(rstd::as_cast<usize>(controlpoint)).center;
+        auto delta = context.delta.to_primitive();
+        for (auto slot : context.slots) {
+            const double d2 = (positions[slot.index].cast<double>() - center).squaredNorm();
+            double       reach {};
+            if (d2 <= inner * inner)
+                reach = 1.0;
+            else if (d2 < outer * outer)
+                reach = (outer * outer - d2) / (outer * outer - inner * inner);
+            else
+                continue;
+            const double reduction =
+                reduction_outer + (reduction_inner - reduction_outer) * reach;
+            if (reduction <= 0.0) continue;
+            velocities[slot.index] =
+                (velocities[slot.index].cast<double>() / (1.0 + reduction * delta)).cast<float>();
+        }
+    }
+};
+
 struct NoopUpdateOperator {
     void Compile(particle::ParticleViewCompiler&) {}
     void Update(particle::ParticleUpdateContext&) {}
@@ -1504,6 +1544,23 @@ ParticleParser::GenOperator(const Json& wpj, ParticleInstanceModifiers modifiers
                 .attributes = attributes,
                 .config     = ControlPointForce::ReadFromJson(wpj),
             });
+        } else if (name == "reducemovementnearcontrolpoint"_str) {
+            i32   controlpoint { 0 };
+            float inner { 0.0f }, outer { 0.0f }, reduction_inner { 0.0f }, reduction_outer { 0.0f };
+            owe::GetJsonValue(wpj, "controlpoint"_str, controlpoint, false);
+            owe::GetJsonValue(wpj, "distanceinner"_str, inner, false);
+            owe::GetJsonValue(wpj, "distanceouter"_str, outer, false);
+            owe::GetJsonValue(wpj, "reductioninner"_str, reduction_inner, false);
+            owe::GetJsonValue(wpj, "reductionouter"_str, reduction_outer, false);
+            return Box<dyn<particle::ParticleUpdateProgram>>::make(
+                ReduceMovementNearControlPointOperator {
+                    .attributes      = attributes,
+                    .controlpoint    = controlpoint % i32(8),
+                    .inner           = double(inner),
+                    .outer           = rstd::cmp::max(double(outer), double(inner)),
+                    .reduction_inner = double(reduction_inner),
+                    .reduction_outer = double(reduction_outer),
+                });
         }
     } while (false);
     return Box<dyn<particle::ParticleUpdateProgram>>::make(NoopUpdateOperator {});
