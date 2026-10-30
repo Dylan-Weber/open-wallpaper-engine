@@ -604,6 +604,96 @@ void ParseModelObj(SceneParseContext& context, wpscene::ModelObject& model) {
     ParseModelObjImpl(context, model);
 }
 
+Option<Arc<SceneNode>> InstantiateScriptModel(SceneParseContext& context, SceneNode* owner,
+                                              const script::ModelData& model) {
+    auto& vfs  = *context.vfs;
+    auto  node = Arc<SceneNode>::make(
+        Vector3f::Zero(), Vector3f::Ones(), Vector3f::Zero(), model.name.as_str());
+    const i32 id = context.NextSyntheticObjectId();
+    node->ID()   = id;
+    node->SetPerspective(true);
+    auto mesh = Arc<SceneMesh>::make(true);
+
+    UniformNodeConfigDraft svData;
+    svData.use_camera_eye_position = true;
+    if (context.orthographic_scene) {
+        svData.eye_position_override = Some(array<float, 3> {
+            static_cast<float>(context.ortho_w.to_primitive()) * 0.5f,
+            static_cast<float>(context.ortho_h.to_primitive()) * 0.5f,
+            2000.0f,
+        });
+    }
+
+    for (const auto& shape : model.shapes) {
+        // the vertex format lists IModelData attributes: POSITION 0, NORMAL 1, TANGENT 2, UV 3
+        // the script's floats are packed tight, so no attribute is padded to four floats
+        Vec<VertexAttrSpec> specs;
+        for (auto attribute : shape.format) {
+            VertexAttrSpec spec = VAttr::Position;
+            if (attribute == i32(0)) spec = VAttr::Position;
+            else if (attribute == i32(1)) spec = VAttr::Normal;
+            else if (attribute == i32(2)) spec = VAttr::Tangent4;
+            else if (attribute == i32(3)) spec = VAttr::TexCoord;
+            else continue;
+            spec.padding = false;
+            specs.push(rstd::move(spec));
+        }
+        if (specs.is_empty()) continue;
+        auto attributes = MakeAttrSet(specs.as_slice());
+        usize stride {};
+        for (const auto& attribute : attributes)
+            stride += SceneVertexArray::RealAttributeSize(attribute);
+        if (stride == usize() || shape.vertices.is_empty()) continue;
+        auto wpmat = MdlParser::ParseMaterial(shape.material.as_str(), vfs);
+        if (! wpmat) {
+            rstd_error("script model material '{}' failed to load", shape.material);
+            continue;
+        }
+        ShaderInfo shader_info;
+        shader_info.baseConstSvs = context.global_base_uniforms.clone();
+        auto material_result     = BuildMaterial(vfs,
+                                             *context.shader_cache,
+                                             context.shader_environment,
+                                             *wpmat,
+                                             *context.scene,
+                                             rstd::move(shader_info),
+                                             GeometryStageRequirement::None,
+                                             context.load_bench);
+        if (material_result.is_err()) {
+            rstd_error("script model material '{}' failed to build", shape.material);
+            continue;
+        }
+        auto material_build = rstd::move(material_result).unwrap_unchecked();
+        auto scene_mat      = rstd::move(material_build.material);
+        shader_info         = rstd::move(material_build.shader_info);
+        LoadConstvalue(context, scene_mat, *wpmat, shader_info);
+
+        const auto material_slot =
+            rstd::as_cast<u32>(usize(mesh->MaterialSlots().len().to_primitive()));
+        mesh->AddMaterial(rstd::move(scene_mat));
+        RegisterMaterialBindings(*context.scene,
+                                 mesh->MaterialSlots().last_mut().unwrap().get_mut(),
+                                 *wpmat,
+                                 shader_info);
+
+        mesh->Submeshes().emplace_back();
+        auto& submesh         = mesh->Submeshes().last_mut().unwrap().get_mut();
+        submesh.material_slot = material_slot;
+        SceneVertexArray vertex(rstd::move(attributes), shape.vertices.len() / stride);
+        vertex.SetVertexs(usize(), shape.vertices.as_slice());
+        submesh.vertex_arrays.emplace_back(rstd::move(vertex));
+        submesh.index_arrays.emplace_back(SceneIndexArray(shape.indices.as_slice()));
+    }
+    if (mesh->Submeshes().is_empty()) {
+        rstd_error("script model '{}' has no renderable shape", model.name);
+        return None();
+    }
+    node->AddMesh(mesh.clone());
+    SetUniformConfig(context, node, rstd::move(svData));
+    RegisterNodeRef(context, id, SceneParseContext::NodeRef { u32(), Some(node.clone()) });
+    return AttachCreatedLayer(context, owner, id);
+}
+
 void IndexSceneDocument(SceneParseContext& context, ref<wpscene::SceneDocument> document,
                         slice<SceneObjectVar> objects) {
     context.scene_has_scripts       = SceneHasScripts(objects);

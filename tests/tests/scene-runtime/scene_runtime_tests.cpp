@@ -2443,3 +2443,70 @@ TEST(UniformSourceParallax, PerspectiveWithAuthoredParallaxDepthAppliesShift) {
                 std::abs(mvp_without_parallax[rstd::usize(13)] -
                          mvp_with_parallax[rstd::usize(13)]) > 1e-5f);
 }
+
+// A script can build a mesh of its own (thisScene.createModelData) and show it as a layer; it later rewrites
+// the vertices with applyData. More Physics draws its cloth this way.
+TEST(SceneParserScript, ScriptBuiltModelBecomesAMeshLayerWhoseVerticesItRewrites) {
+    const auto dir = std::filesystem::temp_directory_path() / "owe-script-model-data";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir / "materials");
+    std::ofstream(dir / "materials/mesh.json") << R"({"passes": [{"shader": "genericimage2",
+        "blending": "translucent", "textures": ["gradient/gradient_rainbow"]}]})";
+
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {},
+            "general": {},
+            "objects": [
+                {
+                    "id": 90,
+                    "name": "Controller",
+                    "visible": {
+                        "value": true,
+                        "script": "const material = engine.registerAsset('materials/mesh.json'); let data; let frame = 0; export function init(value) { const v = new Float32Array(32); for (let i = 0; i < 4; ++i) { v[i * 8] = i; v[i * 8 + 7] = i; } data = thisScene.createModelData({boundingBoxMins: new Vec3(-1, -1, -1), boundingBoxMaxs: new Vec3(5, 5, 5), shapes: [{vertexBuffer: v, indexBuffer: new Uint16Array([0, 1, 2, 0, 2, 3]), vertexFormat: [IModelData.POSITION, IModelData.NORMAL, IModelData.UV], material: material, isVertexBufferDynamic: true}]}); const layer = thisScene.createLayer({name: 'built', model: data}); layer.origin = new Vec3(10, 20, 0); return value; } export function update(value) { const v = new Float32Array(32); v[0] = 42; data.applyData({shapes: [{vertexBuffer: v}]}); return value; }"
+                    }
+                }
+            ]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    auto own = owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(dir.string()).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    ASSERT_TRUE(own.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, rstd::move(assets).unwrap_unchecked()).is_ok());
+    ASSERT_TRUE(vfs.mount("/assets"_str, rstd::move(own).unwrap_unchecked()).is_ok());
+
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "script-model-data"_str,
+        ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+
+    auto built = scene.scene->RootMut()->FindByName("built"_str);
+    ASSERT_NE(built, nullptr);
+    EXPECT_TRUE(built->Visible());
+    EXPECT_FLOAT_EQ(built->Translate().x(), 10.0f);
+    ASSERT_TRUE(built->Mesh());
+    EXPECT_TRUE(built->Mesh()->Dynamic());
+    ASSERT_EQ(built->Mesh()->Submeshes().len(), usize(1));
+    const auto& submesh = built->Mesh()->Submeshes()[usize()];
+    ASSERT_EQ(submesh.vertex_arrays.len(), usize(1));
+    ASSERT_EQ(submesh.index_arrays.len(), usize(1));
+    EXPECT_EQ(submesh.vertex_arrays[usize()].VertexCount(), usize(4));
+    EXPECT_EQ(submesh.index_arrays[usize()].DataCount(), usize(6));
+    // the first vertex's position x, before and after the update
+    EXPECT_FLOAT_EQ(submesh.vertex_arrays[usize()].Data()[0], 0.0f);
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+    EXPECT_FLOAT_EQ(built->Mesh()->Submeshes()[usize()].vertex_arrays[usize()].Data()[0], 42.0f);
+    EXPECT_TRUE(built->Mesh()->Dirty().load());
+
+    std::filesystem::remove_all(dir);
+}
