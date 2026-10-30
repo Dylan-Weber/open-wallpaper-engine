@@ -814,6 +814,123 @@ TEST(ParticleRemap, TheInitialValueFormReadsTheSameSettings) {
                     .is_none());
 }
 
+// remapvalue's other inputs (particles-remap-inputs, grey = the input over its range): the particle's speed per axis
+// (a vector, so a colour of 100 0 0 over 0..200 is 0.5 0 0), its opacity, rotation and angular speed (one number),
+// the time, and "lifetimefraction", the name Wallpaper Engine uses for how far through its life it is.
+TEST(ParticleRemap, ReadsTheInputsWallpaperEngineOffers) {
+    auto read = [](ref<str> input) {
+        auto json = rstd::format(R"({{"name":"remapvalue","input":"{}","inputrangemax":4,"output":"color"}})", input);
+        return owe::ParticleRemap::FromJson(owe::ParseJson(json.as_str()).unwrap());
+    };
+    EXPECT_EQ(read("lifetimefraction"_str).unwrap().input, owe::ParticleRemap::Input::Lifetime);
+    EXPECT_EQ(read("particlelifetime"_str).unwrap().input, owe::ParticleRemap::Input::Lifetime);
+    EXPECT_EQ(read("velocity"_str).unwrap().input, owe::ParticleRemap::Input::Velocity);
+    EXPECT_EQ(read("opacity"_str).unwrap().input, owe::ParticleRemap::Input::Opacity);
+    EXPECT_EQ(read("rotation"_str).unwrap().input, owe::ParticleRemap::Input::Rotation);
+    EXPECT_EQ(read("angularspeed"_str).unwrap().input, owe::ParticleRemap::Input::AngularSpeed);
+    EXPECT_EQ(read("layerorigin"_str).unwrap().input, owe::ParticleRemap::Input::LayerOrigin);
+    EXPECT_EQ(read("particlesystemtime"_str).unwrap().input, owe::ParticleRemap::Input::SystemTime);
+    EXPECT_EQ(read("layertime"_str).unwrap().input, owe::ParticleRemap::Input::LayerTime);
+    EXPECT_EQ(read("runtime"_str).unwrap().input, owe::ParticleRemap::Input::Runtime);
+    EXPECT_EQ(read("timeofday"_str).unwrap().input, owe::ParticleRemap::Input::TimeOfDay);
+    EXPECT_TRUE(read("nothing"_str).is_none());
+    // a vector input maps each axis over the range
+    auto velocity = read("velocity"_str).unwrap();
+    velocity.input_max = 200;
+    EXPECT_TRUE(velocity.Apply(Eigen::Vector3d::Ones(), Eigen::Vector3d(100, 0, 400)).isApprox(Eigen::Vector3d(0.5, 0, 1)));
+}
+
+// remapvalue's operations and transform functions (particles-remap-outputs, -remap-transform): "subtract" takes the mapped
+// value from the particle's; triangle and square repeat twice over the input range (square low first), sine once
+// (0 at the ends, 1 in the middle); a noise function isn't read.
+TEST(ParticleRemap, SubtractsAndShapesTheInput) {
+    auto read = [](ref<str> extra) {
+        auto json = rstd::format(
+            R"({{"name":"remapvalue","input":"lifetimefraction","inputrangemax":1,"output":"color","outputrangemax":"1 1 1"{}}})",
+            extra);
+        return owe::ParticleRemap::FromJson(owe::ParseJson(json.as_str()).unwrap());
+    };
+    auto subtract = read(R"(,"operation":"subtract")"_str).unwrap();
+    EXPECT_TRUE(subtract.Apply(Eigen::Vector3d(1, 0.5, 0.25), 0.56)
+                    .isApprox(Eigen::Vector3d(0.44, -0.06, -0.31)));
+    auto triangle = read(R"(,"transformfunction":"triangle")"_str).unwrap();
+    EXPECT_NEAR(triangle.Map(0.12).x(), 0.48, 1e-9);
+    EXPECT_NEAR(triangle.Map(0.36).x(), 0.56, 1e-9);
+    EXPECT_NEAR(triangle.Map(0.72).x(), 0.88, 1e-9);
+    auto sine = read(R"(,"transformfunction":"sine")"_str).unwrap();
+    EXPECT_NEAR(sine.Map(0.0).x(), 0.0, 1e-9);
+    EXPECT_NEAR(sine.Map(0.25).x(), 0.5, 1e-9);
+    EXPECT_NEAR(sine.Map(0.5).x(), 1.0, 1e-9);
+    auto square = read(R"(,"transformfunction":"square")"_str).unwrap();
+    EXPECT_EQ(square.Map(0.12).x(), 0.0);
+    EXPECT_EQ(square.Map(0.36).x(), 1.0);
+    EXPECT_EQ(square.Map(0.72).x(), 0.0);
+    EXPECT_EQ(square.Map(0.9).x(), 1.0);
+    EXPECT_TRUE(read(R"(,"transformfunction":"simplexnoise")"_str).is_none());
+}
+
+TEST(ParticleSubSystem, RemapValueMapsTheParticlesVelocityOpacityAndRotation) {
+    auto remap = [](ref<str> initializer, ref<str> operator_json, bool read_velocity = false,
+                     int ticks = 1) -> Eigen::Vector3f {
+        owe::Scene             scene;
+        auto                   mesh = Arc<owe::SceneMesh>::make();
+        owe::ParticleSubSystem subsystem(scene,
+                                         mesh.clone(),
+                                         u32(1),
+                                         f64(1.0),
+                                         u32(1),
+                                         f64(1.0),
+                                         owe::ParticleSubSystem::SpawnType::STATIC,
+                                         owe::ParticleAnimationSpec {});
+        subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+            owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(1)));
+        subsystem.AddInitializer(
+            owe::ParticleParser::GenInitializer(owe::ParseJson(initializer).unwrap(), u32(1)));
+        subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+            owe::BoxEmitterProgram(subsystem.SpawnPipeline(),
+                                   owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) },
+                                   usize())));
+        owe::ParticleInstanceModifiers modifiers(Arc<owe::wpscene::ParticleInstanceoverride>::make(),
+                                                 owe::wpscene::Particle::EFlags { 0 },
+                                                 false);
+        subsystem.AddOperator(owe::ParticleParser::GenOperator(
+            owe::ParseJson(operator_json).unwrap(), modifiers.Clone(), subsystem, usize()));
+        subsystem.Finalize();
+        for (int tick = 0; tick < ticks; ++tick) subsystem.Tick(f64(1.0 / 60.0), false);
+        auto&                        storage = subsystem.System().Instance(usize()).Storage();
+        particle::ParticleSlotReader value(storage, particle::ParticleSlot {});
+        return read_velocity ? value.Read(subsystem.Attributes().velocity)
+                             : value.Read(subsystem.Attributes().color);
+    };
+    auto velocity = remap(R"({"name":"velocityrandom","min":"100 0 0","max":"100 0 0"})"_str,
+                          R"({"name":"remapvalue","input":"velocity","inputrangemax":200,"output":"color"})"_str);
+    EXPECT_NEAR(velocity.x(), 0.5f, 1e-4f);
+    EXPECT_NEAR(velocity.y(), 0.0f, 1e-4f);
+    auto opacity = remap(R"({"name":"alpharandom","min":0.3,"max":0.3})"_str,
+                         R"({"name":"remapvalue","input":"opacity","inputrangemax":1,"output":"color"})"_str);
+    EXPECT_NEAR(opacity.x(), 0.3f, 1e-4f);
+    EXPECT_NEAR(opacity.z(), 0.3f, 1e-4f);
+    auto rotation = remap(R"({"name":"rotationrandom","min":"0 0 1","max":"0 0 1"})"_str,
+                          R"({"name":"remapvalue","input":"rotation","inputrangemax":4,"output":"color"})"_str);
+    EXPECT_NEAR(rotation.x(), 0.25f, 1e-4f);
+    EXPECT_NEAR(rotation.y(), 0.25f, 1e-4f);
+    // the velocity output sets, adds and subtracts on each frame (particles-remap-velocity); its input is always 1 here
+    auto velocity_after = [&](ref<str> operation, ref<str> start) {
+        auto json = rstd::format(
+            R"({{"name":"remapvalue","input":"lifetimefraction","inputrangemax":0.0001,"output":"velocity","operation":"{}","outputrangemax":"0.5 0 0"}})",
+            operation);
+        auto init = rstd::format(R"({{"name":"velocityrandom","min":"{}","max":"{}"}})", start, start);
+        // the first step finds the particle at 0 of its life: the operator's second is the one that counts
+        return remap(init.as_str(), json.as_str(), true, 2);
+    };
+    EXPECT_NEAR(velocity_after("remap"_str, "10 0 0"_str).x(), 0.5f, 1e-4f);
+    EXPECT_NEAR(velocity_after("add"_str, "10 0 0"_str).x(), 10.5f, 1e-4f);
+    EXPECT_NEAR(velocity_after("subtract"_str, "10 0 0"_str).x(), 9.5f, 1e-4f);
+    auto spin = remap(R"({"name":"angularvelocityrandom","min":"0 0 1","max":"0 0 1"})"_str,
+                      R"({"name":"remapvalue","input":"angularspeed","inputrangemax":4,"output":"color"})"_str);
+    EXPECT_NEAR(spin.x(), 0.25f, 1e-4f);
+}
+
 TEST(ParticleSubSystem, AppliesTurbulenceMaskAsAxisWeights) {
     auto simulate = [](ref<str> config) -> Eigen::Vector3f {
         owe::Scene             scene;

@@ -1,6 +1,7 @@
 module;
 
 #include <rstd/macro.hpp>
+#include <ctime>
 
 module wescene.pkg.parse;
 
@@ -520,6 +521,17 @@ auto ParticleSubSystem::SimulationControlpoint(usize index) const
         .center = center.head<3>(),
         .basis  = world_from_local.block<3, 3>(0, 0) * controlpoint.rotation,
     };
+}
+
+auto ParticleSubSystem::SceneRuntimeSeconds() const -> double {
+    return m_scene.Runtime().Frame().elapsed.to_primitive();
+}
+
+auto ParticleSubSystem::LocalTimeOfDay() const -> double {
+    const std::time_t now = std::time(nullptr);
+    std::tm           local {};
+    localtime_r(&now, &local);
+    return (local.tm_hour * 3600.0 + local.tm_min * 60.0 + local.tm_sec) / 86400.0;
 }
 
 auto ParticleSubSystem::OwnerLocalToWorld(const Eigen::Vector3f& position) const
