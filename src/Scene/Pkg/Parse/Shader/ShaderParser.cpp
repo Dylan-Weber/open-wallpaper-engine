@@ -1631,8 +1631,22 @@ void ShapeShaderValues(ShaderValues& values, const BTreeMap<String, String>& uni
     }
 }
 
+void ChooseDefaultsImpl(ShaderValueMap& svs, const BTreeMap<String, String>& uniforms) {
+    for (const auto& [name, type] : uniforms.iter()) {
+        const auto elements = LinearUniformElementCount(type->as_str());
+        if (elements == usize()) continue;
+        auto alternative = svs.get(rstd::format("{}#{}", name->as_str(), elements));
+        if (alternative.is_some()) (void)svs.insert(name->clone(), (**alternative).clone());
+    }
+    Vec<String> helpers;
+    for (const auto& [name, value] : svs.iter())
+        if (name->as_str().contains("#"_str)) helpers.push(name->clone());
+    for (const auto& name : helpers) (void)svs.remove(name.as_str());
+}
+
 void ShapeShaderDefaults(slice<ShaderUnit> units, ShaderInfo& info) {
     const auto uniforms = BuildUniformUnion(units);
+    ChooseDefaultsImpl(info.svs, uniforms);
     ShapeShaderValues(info.svs, uniforms);
     ShapeShaderValues(info.baseConstSvs, uniforms);
 }
@@ -3454,3 +3468,10 @@ CompileMaterialShaderResult ShaderParser::CompileMaterialShader(const Json& mate
     r.descriptor_sets = rstd::move(variant.descriptor_sets);
     return r;
 }
+
+namespace owe
+{
+void ChooseDefaultsByUniformType(ShaderValueMap& svs, const BTreeMap<String, String>& uniforms) {
+    ChooseDefaultsImpl(svs, uniforms);
+}
+} // namespace owe
