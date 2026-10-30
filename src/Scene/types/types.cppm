@@ -242,21 +242,19 @@ public:
     }
     auto        clone() const -> SpriteAnimation { return SpriteAnimation(*this); }
     const auto& GetAnimateFrame(double newtime) {
-        // the first frame lasts its own time from the start; a frame can end within one update (or several can), and what
-        // is left of the update belongs to the next frame: the animation plays at its frames' rate whatever the update rate
+        // the first frame lasts its own time from the start; a frame that ends moves the animation on by one frame, and what
+        // is left of the update belongs to the next frame, so the animation plays at its frames' rate (10 frames a second
+        // for 0.1 s frames at any update rate). Like Wallpaper Engine's it never moves on by more than one frame an update:
+        // frames shorter than an update (a gif of 0.03 s frames at 30 updates a second) play at the update rate.
         if (! m_started) {
             m_started    = true;
             m_remainTime = m_frames.at(m_curFrame).frametime;
         }
         m_remainTime -= newtime;
-        while (m_remainTime <= 0.0) {
+        if (m_remainTime <= 0.0) {
             SwitchToNext();
-            const double frametime = m_frames.at(m_curFrame).frametime;
-            if (! (frametime > 0.0)) {
-                m_remainTime = 0.0;
-                break;
-            }
-            m_remainTime += frametime;
+            m_remainTime += m_frames.at(m_curFrame).frametime;
+            if (m_remainTime < 0.0) m_remainTime = 0.0;
         }
         return m_frames.at(m_curFrame);
     }
