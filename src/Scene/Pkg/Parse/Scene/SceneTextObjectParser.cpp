@@ -326,12 +326,13 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
         sp_mesh->AddMaterial(rstd::move(material));
     }
 
-    text::TextLayoutStyle style;
-    style.mesh_origin =
-        direct_text ? text::TextMeshOrigin::Layout : text::TextMeshOrigin::InkBounds;
-    style.color                 = { obj.color[usize(0)], obj.color[usize(1)], obj.color[usize(2)] };
-    // Translucent outlined text is drawn opaque and faded as a whole when it is laid on the scene.
+    // Translucent outlined text is drawn opaque, in its whole box (its outline reaches past its
+    // ink), and faded as a whole when it is laid on the scene.
     const bool alpha_at_compose = obj.outline && obj.alpha < 1.0f && ! direct_text;
+    text::TextLayoutStyle style;
+    style.mesh_origin           = direct_text || alpha_at_compose ? text::TextMeshOrigin::Layout
+                                                                  : text::TextMeshOrigin::InkBounds;
+    style.color                 = { obj.color[usize(0)], obj.color[usize(1)], obj.color[usize(2)] };
     style.alpha                 = alpha_at_compose ? 1.0f : obj.alpha;
     style.brightness            = obj.brightness;
     style.opaquebackground      = has_bg;
@@ -363,7 +364,7 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
         obj.verticalalign.as_str(), obj.alignment.as_str(), "top"_str, "bottom"_str);
     style.halign = rstd::into(initial_halign);
 
-    // The render target of text faded as a whole holds its outline, which its ink doesn't count.
+    // ...with room for the outline in its box
     const float text_padding =
         style.padding + (alpha_at_compose ? obj.outlinethickness + 2.0f : 0.0f);
     const float wrap_width   = style.wrap_width;
@@ -442,7 +443,7 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
         .dynamic            = wants_dynamic_text,
         .has_effect         = has_text_effect,
         .frame_bound        = linked_source,
-        .preserve_text_bbox = has_bg || obj.copybackground,
+        .preserve_text_bbox = has_bg || obj.copybackground || alpha_at_compose,
     };
     const auto initial_geometry = text::ResolveTextGeometry(geometry_policy, layouter->Metrics());
     const auto [initial_layer_w, initial_layer_h] = TextLayerExtent(initial_geometry);
