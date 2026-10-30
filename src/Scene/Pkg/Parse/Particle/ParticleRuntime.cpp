@@ -570,7 +570,8 @@ void ParticleSubSystem::UpdateFrameInput(f64 frame_time) {
     m_frame.local_from_world_dir   = local_from_world_dir;
     m_frame.world_from_spawn_space = world_from_spawn_space;
     m_frame.local_from_world       = local_from_world;
-    {
+    // only a real step measures velocity: the extract after it calls this with no time, and must not eat the move
+    if (frame_time.to_primitive() > 0.0) {
         Eigen::Matrix<double, 3, 8> world_positions;
         for (usize index {}; index < usize(8); ++index) {
             const Eigen::Vector3d offset = m_controlpoints[index].offset;
