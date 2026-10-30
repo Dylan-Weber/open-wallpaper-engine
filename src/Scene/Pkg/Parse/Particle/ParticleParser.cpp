@@ -511,7 +511,10 @@ class ParticleSpawnInstructionValue {
               (MapSequenceAroundControlPoint, (MapSequenceAroundControlPointProgram value;)),
               (MapSequenceBetweenControlPoints, (MapSequenceBetweenControlPointsProgram value;)),
               (RemapInitialValue, (RemapInitialValueProgram value;)),
-              (Override, (OverrideSpawnProgram value;)))
+              (HsvColorRandom, (HsvColorRandomProgram value;)),
+              (Override, (OverrideSpawnProgram value;)),
+              (ColorList, (ColorListProgram value;)),
+              (InheritControlpointVelocity, (InheritControlpointVelocityProgram value;)))
 };
 
 template<typename T>
