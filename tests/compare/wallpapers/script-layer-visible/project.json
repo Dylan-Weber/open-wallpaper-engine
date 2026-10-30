@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test visible scripts on image layers",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}
