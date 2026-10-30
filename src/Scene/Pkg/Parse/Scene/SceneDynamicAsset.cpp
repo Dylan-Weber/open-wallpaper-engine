@@ -207,7 +207,7 @@ Option<SceneLayerNodeDraft> BuildLayerConfiguration(SceneLayerBuildContext& cont
 
     if (config.get("model"_str).is_some()) {
         wpscene::ModelObject model;
-        if (! model.FromJson(config, *context.vfs, context.pkg_version)) return None();
+        if (! model.FromJson(config, *context.vfs, context.layer_resources->pkg_version)) return None();
         model.id      = id;
         model.parent  = u32();
         model.visible = true;
