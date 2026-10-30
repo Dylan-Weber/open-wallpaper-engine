@@ -285,6 +285,48 @@ void main(){}
     EXPECT_EQ(**high, i32(2));
 }
 
+// The clouds effect declares g_CloudSpeeds in its vertex shader as a vec2 (default "0.01 -0.02")
+// and, in an #if branch of its fragment shader that isn't live, as a vec4 ("0.01 0.01 -0.02
+// -0.02"): the collector reads both, and the live uniform's type picks the default (the vec4's
+// had been taking the vec2's place, so the second cloud layer moved at the wrong speed:
+// effect-clouds, correlation 0.68 against Wallpaper Engine at its defaults and 1.00 with them
+// written out).
+TEST(ShaderParser, TheDefaultOfTheLiveDeclarationsTypeIsChosen) {
+    ShaderInfo         info {};
+    Vec<ShaderTexInfo> texs;
+    texs.resize(usize(8), ShaderTexInfo {});
+    ParseShader(R"(
+uniform vec2 g_CloudSpeeds; // {"material":"speed","default":"0.01 -0.02"}
+void main(){}
+)"_str,
+                &info,
+                texs.as_slice());
+    ParseShader(R"(
+#if PERSPECTIVE == 0
+#else
+uniform vec4 g_CloudSpeeds; // {"material":"speed","default":"0.01 0.01 -0.02 -0.02"}
+#endif
+uniform float g_Alpha; // {"material":"alpha","default":0.5}
+void main(){}
+)"_str,
+                &info,
+                texs.as_slice());
+    rstd::collections::BTreeMap<String, String> uniforms;
+    (void)uniforms.insert(rstd::into("g_CloudSpeeds"_str), rstd::into("vec2"_str));
+    (void)uniforms.insert(rstd::into("g_Alpha"_str), rstd::into("float"_str));
+    owe::ChooseDefaultsByUniformType(info.svs, uniforms);
+    auto speeds = info.svs.get("g_CloudSpeeds"_str);
+    ASSERT_TRUE(speeds.is_some());
+    ASSERT_EQ((*speeds)->size(), usize(2));
+    EXPECT_FLOAT_EQ((**speeds)[usize(0)], 0.01f);
+    EXPECT_FLOAT_EQ((**speeds)[usize(1)], -0.02f);
+    ASSERT_TRUE(info.svs.get("g_Alpha"_str).is_some());
+    // the helper entries are gone
+    EXPECT_FALSE(info.svs.contains_key("g_CloudSpeeds#2"_str));
+    EXPECT_FALSE(info.svs.contains_key("g_CloudSpeeds#4"_str));
+    EXPECT_FALSE(info.svs.contains_key("g_Alpha#1"_str));
+}
+
 TEST(ShaderParser, ScalarDefaultPushedToSvs) {
     const std::string src  = R"(
 uniform float g_Brightness; // {"material":"brightness","default":1.5,"range":[0,10]}

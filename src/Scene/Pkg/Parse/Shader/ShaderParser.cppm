@@ -229,6 +229,11 @@ struct CompileSceneShaderVariantResult {
 // module sees it. Not exported — internal helper.
 void ParseShader(ref<str> src, ShaderInfo* info, slice<ShaderTexInfo> texinfos);
 
+// A uniform declared more than once (in #if branches, or in both stages) keeps a default for each
+// declared size, as `NAME#COMPONENTS` entries of `info->svs`; the live uniforms' types
+// (`uniforms`: name to type) pick the plain `NAME` default from them, and the entries go.
+void ChooseDefaultsByUniformType(ShaderValueMap& svs, const BTreeMap<String, String>& uniforms);
+
 class ShaderParser {
 public:
     static String PreShaderSrc(fs::VFS&, ref<str> src, ShaderInfo* pShaderInfo,
