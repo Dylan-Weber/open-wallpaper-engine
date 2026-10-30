@@ -1218,6 +1218,9 @@ public:
         m_lookat = true;
     }
     bool IsLookAt() const { return m_lookat; }
+    // Sets the fov so the camera sees `height` units at its look-at center (a camera that looks at the layers from
+    // a distance, when the window crops the projection). Without a look-at the fov stays.
+    void FitFovToHeightAtCenter(double height);
     // Base transforms remain independent of transient rendering offsets.
     auto Transforms() const -> SceneCameraTransforms;
     auto RenderTransforms(SceneRenderViewKind view = SceneRenderViewKind::Primary) const

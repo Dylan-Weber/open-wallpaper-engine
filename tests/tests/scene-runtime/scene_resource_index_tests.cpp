@@ -2269,3 +2269,21 @@ TEST(SceneTextures, CapturedImageSourcesReuseParsedContentAndPreserveOldRuntimeI
     EXPECT_EQ(before->Describe("asset"_str).unwrap().header.width, 32);
     EXPECT_TRUE(Arc<owe::Image>::ptr_eq(parsed, before->Parse("asset"_str).unwrap()));
 }
+
+// A perspective camera that looks at the layers from a distance (a scene's perspectiveoverridefov) is refitted when the
+// window crops the projection: it must see the cropped height at the layers' plane, as the ortho camera does.
+TEST(SceneCameras, ALookAtCameraRefitsItsFovToTheHeightAtItsCenter) {
+    auto camera = owe::SceneCamera::MakePerspective(1.6, 15000.0, 5.0, 30.0);
+    camera.SetLookAt(Eigen::Vector3d(256.0, 160.0, 600.0),
+                     Eigen::Vector3d(256.0, 160.0, 0.0),
+                     Eigen::Vector3d::UnitY());
+    camera.FitFovToHeightAtCenter(288.0);
+    // tan(fov / 2) = (height / 2) / distance
+    const double expected = 2.0 * std::atan(144.0 / 600.0) * 180.0 / 3.14159265358979323846;
+    EXPECT_NEAR(camera.Fov(), expected, 1e-9);
+
+    // a camera that isn't looking from a distance keeps its fov
+    auto flat = owe::SceneCamera::MakePerspective(1.6, 15000.0, 5.0, 30.0);
+    flat.FitFovToHeightAtCenter(288.0);
+    EXPECT_DOUBLE_EQ(flat.Fov(), 30.0);
+}

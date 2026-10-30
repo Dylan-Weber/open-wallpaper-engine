@@ -83,6 +83,13 @@ bool SceneCamera::SetTransforms(const SceneCameraTransforms& transforms) {
     return true;
 }
 
+void SceneCamera::FitFovToHeightAtCenter(double height) {
+    if (! m_lookat) return;
+    const double distance = (m_center - m_eye).norm();
+    if (! (distance > 0.0) || ! (height > 0.0)) return;
+    m_fov = algorism::CalculatePersperctiveFov(distance, height);
+}
+
 auto SceneCamera::AuthoredTransforms() const -> SceneCameraTransforms {
     auto transforms = Transforms();
     if (m_perspective || ! m_node) return transforms;
