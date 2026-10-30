@@ -26,4 +26,6 @@ for name, system, origin in (('fast', single("400 0 0", 40), "200 900 0"),
     w.add({"name": name, "particle": "particles/%s.json" % name, "origin": origin, "scale": "1 1 1",
            "angles": "0 0 0", "visible": True})
 w.save()
+with open(os.path.join(HERE, 'particles-capvelocity-single', 'compare.json'), 'w') as f:
+    json.dump({"fps": 30}, f)
 clock_probe.stamp(os.path.join(HERE, 'particles-capvelocity-single'))
