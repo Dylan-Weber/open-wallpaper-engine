@@ -2,6 +2,7 @@ module;
 
 export module wescene.text;
 import rstd;
+import eigen;
 export import vectext;
 import wescene.types;
 import wescene.scene;
@@ -89,6 +90,11 @@ Option<Arc<owe::SceneShader>> GetTextSceneShader();
 // Mirrors WE's text-effect background seed draw: sample the current scene into
 // the text RT and keep alpha at zero.
 Option<Arc<owe::SceneShader>> GetTextCopyBackgroundSceneShader();
+
+// From clip space to the scene texture's coordinates (before the divide by w): the top of the
+// screen (NDC y = 1) is the texture's top row (v = 0). The background seed samples the scene
+// through it.
+auto NdcToTexture() -> Eigen::Matrix4d;
 
 enum class TextUniformOutput : rstd::uint32_t
 {

@@ -332,7 +332,7 @@ Texture2D<float4> g_Texture0;
 SamplerState g_Texture0_sampler;
 
 float4 main_ps(PSInput i) : SV_Target {
-    float2 uv = (i.v_proj.xy / i.v_proj.w) * 0.5 + 0.5;
+    float2 uv = i.v_proj.xy / i.v_proj.w;
     return float4(g_Texture0.Sample(g_Texture0_sampler, uv).rgb, 0.0);
 }
 )hlsl"_str;
@@ -376,6 +376,17 @@ Option<Arc<owe::SceneShader>> CompileInlineShader(ref<str> name, ref<str> source
 Option<Arc<owe::SceneShader>> GetTextSceneShader() {
     static const auto shader = CompileInlineShader("text"_str, kTextShaderHlsl);
     return shader.clone();
+}
+
+auto NdcToTexture() -> Eigen::Matrix4d {
+    Eigen::Matrix4d m = Eigen::Matrix4d::Zero();
+    m(0, 0) = 0.5;
+    m(0, 3) = 0.5;
+    m(1, 1) = -0.5;
+    m(1, 3) = 0.5;
+    m(2, 2) = 1.0;
+    m(3, 3) = 1.0;
+    return m;
 }
 
 Option<Arc<owe::SceneShader>> GetTextCopyBackgroundSceneShader() {
@@ -444,7 +455,8 @@ auto TextUniformSource::Evaluate(rstd::ref<rstd::dyn<UniformUpdateContext>>,
     const Eigen::Matrix4d effect_view = m_state->active_camera.is_some()
                                             ? (**m_state->active_camera).GetViewProjectionMatrix()
                                             : (**m_state->camera).GetViewProjectionMatrix();
-    return write(TextUniformOutput::EffectModelViewProjection, effect_view * effect_model);
+    return write(TextUniformOutput::EffectModelViewProjection,
+                 NdcToTexture() * effect_view * effect_model);
 }
 
 TextGeometry ResolveTextGeometry(const TextGeometryPolicy& policy,
