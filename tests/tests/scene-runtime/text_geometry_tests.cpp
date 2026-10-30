@@ -470,3 +470,13 @@ TEST(TextAtlas, InvalidPageExtentHasNoPixels) {
     page.AcknowledgeUpdates(1);
     EXPECT_TRUE(page.DirtyRects().is_empty());
 }
+
+// Wallpaper Engine lays text out at its point size times 4 x 25/24 pixels, not rounded to a whole
+// pixel (text-advance-round: DejaVu Sans' M, 0.8628 em, steps 143 pixels at 40 points, from
+// 166.67 pixels; owe rounded to 167, so 144).
+TEST(TextGeometry, PointsBecomePixelsUnrounded) {
+    EXPECT_NEAR(owe::text::PointsToPixels(40), 500.0 / 3.0, 1e-9);
+    EXPECT_NEAR(owe::text::PointsToPixels(31), 31 * 100.0 / 24.0, 1e-9);
+    EXPECT_DOUBLE_EQ(owe::text::PointsToPixels(0), 1.0);
+    EXPECT_DOUBLE_EQ(owe::text::PointsToPixels(5000), 1024.0);
+}
