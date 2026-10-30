@@ -924,6 +924,49 @@ TEST(SceneParserScript, DynamicObjectsUseSceneIdentity) {
     EXPECT_TRUE(scene.scene->ConsumeRenderGraphDirty());
 }
 
+// A solid layer created by its path has no texture to take a size from: Wallpaper Engine makes it 1 x 1 (scaled by 20 it is
+// 20 x 20, script-layer-alignment); owe made none.
+TEST(SceneParserScript, SolidLayerCreatedByPathIsOneByOne) {
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {},
+            "general": {},
+            "objects": [
+                {
+                    "id": 90,
+                    "name": "Controller",
+                    "visible": {
+                        "value": true,
+                        "script": "export function init(value) { thisScene.createLayer('models/util/solidlayer.json'); return value; } export function update(value) { return value; }"
+                    }
+                }
+            ]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, rstd::move(assets).unwrap_unchecked()).is_ok());
+
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "created-solid-layer"_str,
+        ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+
+    auto scene   = rstd::move(parsed).unwrap();
+    auto created = scene.scene->RootMut()->FindByName("models/util/solidlayer.json"_str);
+    ASSERT_NE(created, nullptr);
+    EXPECT_FLOAT_EQ(created->Size().x(), 1.0f);
+    EXPECT_FLOAT_EQ(created->Size().y(), 1.0f);
+}
+
 TEST(SceneParserText, EmptyStaticTextPreservesLayerHierarchy) {
     auto document = owe::wpscene::ParseSceneDocumentJson(
         R"JSON({
