@@ -1,0 +1,147 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0.1 0.1 0.1",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "tinted",
+      "image": "models/util/solidlayer.json",
+      "origin": "400 800 0",
+      "size": "300 200",
+      "color": {
+        "user": "schemecolor",
+        "value": "1 1 1"
+      },
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 1,
+      "visible": true
+    },
+    {
+      "name": "transparent",
+      "image": "models/util/solidlayer.json",
+      "origin": "900 800 0",
+      "size": "300 200",
+      "color": "1 1 1",
+      "alpha": {
+        "user": "opacity",
+        "value": 1.0
+      },
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 2,
+      "visible": true
+    },
+    {
+      "name": "hidden red",
+      "image": "models/util/solidlayer.json",
+      "origin": "1400 800 0",
+      "size": "300 200",
+      "color": "1 0 0",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": {
+        "user": "show",
+        "value": true
+      },
+      "id": 3
+    },
+    {
+      "name": "shown blue",
+      "image": "models/util/solidlayer.json",
+      "origin": "400 500 0",
+      "size": "300 200",
+      "color": "0 0 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": {
+        "user": "shown",
+        "value": false
+      },
+      "id": 4
+    },
+    {
+      "name": "mode one",
+      "image": "models/util/solidlayer.json",
+      "origin": "900 500 0",
+      "size": "200 200",
+      "color": "1 1 0",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": {
+        "user": {
+          "name": "mode",
+          "condition": "1"
+        },
+        "value": false
+      },
+      "id": 5
+    },
+    {
+      "name": "mode two",
+      "image": "models/util/solidlayer.json",
+      "origin": "1400 500 0",
+      "size": "200 200",
+      "color": "0 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": {
+        "user": {
+          "name": "mode",
+          "condition": "2"
+        },
+        "value": false
+      },
+      "id": 6
+    },
+    {
+      "name": "label",
+      "text": {
+        "user": "label",
+        "value": "placeholder"
+      },
+      "font": "systemfont_arial",
+      "pointsize": 64,
+      "size": "700 150",
+      "origin": "1100 200 0",
+      "color": "1 1 1",
+      "alpha": 1,
+      "visible": true,
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "horizontalalign": "center",
+      "verticalalign": "center",
+      "padding": 10,
+      "id": 7
+    }
+  ],
+  "version": 1
+}

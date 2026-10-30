@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test text sizes: an H at 20, 50, 100 and 200 points",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}
