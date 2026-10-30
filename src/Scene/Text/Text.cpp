@@ -484,10 +484,14 @@ TextGeometry ResolveTextGeometry(const TextGeometryPolicy& policy,
         policy.preserve_text_bbox ? rstd::cmp::max(text_bbox_w, src_bbox_w) : src_bbox_w;
     const float static_h =
         policy.preserve_text_bbox ? rstd::cmp::max(text_bbox_h, src_bbox_h) : src_bbox_h;
+    // An effect works on the text's box and padding, whatever the layer's authored size: a wide
+    // text shows whole over a smaller size, and a short one's effect hugs it (text-effect-frame).
+    const float effect_w = rstd::cmp::max(text_bbox_w, src_bbox_w);
+    const float effect_h = rstd::cmp::max(text_bbox_h, src_bbox_h);
     const float rt_max_w = policy.dynamic ? (! policy.has_effect ? dynamic_w : dynamic_effect_w)
-                                          : (policy.has_effect ? frame_w : static_w);
+                                          : (policy.has_effect ? effect_w : static_w);
     const float rt_max_h = policy.dynamic ? (! policy.has_effect ? dynamic_h : dynamic_effect_h)
-                                          : (policy.has_effect ? frame_h : static_h);
+                                          : (policy.has_effect ? effect_h : static_h);
 
     TextGeometry out;
     out.rt_width            = policy.frame_bound ? frame_w : rstd::cmp::max(rt_max_w, src_bbox_w);
@@ -516,10 +520,12 @@ TextGeometry ResolveTextGeometry(const TextGeometryPolicy& policy,
         return out;
     }
 
-    out.draw_width       = frame_w;
-    out.draw_height      = frame_h;
-    out.uv_source_width  = frame_w;
-    out.uv_source_height = frame_h;
+    out.draw_width          = effect_w;
+    out.draw_height         = effect_h;
+    out.uv_source_width     = effect_w;
+    out.uv_source_height    = effect_h;
+    out.effect_frame_width  = effect_w;
+    out.effect_frame_height = effect_h;
     return out;
 }
 

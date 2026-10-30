@@ -320,6 +320,37 @@ TEST(TextGeometry, DynamicEffectFollowsCurrentTextBounds) {
     EXPECT_FLOAT_EQ(geometry.effect_frame_height, 221.0f);
 }
 
+// An effect on a text layer works on the text's own box and padding, not on the layer's authored
+// size: Wallpaper Engine shows a wide text whole over a smaller size, and a short one's effect
+// frame hugs it inside a larger size (text-effect-frame).
+TEST(TextGeometry, AnEffectWorksOnTheTextsBoxNotTheLayersSize) {
+    const owe::text::TextLayoutMetrics metrics {
+        .text_width    = 607.0f,
+        .text_height   = 157.0f,
+        .source_width  = 563.0f,
+        .source_height = 143.0f,
+        .padding       = 32.0f,
+    };
+    for (const float frame : { 300.0f, 1200.0f }) {
+        const owe::text::TextGeometryPolicy policy {
+            .frame_width  = frame,
+            .frame_height = frame * 0.5f,
+            .has_effect   = true,
+        };
+        const auto geometry = owe::text::ResolveTextGeometry(policy, metrics);
+        EXPECT_FLOAT_EQ(geometry.rt_width, 671.0f) << frame;
+        EXPECT_FLOAT_EQ(geometry.rt_height, 221.0f) << frame;
+        EXPECT_FLOAT_EQ(geometry.draw_width, 671.0f) << frame;
+        EXPECT_FLOAT_EQ(geometry.draw_height, 221.0f) << frame;
+        EXPECT_FLOAT_EQ(geometry.uv_source_width, 671.0f) << frame;
+        EXPECT_FLOAT_EQ(geometry.uv_source_height, 221.0f) << frame;
+        EXPECT_FLOAT_EQ(geometry.effect_frame_width, 671.0f) << frame;
+        EXPECT_FLOAT_EQ(geometry.effect_frame_height, 221.0f) << frame;
+        EXPECT_FLOAT_EQ(geometry.draw_offset_x, 0.0f) << frame;
+        EXPECT_FLOAT_EQ(geometry.draw_offset_y, 0.0f) << frame;
+    }
+}
+
 // Text drawn with its background (or over a copy of it) draws its whole box, the text and its
 // padding: the render target must be sampled over that same box, or the letters stretch
 // (text-layout: they came out taller than in Wallpaper Engine).
