@@ -332,6 +332,16 @@ Option<Arc<SceneNode>> InstantiateLayerConfiguration(SceneParseContext& context,
         return AttachCreatedLayer(context, owner, id);
     }
 
+    if (config.get("model"_str).is_some()) {
+        wpscene::ModelObject model;
+        if (! model.FromJson(config, *context.vfs, context.pkg_version)) return None();
+        model.id      = id;
+        model.parent  = u32();
+        model.visible = true;
+        ParseModelObj(context, model);
+        return AttachCreatedLayer(context, owner, id);
+    }
+
     Vec<float> requested_size;
     owe::GetJsonValue(config, "size"_str, requested_size, false);
     array<float, 2> size { 2.0f, 2.0f };

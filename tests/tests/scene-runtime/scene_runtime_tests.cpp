@@ -2443,3 +2443,67 @@ TEST(UniformSourceParallax, PerspectiveWithAuthoredParallaxDepthAppliesShift) {
                 std::abs(mvp_without_parallax[rstd::usize(13)] -
                          mvp_with_parallax[rstd::usize(13)]) > 1e-5f);
 }
+
+// A script that copies a model layer (createLayer(layer)) gets another model layer of the same model; owe made a plain
+// 2 x 2 solid layer of it (More Physics' pile of spheres came out as hundreds of white squares).
+TEST(SceneParserScript, CopyingAModelLayerMakesAnotherModelLayer) {
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {},
+            "general": {},
+            "objects": [
+                {
+                    "id": 90,
+                    "name": "Controller",
+                    "visible": {
+                        "value": true,
+                        "script": "export function init(value) { const copy = thisScene.createLayer(thisScene.getLayer('Source')); copy.origin = new Vec3(5, 6, 7); return value; } export function update(value) { return value; }"
+                    }
+                },
+                {
+                    "id": 7,
+                    "name": "Source",
+                    "model": "models/cube.mdl",
+                    "origin": "1 2 3"
+                }
+            ]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    // the tests run from the repository root or from tests/
+    std::string fixture = WAYWALLEN_FIXTURE_DIR "/script-model";
+    if (! std::filesystem::exists(fixture)) fixture = "fixtures/script-model";
+    auto own = owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(fixture).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    ASSERT_TRUE(own.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, rstd::move(assets).unwrap_unchecked()).is_ok());
+    ASSERT_TRUE(vfs.mount("/assets"_str, rstd::move(own).unwrap_unchecked()).is_ok());
+
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "copy-model-layer"_str,
+        ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+
+    usize models {};
+    usize solids {};
+    bool  moved = false;
+    for (const auto& child : scene.scene->RootMut()->GetChildren()) {
+        if (child->Name() == "Source"_str && child->Mesh() != nullptr) {
+            ++models;
+            if (child->Translate().x() == 5.0f) moved = true;
+        }
+        if (child->Name() == "__createLayer"_str) ++solids;
+    }
+    EXPECT_EQ(models, usize(2));
+    EXPECT_EQ(solids, usize());
+    EXPECT_TRUE(moved);
+}
