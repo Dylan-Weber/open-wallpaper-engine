@@ -464,7 +464,9 @@ TextGeometry ResolveTextGeometry(const TextGeometryPolicy& policy,
 
     // The box reaches its background gap below the text; the render target is centred on the
     // text, so it reaches as far above, where the box leaves it clear.
-    const float gap         = rstd::cmp::max(metrics.background_gap, 0.0f);
+    // Ink above the line grows the box upward; the target reaches as far below.
+    const float gap         = rstd::cmp::max(
+        rstd::cmp::max(metrics.background_gap, metrics.background_overflow), 0.0f);
     const float text_bbox_w = text_w + 2.0f * pad;
     const float text_bbox_h = text_h + 2.0f * pad + 2.0f * gap;
     const float src_bbox_w  = src_w + 2.0f * pad;
@@ -629,6 +631,11 @@ struct TextLayouter::Impl {
             if (quads.len() > usize(peak)) return Err(vectext::TextError::Limit);
         }
         if (quads.len() > usize(peak)) return Err(vectext::TextError::Limit);
+        // The background box takes in ink that rises above the line (the text keeps its place).
+        if (style.opaquebackground && have_bounds && maxy > measured.text_height / 2) {
+            measured.background_overflow = maxy - measured.text_height / 2;
+            quads[usize()].top += measured.background_overflow;
+        }
         if (have_bounds && style.wrap_width <= 0) {
             measured.source_width    = rstd::cmp::max(maxx - minx, 1.0f);
             measured.source_height   = rstd::cmp::max(maxy - miny, 1.0f);

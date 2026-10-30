@@ -162,6 +162,9 @@ struct TextLayoutMetrics {
     // How much further below the text than above it a background box reaches: the last line's
     // line gap (0 without a background).
     float background_gap { 0.0f };
+    // How far a background box reaches above the line to take in the ink that rises past it (0
+    // without a background).
+    float background_overflow { 0.0f };
 };
 
 struct TextGeometryPolicy {
