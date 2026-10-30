@@ -760,11 +760,12 @@ TEST(ParticleSubSystem, AppliesVortexAroundWorldSpaceOwner) {
     EXPECT_GT(std::abs(positions[usize()].z()), 0.01f);
 }
 
-// Wallpaper Engine's drag slows a particle at half its value a second: speed v0 e^(-drag t / 2)
-// (particles-drag: streams at 200 units/s with drag 0.2, 0.5, 1 and 2 fit v0 / k (1 - e^(-k t))
-// with k = 0.104, 0.253, ~0.5 and ~1.0). After 2 s at drag 0.5 a particle has gone
-// 200 / 0.25 (1 - e^-0.5) = 314.8 units, not the 252.8 a full-strength drag gives.
-TEST(ParticleSubSystem, DragSlowsAtHalfItsValue) {
+// A frame of Wallpaper Engine's drag takes drag dt / (1 + (dt / 0.065)^2) of a particle's speed
+// (particles-drag-rest at 15, 30 and 60 frames a second: a particle thrown at drag/2 x D stops at
+// 0.51, 0.80 and 0.95 x D for drag 0.5 to 2, where a drag of exactly drag a second would say 1):
+// at 60 frames a second and drag 0.5 a frame takes 0.78%, so in 2 s a particle thrown at 200
+// has gone 200/60 (1 - r^120) / (1 - r) = 260 units and stops at 200/60 / 0.0078 = 426.
+TEST(ParticleSubSystem, DragSlowsEachFrameByItsLoss) {
     owe::Scene             scene;
     auto                   mesh = Arc<owe::SceneMesh>::make();
     owe::ParticleSubSystem subsystem(scene,
@@ -808,13 +809,11 @@ TEST(ParticleSubSystem, DragSlowsAtHalfItsValue) {
 
     auto positions = subsystem.System().Instance(usize()).Binding().Read().Positions();
     ASSERT_EQ(positions.len(), usize(1));
-    EXPECT_NEAR(positions[usize()].x(), 314.8f, 3.0f);
-    // ...and moves before it slows: at rest it is v0 / k (1 + k dt) away, a little past v0 / k
-    // (particles-drag-rest: thrown at 300 units/s with drag 2, it stops 306 units out at about
-    // 60 frames a second; slowing first stopped it at 290)
+    EXPECT_NEAR(positions[usize()].x(), 260.1f, 4.0f);
+    // ...and it stops at its speed over a frame's loss from the move before the slowing
     for (int frame = 0; frame < 3000; ++frame) subsystem.Tick(f64(1.0 / 60.0), false);
     const auto rest = subsystem.System().Instance(usize()).Binding().Read().Positions();
-    EXPECT_NEAR(rest[usize()].x(), 800.0f * (1.0f + 0.25f / 60.0f), 1.0f);
+    EXPECT_NEAR(rest[usize()].x(), 426.3f, 3.0f);
 }
 
 TEST(ParticleSubSystem, AppliesTurbulenceMaskAsAxisWeights) {
