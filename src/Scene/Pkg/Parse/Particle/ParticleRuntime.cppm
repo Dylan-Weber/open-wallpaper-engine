@@ -1,3 +1,7 @@
+module;
+
+#include <cmath>
+
 export module wescene.pkg.parse:particle_runtime;
 
 import eigen;
@@ -28,29 +32,60 @@ enum class ParticleAnimationMode
 // particle's colour, opacity or size to it, or multiplies or adds it (particles-remapvalue). A size
 // it sets is a radius: the particle is drawn twice as large. Other inputs, outputs and transform
 // functions (noise, sine) are not read: such an operator does nothing.
+// (Inputs: see Input; scalar ones give every axis the same value, so a colour of them is grey.)
 struct ParticleRemap {
     enum class Input
     {
         DistanceToControlPoint,
+        // from the particle to a control point (a vector), its direction (unit length), and how far along the line from one
+        // control point to another the particle is, by its shadow on the line (0 at the first, 1 at the second)
+        DeltaToControlPoint,
+        DirectionToControlPoint,
+        PositionBetweenControlPoints,
         Lifetime,
+        // the particle's speed along each axis, its opacity, rotation (about z) and angular speed (about z)
+        Velocity,
+        Opacity,
+        Rotation,
+        AngularSpeed,
+        // the object's position
+        LayerOrigin,
+        // seconds: the particle system's, the layer's, the engine's; and the local time of day as a fraction
+        SystemTime,
+        LayerTime,
+        Runtime,
+        TimeOfDay,
     };
     enum class Output
     {
         Color,
         Opacity,
         Size,
+        Velocity,
     };
     enum class Operation
     {
         Remap,
         Multiply,
         Add,
+        Subtract,
+    };
+    // the shape the fraction of the input range goes through (particles-remap-transform): triangle and square repeat
+    // twice over the range, sine once
+    enum class Transform
+    {
+        Linear,
+        Triangle,
+        Sine,
+        Square,
     };
     Input           input { Input::DistanceToControlPoint };
     i32             controlpoint { 0 };
+    i32             controlpoint1 { 1 };
     double          input_min { 0.0 }, input_max { 1.0 };
     Output          output { Output::Color };
     Operation       operation { Operation::Remap };
+    Transform       transform { Transform::Linear };
     Eigen::Vector3d output_min { Eigen::Vector3d::Zero() }, output_max { Eigen::Vector3d::Ones() };
 
     static auto FromJson(const Json& json) -> Option<ParticleRemap> {
@@ -58,25 +93,58 @@ struct ParticleRemap {
         String        text;
         if (json.get("transformfunction"_str).is_some()) {
             GetJsonValue(json, "transformfunction"_str, text, false);
-            if (text != "linear"_str) return None();
+            if (text == "triangle"_str)
+                remap.transform = Transform::Triangle;
+            else if (text == "sine"_str)
+                remap.transform = Transform::Sine;
+            else if (text == "square"_str)
+                remap.transform = Transform::Square;
+            else if (text != "linear"_str)
+                return None();
         }
         text = String {};
         GetJsonValue(json, "input"_str, text, false);
         if (text == "distancetocontrolpoint"_str)
             remap.input = Input::DistanceToControlPoint;
-        else if (text == "particlelifetime"_str)
+        else if (text == "deltatocontrolpoint"_str)
+            remap.input = Input::DeltaToControlPoint;
+        else if (text == "directiontocontrolpoint"_str)
+            remap.input = Input::DirectionToControlPoint;
+        else if (text == "positionbetweentwocontrolpoints"_str)
+            remap.input = Input::PositionBetweenControlPoints;
+        else if (text == "lifetimefraction"_str || text == "particlelifetime"_str)
             remap.input = Input::Lifetime;
+        else if (text == "velocity"_str)
+            remap.input = Input::Velocity;
+        else if (text == "opacity"_str)
+            remap.input = Input::Opacity;
+        else if (text == "rotation"_str)
+            remap.input = Input::Rotation;
+        else if (text == "angularspeed"_str)
+            remap.input = Input::AngularSpeed;
+        else if (text == "layerorigin"_str)
+            remap.input = Input::LayerOrigin;
+        else if (text == "particlesystemtime"_str)
+            remap.input = Input::SystemTime;
+        else if (text == "layertime"_str)
+            remap.input = Input::LayerTime;
+        else if (text == "runtime"_str)
+            remap.input = Input::Runtime;
+        else if (text == "timeofday"_str)
+            remap.input = Input::TimeOfDay;
         else
             return None();
         text = String {};
         GetJsonValue(json, "output"_str, text, false);
-        const bool vector = text == "color"_str;
-        if (vector)
+        const bool vector = text == "color"_str || text == "velocity"_str;
+        if (text == "color"_str)
             remap.output = Output::Color;
         else if (text == "opacity"_str || text == "alpha"_str)
             remap.output = Output::Opacity;
         else if (text == "size"_str)
             remap.output = Output::Size;
+        else if (text == "velocity"_str)
+            remap.output = Output::Velocity;
         else
             return None();
         text = String {};
@@ -85,12 +153,16 @@ struct ParticleRemap {
             remap.operation = Operation::Multiply;
         else if (text == "add"_str)
             remap.operation = Operation::Add;
+        else if (text == "subtract"_str)
+            remap.operation = Operation::Subtract;
         else if (text.is_empty() || text == "remap"_str)
             remap.operation = Operation::Remap;
         else
             return None();
         GetJsonValue(json, "inputcontrolpoint0"_str, remap.controlpoint, false);
         remap.controlpoint = ((remap.controlpoint % i32(8)) + i32(8)) % i32(8);
+        GetJsonValue(json, "inputcontrolpoint1"_str, remap.controlpoint1, false);
+        remap.controlpoint1 = ((remap.controlpoint1 % i32(8)) + i32(8)) % i32(8);
         float min { 0.0f }, max { 1.0f };
         GetJsonValue(json, "inputrangemin"_str, min, false);
         GetJsonValue(json, "inputrangemax"_str, max, false);
@@ -112,21 +184,49 @@ struct ParticleRemap {
         return Some(rstd::move(remap));
     }
 
-    // the output value for an input
-    auto Map(double value) const -> Eigen::Vector3d {
+    // how far along the input range a value is, 0 to 1, through the transform
+    auto Fraction(double value) const -> double {
         const double span = input_max - input_min;
         double       t    = span != 0.0 ? (value - input_min) / span : (value >= input_max ? 1.0 : 0.0);
         t                 = t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t);
-        return output_min + (output_max - output_min) * t;
+        switch (transform) {
+        case Transform::Linear: return t;
+        case Transform::Sine: return 0.5 - 0.5 * std::cos(2.0 * 3.14159265358979323846 * t);
+        case Transform::Triangle: {
+            const double p = 2.0 * t - std::floor(2.0 * t);
+            return 1.0 - std::abs(2.0 * p - 1.0);
+        }
+        case Transform::Square: {
+            const double p = 2.0 * t - std::floor(2.0 * t);
+            return p >= 0.5 ? 1.0 : 0.0;
+        }
+        }
+        return t;
+    }
+
+    // the output value for an input
+    auto Map(double value) const -> Eigen::Vector3d {
+        return output_min + (output_max - output_min) * Fraction(value);
+    }
+
+    // the output value for a vector input: each axis over the range
+    auto Map(const Eigen::Vector3d& value) const -> Eigen::Vector3d {
+        Eigen::Vector3d t(Fraction(value.x()), Fraction(value.y()), Fraction(value.z()));
+        return output_min + (output_max - output_min).cwiseProduct(t);
     }
 
     // a particle value after the operation, given its value and the input
     auto Apply(const Eigen::Vector3d& current, double value) const -> Eigen::Vector3d {
+        return Apply(current, Eigen::Vector3d::Constant(value));
+    }
+
+    auto Apply(const Eigen::Vector3d& current, const Eigen::Vector3d& value) const -> Eigen::Vector3d {
         Eigen::Vector3d mapped = Map(value);
-        if (output == Output::Size && operation == Operation::Remap) mapped *= 2.0;
+        if (output == Output::Size && operation != Operation::Multiply) mapped *= 2.0;
         switch (operation) {
         case Operation::Multiply: return current.cwiseProduct(mapped);
         case Operation::Add: return current + mapped;
+        case Operation::Subtract: return current - mapped;
         case Operation::Remap: break;
         }
         return mapped;
@@ -597,6 +697,9 @@ public:
         return m_controlpoints.as_mut_slice();
     }
     auto SimulationControlpoint(usize index) const -> ParticleSimulationControlpoint;
+    // the engine's run time in seconds, and the local time of day as a fraction (0.5 at noon)
+    auto SceneRuntimeSeconds() const -> double;
+    auto LocalTimeOfDay() const -> double;
     void SetInstanceModifiers(ParticleInstanceModifiers value) {
         m_instance_modifiers = Some(rstd::move(value));
     }
