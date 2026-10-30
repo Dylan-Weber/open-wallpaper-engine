@@ -1,6 +1,7 @@
-# particles-drag-rest: single particles thrown to the right under drag, long enough to have come to rest: with
-# Wallpaper Engine's drag (speed falls as e^(-drag t / 2)) a particle thrown at drag/2 x D units/s stops D units
-# away. Rows drag 0.2, 0.5, 1 and 2; particles meant to stop 300, 600 and 900 units out.
+# particles-drag-rest: single particles thrown to the right under drag, long enough to have come to rest, at 30 frames
+# a second (compare.json "fps"): Wallpaper Engine's drag depends on its frame rate, so a particle thrown at drag/2 x D
+# units/s stops at 0.51 x D (drag 0.2), 0.62, 0.62 and 0.63 x D (drag 2) at 30 frames a second, 1.0 at 15 and 0.53 at
+# 60. Rows drag 0.2, 0.5, 1 and 2; particles thrown for D = 300, 600 and 900 units.
 def thrown(drag, distance):
     speed = drag / 2 * distance
     return {
@@ -29,4 +30,6 @@ for k, drag in enumerate((0.2, 0.5, 1, 2)):
                "origin": "250 %d 0" % (920 - 170 * k - 40 * j), "scale": "1 1 1", "angles": "0 0 0",
                "visible": True})
 w.save()
+with open(os.path.join(HERE, 'particles-drag-rest', 'compare.json'), 'w') as f:
+    json.dump({"fps": 30}, f)
 clock_probe.stamp(os.path.join(HERE, 'particles-drag-rest'))
