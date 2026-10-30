@@ -298,8 +298,8 @@ void LayerImageEmitterProgram::Emit(particle::ParticleEmitterContext& context) {
                                             : u32();
     auto  emit_count       = timed_emit_count.saturating_add(pending_count);
     auto& source           = **m_args.source;
-    // a layer less than about half opaque gives the image nothing to emit from
-    const bool visible  = source.alpha >= 0.4f;
+    // a layer (times the pixel) less than half opaque gives the image nothing to emit from
+    const bool visible  = source.alpha >= 0.5f;
     auto       requests = context.Acquire(rstd::as_cast<usize>(visible ? emit_count : u32()),
                                     EmitDuration(emit_speed));
     auto       columns  = m_pipeline->Bind(context.View());
