@@ -100,11 +100,223 @@ auto AtlasPage::RetainAtlasPixels() const -> owe::ImageDataPtr {
     };
     return ImageDataPtr(m_impl->pixels->data(), Owner { m_impl->pixels.clone() });
 }
+namespace
+{
+// Big-endian reads that give 0 past the end, so a damaged font kerns nothing rather than crash.
+struct FontBytes {
+    const unsigned char* data;
+    rstd::size_t         size;
+    auto U16(rstd::size_t at) const -> rstd::uint32_t {
+        return at + 2 <= size ? (rstd::uint32_t(data[at]) << 8) | data[at + 1] : 0;
+    }
+    auto S16(rstd::size_t at) const -> rstd::int32_t {
+        const auto value = rstd::int32_t(U16(at));
+        return value >= 0x8000 ? value - 0x10000 : value;
+    }
+    auto U32(rstd::size_t at) const -> rstd::uint32_t { return (U16(at) << 16) | U16(at + 2); }
+};
+
+constexpr rstd::uint32_t Tag(const char (&tag)[5]) {
+    return (rstd::uint32_t(tag[0]) << 24) | (rstd::uint32_t(tag[1]) << 16) |
+           (rstd::uint32_t(tag[2]) << 8) | rstd::uint32_t(tag[3]);
+}
+
+auto ValueRecordSize(rstd::uint32_t format) -> rstd::size_t {
+    rstd::size_t size {};
+    for (; format; format &= format - 1) size += 2;
+    return size;
+}
+
+// The glyph's index in an OpenType coverage table, or -1.
+auto CoverageIndex(const FontBytes& font, rstd::size_t at, rstd::uint32_t glyph) -> rstd::int64_t {
+    const auto format = font.U16(at), count = font.U16(at + 2);
+    rstd::int64_t low {}, high = rstd::int64_t(count) - 1;
+    while (low <= high) {
+        const auto mid = (low + high) / 2;
+        if (format == 1) {
+            const auto value = font.U16(at + 4 + rstd::size_t(mid) * 2);
+            if (value == glyph) return mid;
+            if (value < glyph) low = mid + 1;
+            else high = mid - 1;
+        } else if (format == 2) {
+            const auto range = at + 4 + rstd::size_t(mid) * 6;
+            if (glyph < font.U16(range)) high = mid - 1;
+            else if (glyph > font.U16(range + 2)) low = mid + 1;
+            else return rstd::int64_t(font.U16(range + 4) + glyph - font.U16(range));
+        } else
+            return -1;
+    }
+    return -1;
+}
+
+// The glyph's class in an OpenType class definition table (0 when it has none).
+auto GlyphClass(const FontBytes& font, rstd::size_t at, rstd::uint32_t glyph) -> rstd::uint32_t {
+    const auto format = font.U16(at);
+    if (format == 1) {
+        const auto start = font.U16(at + 2), count = font.U16(at + 4);
+        return glyph >= start && glyph < start + count ? font.U16(at + 6 + (glyph - start) * 2) : 0;
+    }
+    if (format != 2) return 0;
+    rstd::int64_t low {}, high = rstd::int64_t(font.U16(at + 2)) - 1;
+    while (low <= high) {
+        const auto mid   = (low + high) / 2;
+        const auto range = at + 4 + rstd::size_t(mid) * 6;
+        if (glyph < font.U16(range)) high = mid - 1;
+        else if (glyph > font.U16(range + 2)) low = mid + 1;
+        else return font.U16(range + 4);
+    }
+    return 0;
+}
+
+// A pair adjustment subtable's x advance for the pair, or None when the subtable doesn't cover it.
+auto PairAdjustment(const FontBytes& font, rstd::size_t at, rstd::uint32_t left, rstd::uint32_t right)
+    -> Option<rstd::int32_t> {
+    const auto coverage = CoverageIndex(font, at + font.U16(at + 2), left);
+    if (coverage < 0) return None();
+    const auto format1 = font.U16(at + 4), format2 = font.U16(at + 6);
+    const auto size1 = ValueRecordSize(format1), size2 = ValueRecordSize(format2);
+    // the x advance follows the x and y placements the first value record has
+    const auto x_advance = [&](rstd::size_t record) -> rstd::int32_t {
+        return format1 & 4 ? font.S16(record + ValueRecordSize(format1 & 3)) : 0;
+    };
+    if (font.U16(at) == 1) {
+        if (rstd::uint32_t(coverage) >= font.U16(at + 8)) return None();
+        const auto set    = at + font.U16(at + 10 + rstd::size_t(coverage) * 2);
+        const auto stride = 2 + size1 + size2;
+        rstd::int64_t low {}, high = rstd::int64_t(font.U16(set)) - 1;
+        while (low <= high) {
+            const auto mid    = (low + high) / 2;
+            const auto record = set + 2 + rstd::size_t(mid) * stride;
+            const auto second = font.U16(record);
+            if (second == right) return Some(x_advance(record + 2));
+            if (second < right) low = mid + 1;
+            else high = mid - 1;
+        }
+        return None();
+    }
+    if (font.U16(at) != 2) return None();
+    const auto class1 = GlyphClass(font, at + font.U16(at + 8), left);
+    const auto class2 = GlyphClass(font, at + font.U16(at + 10), right);
+    const auto count1 = font.U16(at + 12), count2 = font.U16(at + 14);
+    if (class1 >= count1 || class2 >= count2) return Some(rstd::int32_t {});
+    return Some(x_advance(at + 16 + (rstd::size_t(class1) * count2 + class2) * (size1 + size2)));
+}
+} // namespace
+
+auto FontKerning::Read(slice<u8> bytes) -> FontKerning {
+    FontKerning kerning;
+    const auto* data = reinterpret_cast<const unsigned char*>(bytes.as_raw_ptr());
+    const auto  size = rstd::size_t(bytes.len().to_primitive());
+    for (rstd::size_t i {}; i < size; ++i) kerning.m_bytes.push(static_cast<unsigned char>(data[i]));
+    const FontBytes font { data, size };
+
+    // a collection kerns as its first font
+    const rstd::size_t start = font.U32(0) == Tag("ttcf") ? font.U32(12) : 0;
+    rstd::size_t       gpos {}, kern {};
+    for (rstd::size_t i {}, count = font.U16(start + 4); i < count; ++i) {
+        const auto record = start + 12 + i * 16;
+        const auto tag    = font.U32(record);
+        if (tag == Tag("head")) kerning.m_units_per_em = font.U16(font.U32(record + 8) + 18);
+        if (tag == Tag("GPOS")) gpos = font.U32(record + 8);
+        if (tag == Tag("kern")) kern = font.U32(record + 8);
+    }
+    if (kerning.m_units_per_em == 0) kerning.m_units_per_em = 1000;
+
+    if (gpos) {
+        // the lookups of every 'kern' feature, applied in lookup order
+        Vec<rstd::uint32_t> lookups;
+        const auto          features = gpos + font.U16(gpos + 6);
+        for (rstd::size_t i {}, count = font.U16(features); i < count; ++i) {
+            const auto record = features + 2 + i * 6;
+            if (font.U32(record) != Tag("kern")) continue;
+            const auto feature = features + font.U16(record + 4);
+            for (rstd::size_t j {}, n = font.U16(feature + 2); j < n; ++j) {
+                const auto index = font.U16(feature + 4 + j * 2);
+                bool       known = false;
+                for (const auto lookup : lookups) known |= lookup == index;
+                if (! known) lookups.push(rstd::uint32_t(index));
+            }
+        }
+        for (rstd::size_t i = 1; i < rstd::size_t(lookups.len().to_primitive()); ++i)
+            for (auto j = i; j > 0 && lookups[rstd::usize(j - 1)] > lookups[rstd::usize(j)]; --j) {
+                const auto swap             = lookups[rstd::usize(j)];
+                lookups[rstd::usize(j)]     = lookups[rstd::usize(j - 1)];
+                lookups[rstd::usize(j - 1)] = swap;
+            }
+        const auto list = gpos + font.U16(gpos + 8);
+        for (const auto index : lookups) {
+            if (index >= font.U16(list)) continue;
+            const auto lookup = list + font.U16(list + 2 + rstd::size_t(index) * 2);
+            const auto type   = font.U16(lookup);
+            for (rstd::size_t j {}, n = font.U16(lookup + 4); j < n; ++j) {
+                auto subtable = lookup + font.U16(lookup + 6 + j * 2);
+                if (type == 9) { // extension: the real subtable sits at a 32-bit offset
+                    if (font.U16(subtable + 2) != 2) continue;
+                    subtable += font.U32(subtable + 4);
+                } else if (type != 2)
+                    continue;
+                kerning.m_subtables.push(rstd::uint32_t(subtable));
+            }
+            kerning.m_lookup_ends.push(rstd::uint32_t(kerning.m_subtables.len().to_primitive()));
+        }
+    }
+    if (kerning.m_subtables.is_empty() && kern && font.U16(kern) == 0) {
+        // version 0: horizontal format 0 subtables of sorted pairs
+        auto at = kern + 4;
+        for (rstd::size_t i {}, count = font.U16(kern + 2); i < count && at < size; ++i) {
+            const auto coverage = font.U16(at + 4);
+            if ((coverage >> 8) == 0 && (coverage & 0x5) == 0x1)
+                kerning.m_kern_tables.push(rstd::uint32_t(at));
+            at += font.U16(at + 2);
+        }
+    }
+    return kerning;
+}
+
+auto FontKerning::Empty() const -> bool {
+    return m_subtables.is_empty() && m_kern_tables.is_empty();
+}
+
+auto FontKerning::Pair(rstd::uint32_t left, rstd::uint32_t right) const -> rstd::int32_t {
+    const FontBytes font { m_bytes.as_slice().as_raw_ptr(),
+                           rstd::size_t(m_bytes.len().to_primitive()) };
+    rstd::int32_t total {};
+    rstd::size_t  first {};
+    for (const auto end : m_lookup_ends) {
+        // within a lookup the first subtable that covers the pair applies
+        for (auto i = first; i < end; ++i) {
+            const auto value = PairAdjustment(font, m_subtables[rstd::usize(i)], left, right);
+            if (value.is_some()) {
+                total += *value;
+                break;
+            }
+        }
+        first = end;
+    }
+    const auto key = (left << 16) | right;
+    for (const auto at : m_kern_tables) {
+        rstd::int64_t low {}, high = rstd::int64_t(font.U16(at + 6)) - 1;
+        while (low <= high) {
+            const auto mid  = (low + high) / 2;
+            const auto pair = at + 14 + rstd::size_t(mid) * 6;
+            const auto here = font.U32(pair);
+            if (here == key) {
+                total += font.S16(pair + 4);
+                break;
+            }
+            if (here < key) low = mid + 1;
+            else high = mid - 1;
+        }
+    }
+    return total;
+}
+
 struct TextResources::Impl {
     vectext::SystemTextService  service;
     AtlasOptions                options;
     Vec<Arc<AtlasPage>>         pages;
     HashMap<String, AtlasGlyph> glyphs;
+    HashMap<String, FontKerning> kerning; // by font source, for fonts that kern
     rstd::uint64_t              id { vectext::new_identity() }, rasters {}, layouts {};
     void                        Initialize() {
         if (options.extent >= 8 && options.extent <= 8192 && options.max_pages &&
@@ -127,8 +339,20 @@ auto TextResources::RegisterFont(slice<u8> bytes)
     -> Result<vectext::FontSource, vectext::TextError> {
     auto collection = m_impl->service.collection();
     if (collection.is_err()) return Err(collection.unwrap_err());
-    return collection->register_font(slice<unsigned char>::from_raw_parts(
+    auto source = collection->register_font(slice<unsigned char>::from_raw_parts(
         reinterpret_cast<const unsigned char*>(bytes.as_raw_ptr()), bytes.len()));
+    if (source.is_ok()) {
+        auto kerning = FontKerning::Read(bytes);
+        if (! kerning.Empty())
+            (void)m_impl->kerning.insert(
+                rstd::format("{}:{}", source->collection, source->source), rstd::move(kerning));
+    }
+    return source;
+}
+auto TextResources::Kerning(const vectext::FontSource& source) const -> const FontKerning* {
+    auto key   = rstd::format("{}:{}", source.collection, source.source);
+    auto found = m_impl->kerning.get(key.as_str());
+    return found.is_some() ? &**found : nullptr;
 }
 auto TextResources::Layout(vectext::TextRequest request)
     -> Result<vectext::TextLayout, vectext::TextError> {
@@ -565,8 +789,20 @@ struct TextLayouter::Impl {
         // or from ink that hangs left of it, to its ink's right edge; lines align against the
         // widest span, and ink left of a pen moves every line right by that much. Wrapped text
         // is no wider than its lines either.
-        // It also moves the pen by whole pixels, each letter's advance rounded down.
-        const auto glyphs = output.glyphs();
+        // It also moves the pen by whole pixels, each letter's advance rounded down, and kerns
+        // letter pairs (text-kerning).
+        const auto  glyphs  = output.glyphs();
+        const auto* kerning = font.source.is_some() ? resources->Kerning(*font.source) : nullptr;
+        const auto  kern    = [&](usize index, usize end) -> float {
+            if (kerning == nullptr || index + usize(1) >= end) return 0.0f;
+            const auto& left  = glyphs[index];
+            const auto& right = glyphs[index + usize(1)];
+            if (left.missing || right.missing || left.synthetic || right.synthetic ||
+                left.font != right.font)
+                return 0.0f;
+            return float(kerning->Pair(rstd::uint32_t(left.glyph), rstd::uint32_t(right.glyph)) *
+                         size / kerning->UnitsPerEm());
+        };
         Vec<float> glyph_pen;  // each glyph's pen, from its line's start
         Vec<float> line_shift; // how far that moves each line's last letter
         glyph_pen.resize(glyphs.len(), 0.0f);
@@ -576,7 +812,9 @@ struct TextLayouter::Impl {
                 const auto& glyph = glyphs[index];
                 glyph_pen[index]  = pen;
                 if (glyph.drawable) shift = pen - float(glyph.position.x - line.logical.x);
-                pen += f32(float(glyph.advance)).floor().to_primitive();
+                pen += f32(float(glyph.advance) + kern(index, usize(line.glyph_end)))
+                           .floor()
+                           .to_primitive();
             }
             line_shift.push(float(shift));
         }
