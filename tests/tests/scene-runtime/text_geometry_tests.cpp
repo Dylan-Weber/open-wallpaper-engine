@@ -658,3 +658,44 @@ TEST(TextAtlas, InvalidPageExtentHasNoPixels) {
     page.AcknowledgeUpdates(1);
     EXPECT_TRUE(page.DirtyRects().is_empty());
 }
+
+// Wallpaper Engine kerns letter pairs, from a font's GPOS kerning or its legacy 'kern' table alike
+// (text-kerning: DejaVu Sans with either table alone kerns "AVATAR To Te Wa LT" the same, and
+// narrower than with neither).
+TEST(TextLayouter, LettersAreKernedFromGposOrTheKernTable) {
+    auto source = rstd::path::PathBuf::from(__FILE__ ""_str);
+    auto root   = source.as_path().parent().unwrap().parent().unwrap().parent().unwrap();
+    for (const auto name : { "fixtures/fonts/KerningGpos.ttf"_str, "fixtures/fonts/KerningKern.ttf"_str }) {
+        auto path        = rstd::path::PathBuf::from(root).join(name);
+        auto bytes       = rstd::fs::read(path.as_path()).unwrap();
+        auto resources   = TextResources();
+        auto font_source = resources->RegisterFont(bytes.as_slice()).unwrap();
+        constexpr std::size_t                                                     peak_quads = 8;
+        const rstd::initializer_list<owe::SceneVertexArray::SceneVertexAttribute> attributes {
+            { .name = "a_Position"_Str, .type = owe::VertexType::FLOAT3 },
+            { .name = "a_TexCoord"_Str, .type = owe::VertexType::FLOAT2 },
+            { .name = "a_Color"_Str, .type = owe::VertexType::FLOAT4 },
+        };
+        auto mesh = Arc<owe::SceneMesh>::make();
+        mesh->AddVertexArray(owe::SceneVertexArray(attributes, rstd::usize(peak_quads * 4)));
+        mesh->AddIndexArray(owe::SceneIndexArray(rstd::usize(peak_quads * 6)));
+        owe::text::TextLayoutStyle style;
+        style.mesh_origin = owe::text::TextMeshOrigin::Layout;
+        style.halign      = "left"_Str;
+        owe::text::TextLayouter layouter(resources.clone(),
+                                         { .source = Some(font_source), .size = 100 },
+                                         mesh.clone(),
+                                         rstd::move(style),
+                                         peak_quads);
+        // each letter advances 60 pixels, its ink 10..50; A V kerns -10 and T o -15, o T not at all:
+        // the pens are 0, 50, 110, 155, 215
+        ASSERT_TRUE(layouter.SetText("AVToT"_str).is_ok());
+        EXPECT_NEAR(layouter.TextWidth(), 215.0f + 50.0f, 0.01f) << name;
+        const auto& vertices = mesh->GetVertexArray(rstd::usize());
+        const auto  stride   = vertices.OneSize().to_primitive();
+        const float pens[5] { 0, 50, 110, 155, 215 };
+        for (std::size_t glyph = 0; glyph < 5; ++glyph)
+            EXPECT_NEAR(vertices.Data()[glyph * 4 * stride], pens[glyph] + 10.0f - 265.0f / 2, 1.01f)
+                << name << " " << glyph;
+    }
+}
