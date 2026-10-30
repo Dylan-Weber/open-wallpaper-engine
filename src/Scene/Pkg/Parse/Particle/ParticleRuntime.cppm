@@ -21,6 +21,25 @@ enum class ParticleAnimationMode
     RANDOMONE,
 };
 
+// A colour from hue (0 to 1 around the circle, wrapping), saturation and value.
+inline auto HsvToRgb(double hue, double saturation, double value) -> Eigen::Vector3d {
+    hue          = hue - static_cast<double>(static_cast<long long>(hue));
+    if (hue < 0.0) hue += 1.0;
+    const double h = hue * 6.0;
+    const int    i = static_cast<int>(h) % 6;
+    const double f = h - static_cast<double>(static_cast<int>(h));
+    const double p = value * (1.0 - saturation), q = value * (1.0 - saturation * f),
+                 t = value * (1.0 - saturation * (1.0 - f));
+    switch (i) {
+    case 0: return { value, t, p };
+    case 1: return { q, value, p };
+    case 2: return { p, value, t };
+    case 3: return { p, q, value };
+    case 4: return { t, p, value };
+    default: return { value, p, q };
+    }
+}
+
 struct ParticleControlpoint {
     bool link_mouse { false };
     // Recomputed per instance after applying parent-particle overrides.
