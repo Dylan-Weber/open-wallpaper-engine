@@ -656,6 +656,9 @@ static void EmitSceneNode(SceneNode* node, ref<str> inherited_output, ref<str> i
     const bool collapsed = node->Scale().x() == 0.0f || node->Scale().y() == 0.0f;
     const bool elidable  = collapsed || scene.IsLayerElidable(WallpaperLayerId { .value = layer_id });
     const bool linked    = link_source.is_some() && linked_ids.contains(link_source->value);
+    const bool hidden    = hidden_ancestor || ! node->Visible() ||
+                        (layer_id >= i32() &&
+                         scene.IsLayerVisibilityElidable(WallpaperLayerId { .value = layer_id }));
     bool       emit      = true;
 
     ref<str> node_output = inherited_output;
