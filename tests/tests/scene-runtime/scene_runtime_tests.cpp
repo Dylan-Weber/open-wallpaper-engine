@@ -1,6 +1,8 @@
 #include <rstd/test/gtest.hpp>
 
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 
 import eigen;
 import rstd;
@@ -922,6 +924,109 @@ TEST(SceneParserScript, DynamicObjectsUseSceneIdentity) {
 
     EXPECT_TRUE(scene.scene->SetNodeVisible(*dynamic, true));
     EXPECT_TRUE(scene.scene->ConsumeRenderGraphDirty());
+}
+
+// A solid layer created by its path has no texture to take a size from: Wallpaper Engine makes it 1 x 1 (scaled by 20 it is
+// 20 x 20, script-layer-alignment); owe made none.
+TEST(SceneParserScript, SolidLayerCreatedByPathIsOneByOne) {
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {},
+            "general": {},
+            "objects": [
+                {
+                    "id": 90,
+                    "name": "Controller",
+                    "visible": {
+                        "value": true,
+                        "script": "export function init(value) { thisScene.createLayer('models/util/solidlayer.json'); return value; } export function update(value) { return value; }"
+                    }
+                }
+            ]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, rstd::move(assets).unwrap_unchecked()).is_ok());
+
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "created-solid-layer"_str,
+        ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+
+    auto scene   = rstd::move(parsed).unwrap();
+    auto created = scene.scene->RootMut()->FindByName("models/util/solidlayer.json"_str);
+    ASSERT_NE(created, nullptr);
+    EXPECT_FLOAT_EQ(created->Size().x(), 1.0f);
+    EXPECT_FLOAT_EQ(created->Size().y(), 1.0f);
+}
+
+// A layer created by its path takes its texture's size only when its model says "autosize"; otherwise it is 1 x 1, as a solid
+// layer (Wallpaper Engine draws material-user-alpha's created 64 x 2 gradient layer, scaled by 5 x 150, as a 5 x 150 line).
+TEST(SceneParserScript, CreatedLayerIsOneByOneUnlessAutosize) {
+    const auto dir = std::filesystem::temp_directory_path() / "owe-created-size";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir / "models");
+    std::filesystem::create_directories(dir / "materials");
+    std::ofstream(dir / "models/plain.json") << R"({"material": "materials/strip.json"})";
+    std::ofstream(dir / "models/autosized.json") << R"({"autosize": true, "material": "materials/strip.json"})";
+    std::ofstream(dir / "materials/strip.json")
+        << R"({"passes": [{"shader": "genericimage2", "textures": ["gradient/gradient_rainbow"]}]})";
+
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {},
+            "general": {},
+            "objects": [
+                {
+                    "id": 90,
+                    "name": "Controller",
+                    "visible": {
+                        "value": true,
+                        "script": "export function init(value) { thisScene.createLayer('models/plain.json'); thisScene.createLayer('models/autosized.json'); return value; } export function update(value) { return value; }"
+                    }
+                }
+            ]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    auto own = owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(dir.string()).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    ASSERT_TRUE(own.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, rstd::move(assets).unwrap_unchecked()).is_ok());
+    ASSERT_TRUE(vfs.mount("/assets"_str, rstd::move(own).unwrap_unchecked()).is_ok());
+
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "created-size"_str,
+        ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+
+    auto plain = scene.scene->RootMut()->FindByName("models/plain.json"_str);
+    ASSERT_NE(plain, nullptr);
+    EXPECT_FLOAT_EQ(plain->Size().x(), 1.0f);
+    EXPECT_FLOAT_EQ(plain->Size().y(), 1.0f);
+    auto autosized = scene.scene->RootMut()->FindByName("models/autosized.json"_str);
+    ASSERT_NE(autosized, nullptr);
+    EXPECT_FLOAT_EQ(autosized->Size().x(), 64.0f);
+    EXPECT_FLOAT_EQ(autosized->Size().y(), 2.0f);
+    std::filesystem::remove_all(dir);
 }
 
 TEST(SceneParserText, EmptyStaticTextPreservesLayerHierarchy) {
