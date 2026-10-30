@@ -130,6 +130,8 @@ public:
     bool            copybackground { false }; // PKGV0001+
     bool            solid { false };          // PKGV0002+
     bool            solid_layer { false };
+    // an autosize model whose first texture is a sprite sheet: drawn at one frame's size, which the image parser reads
+    bool            autosize_sprite_sheet { false };
     bool            opaquebackground { false };           // PKGV0005+
     bool            clampuvs { false };                   // PKGV0022+
     bool            castshadow { false };                 // PKGV0019+
