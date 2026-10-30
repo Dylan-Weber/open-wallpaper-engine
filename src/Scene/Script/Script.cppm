@@ -80,6 +80,12 @@ struct AttachmentTransform {
     array<float, 9> rotation { 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f };
 };
 
+// A bone's origin and angles (radians) relative to its parent.
+struct BoneLocalPose {
+    BoneTranslation origin;
+    BoneTranslation angles;
+};
+
 // What kind of value a FieldScript is expected to produce. Set at parse
 // time based on the field name's well-known type — see the per-field-kind
 // table in the API doc.
@@ -293,6 +299,12 @@ public:
     // (0 for a root); empty when the node has no bones.
     using BoneParentsResolver = Box<dyn<FnMut<Vec<uint32_t>(owe::SceneNode*)>>>;
     void SetBoneParentsResolver(BoneParentsResolver resolver);
+    // A bone's local pose, numbered as the bone index resolver numbers bones, at the scripts'
+    // time; the setter poses it for that frame.
+    using BoneLocalGetter =
+        Box<dyn<FnMut<Option<BoneLocalPose>(owe::SceneNode*, uint32_t, double)>>>;
+    using BoneLocalSetter = Box<dyn<FnMut<void(owe::SceneNode*, uint32_t, BoneLocalPose, double)>>>;
+    void SetBoneLocalResolvers(BoneLocalGetter getter, BoneLocalSetter setter);
 
     // A node's attachments, numbered from 0: the index of a name, and an
     // attachment's transform in the scene at a time.
