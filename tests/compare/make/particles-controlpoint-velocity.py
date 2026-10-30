@@ -1,4 +1,4 @@
-# particles-controlpoint-velocity: inheritcontrolpointvelocity. The object moves at +200 a second along x (a script
+# particles-controlpoint-velocity: inheritcontrolpointvelocity. The object moves at +30 a second along x (a script
 # on its origin), which is what moves a control point; a particle is born every second with no velocity of its own
 # and lives for good, so the row of them shows what they inherited (a particle born in the first frame, while the
 # control point jumps to its place, gets a huge velocity: that is why the objects sit at the origin and nothing is
@@ -36,7 +36,7 @@ def cell(controlpoint, factor, flags=0, y=500):
     }
 
 
-cells = ((1, 0.5, 0, 200), (1, 0.25, 0, 200), (1, 0.5, 0, 0), (1, 0.5, 1, 200), (0, 0.5, 0, 200))
+cells = ((1, 0.5, 0, 30), (1, 0.25, 0, 30), (1, 0.5, 0, 0), (1, 0.5, 1, 30), (0, 0.5, 1, 30))
 w = Wallpaper('particles-controlpoint-velocity', 'particles inheriting a control point\'s velocity', clear='0 0 0')
 for k, (controlpoint, factor, flags, speed) in enumerate(cells):
     w.files['particles/c%d.json' % k] = cell(controlpoint, factor, flags, 0)
