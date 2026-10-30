@@ -54,6 +54,7 @@ void ParseCamera(SceneParseContext& context, const wpscene::SceneMetadata& sc) {
     (void)scene.SetActiveCamera("global"_str);
     scene.RootMut()->AppendChild((*context.global_camera_node).clone());
 
+    scene.SetSceneFov(static_cast<double>(general.fov));
     const bool   override_perspective_fov = general.perspectiveoverridefov > 0.0f;
     const double perspective_fov =
         override_perspective_fov
