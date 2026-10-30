@@ -1349,6 +1349,141 @@ struct MaintainDistanceOperator {
     }
 };
 
+// What the collision operators do to a particle on a surface with this normal (particles-collisionplane): bounce makes
+// its speed along the normal |v_n| * bouncefactor, slide 0, delete removes it; the sideways speed stays.
+enum class CollisionBehavior
+{
+    Bounce,
+    Slide,
+    Delete,
+};
+
+inline double Abs(double value) { return value < 0.0 ? -value : value; }
+
+inline CollisionBehavior ReadCollisionBehavior(const Json& wpj) {
+    String behavior;
+    owe::GetJsonValue(wpj, "collisionbehavior"_str, behavior, false);
+    return behavior == "slide"_str    ? CollisionBehavior::Slide
+           : behavior == "delete"_str ? CollisionBehavior::Delete
+                                      : CollisionBehavior::Bounce;
+}
+
+inline Eigen::Vector3d AfterContact(CollisionBehavior behavior, double bounce, const Eigen::Vector3d& normal,
+                                    const Eigen::Vector3d& v) {
+    const double along   = normal.dot(v);
+    const double rebound = behavior == CollisionBehavior::Slide ? 0.0 : Abs(along) * bounce;
+    return v + normal * (rebound - along);
+}
+
+// the shape a collision operator keeps particles out of, as far as the shape is concerned
+struct CollisionState {
+    ParticleAttributes                                        attributes;
+    CollisionBehavior                                         behavior { CollisionBehavior::Bounce };
+    double                                                    bounce { 1.0 };
+    particle::ParticleWriteIndex<particle::VelocityAttribute> velocity;
+    particle::ParticleWriteIndex<particle::LifetimeAttribute> lifetime;
+    particle::ParticleWriteIndex<particle::AlphaAttribute>    alpha;
+
+    void Compile(particle::ParticleViewCompiler& compiler) {
+        compiler.WriteBase(attributes.position);
+        velocity = compiler.Write(attributes.velocity);
+        lifetime = compiler.Write(attributes.lifetime);
+        alpha    = compiler.Write(attributes.alpha);
+    }
+
+    // runs `hit(position, velocity, delta) -> Option<normal and the point the particle is put on>` per particle
+    template<typename Hit>
+    void Collide(particle::ParticleUpdateContext& context, Hit&& hit) {
+        auto positions  = context.view.PositionsMut();
+        auto velocities = context.view.Write(velocity);
+        auto lifetimes  = context.view.Write(lifetime);
+        auto alphas     = context.view.Write(alpha);
+        auto delta      = context.delta.to_primitive();
+        for (auto slot : context.slots) {
+            const Eigen::Vector3d position = positions[slot.index].cast<double>();
+            const Eigen::Vector3d v        = velocities[slot.index].cast<double>();
+            Eigen::Vector3d       normal, on;
+            if (! hit(position, v, delta, normal, on)) continue;
+            if (behavior == CollisionBehavior::Delete) {
+                lifetimes[slot.index] = 0.0f; // the lifecycle removes it next frame; unseen till then
+                alphas[slot.index]    = 0.0f;
+                continue;
+            }
+            positions[slot.index]  = on.cast<float>();
+            velocities[slot.index] = AfterContact(behavior, bounce, normal, v).cast<float>();
+        }
+    }
+};
+
+// collisionplane: a particle may not go below the plane normal . x = distance (particles-collisionplane).
+struct CollisionPlaneOperator {
+    CollisionState  state;
+    Eigen::Vector3d normal { 0.0, 1.0, 0.0 };
+    double          distance { 0.0 };
+
+    void Compile(particle::ParticleViewCompiler& compiler) { state.Compile(compiler); }
+
+    void Update(particle::ParticleUpdateContext& context) {
+        state.Collide(context, [&](const Eigen::Vector3d& position, const Eigen::Vector3d&, double,
+                                   Eigen::Vector3d& n, Eigen::Vector3d& on) {
+            const double depth = normal.dot(position) - distance;
+            if (depth >= 0.0) return false;
+            n  = normal;
+            on = position - normal * depth;
+            return true;
+        });
+    }
+};
+
+// collisionsphere: particles stay out of the sphere (particles-collisionshapes).
+struct CollisionSphereOperator {
+    CollisionState  state;
+    Eigen::Vector3d origin { 0.0, -150.0, 0.0 };
+    double          radius { 100.0 };
+
+    void Compile(particle::ParticleViewCompiler& compiler) { state.Compile(compiler); }
+
+    void Update(particle::ParticleUpdateContext& context) {
+        state.Collide(context, [&](const Eigen::Vector3d& position, const Eigen::Vector3d& v, double,
+                                   Eigen::Vector3d& n, Eigen::Vector3d& on) {
+            Eigen::Vector3d offset   = position - origin;
+            const double    distance = offset.norm();
+            if (distance >= radius) return false;
+            if (distance > 1e-9)
+                n = offset / distance;
+            else
+                n = v.norm() > 1e-9 ? Eigen::Vector3d(v.normalized()) : Eigen::Vector3d(1.0, 0.0, 0.0);
+            on = origin + n * radius;
+            return true;
+        });
+    }
+};
+
+// collisionquad: a flat rectangle, size.x across and size.y deep, facing up (its angles do nothing), that a particle
+// falling through from above lands on (particles-collisionshapes, -quad-sides: one rising through it from below
+// passes).
+struct CollisionQuadOperator {
+    CollisionState  state;
+    Eigen::Vector3d origin { 0.0, -200.0, 0.0 };
+    double          width { 200.0 }, depth { 200.0 };
+
+    void Compile(particle::ParticleViewCompiler& compiler) { state.Compile(compiler); }
+
+    void Update(particle::ParticleUpdateContext& context) {
+        state.Collide(context, [&](const Eigen::Vector3d& position, const Eigen::Vector3d& v, double delta,
+                                   Eigen::Vector3d& n, Eigen::Vector3d& on) {
+            const double below = position.y() - origin.y();
+            if (below >= 0.0 || below - v.y() * delta < 0.0) return false;
+            if (Abs(position.x() - origin.x()) > width * 0.5 ||
+                Abs(position.z() - origin.z()) > depth * 0.5)
+                return false;
+            n  = Eigen::Vector3d(0.0, 1.0, 0.0);
+            on = Eigen::Vector3d(position.x(), origin.y(), position.z());
+            return true;
+        });
+    }
+};
+
 struct ControlPointAttractOperator {
     ParticleAttributes                                        attributes;
     ControlPointForce                                         config;
@@ -1499,6 +1634,38 @@ ParticleParser::GenOperator(const Json& wpj, ParticleInstanceModifiers modifiers
                 .config     = MaintainDistance::ReadFromJson(wpj),
                 .state_key  = RegisterMaintainDistanceAttribute(subsystem, operator_index),
             });
+        } else if (name == "collisionplane"_str || name == "collisionsphere"_str ||
+                   name == "collisionquad"_str) {
+            CollisionState state { .attributes = attributes, .behavior = ReadCollisionBehavior(wpj) };
+            float          bounce { 1.0f };
+            owe::GetJsonValue(wpj, "bouncefactor"_str, bounce, false);
+            state.bounce = double(bounce);
+            if (name == "collisionplane"_str) {
+                array<float, 3> plane { 0.0f, 1.0f, 0.0f };
+                float           distance { 0.0f };
+                owe::GetJsonValue(wpj, "plane"_str, plane, false);
+                owe::GetJsonValue(wpj, "distance"_str, distance, false);
+                Eigen::Vector3d normal(plane[usize(0)], plane[usize(1)], plane[usize(2)]);
+                if (normal.squaredNorm() < 1e-12) normal = Eigen::Vector3d(0.0, 1.0, 0.0);
+                normal.normalize();
+                return Box<dyn<particle::ParticleUpdateProgram>>::make(CollisionPlaneOperator {
+                    .state = rstd::move(state), .normal = normal, .distance = double(distance) });
+            }
+            array<float, 3> origin { 0.0f, name == "collisionplane"_str ? 0.0f : -150.0f, 0.0f };
+            if (name == "collisionquad"_str) origin = { 0.0f, -200.0f, 0.0f };
+            owe::GetJsonValue(wpj, "origin"_str, origin, false);
+            const Eigen::Vector3d center(origin[usize(0)], origin[usize(1)], origin[usize(2)]);
+            if (name == "collisionsphere"_str) {
+                float radius { 100.0f };
+                owe::GetJsonValue(wpj, "radius"_str, radius, false);
+                return Box<dyn<particle::ParticleUpdateProgram>>::make(CollisionSphereOperator {
+                    .state = rstd::move(state), .origin = center, .radius = double(radius) });
+            }
+            array<float, 2> size { 200.0f, 200.0f };
+            owe::GetJsonValue(wpj, "size"_str, size, false);
+            return Box<dyn<particle::ParticleUpdateProgram>>::make(CollisionQuadOperator {
+                .state = rstd::move(state), .origin = center, .width = double(size[usize(0)]),
+                .depth = double(size[usize(1)]) });
         } else if (name == "controlpointattract"_str) {
             return Box<dyn<particle::ParticleUpdateProgram>>::make(ControlPointAttractOperator {
                 .attributes = attributes,
