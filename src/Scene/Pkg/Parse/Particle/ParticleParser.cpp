@@ -384,6 +384,27 @@ struct InheritControlpointVelocityProgram {
         const double          factor = algorism::lerp(Random::get(0.0, 1.0), min, max);
         columns.velocities[request.slot.index] =
             (columns.velocities[request.slot.index].cast<double>() + local * factor).cast<float>();
+// The colour of the parent particle a child system's instance was made for (inheritinitialvaluefromevent and
+// inheritvaluefromevent, particles-inherit-event: only the colour is taken; not the size, opacity or velocity).
+inline auto ParentParticleColor(const ParticleFrame& frame) -> Option<Eigen::Vector3f> {
+    const auto& bounded = frame.subsystem->InstanceState(frame.instance_index).bounded;
+    if (bounded.parent == nullptr || bounded.parent_subsystem == nullptr || bounded.particle_index < isize())
+        return None();
+    auto& storage = bounded.parent->Storage();
+    auto  index   = rstd::as_cast<usize>(bounded.particle_index);
+    if (index >= storage.Len()) return None();
+    particle::ParticleSlotReader reader(storage, particle::ParticleSlot { .index = index });
+    return Some(Eigen::Vector3f(reader.Read(bounded.parent_subsystem->Attributes().color)));
+}
+
+// inheritinitialvaluefromevent: the colour of the particle whose event made this system
+struct InheritInitialValueFromEventProgram {
+    void Initialize(ParticleSpawnColumns& columns, particle::ParticleSpawnRequest request,
+                    ref<dyn<rstd::any::Any>> frame_context) {
+        auto color = ParentParticleColor(*ParticleFrameFrom(frame_context));
+        if (color.is_none()) return;
+        columns.colors[request.slot.index]         = *color;
+        columns.initial_colors[request.slot.index] = *color;
     }
 };
 
@@ -539,7 +560,8 @@ class ParticleSpawnInstructionValue {
               (HsvColorRandom, (HsvColorRandomProgram value;)),
               (Override, (OverrideSpawnProgram value;)),
               (ColorList, (ColorListProgram value;)),
-              (InheritControlpointVelocity, (InheritControlpointVelocityProgram value;)))
+              (InheritControlpointVelocity, (InheritControlpointVelocityProgram value;)),
+              (InheritInitialValueFromEvent, (InheritInitialValueFromEventProgram value;)))
 };
 
 template<typename T>
@@ -570,6 +592,8 @@ auto MakeParticleSpawnInstructionValue(T value) -> ParticleSpawnInstructionValue
         return ParticleSpawnInstructionValue::ColorList(rstd::move(value));
     else if constexpr (same_as<T, InheritControlpointVelocityProgram>)
         return ParticleSpawnInstructionValue::InheritControlpointVelocity(rstd::move(value));
+    else if constexpr (same_as<T, InheritInitialValueFromEventProgram>)
+        return ParticleSpawnInstructionValue::InheritInitialValueFromEvent(rstd::move(value));
     else {
         static_assert(same_as<T, OverrideSpawnProgram>);
         return ParticleSpawnInstructionValue::Override(rstd::move(value));
@@ -607,6 +631,7 @@ auto ParticleSpawnInstruction::SequenceCount() const -> Option<u32> {
         RSTD_CASE(Override) { return None(); }
         RSTD_CASE(ColorList) { return None(); }
         RSTD_CASE(InheritControlpointVelocity) { return None(); }
+        RSTD_CASE(InheritInitialValueFromEvent) { return None(); }
     }
     rstd::unreachable();
 }
@@ -640,6 +665,7 @@ void ParticleSpawnInstruction::Initialize(ParticleSpawnColumns&          columns
         RSTD_CASE(Override, instruction) { instruction.Initialize(columns, request, frame); }
         RSTD_CASE(ColorList, instruction) { instruction.Initialize(columns, request, frame); }
         RSTD_CASE(InheritControlpointVelocity, instruction) {
+        RSTD_CASE(InheritInitialValueFromEvent, instruction) {
             instruction.Initialize(columns, request, frame);
         }
     }
@@ -680,6 +706,7 @@ auto ParticleSpawnInstruction::RunsLast() const -> bool {
         RSTD_CASE(HsvColorRandom) { return false; }
         RSTD_CASE(Override) { return false; }
         RSTD_CASE(InheritControlpointVelocity) { return false; }
+        RSTD_CASE(InheritInitialValueFromEvent) { return false; }
     }
     rstd::unreachable();
 }
@@ -745,6 +772,8 @@ ParticleSpawnInstruction ParticleParser::GenInitializer(const Json& wpj,
             owe::GetJsonValue(wpj, "max"_str, max, false);
             return ParticleSpawnInstruction::Make(InheritControlpointVelocityProgram {
                 .controlpoint = controlpoint, .min = double(min), .max = double(max) });
+        } else if (name == "inheritinitialvaluefromevent"_str) {
+            return ParticleSpawnInstruction::Make(InheritInitialValueFromEventProgram {});
         } else if (name == "lifetimerandom"_str) {
             SingleRandom r = { 0.0f, 1.0f };
             SingleRandom::ReadFromJson(wpj, r);
@@ -1982,6 +2011,18 @@ struct RemapValueOperator {
             break;
         }
         }
+// inheritvaluefromevent: the colour of the particle the system follows, every frame (particles-inherit-event)
+struct InheritValueFromEventOperator {
+    ParticleAttributes                                     attributes;
+    particle::ParticleWriteIndex<particle::ColorAttribute> color;
+
+    void Compile(particle::ParticleViewCompiler& compiler) { color = compiler.Write(attributes.color); }
+
+    void Update(particle::ParticleUpdateContext& context) {
+        auto inherited = ParentParticleColor(*ParticleFrameFrom(context.frame));
+        if (inherited.is_none()) return;
+        auto values = context.view.Write(color);
+        for (auto slot : context.slots) values[slot.index] = *inherited;
     }
 };
 
@@ -2140,6 +2181,9 @@ ParticleParser::GenOperator(const Json& wpj, ParticleInstanceModifiers modifiers
             state.bounce = double(bounce);
             return Box<dyn<particle::ParticleUpdateProgram>>::make(
                 CollisionBoundsOperator { .state = rstd::move(state) });
+        } else if (name == "inheritvaluefromevent"_str) {
+            return Box<dyn<particle::ParticleUpdateProgram>>::make(
+                InheritValueFromEventOperator { .attributes = attributes });
         } else if (name == "controlpointattract"_str) {
             return Box<dyn<particle::ParticleUpdateProgram>>::make(ControlPointAttractOperator {
                 .attributes = attributes,
