@@ -4132,6 +4132,12 @@ void JsRuntime::TickAll(slice<owe::SceneAnimationEventDispatch> animation_events
             continue;
         }
         I->last_value = CoerceReturn(ctx, ret, I->kind);
+        // Wallpaper Engine turns every axis by a number returned for angles, in radians, where a vector is in
+        // degrees (script-return-type)
+        if (JS_IsNumber(ret) && I->last_value.is_Vec3() && I->property == "angles"_str) {
+            const auto v  = I->last_value.as_Vec3().value;
+            I->last_value = Vec3Value { v.x * kRadToDeg, v.y * kRadToDeg, v.z * kRadToDeg };
+        }
         // Keep the next argument in the field's coerced shape. Vec3 scripts
         // often return a scalar for scale, but still read value.x next frame.
         if (I->update_takes_arg && ! I->last_value.is_Empty()) {

@@ -3823,3 +3823,22 @@ TEST(ScriptScene, CreatedLayerIsQueryableDuringNestedScriptInitialization) {
     EXPECT_EQ(LastScalar(nested), 1.0);
     EXPECT_EQ(created.len(), usize(1));
 }
+
+TEST(ScriptAnimation, AnAnglesScriptReturningANumberTurnsEveryAxisByThatManyRadians) {
+    // Wallpaper Engine spreads a number returned for angles over x, y and z and takes it as radians, not the degrees
+    // a vector is in (script-return-type: its 200 px square returning 30 covers exactly the area (30, 30, 30) radians
+    // gives)
+    auto      node = Arc<owe::SceneNode>::make();
+    JsRuntime rt;
+    auto*     fs = rt.MakeFieldScript("export function update(value) { return 30; }"_str,
+                                      "test/angles_number"_str,
+                                      FieldKind::Vec3,
+                                      owe::MakeObject(),
+                                      owe::IntoJson("0 0 0"),
+                                      ScriptBindingContext::ForLayer(node.as_ptr(), "angles"_str, None()));
+    ASSERT_NE(fs, nullptr);
+    auto apply = MakeNodeTransformApply(node.clone(), NodeTransformTarget::Rotation);
+    rt.TickAll();
+    apply->operator()(fs->last_value());
+    EXPECT_TRUE(node->Rotation().isApprox(Eigen::Vector3f(30.0f, 30.0f, 30.0f), 0.0001f));
+}
