@@ -1,0 +1,353 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0 0 0",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "edge 0 340",
+      "image": "models/util/solidlayer.json",
+      "size": "220 2",
+      "color": "0.3 0.3 1",
+      "alpha": 1,
+      "origin": "160 340 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "id": 1
+    },
+    {
+      "name": "edge 0 740",
+      "image": "models/util/solidlayer.json",
+      "size": "220 2",
+      "color": "0.3 0.3 1",
+      "alpha": 1,
+      "origin": "160 740 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "id": 2
+    },
+    {
+      "name": "top 48",
+      "text": "H",
+      "font": "fonts/DejaVuSans.ttf",
+      "pointsize": 48,
+      "size": "220 400",
+      "origin": "160 540 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alpha": 1,
+      "color": "1 1 1",
+      "horizontalalign": "center",
+      "verticalalign": "top",
+      "padding": "0 0",
+      "alignment": "center",
+      "visible": true,
+      "opaquebackground": false,
+      "id": 3
+    },
+    {
+      "name": "edge 1 340",
+      "image": "models/util/solidlayer.json",
+      "size": "220 2",
+      "color": "0.3 0.3 1",
+      "alpha": 1,
+      "origin": "480 340 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "id": 4
+    },
+    {
+      "name": "edge 1 740",
+      "image": "models/util/solidlayer.json",
+      "size": "220 2",
+      "color": "0.3 0.3 1",
+      "alpha": 1,
+      "origin": "480 740 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "id": 5
+    },
+    {
+      "name": "center 48",
+      "text": "H",
+      "font": "fonts/DejaVuSans.ttf",
+      "pointsize": 48,
+      "size": "220 400",
+      "origin": "480 540 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alpha": 1,
+      "color": "1 1 1",
+      "horizontalalign": "center",
+      "verticalalign": "center",
+      "padding": "0 0",
+      "alignment": "center",
+      "visible": true,
+      "opaquebackground": false,
+      "id": 6
+    },
+    {
+      "name": "edge 2 340",
+      "image": "models/util/solidlayer.json",
+      "size": "220 2",
+      "color": "0.3 0.3 1",
+      "alpha": 1,
+      "origin": "800 340 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "id": 7
+    },
+    {
+      "name": "edge 2 740",
+      "image": "models/util/solidlayer.json",
+      "size": "220 2",
+      "color": "0.3 0.3 1",
+      "alpha": 1,
+      "origin": "800 740 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "id": 8
+    },
+    {
+      "name": "bottom 48",
+      "text": "H",
+      "font": "fonts/DejaVuSans.ttf",
+      "pointsize": 48,
+      "size": "220 400",
+      "origin": "800 540 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alpha": 1,
+      "color": "1 1 1",
+      "horizontalalign": "center",
+      "verticalalign": "bottom",
+      "padding": "0 0",
+      "alignment": "center",
+      "visible": true,
+      "opaquebackground": false,
+      "id": 9
+    },
+    {
+      "name": "edge 3 340",
+      "image": "models/util/solidlayer.json",
+      "size": "220 2",
+      "color": "0.3 0.3 1",
+      "alpha": 1,
+      "origin": "1120 340 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "id": 10
+    },
+    {
+      "name": "edge 3 740",
+      "image": "models/util/solidlayer.json",
+      "size": "220 2",
+      "color": "0.3 0.3 1",
+      "alpha": 1,
+      "origin": "1120 740 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "id": 11
+    },
+    {
+      "name": "top 96",
+      "text": "H",
+      "font": "fonts/DejaVuSans.ttf",
+      "pointsize": 96,
+      "size": "220 400",
+      "origin": "1120 540 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alpha": 1,
+      "color": "1 1 1",
+      "horizontalalign": "center",
+      "verticalalign": "top",
+      "padding": "0 0",
+      "alignment": "center",
+      "visible": true,
+      "opaquebackground": false,
+      "id": 12
+    },
+    {
+      "name": "edge 4 340",
+      "image": "models/util/solidlayer.json",
+      "size": "220 2",
+      "color": "0.3 0.3 1",
+      "alpha": 1,
+      "origin": "1440 340 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "id": 13
+    },
+    {
+      "name": "edge 4 740",
+      "image": "models/util/solidlayer.json",
+      "size": "220 2",
+      "color": "0.3 0.3 1",
+      "alpha": 1,
+      "origin": "1440 740 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "id": 14
+    },
+    {
+      "name": "center 96",
+      "text": "H",
+      "font": "fonts/DejaVuSans.ttf",
+      "pointsize": 96,
+      "size": "220 400",
+      "origin": "1440 540 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alpha": 1,
+      "color": "1 1 1",
+      "horizontalalign": "center",
+      "verticalalign": "center",
+      "padding": "0 0",
+      "alignment": "center",
+      "visible": true,
+      "opaquebackground": false,
+      "id": 15
+    },
+    {
+      "name": "edge 5 340",
+      "image": "models/util/solidlayer.json",
+      "size": "220 2",
+      "color": "0.3 0.3 1",
+      "alpha": 1,
+      "origin": "1760 340 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "id": 16
+    },
+    {
+      "name": "edge 5 740",
+      "image": "models/util/solidlayer.json",
+      "size": "220 2",
+      "color": "0.3 0.3 1",
+      "alpha": 1,
+      "origin": "1760 740 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "id": 17
+    },
+    {
+      "name": "bottom 96",
+      "text": "H",
+      "font": "fonts/DejaVuSans.ttf",
+      "pointsize": 96,
+      "size": "220 400",
+      "origin": "1760 540 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alpha": 1,
+      "color": "1 1 1",
+      "horizontalalign": "center",
+      "verticalalign": "bottom",
+      "padding": "0 0",
+      "alignment": "center",
+      "visible": true,
+      "opaquebackground": false,
+      "id": 18
+    },
+    {
+      "id": 19,
+      "name": "owe clock probe",
+      "image": "models/util/fullscreenlayer.json",
+      "origin": "0 0 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "color": "1 1 1",
+      "alpha": 1,
+      "visible": true,
+      "effects": [
+        {
+          "file": "effects/oweclock/effect.json",
+          "id": 20,
+          "name": "oweclock",
+          "visible": true,
+          "passes": [
+            {
+              "id": 21,
+              "constantshadervalues": {
+                "scriptframe": {
+                  "script": "'use strict';\n\nexport function update(value) {\n\treturn Math.floor(engine.runtime * 30 + 0.5);\n}\n",
+                  "value": -1
+                },
+                "press": {
+                  "script": "'use strict';\n\nlet last = 0;\nlet wasDown = false;\n\nexport function update(value) {\n\ttry {\n\t\tconst down = !!input.cursorLeftDown;\n\t\tif (down && !wasDown) last = Math.min(Math.floor(engine.runtime * 30 + 0.5) + 1, 4094);\n\t\twasDown = down;\n\t\treturn last;\n\t} catch (e) {\n\t\treturn 4095;\n\t}\n}\n",
+                  "value": -1
+                },
+                "date_day": {
+                  "script": "'use strict';\n\nexport function update(value) {\n\treturn Math.floor(Date.now() / 86400000) - 18262;\n}\n",
+                  "value": -1
+                },
+                "date_centis": {
+                  "script": "'use strict';\n\nexport function update(value) {\n\treturn Math.floor((Date.now() % 86400000) / 10);\n}\n",
+                  "value": -1
+                },
+                "timezone": {
+                  "script": "'use strict';\n\nexport function update(value) {\n\treturn new Date().getTimezoneOffset() + 1024;\n}\n",
+                  "value": -1
+                },
+                "camerax": {
+                  "script": "'use strict';\n\nfunction quantise(value, offset, scale, bits) {\n\tconst most = Math.pow(2, bits) - 1;\n\treturn Math.min(Math.max(Math.floor((value + offset) * scale + 0.5), 0), most);\n}\n\nexport function update(value) {\n\ttry {\n\t\treturn quantise(thisScene.getCameraTransforms().eye.x, 32768, 256, 24);\n\t} catch (e) {\n\t\treturn 16777215;\n\t}\n}\n",
+                  "value": -1
+                },
+                "cameray": {
+                  "script": "'use strict';\n\nfunction quantise(value, offset, scale, bits) {\n\tconst most = Math.pow(2, bits) - 1;\n\treturn Math.min(Math.max(Math.floor((value + offset) * scale + 0.5), 0), most);\n}\n\nexport function update(value) {\n\ttry {\n\t\treturn quantise(thisScene.getCameraTransforms().eye.y, 32768, 256, 24);\n\t} catch (e) {\n\t\treturn 16777215;\n\t}\n}\n",
+                  "value": -1
+                },
+                "cameraz": {
+                  "script": "'use strict';\n\nfunction quantise(value, offset, scale, bits) {\n\tconst most = Math.pow(2, bits) - 1;\n\treturn Math.min(Math.max(Math.floor((value + offset) * scale + 0.5), 0), most);\n}\n\nexport function update(value) {\n\ttry {\n\t\treturn quantise(thisScene.getCameraTransforms().eye.z, 32768, 256, 24);\n\t} catch (e) {\n\t\treturn 16777215;\n\t}\n}\n",
+                  "value": -1
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "version": 1
+}

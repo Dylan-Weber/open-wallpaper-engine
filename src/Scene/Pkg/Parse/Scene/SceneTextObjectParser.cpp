@@ -407,12 +407,14 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
         String vertical;
         float  width { 1.0f };
         float  height { 1.0f };
+        float  descent { 0.0f };
     };
     auto anchor_state = Arc<TextAnchorState>::make(TextAnchorState {
         .horizontal = rstd::into(initial_halign),
         .vertical   = rstd::into(initial_valign),
         .width      = text_w,
         .height     = text_h,
+        .descent    = initial_metrics.descent,
     });
 
     auto layer_node =
@@ -851,23 +853,16 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
 
     auto layer_hold        = layer_node.clone();
     auto apply_text_anchor =
-        Arc<dyn<Fn<void()>>>::make([layer_hold         = layer_hold.clone(),
-                                    anchor_state       = anchor_state.clone(),
-                                    current_point_size = current_point_size.clone()]() {
-            auto*    layer_ptr = layer_hold.as_ptr().as_raw_ptr();
-            Vector3d offset    = Vector3d::Zero();
-            if (anchor_state->horizontal.as_str().contains("left"_str))
-                offset.x() += anchor_state->width * 0.5;
-            if (anchor_state->horizontal.as_str().contains("right"_str))
-                offset.x() -= anchor_state->width * 0.5;
-            if (anchor_state->vertical.as_str().contains("top"_str))
-                offset.y() -= anchor_state->height * 0.5;
-            if (anchor_state->vertical.as_str().contains("bottom"_str))
-                offset.y() += anchor_state->height * 0.5;
-            // Vertically centred text sits 0.11 em below its origin (measured: text-size).
-            if (! anchor_state->vertical.as_str().contains("top"_str) &&
-                ! anchor_state->vertical.as_str().contains("bottom"_str))
-                offset.y() -= 0.11 * kUnitsPerPoint * *current_point_size;
+        Arc<dyn<Fn<void()>>>::make([layer_hold   = layer_hold.clone(),
+                                    anchor_state = anchor_state.clone()]() {
+            auto*      layer_ptr = layer_hold.as_ptr().as_raw_ptr();
+            // measured: text-size, text-metrics
+            const auto anchor    = text::TextAnchorOffset(anchor_state->horizontal.as_str(),
+                                                       anchor_state->vertical.as_str(),
+                                                       anchor_state->width,
+                                                       anchor_state->height,
+                                                       anchor_state->descent);
+            const Vector3d offset(anchor[usize(0)], anchor[usize(1)], 0.0);
             // Alignment moves the text geometry, not the frame inherited by children.
             layer_ptr->SetGeometryTransform(Eigen::Affine3d(Eigen::Translation3d(offset)).matrix());
         });
@@ -882,8 +877,9 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
          text_padding](text::TextLayoutMetrics metrics) {
             auto* layer_ptr      = layer_hold.as_ptr().as_raw_ptr();
             metrics.padding      = text_padding;
-            anchor_state->width  = metrics.text_width;
-            anchor_state->height = metrics.text_height;
+            anchor_state->width   = metrics.text_width;
+            anchor_state->height  = metrics.text_height;
+            anchor_state->descent = metrics.descent;
             if (direct_text) {
                 layer_ptr->SetSize({ metrics.text_width + 2.0f * text_padding,
                                      metrics.text_height + 2.0f * text_padding });
