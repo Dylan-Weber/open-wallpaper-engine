@@ -220,6 +220,8 @@ public:
     u32             parent { 0 };
     String          attachment;
     Vec<i32>        dependencies;
+    // the image layer a layerimage emitter emits from (a dependency of type emitterimage)
+    Option<i32>     emitterimage_layer;
     owe::Json       instance;
     owe::Json       particlesrc;                       // PKGV0001+; always null in corpus
     array<float, 3> controlpoint { 0.0f, 0.0f, 0.0f }; // PKGV0019+
