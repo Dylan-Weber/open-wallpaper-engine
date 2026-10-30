@@ -14,6 +14,9 @@
 #include <rstd/test/gtest.hpp>
 
 #include <cmath>
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
 
 import rstd.cppstd;
 import rstd;
@@ -1414,6 +1417,57 @@ TEST(ImageEffectJson, FailedEffectsAreAbsentFromParsedObjects) {
     ASSERT_TRUE(shape.FromJson(shape_json.unwrap(), vfs, owe::wpscene::kSceneVersionUnknown));
     ASSERT_EQ(shape.effects.len(), rstd::usize(1));
     EXPECT_FALSE(shape.effects[rstd::usize()].materials.is_empty());
+}
+
+// A model that says "autosize" is drawn at its first texture's size, whatever the layer's "size" (Wallpaper Engine draws
+// script-workshop-path's 256 x 256 layer of an autosize model at the gradient texture's 64 x 2).
+TEST(ImageObjectJson, AutosizeModelTakesItsTexturesSize) {
+    const auto dir = std::filesystem::temp_directory_path() / "owe-autosize-test";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir / "models");
+    std::filesystem::create_directories(dir / "materials");
+    std::ofstream(dir / "models/sq.json") << R"({"autosize": true, "material": "materials/sq.json"})";
+    std::ofstream(dir / "models/plain.json") << R"({"material": "materials/sq.json"})";
+    std::ofstream(dir / "materials/sq.json")
+        << R"({"passes": [{"shader": "genericimage2", "textures": ["strip"]}]})";
+    {
+        std::ofstream tex(dir / "materials/strip.tex", std::ios::binary);
+        tex.write("TEXV0005\0TEXI0001\0", 18);
+        const std::uint32_t header[] = { 0, 2, 64, 4, 50, 3, 0 };  // format, flags, texture and image sizes
+        tex.write(reinterpret_cast<const char*>(header), sizeof(header));
+    }
+    auto assets = owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(dir.string()).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, std::move(assets).unwrap_unchecked()).is_ok());
+
+    auto layer = [&](const char* model) {
+        auto json = owe::ParseJson(rstd::cppstd::as_str(std::string(R"({"image": ")") + model +
+                                                        R"(", "size": "256 256", "origin": "0 0 0"})").unwrap());
+        owe::wpscene::ImageObject image;
+        EXPECT_TRUE(image.FromJson(json.unwrap(), vfs));
+        return image.size;
+    };
+    const auto autosized = layer("models/sq.json");
+    EXPECT_EQ(autosized[rstd::usize(0)], 50.0f);
+    EXPECT_EQ(autosized[rstd::usize(1)], 3.0f);
+    const auto sized = layer("models/plain.json");
+    EXPECT_EQ(sized[rstd::usize(0)], 256.0f);
+    EXPECT_EQ(sized[rstd::usize(1)], 256.0f);
+    // a sprite sheet's image holds all its frames: autosize doesn't take it (Dino Run's 24 x 24 dinos are 144 x 24 sheets)
+    std::ofstream(dir / "models/sprite.json") << R"({"autosize": true, "material": "materials/sprite.json"})";
+    std::ofstream(dir / "materials/sprite.json")
+        << R"({"passes": [{"shader": "genericimage2", "textures": ["sheet"]}]})";
+    {
+        std::ofstream tex(dir / "materials/sheet.tex", std::ios::binary);
+        tex.write("TEXV0005\0TEXI0001\0", 18);
+        const std::uint32_t header[] = { 0, 5, 256, 32, 144, 24, 0 };  // flags 4: a sprite sheet
+        tex.write(reinterpret_cast<const char*>(header), sizeof(header));
+    }
+    const auto sprite = layer("models/sprite.json");
+    EXPECT_EQ(sprite[rstd::usize(0)], 256.0f);
+    EXPECT_EQ(sprite[rstd::usize(1)], 256.0f);
+    std::filesystem::remove_all(dir);
 }
 
 namespace
