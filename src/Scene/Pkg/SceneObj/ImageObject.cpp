@@ -134,6 +134,9 @@ bool EffectFbo::FromJson(const owe::Json& json) {
     owe::GetJsonValue(json, "scale"_str, scale);
     owe::GetJsonValue(json, "fit"_str, fit, false);
     owe::GetJsonValue(json, "unique"_str, unique, false);
+    owe::GetJsonValue(json, "width"_str, width, false);
+    owe::GetJsonValue(json, "height"_str, height, false);
+    owe::GetJsonValue(json, "uvs"_str, uvs, false);
     if (scale == u32()) {
         rstd_error("fbo scale can't be 0");
         scale = u32(1);
