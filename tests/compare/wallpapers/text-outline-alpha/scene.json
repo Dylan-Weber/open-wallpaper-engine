@@ -1,0 +1,201 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0.1 0.12 0.18",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "stripe 0",
+      "image": "models/util/solidlayer.json",
+      "size": "1920 90",
+      "color": "0.3 0.55 0.35",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "origin": "960 285 0",
+      "alignment": "center",
+      "visible": true,
+      "id": 1
+    },
+    {
+      "name": "stripe 1",
+      "image": "models/util/solidlayer.json",
+      "size": "1920 90",
+      "color": "0.3 0.55 0.35",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "origin": "960 465 0",
+      "alignment": "center",
+      "visible": true,
+      "id": 2
+    },
+    {
+      "name": "stripe 2",
+      "image": "models/util/solidlayer.json",
+      "size": "1920 90",
+      "color": "0.3 0.55 0.35",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "origin": "960 645 0",
+      "alignment": "center",
+      "visible": true,
+      "id": 3
+    },
+    {
+      "name": "stripe 3",
+      "image": "models/util/solidlayer.json",
+      "size": "1920 90",
+      "color": "0.3 0.55 0.35",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "origin": "960 825 0",
+      "alignment": "center",
+      "visible": true,
+      "id": 4
+    },
+    {
+      "name": "alpha 1.0",
+      "text": "Outline",
+      "font": "fonts/DejaVuSans.ttf",
+      "pointsize": 30,
+      "size": "800 220",
+      "origin": "380 600 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alpha": 1.0,
+      "color": "1 0.85 0.3",
+      "horizontalalign": "center",
+      "verticalalign": "center",
+      "padding": 0,
+      "alignment": "center",
+      "visible": true,
+      "opaquebackground": false,
+      "outline": true,
+      "outlinecolor": "0.6 0.05 0.05",
+      "outlinethickness": 6,
+      "id": 5
+    },
+    {
+      "name": "alpha 0.6",
+      "text": "Outline",
+      "font": "fonts/DejaVuSans.ttf",
+      "pointsize": 30,
+      "size": "800 220",
+      "origin": "980 600 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alpha": 0.6,
+      "color": "1 0.85 0.3",
+      "horizontalalign": "center",
+      "verticalalign": "center",
+      "padding": 0,
+      "alignment": "center",
+      "visible": true,
+      "opaquebackground": false,
+      "outline": true,
+      "outlinecolor": "0.6 0.05 0.05",
+      "outlinethickness": 6,
+      "id": 6
+    },
+    {
+      "name": "alpha 0.3",
+      "text": "Outline",
+      "font": "fonts/DejaVuSans.ttf",
+      "pointsize": 30,
+      "size": "800 220",
+      "origin": "1580 600 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alpha": 0.3,
+      "color": "1 0.85 0.3",
+      "horizontalalign": "center",
+      "verticalalign": "center",
+      "padding": 0,
+      "alignment": "center",
+      "visible": true,
+      "opaquebackground": false,
+      "outline": true,
+      "outlinecolor": "0.6 0.05 0.05",
+      "outlinethickness": 6,
+      "id": 7
+    },
+    {
+      "id": 8,
+      "name": "owe clock probe",
+      "image": "models/util/fullscreenlayer.json",
+      "origin": "0 0 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "color": "1 1 1",
+      "alpha": 1,
+      "visible": true,
+      "effects": [
+        {
+          "file": "effects/oweclock/effect.json",
+          "id": 9,
+          "name": "oweclock",
+          "visible": true,
+          "passes": [
+            {
+              "id": 10,
+              "constantshadervalues": {
+                "scriptframe": {
+                  "script": "'use strict';\n\nexport function update(value) {\n\treturn Math.floor(engine.runtime * 30 + 0.5);\n}\n",
+                  "value": -1
+                },
+                "press": {
+                  "script": "'use strict';\n\nlet last = 0;\nlet wasDown = false;\n\nexport function update(value) {\n\ttry {\n\t\tconst down = !!input.cursorLeftDown;\n\t\tif (down && !wasDown) last = Math.min(Math.floor(engine.runtime * 30 + 0.5) + 1, 4094);\n\t\twasDown = down;\n\t\treturn last;\n\t} catch (e) {\n\t\treturn 4095;\n\t}\n}\n",
+                  "value": -1
+                },
+                "date_day": {
+                  "script": "'use strict';\n\nexport function update(value) {\n\treturn Math.floor(Date.now() / 86400000) - 18262;\n}\n",
+                  "value": -1
+                },
+                "date_centis": {
+                  "script": "'use strict';\n\nexport function update(value) {\n\treturn Math.floor((Date.now() % 86400000) / 10);\n}\n",
+                  "value": -1
+                },
+                "timezone": {
+                  "script": "'use strict';\n\nexport function update(value) {\n\treturn new Date().getTimezoneOffset() + 1024;\n}\n",
+                  "value": -1
+                },
+                "camerax": {
+                  "script": "'use strict';\n\nfunction quantise(value, offset, scale, bits) {\n\tconst most = Math.pow(2, bits) - 1;\n\treturn Math.min(Math.max(Math.floor((value + offset) * scale + 0.5), 0), most);\n}\n\nexport function update(value) {\n\ttry {\n\t\treturn quantise(thisScene.getCameraTransforms().eye.x, 32768, 256, 24);\n\t} catch (e) {\n\t\treturn 16777215;\n\t}\n}\n",
+                  "value": -1
+                },
+                "cameray": {
+                  "script": "'use strict';\n\nfunction quantise(value, offset, scale, bits) {\n\tconst most = Math.pow(2, bits) - 1;\n\treturn Math.min(Math.max(Math.floor((value + offset) * scale + 0.5), 0), most);\n}\n\nexport function update(value) {\n\ttry {\n\t\treturn quantise(thisScene.getCameraTransforms().eye.y, 32768, 256, 24);\n\t} catch (e) {\n\t\treturn 16777215;\n\t}\n}\n",
+                  "value": -1
+                },
+                "cameraz": {
+                  "script": "'use strict';\n\nfunction quantise(value, offset, scale, bits) {\n\tconst most = Math.pow(2, bits) - 1;\n\treturn Math.min(Math.max(Math.floor((value + offset) * scale + 0.5), 0), most);\n}\n\nexport function update(value) {\n\ttry {\n\t\treturn quantise(thisScene.getCameraTransforms().eye.z, 32768, 256, 24);\n\t} catch (e) {\n\t\treturn 16777215;\n\t}\n}\n",
+                  "value": -1
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "version": 1
+}
