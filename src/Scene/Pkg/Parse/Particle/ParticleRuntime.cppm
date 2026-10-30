@@ -281,6 +281,7 @@ public:
     void Initialize(ParticleSpawnColumns&, particle::ParticleSpawnRequest,
                     ref<dyn<rstd::any::Any>>);
     auto SequenceCount() const -> Option<u32>;
+    auto RunsLast() const -> bool;
 
 private:
     struct Impl;
@@ -298,7 +299,10 @@ class ParticleSpawnPipeline {
 public:
     explicit ParticleSpawnPipeline(ParticleAttributes attributes): m_attributes(attributes) {}
 
-    void Add(ParticleSpawnInstruction instruction) { m_instructions.push(rstd::move(instruction)); }
+    void Add(ParticleSpawnInstruction instruction) {
+        if (instruction.RunsLast()) m_last_instructions.push(rstd::move(instruction));
+        else m_instructions.push(rstd::move(instruction));
+    }
     void EnableWorldSpace() noexcept { m_world_space = true; }
     void Compile(particle::ParticleViewCompiler&);
     auto Bind(particle::ParticleWriteView) -> ParticleSpawnColumns;
@@ -308,6 +312,7 @@ public:
 private:
     ParticleAttributes                                               m_attributes;
     Vec<ParticleSpawnInstruction>                                    m_instructions;
+    Vec<ParticleSpawnInstruction>                                    m_last_instructions;
     particle::ParticleWriteIndex<particle::VelocityAttribute>        m_velocity;
     particle::ParticleWriteIndex<particle::RotationAttribute>        m_rotation;
     particle::ParticleWriteIndex<particle::AngularVelocityAttribute> m_angular_velocity;
