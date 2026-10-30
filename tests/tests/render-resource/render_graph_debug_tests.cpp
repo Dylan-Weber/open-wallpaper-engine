@@ -796,3 +796,47 @@ TEST(SceneRenderGraph, RejectsMissingOutputWithoutInstallingPartialProgram) {
     ASSERT_TRUE(result.is_err());
     EXPECT_EQ(result.unwrap_err().kind, vrento::fg::ErrorKind::MissingResource);
 }
+
+// A layer whose scale has no area (More Physics' sky gradient layer is scaled 0) isn't drawn on its own, but a layer
+// reading its link target (the skybox reads its composite) still gets it drawn.
+TEST(SceneRenderGraph, ALayerWithNoAreaDrawsOnlyItsLinkTarget) {
+    auto build = [](bool linked) {
+        owe::Scene scene;
+        scene.SetOrtho({ rstd::i32(1920), rstd::i32(1080) });
+        scene.RegisterRenderTarget(
+            String::make("_rt_default"_str),
+            owe::SceneRenderTarget { .width = i32(1920), .height = i32(1080) });
+
+        auto source          = Arc<owe::SceneNode>::make();
+        source->ID()         = rstd::i32(8);
+        source->SetScale({ 0.0f, 0.0f, 0.0f });
+        auto source_mesh     = Arc<owe::SceneMesh>::make();
+        auto source_material = GraphMaterial();
+        source_material.name = "source"_Str;
+        source_mesh->AddMaterial(std::move(source_material));
+        source_mesh->Submeshes().push(owe::SceneMesh::Submesh {});
+        source->AddMesh(std::move(source_mesh));
+        scene.RootMut()->AppendChild(source.clone());
+        scene.RegisterNode(*source, Some(owe::WallpaperLayerId { .value = rstd::i32(8) }));
+        if (linked) {
+            scene.RegisterLayerLinkSource(owe::WallpaperLayerId { .value = rstd::i32(8) }, *source);
+            auto consumer          = Arc<owe::SceneNode>::make();
+            consumer->ID()         = rstd::i32(42);
+            auto consumer_mesh     = Arc<owe::SceneMesh>::make();
+            auto consumer_material = GraphMaterial(usize(1));
+            consumer_material.name = "consumer"_Str;
+            consumer_material.textures.clear();
+            consumer_material.textures.push("_rt_link_8"_Str);
+            consumer_mesh->AddMaterial(std::move(consumer_material));
+            consumer_mesh->Submeshes().push(owe::SceneMesh::Submesh {});
+            consumer->AddMesh(std::move(consumer_mesh));
+            scene.RootMut()->AppendChild(consumer.clone());
+        }
+        auto snapshot = owe::ExtractRenderSceneSnapshot(scene);
+        auto graph    = owe::BuildSceneRenderState(scene, snapshot);
+        EXPECT_TRUE(graph.is_ok());
+        return graph.is_ok() ? graph->draws.len() : usize();
+    };
+    EXPECT_EQ(build(false), usize());
+    EXPECT_EQ(build(true), usize(2));
+}
