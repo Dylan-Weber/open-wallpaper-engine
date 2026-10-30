@@ -236,6 +236,10 @@ struct HsvColorRandomProgram {
         const double    value = algorism::lerp(Random::get(0.0, 1.0), value_min, value_max);
         Eigen::Vector3f color = HsvToRgb(hue, saturation, value).cast<float>();
         columns.colors[request.slot.index]         = color;
+        columns.initial_colors[request.slot.index] = color;
+    }
+};
+
 // colorlist: a colour picked from a list, which multiplies the particle's colour (particles-colorlist: Wallpaper
 // Engine paints a yellow colorrandom and the list's cyan as dark green, its yellow as yellow, its magenta as red,
 // in either order, so the list is applied after the other initializers).
