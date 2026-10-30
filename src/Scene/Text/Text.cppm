@@ -188,6 +188,9 @@ struct TextLayoutMetrics {
     float background_gap { 0.0f };
     // the last line's descent below its baseline
     float descent { 0.0f };
+    // How far a background box reaches above the line to take in the ink that rises past it (0
+    // without a background).
+    float background_overflow { 0.0f };
 };
 
 // How far text's box moves from the layer's origin for its alignment: left, right, top and bottom
