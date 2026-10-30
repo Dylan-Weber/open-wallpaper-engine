@@ -158,7 +158,11 @@ void ParseCameraObj(SceneParseContext& context, wpscene::CameraObject& cam) {
     if (! cam.visible_user.empty())
         node->SetVisibleUserBinding(ToSceneUserVisibilityBinding(cam.visible_user));
 
-    if (cam.visible) camera_owner->AttatchNode(node.as_ptr());
+    // A 3D scene's camera is a look-at camera until a layer drives it: the path's first tick attaches the node. Attached
+    // here, the camera would no longer look at the scene's center and the renderer would give it the 2D perspective
+    // camera's field of view (and the path would capture that as its default).
+    if (cam.visible && ! (use_perspective && (*camera_owner).IsLookAt()))
+        camera_owner->AttatchNode(node.as_ptr());
     if (use_perspective) {
         // the layer's field of view is the camera's only while the layer drives it (its path
         // sets it): until then the scene's stays
@@ -189,6 +193,9 @@ void ParseCameraObj(SceneParseContext& context, wpscene::CameraObject& cam) {
     if (use_perspective && cam.fov > 0.0f) path->own_fov = Some(cam.fov);
     path->perspective         = use_perspective;
     path->enabled             = cam.visible;
+    // a visible layer's node took the camera above: if a hidden layer above it keeps it from driving, the first tick
+    // gives the scene's view back
+    path->restore_default     = cam.visible;
     if (! cam.visible_user.empty())
         path->visible_user_binding = ToSceneUserVisibilityBinding(cam.visible_user);
     AssignCameraFieldAnimations(context, *node, *path, cam.field_bindings);
