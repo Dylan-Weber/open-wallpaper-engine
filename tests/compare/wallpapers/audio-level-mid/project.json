@@ -1,0 +1,10 @@
+{
+  "title": "wpe-test 1 kHz at 0.08 on the left, 0.03 on the right",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {},
+    "supportsaudioprocessing": true
+  }
+}
