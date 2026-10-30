@@ -290,12 +290,16 @@ auto InstantiateRegisteredAsset(SceneParseContext&, SceneNode*, const script::La
     -> Option<Arc<SceneNode>>;
 auto InstantiateLayerConfiguration(SceneParseContext&, SceneNode*, const Json&)
     -> Option<Arc<SceneNode>>;
+auto AttachCreatedLayer(SceneParseContext&, SceneNode*, i32) -> Option<Arc<SceneNode>>;
 void ResolveRegisteredAssets(SceneParseContext&);
 void ParseImageObj(SceneParseContext&, wpscene::ImageObject&);
 void ParseShapeObj(SceneParseContext&, wpscene::ShapeObject&);
 void ParseParticleObj(SceneParseContext&, wpscene::ParticleObject&);
 void ParseSoundObj(SceneParseContext&, wpscene::SoundObject&, wavsen::audio::SoundManager&);
 void ParseModelObj(SceneParseContext&, wpscene::ModelObject&);
+// The layer of a mesh a script built (thisScene.createModelData + createLayer({model})).
+auto InstantiateScriptModel(SceneParseContext&, SceneNode*, const script::ModelData&)
+    -> Option<Arc<SceneNode>>;
 void ParseTextObj(SceneParseContext&, wpscene::TextObject&);
 
 struct ExpandedSceneObjects {

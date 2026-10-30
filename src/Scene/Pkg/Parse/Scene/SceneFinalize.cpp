@@ -449,9 +449,16 @@ Box<Scene> FinalizeScene(SceneParseContext& context) {
                 if (node.is_none()) rstd_error("layer configuration is unsupported or unavailable");
                 return node;
             }));
+        runtime.SetModelLayerFactory(script::JsRuntime::ModelLayerFactory::make(
+            [&context](SceneNode* owner, const script::ModelData& model) -> Option<Arc<SceneNode>> {
+                auto node = InstantiateScriptModel(context, owner, model);
+                if (node.is_none()) rstd_error("script model layer is unavailable");
+                return node;
+            }));
         runtime.SetSceneRoot(context.scene->RootMut().as_raw_ptr());
         runtime.ClearLayerFactory();
         runtime.ClearLayerConfigFactory();
+        runtime.ClearModelLayerFactory();
         owe::script::InstallScriptScene(*context.scene,
                                         context.script_scene.take().unwrap_unchecked());
     }

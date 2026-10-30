@@ -520,6 +520,13 @@ struct EngineHostState {
     Vec<String>                              pending_registered_assets;
     Option<JsRuntime::LayerFactory>          layer_factory;
     Option<JsRuntime::LayerConfigFactory>    layer_config_factory;
+    Option<JsRuntime::ModelLayerFactory>     model_layer_factory;
+    // The meshes scripts built (createModelData), by id, and the layer showing each.
+    struct ModelBinding {
+        ModelData        data;
+        owe::SceneNode*  node { nullptr };
+    };
+    Vec<ModelBinding> models;
     // SceneNode -> text-content setter. Populated by text layers in the
     // parser; consulted by NodeSetText so `thisLayer.text = "..."` reaches
     // TextLayouter::SetText. Missing entry means the layer is not text-
@@ -1321,6 +1328,8 @@ void SweepDeferred(JSContext* ctx, EngineHostState* host) {
     });
 }
 
+JSValue WwApplyModelData(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv);
+
 JSValue EngineRegisterAsset(JSContext* ctx, JSValueConst /*this_val*/, int argc,
                             JSValueConst* argv) {
     if (argc > 0) {
@@ -1643,6 +1652,10 @@ class Vec4 {
 globalThis.Vec2 = Vec2;
 globalThis.Vec3 = Vec3;
 globalThis.Vec4 = Vec4;
+globalThis.IModelData = Object.freeze({ POSITION: 0, NORMAL: 1, TANGENT: 2, UV: 3 });
+globalThis.__wwNewModelData = function(id) {
+  return { __modelId: id, applyData: function(config) { __wwApplyModelData(id, config); } };
+};
 globalThis.__wwSerializeLayerConfig = function(config) {
   return JSON.stringify(config, function(_key, value) {
     if (value instanceof Vec2 || value instanceof Vec3 || value instanceof Vec4)
@@ -1836,6 +1849,11 @@ void InstallEngineGlobal(JSContext* ctx) {
     define_fn("clearTimeout", EngineClearDeferred, 1);
     define_fn("clearInterval", EngineClearDeferred, 1);
     define_fn("registerAsset", EngineRegisterAsset, 1);
+    JS_DefinePropertyValueStr(ctx,
+                              global,
+                              "__wwApplyModelData",
+                              JS_NewCFunction(ctx, WwApplyModelData, "__wwApplyModelData", 2),
+                              JS_PROP_C_W_E);
 
     // A handful of corpus scripts call setTimeout/clearTimeout bare (no
     // `engine.` prefix). Mirror onto globalThis so they resolve.
@@ -2930,6 +2948,218 @@ JSValue NodeSceneSetCameraTransforms(JSContext* ctx, JSValueConst, int argc, JSV
     return JS_UNDEFINED;
 }
 
+
+// The bytes of a typed array (a Float32Array or Uint16Array a script filled).
+bool ReadTypedArray(JSContext* ctx, JSValueConst value, const uint8_t** data, size_t* length,
+                    size_t* element_size) {
+    size_t  offset = 0;
+    JSValue buffer = JS_GetTypedArrayBuffer(ctx, value, &offset, length, element_size);
+    if (JS_IsException(buffer)) {
+        JS_FreeValue(ctx, JS_GetException(ctx));
+        return false;
+    }
+    size_t   total = 0;
+    uint8_t* base  = JS_GetArrayBuffer(ctx, &total, buffer);
+    JS_FreeValue(ctx, buffer); // the typed array keeps its buffer alive
+    if (base == nullptr || offset + *length > total) return false;
+    *data = base + offset;
+    return true;
+}
+
+bool ReadFloatArray(JSContext* ctx, JSValueConst value, Vec<float>& out) {
+    const uint8_t* data = nullptr;
+    size_t         length = 0, element = 0;
+    if (! ReadTypedArray(ctx, value, &data, &length, &element) || element != sizeof(float))
+        return false;
+    out = Vec<float>::with_capacity(usize(length / sizeof(float)));
+    for (size_t i = 0; i + sizeof(float) <= length; i += sizeof(float)) {
+        float f;
+        __builtin_memcpy(&f, data + i, sizeof(float));
+        out.push(rstd::move(f));
+    }
+    return true;
+}
+
+bool ReadIndexArray(JSContext* ctx, JSValueConst value, Vec<uint32_t>& out) {
+    const uint8_t* data = nullptr;
+    size_t         length = 0, element = 0;
+    if (! ReadTypedArray(ctx, value, &data, &length, &element) ||
+        (element != sizeof(uint16_t) && element != sizeof(uint32_t)))
+        return false;
+    out = Vec<uint32_t>::with_capacity(usize(length / element));
+    for (size_t i = 0; i + element <= length; i += element) {
+        if (element == sizeof(uint16_t)) {
+            uint16_t v;
+            __builtin_memcpy(&v, data + i, sizeof(v));
+            out.push(uint32_t(v));
+        } else {
+            uint32_t v;
+            __builtin_memcpy(&v, data + i, sizeof(v));
+            out.push(rstd::move(v));
+        }
+    }
+    return true;
+}
+
+// Reads the fields of one shape description that are present: createModelData gives them all,
+// applyData only the ones it changes.
+bool ReadModelShape(JSContext* ctx, JSValueConst shape, ModelShapeData& out) {
+    bool    ok     = true;
+    JSValue vertex = JS_GetPropertyStr(ctx, shape, "vertexBuffer");
+    if (JS_IsObject(vertex)) ok = ok && ReadFloatArray(ctx, vertex, out.vertices);
+    JS_FreeValue(ctx, vertex);
+    JSValue index = JS_GetPropertyStr(ctx, shape, "indexBuffer");
+    if (JS_IsObject(index)) ok = ok && ReadIndexArray(ctx, index, out.indices);
+    JS_FreeValue(ctx, index);
+    JSValue format = JS_GetPropertyStr(ctx, shape, "vertexFormat");
+    if (JS_IsObject(format)) {
+        out.format = Vec<i32>::make();
+        JSValue length = JS_GetPropertyStr(ctx, format, "length");
+        int32_t count  = 0;
+        JS_ToInt32(ctx, &count, length);
+        JS_FreeValue(ctx, length);
+        for (int32_t i = 0; i < count; ++i) {
+            JSValue item  = JS_GetPropertyUint32(ctx, format, static_cast<uint32_t>(i));
+            int32_t value = 0;
+            JS_ToInt32(ctx, &value, item);
+            JS_FreeValue(ctx, item);
+            out.format.push(i32(value));
+        }
+    }
+    JS_FreeValue(ctx, format);
+    JSValue material = JS_GetPropertyStr(ctx, shape, "material");
+    if (JS_IsString(material)) {
+        const char* text = JS_ToCString(ctx, material);
+        if (text != nullptr) {
+            out.material = String::make(rstd::cppstd::as_str(text).unwrap());
+            JS_FreeCString(ctx, text);
+        }
+    }
+    JS_FreeValue(ctx, material);
+    JSValue dynamic = JS_GetPropertyStr(ctx, shape, "isVertexBufferDynamic");
+    if (! JS_IsUndefined(dynamic)) out.dynamic_vertices = JS_ToBool(ctx, dynamic) != 0;
+    JS_FreeValue(ctx, dynamic);
+    return ok;
+}
+
+template<typename Visit>
+bool ForEachModelShape(JSContext* ctx, JSValueConst config, Visit&& visit) {
+    JSValue shapes = JS_GetPropertyStr(ctx, config, "shapes");
+    if (! JS_IsObject(shapes)) {
+        JS_FreeValue(ctx, shapes);
+        return false;
+    }
+    JSValue length = JS_GetPropertyStr(ctx, shapes, "length");
+    int32_t count  = 0;
+    JS_ToInt32(ctx, &count, length);
+    JS_FreeValue(ctx, length);
+    bool ok = true;
+    for (int32_t i = 0; i < count && ok; ++i) {
+        JSValue shape = JS_GetPropertyUint32(ctx, shapes, static_cast<uint32_t>(i));
+        ok            = JS_IsObject(shape) && visit(usize(static_cast<size_t>(i)), shape);
+        JS_FreeValue(ctx, shape);
+    }
+    JS_FreeValue(ctx, shapes);
+    return ok;
+}
+
+JSValue NodeSceneCreateModelData(JSContext* ctx, JSValueConst /*this_val*/, int argc,
+                                 JSValueConst* argv) {
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    if (argc < 1 || ! JS_IsObject(argv[0]))
+        return JS_ThrowTypeError(ctx, "createModelData requires a configuration object");
+    ModelData data;
+    bool      ok = ForEachModelShape(ctx, argv[0], [&](usize, JSValueConst shape) {
+        ModelShapeData parsed;
+        if (! ReadModelShape(ctx, shape, parsed)) return false;
+        data.shapes.push(rstd::move(parsed));
+        return true;
+    });
+    if (! ok || data.shapes.is_empty())
+        return JS_ThrowTypeError(
+            ctx, "createModelData shapes need typed-array vertex and index buffers");
+    const auto id = host->models.len();
+    host->models.push(EngineHostState::ModelBinding { rstd::move(data), nullptr });
+    JSValue global  = JS_GetGlobalObject(ctx);
+    JSValue make    = JS_GetPropertyStr(ctx, global, "__wwNewModelData");
+    JSValue id_arg  = JS_NewInt32(ctx, static_cast<int32_t>(id.to_primitive()));
+    JSValue created = JS_Call(ctx, make, global, 1, &id_arg);
+    JS_FreeValue(ctx, id_arg);
+    JS_FreeValue(ctx, make);
+    JS_FreeValue(ctx, global);
+    return created;
+}
+
+// modelData.applyData({shapes: [{vertexBuffer, ...}]}): what is given replaces what the shape had, and
+// the layer showing the model takes the new vertices on its next frame.
+JSValue WwApplyModelData(JSContext* ctx, JSValueConst /*this_val*/, int argc, JSValueConst* argv) {
+    auto*   host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    int32_t id   = -1;
+    if (argc < 2 || JS_ToInt32(ctx, &id, argv[0]) != 0 || id < 0 ||
+        usize(static_cast<size_t>(id)) >= host->models.len() || ! JS_IsObject(argv[1]))
+        return JS_UNDEFINED;
+    auto& binding = host->models[usize(static_cast<size_t>(id))];
+    bool  ok      = ForEachModelShape(ctx, argv[1], [&](usize index, JSValueConst shape) {
+        if (index >= binding.data.shapes.len()) return true;
+        ModelShapeData parsed;
+        if (! ReadModelShape(ctx, shape, parsed)) return false;
+        auto&      target       = binding.data.shapes[index];
+        const bool new_vertices = ! parsed.vertices.is_empty();
+        const bool new_indices  = ! parsed.indices.is_empty();
+        if (new_vertices) target.vertices = rstd::move(parsed.vertices);
+        if (new_indices) target.indices = rstd::move(parsed.indices);
+        auto* mesh = binding.node != nullptr ? binding.node->Mesh() : nullptr;
+        if (mesh != nullptr && index < mesh->Submeshes().len()) {
+            auto& submesh = mesh->Submeshes()[index];
+            if (new_vertices && ! submesh.vertex_arrays.is_empty())
+                submesh.vertex_arrays[usize()].SetVertexs(usize(), target.vertices.as_slice());
+            if (new_indices && ! submesh.index_arrays.is_empty()) {
+                submesh.index_arrays[usize()].Assign(usize(), target.indices.as_slice());
+                submesh.index_arrays[usize()].SetRenderDataCount(target.indices.len());
+            }
+            mesh->SetDirty();
+        }
+        return true;
+    });
+    if (! ok) return JS_ThrowTypeError(ctx, "applyData expects typed-array buffers");
+    return JS_UNDEFINED;
+}
+
+// createLayer({name, model}): the layer of a mesh the script built.
+JSValue CreateModelLayer(JSContext* ctx, JSValueConst config, JSValueConst model_object) {
+    auto*   host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    auto*   fs   = host->active_field_script;
+    JSValue idv  = JS_GetPropertyStr(ctx, model_object, "__modelId");
+    int32_t id   = -1;
+    bool    ok   = JS_ToInt32(ctx, &id, idv) == 0;
+    JS_FreeValue(ctx, idv);
+    if (! ok || id < 0 || usize(static_cast<size_t>(id)) >= host->models.len() ||
+        host->model_layer_factory.is_none())
+        return JS_ThrowReferenceError(ctx, "createLayer model is unavailable");
+    auto& binding = host->models[usize(static_cast<size_t>(id))];
+    JSValue name  = JS_GetPropertyStr(ctx, config, "name");
+    binding.data.name = String::make();
+    if (JS_IsString(name)) {
+        const char* text = JS_ToCString(ctx, name);
+        if (text != nullptr) {
+            binding.data.name = String::make(rstd::cppstd::as_str(text).unwrap());
+            JS_FreeCString(ctx, text);
+        }
+    }
+    JS_FreeValue(ctx, name);
+    auto created = (**host->model_layer_factory)(fs->m_impl->node, binding.data);
+    if (created.is_none()) return JS_ThrowReferenceError(ctx, "createLayer model is unavailable");
+    owe::SceneNode* node = (*created).as_ptr();
+    binding.node         = node;
+    (void)host->script_layers.insert(node);
+    if (host->scene)
+        (void)host->scene->SetNodeVisible(*node, true);
+    else
+        node->SetVisible(true);
+    node->Play();
+    return WrapLayerNode(ctx, node);
+}
+
 JSValue NodeSceneCreateLayer(JSContext* ctx, JSValueConst /*this_val*/, int argc,
                              JSValueConst* argv) {
     auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
@@ -2937,6 +3167,16 @@ JSValue NodeSceneCreateLayer(JSContext* ctx, JSValueConst /*this_val*/, int argc
     if (! fs) return JS_ThrowReferenceError(ctx, "createLayer requires an active field script");
     // A factory may initialize nested field scripts and replace the caller's JS globals.
     EngineBindingGuard binding_guard(ctx, *host);
+
+    if (argc > 0 && JS_IsObject(argv[0])) {
+        JSValue model = JS_GetPropertyStr(ctx, argv[0], "model");
+        if (JS_IsObject(model)) {
+            JSValue layer = CreateModelLayer(ctx, argv[0], model);
+            JS_FreeValue(ctx, model);
+            return layer;
+        }
+        JS_FreeValue(ctx, model);
+    }
 
     owe::SceneNode* node = nullptr;
     if (argc > 0 && ! JS_IsObject(argv[0])) {
@@ -3535,6 +3775,7 @@ const JSCFunctionListEntry s_layer_proto_funcs[] = {
     JS_CFUNC_DEF("getAnimation", 1, NodeGetAnimation),
     JS_CFUNC_DEF("getAnimationLayer", 1, NodeGetAnimation),
     JS_CFUNC_DEF("createLayer", 1, NodeSceneCreateLayer),
+    JS_CFUNC_DEF("createModelData", 1, NodeSceneCreateModelData),
     JS_CFUNC_DEF("destroyLayer", 1, NodeSceneDestroyLayer),
     JS_CFUNC_DEF("getLayerIndex", 1, NodeSceneGetLayerIndex),
     JS_CFUNC_DEF("sortLayer", 2, NodeSceneSortLayer),
@@ -4221,6 +4462,12 @@ void JsRuntime::SetLayerConfigFactory(LayerConfigFactory factory) {
 void JsRuntime::ClearLayerFactory() { m_impl->host.layer_factory = None(); }
 
 void JsRuntime::ClearLayerConfigFactory() { m_impl->host.layer_config_factory = None(); }
+
+void JsRuntime::SetModelLayerFactory(ModelLayerFactory factory) {
+    m_impl->host.model_layer_factory = Some(rstd::move(factory));
+}
+
+void JsRuntime::ClearModelLayerFactory() { m_impl->host.model_layer_factory = None(); }
 
 // --- Module load + FieldScript construction ---------------------------------
 
