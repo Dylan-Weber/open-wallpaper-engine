@@ -2492,14 +2492,12 @@ Combos ShaderParser::ResolveShaderCombos(const ShaderInfo& info, const Combos& i
     }
 
     // Saved materials retain values for hidden editor controls. Compile hidden combos at their
-    // declared defaults; leave a zero default undefined so shader-side aliases can define it.
+    // declared defaults, a zero one too: the shader may still read it as a value (More Physics'
+    // `float(SHARP)`). A shader-side alias of the same name is undefined first in PreShaderHeader.
     for (const auto& [name, definition] : definitions.iter()) {
         if (**active.get(name->as_str())) continue;
         const auto* combo = *definition;
-        if (combo->default_ == i32())
-            (void)resolved.remove(name->as_str());
-        else
-            (void)resolved.insert(name->clone(), rstd::format("{}", combo->default_));
+        (void)resolved.insert(name->clone(), rstd::format("{}", combo->default_));
     }
     return resolved;
 }
@@ -2634,6 +2632,7 @@ String ShaderParser::PreShaderHeader(ref<str> src, const Combos& combos, ShaderT
     }
 
     String combo_defines;
+    String user_with_undefs;
     for (const auto& [name, value] : combos.iter()) {
         auto bytes = Vec<u8>::with_capacity(name->len());
         for (auto character : name->as_str().as_bytes())
@@ -2642,6 +2641,11 @@ String ShaderParser::PreShaderHeader(ref<str> src, const Combos& combos, ShaderT
         if (value->is_empty()) {
             rstd_error("combo '{}' can't be empty", cup);
             continue;
+        }
+        if (value->as_str() == "0"_str) {
+            // A zero combo is always defined; undefine it where the shader defines the name too.
+            user_with_undefs = UndefBeforeUserMacroDefines(
+                user_with_undefs.is_empty() ? user_src : user_with_undefs.as_str(), cup.as_str());
         }
         combo_defines.push_str("#define "_str);
         combo_defines.push_str(cup.as_str());
@@ -2660,7 +2664,7 @@ String ShaderParser::PreShaderHeader(ref<str> src, const Combos& combos, ShaderT
     } else {
         pre.push_str(combo_defines.as_str());
     }
-    pre.push_str(user_src);
+    pre.push_str(user_with_undefs.is_empty() ? user_src : user_with_undefs.as_str());
     return pre;
 }
 
