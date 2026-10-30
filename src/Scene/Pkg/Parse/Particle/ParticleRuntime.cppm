@@ -243,6 +243,7 @@ struct ParticleFrame {
     Eigen::Matrix3d          local_from_world_dir { Eigen::Matrix3d::Identity() };
     Eigen::Matrix4d          world_from_spawn_space { Eigen::Matrix4d::Identity() };
     Eigen::Matrix4d          local_from_world { Eigen::Matrix4d::Identity() };
+    Eigen::Vector2d          scene_extent { Eigen::Vector2d::Zero() };
     f64                      time {};
     f64                      delta {};
     f64                      emitter_delta {};
