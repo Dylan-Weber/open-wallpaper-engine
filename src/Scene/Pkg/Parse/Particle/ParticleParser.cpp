@@ -182,6 +182,44 @@ struct MapSequenceBetweenControlPointsProgram {
     }
 };
 
+// remapinitialvalue: remapvalue's mapping once, when a particle is born (a particle that moves on
+// keeps the value it was born with; particles-remapinitialvalue).
+struct RemapInitialValueProgram {
+    ParticleRemap remap;
+
+    void Initialize(ParticleSpawnColumns& columns, particle::ParticleSpawnRequest request,
+                    ref<dyn<rstd::any::Any>> frame_context) {
+        double input {};
+        if (remap.input == ParticleRemap::Input::DistanceToControlPoint) {
+            auto frame         = ParticleFrameFrom(frame_context);
+            auto controlpoints = frame->subsystem->Controlpoints();
+            auto center        = controlpoints[rstd::as_cast<usize>(remap.controlpoint)].offset;
+            input = (columns.positions[request.slot.index].cast<double>() - center).norm();
+        }
+        auto slot = request.slot.index;
+        switch (remap.output) {
+        case ParticleRemap::Output::Color: {
+            auto value = remap.Apply(columns.colors[slot].cast<double>(), input).cast<float>();
+            columns.colors[slot]         = value;
+            columns.initial_colors[slot] = value;
+            break;
+        }
+        case ParticleRemap::Output::Opacity: {
+            auto value = float(remap.Apply(Eigen::Vector3d::Constant(columns.alphas[slot]), input).x());
+            columns.alphas[slot]         = value;
+            columns.initial_alphas[slot] = value;
+            break;
+        }
+        case ParticleRemap::Output::Size: {
+            auto value = float(remap.Apply(Eigen::Vector3d::Constant(columns.sizes[slot]), input).x());
+            columns.sizes[slot]         = value;
+            columns.initial_sizes[slot] = value;
+            break;
+        }
+        }
+    }
+};
+
 inline float UiColorToLinear(float value) { return value * value; }
 
 inline float UiScalarToLinear(float value) { return value; }
@@ -387,6 +425,7 @@ class ParticleSpawnInstructionValue {
               (TurbulentVelocityRandom, (TurbulentVelocityRandomProgram value;)),
               (MapSequenceAroundControlPoint, (MapSequenceAroundControlPointProgram value;)),
               (MapSequenceBetweenControlPoints, (MapSequenceBetweenControlPointsProgram value;)),
+              (RemapInitialValue, (RemapInitialValueProgram value;)),
               (Override, (OverrideSpawnProgram value;)))
 };
 
@@ -410,6 +449,8 @@ auto MakeParticleSpawnInstructionValue(T value) -> ParticleSpawnInstructionValue
         return ParticleSpawnInstructionValue::MapSequenceAroundControlPoint(rstd::move(value));
     else if constexpr (same_as<T, MapSequenceBetweenControlPointsProgram>)
         return ParticleSpawnInstructionValue::MapSequenceBetweenControlPoints(rstd::move(value));
+    else if constexpr (same_as<T, RemapInitialValueProgram>)
+        return ParticleSpawnInstructionValue::RemapInitialValue(rstd::move(value));
     else {
         static_assert(same_as<T, OverrideSpawnProgram>);
         return ParticleSpawnInstructionValue::Override(rstd::move(value));
@@ -442,6 +483,7 @@ auto ParticleSpawnInstruction::SequenceCount() const -> Option<u32> {
         RSTD_CASE(MapSequenceBetweenControlPoints, instruction) {
             return Some(rstd::as_cast<u32>(instruction.config.count));
         }
+        RSTD_CASE(RemapInitialValue) { return None(); }
         RSTD_CASE(Override) { return None(); }
     }
     rstd::unreachable();
@@ -471,6 +513,7 @@ void ParticleSpawnInstruction::Initialize(ParticleSpawnColumns&          columns
         RSTD_CASE(MapSequenceBetweenControlPoints, instruction) {
             instruction.Initialize(columns, request, frame);
         }
+        RSTD_CASE(RemapInitialValue, instruction) { instruction.Initialize(columns, request, frame); }
         RSTD_CASE(Override, instruction) { instruction.Initialize(columns, request, frame); }
     }
 }
@@ -495,6 +538,10 @@ ParticleSpawnInstruction ParticleParser::GenInitializer(const Json& wpj,
                     return value / 255.0f;
                 }),
             });
+        } else if (name == "remapinitialvalue"_str) {
+            auto remap = ParticleRemap::FromJson(wpj);
+            if (remap.is_none()) break;
+            return ParticleSpawnInstruction::Make(RemapInitialValueProgram { .remap = rstd::move(*remap) });
         } else if (name == "lifetimerandom"_str) {
             SingleRandom r = { 0.0f, 1.0f };
             SingleRandom::ReadFromJson(wpj, r);
