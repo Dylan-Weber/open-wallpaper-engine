@@ -2909,10 +2909,9 @@ Vec<SceneMaterialDirtyEvent> Scene::ConsumePreparedMaterialDirtyEvents() {
 namespace
 {
 // A camera layer drives its camera while it is visible and so is every layer above it: Wallpaper Engine hides the
-// children of a hidden layer. A script hiding the layer itself stops it too (camera-layer-restore).
+// children of a hidden layer.
 bool CameraPathActive(const SceneCameraPath& path) {
     if (! path.enabled) return false;
-    if (path.node != nullptr && ! path.node->Visible()) return false;
     for (SceneNode* parent = path.node != nullptr ? path.node->Parent() : nullptr; parent != nullptr;
          parent            = parent->Parent()) {
         if (! parent->Visible()) return false;
@@ -2936,8 +2935,6 @@ void Scene::TickCameraPaths() {
     HashSet<String> reset;
     for (const auto& path : m_camera_paths) {
         if (! CameraPathActive(*path)) continue;
-        // once it stops driving (hidden, or a layer above it hidden), the scene's view comes back
-        path->restore_default = true;
         if (path->Tick(runtime))
             touched.insert(path->camera_name.clone());
     }
