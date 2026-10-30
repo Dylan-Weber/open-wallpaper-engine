@@ -819,38 +819,48 @@ TEST(ParticleSubSystem, AppliesTurbulenceMaskAsAxisWeights) {
 // (how fast the object moves, per second) times a factor between min and max. The first frame has no earlier position
 // to measure from, so a particle born then gets none.
 TEST(ParticleSubSystem, InheritControlpointVelocityTakesTheObjectsVelocity) {
-    owe::Scene scene;
-    auto       subsystem = Box<owe::ParticleSubSystem>::make(scene,
-                                                       Arc<owe::SceneMesh>::make(),
-                                                       u32(64),
-                                                       f64(1.0),
-                                                       u32(1),
-                                                       f64(1.0),
-                                                       owe::ParticleSubSystem::SpawnType::STATIC,
-                                                       owe::ParticleAnimationSpec {});
-    subsystem->AddInitializer(owe::ParticleParser::GenInitializer(
-        owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(64)));
-    subsystem->AddInitializer(owe::ParticleParser::GenInitializer(
-        owe::ParseJson(R"({"name":"inheritcontrolpointvelocity","controlpoint":0,"min":0.5,"max":0.5})"_str).unwrap(),
-        u32(64)));
-    owe::wpscene::Emitter emitter;
-    emitter.name = String::make("boxrandom"_str);
-    emitter.rate = 64.0f;
-    subsystem->AddEmitter(owe::ParticleParser::GenEmitter(emitter, *subsystem, usize()));
-    subsystem->Finalize();
-    auto owner = rstd::sync::Arc<owe::SceneNode>::make();
-    subsystem->SetOwnerNode(owner.as_ptr());
-    for (int tick = 0; tick < 4; ++tick) {
-        owner->SetTranslate({ static_cast<float>(tick), 0.0f, 0.0f });
-        subsystem->Tick(f64(1.0 / 64.0), false);
-    }
-    auto&                        storage = subsystem->System().Instance(usize()).Storage();
-    particle::ParticleSlotReader first(storage, particle::ParticleSlot { .index = usize() });
-    particle::ParticleSlotReader last(storage, particle::ParticleSlot { .index = usize(3) });
-    EXPECT_NEAR(first.Read(subsystem->Attributes().velocity).x(), 0.0f, 1e-3f);
-    // 1 unit a 1/64 s tick is 64 a second; half of it
-    EXPECT_NEAR(last.Read(subsystem->Attributes().velocity).x(), 32.0f, 1e-2f);
-    EXPECT_NEAR(last.Read(subsystem->Attributes().velocity).y(), 0.0f, 1e-3f);
+    auto last_velocity = [](bool world_space) {
+        owe::Scene scene;
+        owe::ParticleSubSystem subsystem(scene,
+                                         Arc<owe::SceneMesh>::make(),
+                                         u32(64),
+                                         f64(1.0),
+                                         u32(1),
+                                         f64(1.0),
+                                         owe::ParticleSubSystem::SpawnType::STATIC,
+                                         owe::ParticleAnimationSpec {},
+                                         {},
+                                         u32(),
+                                         f64(),
+                                         f64(),
+                                         world_space);
+        subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+            owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(64)));
+        subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+            owe::ParseJson(R"({"name":"inheritcontrolpointvelocity","controlpoint":0,"min":0.5,"max":0.5})"_str)
+                .unwrap(),
+            u32(64)));
+        owe::wpscene::Emitter emitter;
+        emitter.name = String::make("boxrandom"_str);
+        emitter.rate = 64.0f;
+        subsystem.AddEmitter(owe::ParticleParser::GenEmitter(emitter, subsystem, usize()));
+        subsystem.Finalize();
+        auto owner = rstd::sync::Arc<owe::SceneNode>::make();
+        subsystem.SetOwnerNode(owner.as_ptr());
+        for (int tick = 0; tick < 4; ++tick) {
+            owner->SetTranslate({ static_cast<float>(tick), 0.0f, 0.0f });
+            subsystem.Tick(f64(1.0 / 64.0), false);
+        }
+        auto&                        storage = subsystem.System().Instance(usize()).Storage();
+        particle::ParticleSlotReader first(storage, particle::ParticleSlot { .index = usize() });
+        particle::ParticleSlotReader last(storage, particle::ParticleSlot { .index = usize(3) });
+        EXPECT_NEAR(first.Read(subsystem.Attributes().velocity).x(), 0.0f, 1e-3f);
+        return last.Read(subsystem.Attributes().velocity).x();
+    };
+    // in the world, 1 unit a 1/64 s tick is 64 a second; half of it
+    EXPECT_NEAR(last_velocity(true), 32.0f, 1e-2f);
+    // in the object's own space the control point doesn't move
+    EXPECT_NEAR(last_velocity(false), 0.0f, 1e-3f);
 }
 
 TEST(ParticleSubSystem, UsesEmitterPeriodLimitForImplicitControlpointSequenceCount) {

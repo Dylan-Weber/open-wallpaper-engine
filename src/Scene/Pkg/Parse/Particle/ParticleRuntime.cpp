@@ -575,8 +575,9 @@ void ParticleSubSystem::UpdateFrameInput(f64 frame_time) {
         Eigen::Matrix<double, 3, 8> world_positions;
         for (usize index {}; index < usize(8); ++index) {
             const Eigen::Vector3d offset = m_controlpoints[index].offset;
+            // a particle in its object's space moves with the object: its control points only move by their own offsets
             world_positions.col(index.to_primitive()) =
-                (world_from_spawn_space * offset.homogeneous()).head<3>();
+                m_world_space ? Eigen::Vector3d((world_from_spawn_space * offset.homogeneous()).head<3>()) : offset;
         }
         const double seconds          = frame_time.to_primitive();
         m_frame.controlpoint_velocity = Eigen::Matrix<double, 3, 8>::Zero();

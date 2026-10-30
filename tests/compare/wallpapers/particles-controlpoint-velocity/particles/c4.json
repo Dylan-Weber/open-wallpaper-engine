@@ -2,7 +2,7 @@
   "material": "materials/particle/halo.json",
   "maxcount": 4,
   "starttime": 0,
-  "flags": 0,
+  "flags": 1,
   "controlpoint": [
     {
       "id": 0,

@@ -25,7 +25,7 @@
       "particle": "particles/c0.json",
       "origin": {
         "value": "100 900 0",
-        "script": "'use strict';\nexport function update(value) {\n\tvalue.x = 100 + engine.runtime * 200;\n\treturn value;\n}\n"
+        "script": "'use strict';\nexport function update(value) {\n\tvalue.x = 100 + engine.runtime * 30;\n\treturn value;\n}\n"
       },
       "scale": "1 1 1",
       "angles": "0 0 0",
@@ -37,7 +37,7 @@
       "particle": "particles/c1.json",
       "origin": {
         "value": "100 720 0",
-        "script": "'use strict';\nexport function update(value) {\n\tvalue.x = 100 + engine.runtime * 200;\n\treturn value;\n}\n"
+        "script": "'use strict';\nexport function update(value) {\n\tvalue.x = 100 + engine.runtime * 30;\n\treturn value;\n}\n"
       },
       "scale": "1 1 1",
       "angles": "0 0 0",
@@ -61,7 +61,7 @@
       "particle": "particles/c3.json",
       "origin": {
         "value": "100 360 0",
-        "script": "'use strict';\nexport function update(value) {\n\tvalue.x = 100 + engine.runtime * 200;\n\treturn value;\n}\n"
+        "script": "'use strict';\nexport function update(value) {\n\tvalue.x = 100 + engine.runtime * 30;\n\treturn value;\n}\n"
       },
       "scale": "1 1 1",
       "angles": "0 0 0",
@@ -73,7 +73,7 @@
       "particle": "particles/c4.json",
       "origin": {
         "value": "100 180 0",
-        "script": "'use strict';\nexport function update(value) {\n\tvalue.x = 100 + engine.runtime * 200;\n\treturn value;\n}\n"
+        "script": "'use strict';\nexport function update(value) {\n\tvalue.x = 100 + engine.runtime * 30;\n\treturn value;\n}\n"
       },
       "scale": "1 1 1",
       "angles": "0 0 0",
