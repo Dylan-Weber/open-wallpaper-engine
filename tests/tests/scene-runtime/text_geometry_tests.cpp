@@ -470,3 +470,56 @@ TEST(TextAtlas, InvalidPageExtentHasNoPixels) {
     page.AcknowledgeUpdates(1);
     EXPECT_TRUE(page.DirtyRects().is_empty());
 }
+
+TEST(TextAtlas, AnOutlinedGlyphIsTheGlyphGrownByTheThickness) {
+    // Wallpaper Engine's outline reaches outlinethickness layer units from the glyph (text-outline)
+    owe::text::TextResources resources;
+    auto                     font  = AtlasFont();
+    auto                     plain = resources.Rasterize(font, 255).unwrap();
+    auto                     grown = resources.Rasterize(font, 255, 1, 3.0).unwrap();
+    ASSERT_EQ(plain.width, 3u);
+    ASSERT_EQ(plain.height, 2u);
+    // grown by 4 (3, and a pixel for the edge) on every side, its origin moved to match
+    EXPECT_EQ(grown.width, 3u + 8u);
+    EXPECT_EQ(grown.height, 2u + 8u);
+    EXPECT_DOUBLE_EQ(grown.origin.x, plain.origin.x - 4);
+    EXPECT_DOUBLE_EQ(grown.origin.y, plain.origin.y - 4);
+    auto& page  = *resources.Pages()[usize(grown.page)];
+    auto  pixel = [&](int x, int y) {
+        return int(page.AtlasPixels()[usize(grown.y + y) * usize(page.Extent()) + usize(grown.x + x)]);
+    };
+    EXPECT_EQ(pixel(4, 4), 255);     // the glyph itself
+    EXPECT_EQ(pixel(1, 4), 255);     // 3 left of it
+    EXPECT_EQ(pixel(4, 1), 255);     // 3 above it
+    EXPECT_EQ(pixel(0, 4), 0);       // 4 left of it
+    EXPECT_EQ(pixel(10, 9), 0);      // a far corner
+    EXPECT_EQ(resources.Rasterize(font, 255, 1, 3.0).unwrap().x, grown.x); // cached
+}
+
+TEST(TextLayouter, AnOutlineDrawsTheGrownGlyphsBehindTheText) {
+    auto                       resources = TextResources();
+    auto                       mesh      = Arc<owe::SceneMesh>::make();
+    owe::text::TextLayoutStyle style;
+    style.color             = { 1.0f, 0.85f, 0.3f };
+    style.alpha             = 0.5f;
+    style.outline           = true;
+    style.outline_color     = { 0.6f, 0.05f, 0.05f };
+    style.outline_thickness = 4.0f;
+    owe::text::TextLayouter layouter(resources.clone(), TextFont(), mesh.clone(), rstd::move(style), 8);
+    ASSERT_TRUE(layouter.SetText("A"_str).is_ok());
+    const auto& vertices = mesh->GetVertexArray(usize());
+    // two quads: the outline, then the letter
+    ASSERT_GE(vertices.VertexCount(), usize(8));
+    const float* data   = vertices.Data();
+    // position, texcoord and colour, each padded to the same width
+    const auto   stride = vertices.OneSize().to_primitive();
+    const auto   colour = stride / 3 * 2;
+    auto         at     = [&](rstd::size_t vertex, rstd::size_t offset) { return data[vertex * stride + offset]; };
+    EXPECT_FLOAT_EQ(at(0, colour), 0.6f);
+    EXPECT_FLOAT_EQ(at(0, colour + 3), 0.5f);
+    EXPECT_FLOAT_EQ(at(4, colour), 1.0f);
+    // the outline quad is 2 * 4 (and 2 edge pixels) wider than the letter's
+    const float outline_width = at(1, 0) - at(0, 0);
+    const float letter_width  = at(5, 0) - at(4, 0);
+    EXPECT_FLOAT_EQ(outline_width - letter_width, 10.0f);
+}

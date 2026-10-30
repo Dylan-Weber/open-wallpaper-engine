@@ -336,6 +336,11 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
                                     obj.backgroundcolor[usize(1)],
                                     obj.backgroundcolor[usize(2)] };
     style.background_brightness = obj.backgroundbrightness;
+    style.outline               = obj.outline;
+    style.outline_color         = { obj.outlinecolor[usize(0)],
+                                    obj.outlinecolor[usize(1)],
+                                    obj.outlinecolor[usize(2)] };
+    style.outline_thickness     = obj.outlinethickness;
     style.halign  = (obj.horizontalalign.is_empty() ? obj.alignment : obj.horizontalalign).clone();
     style.padding = rstd::as_cast<float>(obj.padding);
     if (obj.limitwidth && obj.maxwidth > 0.0f) style.wrap_width = obj.maxwidth;
