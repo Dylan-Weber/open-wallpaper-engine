@@ -921,8 +921,9 @@ struct MovementOperator {
         for (auto slot : context.slots) {
             auto world_velocity =
                 frame->world_from_local_dir * velocities[slot.index].cast<double>();
+            // Wallpaper Engine's drag slows particles at half its value (particles-drag).
             Eigen::Vector3d acceleration =
-                frame->local_from_world_dir * algorism::DragForce(world_velocity, drag);
+                frame->local_from_world_dir * algorism::DragForce(world_velocity, drag * 0.5);
             acceleration +=
                 speed * (frame->world_space ? frame->local_from_world_dir * gravity : gravity);
             velocities[slot.index] =
