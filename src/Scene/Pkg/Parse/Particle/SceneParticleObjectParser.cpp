@@ -283,7 +283,7 @@ struct LayerImagePixelSet {
     float                jitter { 0.5f };
 };
 
-// The pixels of a layer's texture that are opaque enough (the layer's opacity times the pixel's, about half or more), as
+// The pixels of a layer's texture that are opaque enough (the layer's opacity times the pixel's, half or more; particles-layerimage-alpha: the halo's disc matches at 0.5), as
 // points from the image's centre in pixels, for the ones stored as 8-bit colour with or without alpha; None for a format
 // not read (the layer then emits from its texture's rectangle). A large image is sampled every few pixels.
 Option<LayerImagePixelSet> LayerImagePixels(const TexImageParser& textures, ref<str> name, float layer_alpha) {
@@ -311,7 +311,7 @@ Option<LayerImagePixelSet> LayerImagePixels(const TexImageParser& textures, ref<
             const auto* pixel = data + (static_cast<std::size_t>(row) * static_cast<std::size_t>(base.width) +
                                         static_cast<std::size_t>(column)) * static_cast<std::size_t>(channels);
             const float alpha = channels == 4 ? static_cast<float>(pixel[3]) / 255.0f : 1.0f;
-            if (alpha * layer_alpha < 0.4f) continue;
+            if (alpha * layer_alpha < 0.5f) continue;
             const float first = static_cast<float>(pixel[0]) / 255.0f;
             const float third = static_cast<float>(pixel[2]) / 255.0f;
             set.points.push(LayerImagePoint {
@@ -328,7 +328,7 @@ Option<LayerImagePixelSet> LayerImagePixels(const TexImageParser& textures, ref<
 // rectangle (a solid layer's size; for another image the size of its texture, whose pixels are not read), colour and
 // opacity (particles-layerimage).
 Option<Arc<LayerImageSource>> BuildLayerImageSource(SceneParseContext& context, i32 id) {
-    auto node_ref = context.node_id_map.get(id);
+    auto node_ref = context.layer_build.node_id_map.get(id);
     auto config   = context.initial_layer_configs.get(id);
     if (node_ref.is_none() || (*node_ref)->node.is_none() || config.is_none()) return None();
     const Json&     json = **config;
@@ -339,7 +339,7 @@ Option<Arc<LayerImageSource>> BuildLayerImageSource(SceneParseContext& context, 
     owe::GetJsonValue(json, "color"_str, color, false);
     owe::GetJsonValue(json, "alpha"_str, alpha, false);
     Option<LayerImagePixelSet> texture_pixels;
-    if (! context.solid_layer_ids.contains(id)) {
+    if (! context.layer_resources->solid_layer_ids.contains(id)) {
         TexImageParser textures(context.vfs);
         String         model, material, texture;
         owe::GetJsonValue(json, "image"_str, model, false);
@@ -691,8 +691,12 @@ void BuildParticleObjectNode(ParticleObjectParseServices& services,
     if (child_data.controlpointstartindex.is_some())
         particleSub->SetParentControlpointStartIndex(*child_data.controlpointstartindex);
     Option<Arc<LayerImageSource>> layer_image;
-    if (! is_child && wppartobj.emitterimage_layer.is_some() && services.construction_context != nullptr)
-        layer_image = BuildLayerImageSource(*services.construction_context, *wppartobj.emitterimage_layer);
+    // the parser's context knows the scene's layers; a layer a script creates has none to emit from
+    if (! is_child && wppartobj.emitterimage_layer.is_some() &&
+        ! services.construction_context.runtime_created)
+        layer_image = BuildLayerImageSource(
+            static_cast<SceneParseContext&>(services.construction_context),
+            *wppartobj.emitterimage_layer);
     LoadEmitter(*particleSub, particle_obj, modifiers, layer_image);
     LoadInitializer(*particleSub, particle_obj, modifiers.Clone());
     LoadOperator(*particleSub, particle_obj, modifiers.Clone());

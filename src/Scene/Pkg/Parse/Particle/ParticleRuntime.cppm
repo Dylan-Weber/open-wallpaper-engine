@@ -356,8 +356,8 @@ struct ParticleSphereEmitterArgs {
 };
 
 // An image layer a layerimage emitter emits from (particles-layerimage): the layer's rectangle, its size's half-extents before
-// the layer's scale, turned and moved by the layer's node; the particles take the layer's colour; a layer less than about
-// half opaque emits nothing.
+// the layer's scale, turned and moved by the layer's node; the particles take the layer's colour; a layer less than half
+// opaque emits nothing (a pixel counts with its opacity times the layer's).
 // a pixel of a layer's image that emits: its place in layer units from the centre, and its colour
 struct LayerImagePoint {
     float           x {}, y {};
