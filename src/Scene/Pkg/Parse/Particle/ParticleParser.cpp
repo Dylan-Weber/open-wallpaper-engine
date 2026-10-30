@@ -1383,6 +1383,64 @@ struct ControlPointAttractOperator {
     }
 };
 
+struct RemapValueOperator {
+    ParticleAttributes                                              attributes;
+    ParticleRemap                                                   remap;
+    particle::ParticleWriteIndex<particle::ColorAttribute>          color;
+    particle::ParticleWriteIndex<particle::AlphaAttribute>          alpha;
+    particle::ParticleWriteIndex<particle::SizeAttribute>           size;
+    particle::ParticleReadIndex<particle::LifetimeAttribute>        lifetime;
+    particle::ParticleReadIndex<particle::InitialLifetimeAttribute> initial_lifetime;
+
+    void Compile(particle::ParticleViewCompiler& compiler) {
+        compiler.ReadBase(attributes.position);
+        lifetime         = compiler.Read(attributes.lifetime);
+        initial_lifetime = compiler.Read(attributes.initial_lifetime);
+        switch (remap.output) {
+        case ParticleRemap::Output::Color: color = compiler.Write(attributes.color); break;
+        case ParticleRemap::Output::Opacity: alpha = compiler.Write(attributes.alpha); break;
+        case ParticleRemap::Output::Size: size = compiler.Write(attributes.size); break;
+        }
+    }
+
+    void Update(particle::ParticleUpdateContext& context) {
+        auto frame     = ParticleFrameFrom(context.frame);
+        auto positions = context.view.Positions();
+        auto lifetimes = context.view.Read(lifetime);
+        auto initial   = context.view.Read(initial_lifetime);
+        auto center =
+            frame->subsystem->SimulationControlpoint(rstd::as_cast<usize>(remap.controlpoint)).center;
+        auto input = [&](particle::ParticleSlot slot) -> double {
+            if (remap.input == ParticleRemap::Input::Lifetime)
+                return LifetimePosition(lifetimes[slot.index], initial[slot.index]);
+            return (positions[slot.index].cast<double>() - center).norm();
+        };
+        switch (remap.output) {
+        case ParticleRemap::Output::Color: {
+            auto values = context.view.Write(color);
+            for (auto slot : context.slots)
+                values[slot.index] =
+                    remap.Apply(values[slot.index].cast<double>(), input(slot)).cast<float>();
+            break;
+        }
+        case ParticleRemap::Output::Opacity: {
+            auto values = context.view.Write(alpha);
+            for (auto slot : context.slots)
+                values[slot.index] = float(
+                    remap.Apply(Eigen::Vector3d::Constant(values[slot.index]), input(slot)).x());
+            break;
+        }
+        case ParticleRemap::Output::Size: {
+            auto values = context.view.Write(size);
+            for (auto slot : context.slots)
+                values[slot.index] = float(
+                    remap.Apply(Eigen::Vector3d::Constant(values[slot.index]), input(slot)).x());
+            break;
+        }
+        }
+    }
+};
+
 struct NoopUpdateOperator {
     void Compile(particle::ParticleViewCompiler&) {}
     void Update(particle::ParticleUpdateContext&) {}
@@ -1503,6 +1561,13 @@ ParticleParser::GenOperator(const Json& wpj, ParticleInstanceModifiers modifiers
             return Box<dyn<particle::ParticleUpdateProgram>>::make(ControlPointAttractOperator {
                 .attributes = attributes,
                 .config     = ControlPointForce::ReadFromJson(wpj),
+            });
+        } else if (name == "remapvalue"_str) {
+            auto remap = ParticleRemap::FromJson(wpj);
+            if (remap.is_none()) break;
+            return Box<dyn<particle::ParticleUpdateProgram>>::make(RemapValueOperator {
+                .attributes = attributes,
+                .remap      = rstd::move(*remap),
             });
         }
     } while (false);

@@ -3,6 +3,7 @@ export module wescene.pkg.parse:particle_runtime;
 import eigen;
 import rstd;
 import wescene.core;
+import wescene.json;
 import wescene.particle;
 import wescene.particle.program;
 import wescene.scene;
@@ -10,6 +11,7 @@ import wescene.scene;
 export import wescene.pkg.scene_obj;
 
 using namespace rstd::prelude;
+using namespace rstd::literals;
 using rstd::sync::Arc;
 
 export namespace owe
@@ -19,6 +21,116 @@ enum class ParticleAnimationMode
 {
     SEQUENCE,
     RANDOMONE,
+};
+
+// remapvalue: maps an input (the distance to a control point, or how far through its life a
+// particle is) from inputrangemin..max, clamped, linearly onto outputrangemin..max, and sets a
+// particle's colour, opacity or size to it, or multiplies or adds it (particles-remapvalue). A size
+// it sets is a radius: the particle is drawn twice as large. Other inputs, outputs and transform
+// functions (noise, sine) are not read: such an operator does nothing.
+struct ParticleRemap {
+    enum class Input
+    {
+        DistanceToControlPoint,
+        Lifetime,
+    };
+    enum class Output
+    {
+        Color,
+        Opacity,
+        Size,
+    };
+    enum class Operation
+    {
+        Remap,
+        Multiply,
+        Add,
+    };
+    Input           input { Input::DistanceToControlPoint };
+    i32             controlpoint { 0 };
+    double          input_min { 0.0 }, input_max { 1.0 };
+    Output          output { Output::Color };
+    Operation       operation { Operation::Remap };
+    Eigen::Vector3d output_min { Eigen::Vector3d::Zero() }, output_max { Eigen::Vector3d::Ones() };
+
+    static auto FromJson(const Json& json) -> Option<ParticleRemap> {
+        ParticleRemap remap;
+        String        text;
+        if (json.get("transformfunction"_str).is_some()) {
+            GetJsonValue(json, "transformfunction"_str, text, false);
+            if (text != "linear"_str) return None();
+        }
+        text = String {};
+        GetJsonValue(json, "input"_str, text, false);
+        if (text == "distancetocontrolpoint"_str)
+            remap.input = Input::DistanceToControlPoint;
+        else if (text == "particlelifetime"_str)
+            remap.input = Input::Lifetime;
+        else
+            return None();
+        text = String {};
+        GetJsonValue(json, "output"_str, text, false);
+        const bool vector = text == "color"_str;
+        if (vector)
+            remap.output = Output::Color;
+        else if (text == "opacity"_str || text == "alpha"_str)
+            remap.output = Output::Opacity;
+        else if (text == "size"_str)
+            remap.output = Output::Size;
+        else
+            return None();
+        text = String {};
+        GetJsonValue(json, "operation"_str, text, false);
+        if (text == "multiply"_str)
+            remap.operation = Operation::Multiply;
+        else if (text == "add"_str)
+            remap.operation = Operation::Add;
+        else if (text.is_empty() || text == "remap"_str)
+            remap.operation = Operation::Remap;
+        else
+            return None();
+        GetJsonValue(json, "inputcontrolpoint0"_str, remap.controlpoint, false);
+        remap.controlpoint = ((remap.controlpoint % i32(8)) + i32(8)) % i32(8);
+        float min { 0.0f }, max { 1.0f };
+        GetJsonValue(json, "inputrangemin"_str, min, false);
+        GetJsonValue(json, "inputrangemax"_str, max, false);
+        remap.input_min = min;
+        remap.input_max = max;
+        if (vector) {
+            array<float, 3> low { 0.0f, 0.0f, 0.0f }, high { 1.0f, 1.0f, 1.0f };
+            GetJsonValue(json, "outputrangemin"_str, low, false);
+            GetJsonValue(json, "outputrangemax"_str, high, false);
+            remap.output_min = Eigen::Vector3f { low.data() }.cast<double>();
+            remap.output_max = Eigen::Vector3f { high.data() }.cast<double>();
+        } else {
+            float low { 0.0f }, high { 1.0f };
+            GetJsonValue(json, "outputrangemin"_str, low, false);
+            GetJsonValue(json, "outputrangemax"_str, high, false);
+            remap.output_min = Eigen::Vector3d::Constant(low);
+            remap.output_max = Eigen::Vector3d::Constant(high);
+        }
+        return Some(rstd::move(remap));
+    }
+
+    // the output value for an input
+    auto Map(double value) const -> Eigen::Vector3d {
+        const double span = input_max - input_min;
+        double       t    = span != 0.0 ? (value - input_min) / span : (value >= input_max ? 1.0 : 0.0);
+        t                 = t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t);
+        return output_min + (output_max - output_min) * t;
+    }
+
+    // a particle value after the operation, given its value and the input
+    auto Apply(const Eigen::Vector3d& current, double value) const -> Eigen::Vector3d {
+        Eigen::Vector3d mapped = Map(value);
+        if (output == Output::Size && operation == Operation::Remap) mapped *= 2.0;
+        switch (operation) {
+        case Operation::Multiply: return current.cwiseProduct(mapped);
+        case Operation::Add: return current + mapped;
+        case Operation::Remap: break;
+        }
+        return mapped;
+    }
 };
 
 struct ParticleControlpoint {
