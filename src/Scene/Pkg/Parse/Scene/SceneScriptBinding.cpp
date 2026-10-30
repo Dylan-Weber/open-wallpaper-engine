@@ -290,6 +290,14 @@ script::ScriptScene& EnsureScriptScene(SceneParseContext& context) {
                         if (layer.is_some()) (void)(*layer)->RemoveAnimationLayer(playback);
                         return node->UnregisterAnimationLayer(playback);
                     }));
+        (*context.script_scene)
+            ->runtime()
+            .SetBoneParentsResolver(script::JsRuntime::BoneParentsResolver::make(
+                [layers = layers.clone()](SceneNode* node) -> Vec<rstd::uint32_t> {
+                    auto layer = LookupPuppetLayer(layers, node);
+                    if (layer.is_none()) return {};
+                    return (*layer)->boneParents();
+                }));
         if (context.user_properties.is_some())
             (*context.user_properties)->iter().for_each([&](auto entry) {
                 auto [entry_key, entry_value] = entry;

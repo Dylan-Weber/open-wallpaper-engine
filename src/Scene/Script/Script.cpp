@@ -605,6 +605,7 @@ struct EngineHostState {
     Option<JsRuntime::BoneIndexResolver>         bone_index_resolver;
     Option<JsRuntime::BoneTransformResolver>     bone_transform_resolver;
     Option<JsRuntime::BonePhysicsHandler>        bone_physics_handler;
+    Option<JsRuntime::BoneParentsResolver>       bone_parents_resolver;
     owe::SceneNode*                              scene_root { nullptr };
 };
 
@@ -3116,6 +3117,37 @@ JSValue NodeResetBonePhysicsSimulation(JSContext* ctx, JSValueConst this_val, in
     return JS_UNDEFINED;
 }
 
+Vec<uint32_t> BoneParents(EngineHostState* host, owe::SceneNode* node) {
+    if (! node || ! host->bone_parents_resolver) return {};
+    return (*host->bone_parents_resolver)->operator()(node);
+}
+
+JSValue NodeGetBoneCount(JSContext* ctx, JSValueConst this_val, int, JSValueConst*) {
+    auto*      host    = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    const auto parents = BoneParents(host, GetLayerNode(this_val));
+    return JS_NewInt32(ctx, int32_t(parents.len().to_primitive()));
+}
+
+// getBoneParentIndex(child): the parent of a bone named or numbered as
+// getBoneIndex does, -1 for a root or a bone the layer does not have.
+JSValue NodeGetBoneParentIndex(JSContext* ctx, JSValueConst this_val, int argc,
+                               JSValueConst* argv) {
+    auto*      host    = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    auto*      n       = GetLayerNode(this_val);
+    const auto parents = BoneParents(host, n);
+    if (argc < 1) return JS_NewInt32(ctx, -1);
+    int32_t child = -1;
+    if (JS_IsString(argv[0])) {
+        JSValue index = NodeGetBoneIndex(ctx, this_val, 1, argv);
+        JS_ToInt32(ctx, &child, index);
+        JS_FreeValue(ctx, index);
+    } else {
+        JS_ToInt32(ctx, &child, argv[0]);
+    }
+    if (child < 0 || usize(uint32_t(child)) >= parents.len()) return JS_NewInt32(ctx, -1);
+    return JS_NewInt32(ctx, int32_t(parents[usize(uint32_t(child))]) - 1);
+}
+
 JSValue NodeGetChildren(JSContext* ctx, JSValueConst this_val, int, JSValueConst*) {
     auto*   n   = GetLayerNode(this_val);
     JSValue arr = JS_NewArray(ctx);
@@ -4204,6 +4236,8 @@ const JSCFunctionListEntry s_layer_proto_funcs[] = {
     JS_CFUNC_DEF("getBoneTransform", 1, NodeGetBoneTransform),
     JS_CFUNC_DEF("applyBonePhysicsImpulse", 3, NodeApplyBonePhysicsImpulse),
     JS_CFUNC_DEF("resetBonePhysicsSimulation", 1, NodeResetBonePhysicsSimulation),
+    JS_CFUNC_DEF("getBoneCount", 0, NodeGetBoneCount),
+    JS_CFUNC_DEF("getBoneParentIndex", 1, NodeGetBoneParentIndex),
     JS_CFUNC_DEF("getTextureAnimation", 0, NodeGetTextureAnimation),
     JS_CFUNC_DEF("getVideoTexture", 0, NodeGetVideoTexture),
     JS_CFUNC_DEF("emitParticles", 1, NodeEmitParticles),
@@ -4610,6 +4644,10 @@ void JsRuntime::SetBoneResolvers(BoneIndexResolver     index_resolver,
 
 void JsRuntime::SetBonePhysicsHandler(BonePhysicsHandler handler) {
     m_impl->host.bone_physics_handler = Some(rstd::move(handler));
+}
+
+void JsRuntime::SetBoneParentsResolver(BoneParentsResolver resolver) {
+    m_impl->host.bone_parents_resolver = Some(rstd::move(resolver));
 }
 
 void JsRuntime::SetPersistence(PathBuf path) {

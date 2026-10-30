@@ -282,6 +282,10 @@ public:
                           BoneTransformResolver transform_resolver);
     using BonePhysicsHandler = Box<dyn<FnMut<void(owe::SceneNode*, const BonePhysicsRequest&)>>>;
     void SetBonePhysicsHandler(BonePhysicsHandler handler);
+    // Each bone's parent, numbered as the bone index resolver numbers bones
+    // (0 for a root); empty when the node has no bones.
+    using BoneParentsResolver = Box<dyn<FnMut<Vec<uint32_t>(owe::SceneNode*)>>>;
+    void SetBoneParentsResolver(BoneParentsResolver resolver);
 
     // Drive every alive FieldScript once. Invokes their cached `update`
     // export and stores the coerced return into FieldScript::last_value().
