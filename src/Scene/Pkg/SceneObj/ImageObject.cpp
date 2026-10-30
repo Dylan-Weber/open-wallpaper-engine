@@ -275,6 +275,7 @@ Option<ImageAssetInfo> owe::wpscene::LoadImageAssetInfo(fs::VFS& vfs, ref<str> i
 
     ImageAssetInfo info;
     owe::GetJsonValue(*j_image, "solidlayer"_str, info.solid_layer, false);
+    owe::GetJsonValue(*j_image, "autosize"_str, info.autosize, false);
     i32 w {}, h {};
     if (j_image->get("width"_str).is_some() && j_image->get("height"_str).is_some()) {
         owe::GetJsonValue(*j_image, "width"_str, w, false);
