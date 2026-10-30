@@ -79,6 +79,9 @@ struct TextObject {
     bool             ledsource { false };
     array<float, 3>  backgroundcolor { 0.0f, 0.0f, 0.0f };
     float            backgroundbrightness { 1.0f };
+    bool             outline { false };
+    array<float, 3>  outlinecolor { 0.0f, 0.0f, 0.0f };
+    float            outlinethickness { 0.0f };
     Vec<ImageEffect> effects;
 
     bool FromJson(const owe::Json& json, fs::VFS& vfs) {
@@ -129,6 +132,9 @@ struct TextObject {
         owe::GetJsonValue(json, "ledsource"_str, ledsource, false);
         owe::GetJsonValue(json, "backgroundcolor"_str, backgroundcolor, false);
         owe::GetJsonValue(json, "backgroundbrightness"_str, backgroundbrightness, false);
+        owe::GetJsonValue(json, "outline"_str, outline, false);
+        owe::GetJsonValue(json, "outlinecolor"_str, outlinecolor, false);
+        owe::GetJsonValue(json, "outlinethickness"_str, outlinethickness, false);
         if (auto effect_values = json.get("effects"_str); effect_values.is_some()) {
             auto array = (*effect_values)->as_array();
             if (array.is_some()) {

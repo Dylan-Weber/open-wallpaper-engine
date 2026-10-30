@@ -139,18 +139,58 @@ auto TextResources::Layout(vectext::TextRequest request)
 auto TextResources::Pages() const -> slice<Arc<AtlasPage>> { return m_impl->pages.as_slice(); }
 auto TextResources::RasterCount() const -> rstd::uint64_t { return m_impl->rasters; }
 auto TextResources::LayoutCount() const -> rstd::uint64_t { return m_impl->layouts; }
-auto TextResources::Rasterize(const vectext::FontInstance& font, vectext::Index glyph, double scale)
-    -> Result<AtlasGlyph, vectext::TextError> {
+namespace
+{
+// The glyph grown by `radius` pixels (a text outline): each pixel takes the most ink within that distance, fading out
+// over the pixel past it. The bitmap grows by the radius and a pixel on every side.
+auto GrowGlyph(const vectext::GlyphBitmap& glyph, double radius) -> vectext::GlyphBitmap {
+    const int pad = int(f64(radius).ceil().to_primitive()) + 1;
+    const int w = int(glyph.width), h = int(glyph.height);
+    const int gw = w + 2 * pad, gh = h + 2 * pad;
+    Vec<unsigned char> grown;
+    grown.resize(usize(gw * gh), static_cast<unsigned char>(0));
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x) {
+            const int ink = glyph.coverage[usize(y * w + x)];
+            if (ink == 0) continue;
+            for (int dy = -pad; dy <= pad; ++dy)
+                for (int dx = -pad; dx <= pad; ++dx) {
+                    const double d     = f64(double(dx * dx + dy * dy)).sqrt().to_primitive();
+                    const double reach = rstd::cmp::min(rstd::cmp::max(radius + 1.0 - d, 0.0), 1.0);
+                    if (reach <= 0) continue;
+                    auto& out   = grown[usize((y + pad + dy) * gw + x + pad + dx)];
+                    const int v = int(double(ink) * reach + 0.5);
+                    if (v > out) out = static_cast<unsigned char>(v);
+                }
+        }
+    auto origin = glyph.origin;
+    origin.x -= pad / glyph.scale;
+    origin.y -= pad / glyph.scale;
+    return vectext::GlyphBitmap { static_cast<rstd::uint32_t>(gw), static_cast<rstd::uint32_t>(gh), origin,
+                                  glyph.scale, rstd::move(grown) };
+}
+} // namespace
+
+auto TextResources::Rasterize(const vectext::FontInstance& font, vectext::Index glyph, double scale,
+                              double outline) -> Result<AtlasGlyph, vectext::TextError> {
     auto& im = *m_impl;
     if (! vectext::finite(scale) || scale <= 0 || scale > 64)
         return Err(vectext::TextError::InvalidValue);
+    if (! vectext::finite(outline) || outline < 0 || outline > 256)
+        return Err(vectext::TextError::InvalidValue);
     auto bits = rstd::mem::transmute<rstd::uint64_t>(scale);
-    auto key  = rstd::format("{}:{}:{}", font.id(), glyph, bits);
+    auto key  = outline > 0 ? rstd::format("{}:{}:{}:outline:{}",
+                                           font.id(),
+                                           glyph,
+                                           bits,
+                                           rstd::mem::transmute<rstd::uint64_t>(outline))
+                            : rstd::format("{}:{}:{}", font.id(), glyph, bits);
     if (auto cached = im.glyphs.get(key.as_str()); cached.is_some())
         return Ok(AtlasGlyph(**cached));
     auto raster = font.rasterize(glyph, scale);
     if (raster.is_err()) return Err(raster.unwrap_err());
     auto bitmap = rstd::move(raster).unwrap();
+    if (outline > 0 && bitmap.width && bitmap.height) bitmap = GrowGlyph(bitmap, outline);
     auto extent = im.options.extent;
     if (extent < 8 || extent > 8192 || ! im.options.max_pages || im.options.max_pages > 64 ||
         rstd::uint64_t(extent) * extent * im.options.max_pages > 268435456 ||
@@ -580,6 +620,10 @@ struct TextLayouter::Impl {
                                 style.background_color[usize(2)] * style.background_brightness,
                                 1.0f } });
         }
+        // Wallpaper Engine's outline: each letter grown by the thickness, in the outline colour, behind the letters
+        // (text-outline). It doesn't count towards the ink's bounds.
+        const bool outlined = style.outline && style.outline_thickness > 0;
+        Vec<Quad>  outlines;
         bool  have_bounds {};
         float minx {}, maxx {}, miny {}, maxy {};
         for (auto& glyph : output.glyphs()) {
@@ -605,6 +649,23 @@ struct TextLayouter::Impl {
                 miny = rstd::cmp::min(miny, bottom);
                 maxy = rstd::cmp::max(maxy, top);
             }
+            if (outlined) {
+                auto grown = resources->Rasterize(
+                    output.fonts()[usize(glyph.font)], glyph.glyph, 1, style.outline_thickness);
+                if (grown.is_err()) return Err(grown.unwrap_err());
+                auto  outline   = grown.unwrap();
+                float out_left  = left + float(outline.origin.x - atlas.origin.x);
+                float out_top   = top - float(outline.origin.y - atlas.origin.y);
+                outlines.push(Quad { outline,
+                                     out_left,
+                                     out_left + float(outline.width / outline.scale),
+                                     out_top - float(outline.height / outline.scale),
+                                     out_top,
+                                     { style.outline_color[usize()],
+                                       style.outline_color[usize(1)],
+                                       style.outline_color[usize(2)],
+                                       style.alpha } });
+            }
             quads.push(Quad { atlas,
                               left,
                               right,
@@ -615,6 +676,15 @@ struct TextLayouter::Impl {
                                 style.color[usize(2)],
                                 style.alpha } });
             if (quads.len() > usize(peak)) return Err(vectext::TextError::Limit);
+        }
+        if (! outlines.is_empty()) {
+            // behind the letters, after a background box
+            const usize first = style.opaquebackground ? usize(1) : usize();
+            Vec<Quad>   ordered;
+            for (usize i {}; i < first; ++i) ordered.push(Quad(quads[i]));
+            for (auto& quad : outlines) ordered.push(Quad(quad));
+            for (usize i = first; i < quads.len(); ++i) ordered.push(Quad(quads[i]));
+            quads = rstd::move(ordered);
         }
         if (quads.len() > usize(peak)) return Err(vectext::TextError::Limit);
         if (have_bounds && style.wrap_width <= 0) {
