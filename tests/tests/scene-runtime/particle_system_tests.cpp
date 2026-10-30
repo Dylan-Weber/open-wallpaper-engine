@@ -760,6 +760,60 @@ TEST(ParticleSubSystem, AppliesVortexAroundWorldSpaceOwner) {
     EXPECT_GT(std::abs(positions[usize()].z()), 0.01f);
 }
 
+// remapvalue maps the distance to a control point, clamped to its input range, linearly onto its
+// output range (particles-remapvalue: rows 0 to 400 units out remap colour red to blue, size 10 to
+// 80 - drawn 20 to 160, a radius - and opacity 1 to 0.1, and multiply size 40 by 0.2 to 2).
+TEST(ParticleRemap, MapsTheDistanceOntoTheOutputRange) {
+    auto color = owe::ParticleRemap::FromJson(
+                     owe::ParseJson(
+                         R"({"name":"remapvalue","input":"distancetocontrolpoint","inputcontrolpoint0":1,"inputrangemin":0,"inputrangemax":400,"operation":"remap","output":"color","outputrangemin":"1 0 0","outputrangemax":"0 0 1"})"_str)
+                         .unwrap())
+                     .unwrap();
+    EXPECT_EQ(color.controlpoint, i32(1));
+    EXPECT_TRUE(color.Apply(Eigen::Vector3d::Ones(), 100).isApprox(Eigen::Vector3d(0.75, 0, 0.25)));
+    EXPECT_TRUE(color.Apply(Eigen::Vector3d::Ones(), 900).isApprox(Eigen::Vector3d(0, 0, 1)));
+    EXPECT_TRUE(color.Apply(Eigen::Vector3d::Ones(), -5).isApprox(Eigen::Vector3d(1, 0, 0)));
+
+    auto size = owe::ParticleRemap::FromJson(
+                    owe::ParseJson(
+                        R"({"name":"remapvalue","input":"distancetocontrolpoint","inputrangemax":400,"output":"size","outputrangemin":10,"outputrangemax":80})"_str)
+                        .unwrap())
+                    .unwrap();
+    EXPECT_NEAR(size.Apply(Eigen::Vector3d::Constant(40), 200).x(), 90.0, 1e-4);
+
+    auto multiply = owe::ParticleRemap::FromJson(
+                        owe::ParseJson(
+                            R"({"name":"remapvalue","input":"distancetocontrolpoint","inputrangemax":400,"operation":"multiply","output":"size","outputrangemin":0.2,"outputrangemax":2})"_str)
+                            .unwrap())
+                        .unwrap();
+    EXPECT_NEAR(multiply.Apply(Eigen::Vector3d::Constant(40), 400).x(), 80.0, 1e-4);
+    EXPECT_NEAR(multiply.Apply(Eigen::Vector3d::Constant(40), 0).x(), 8.0, 1e-4);
+
+    // noise and sine transforms aren't read
+    EXPECT_TRUE(owe::ParticleRemap::FromJson(
+                    owe::ParseJson(
+                        R"({"name":"remapvalue","output":"velocity","transformfunction":"simplexnoise"})"_str)
+                        .unwrap())
+                    .is_none());
+}
+
+// remapinitialvalue reads the same settings as remapvalue (particles-remapinitialvalue); one
+// without an output it can set (thunderbolt_beam_child's, distance to control point 1 with no
+// output) does nothing.
+TEST(ParticleRemap, TheInitialValueFormReadsTheSameSettings) {
+    auto size = owe::ParticleRemap::FromJson(
+                    owe::ParseJson(
+                        R"({"name":"remapinitialvalue","input":"distancetocontrolpoint","inputcontrolpoint0":0,"inputrangemin":0,"inputrangemax":400,"operation":"remap","output":"size","outputrangemin":10,"outputrangemax":80})"_str)
+                        .unwrap())
+                    .unwrap();
+    EXPECT_NEAR(size.Apply(Eigen::Vector3d::Constant(40), 400).x(), 160.0, 1e-4);
+    EXPECT_TRUE(owe::ParticleRemap::FromJson(
+                    owe::ParseJson(
+                        R"({"name":"remapinitialvalue","input":"distancetocontrolpoint","inputcontrolpoint0":1,"inputrangemax":50,"operation":"multiply"})"_str)
+                        .unwrap())
+                    .is_none());
+}
+
 TEST(ParticleSubSystem, AppliesTurbulenceMaskAsAxisWeights) {
     auto simulate = [](ref<str> config) -> Eigen::Vector3f {
         owe::Scene             scene;
