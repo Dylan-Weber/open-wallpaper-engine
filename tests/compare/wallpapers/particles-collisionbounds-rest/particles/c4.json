@@ -53,7 +53,7 @@
     },
     {
       "name": "collisionbounds",
-      "bouncefactor": 0.5,
+      "bouncefactor": 0,
       "collisionbehavior": "slide",
       "id": 6
     }
