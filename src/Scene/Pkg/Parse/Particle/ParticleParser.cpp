@@ -668,6 +668,8 @@ void ParticleSpawnInstruction::Initialize(ParticleSpawnColumns&          columns
         RSTD_CASE(Override, instruction) { instruction.Initialize(columns, request, frame); }
         RSTD_CASE(ColorList, instruction) { instruction.Initialize(columns, request, frame); }
         RSTD_CASE(InheritControlpointVelocity, instruction) {
+            instruction.Initialize(columns, request, frame);
+        }
         RSTD_CASE(InheritInitialValueFromEvent, instruction) {
             instruction.Initialize(columns, request, frame);
         }
