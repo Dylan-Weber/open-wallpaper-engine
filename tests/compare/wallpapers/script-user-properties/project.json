@@ -1,0 +1,24 @@
+{
+  "title": "wpe-test a script reading two user properties",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {
+      "loop": {
+        "type": "bool",
+        "value": true,
+        "text": "Loop",
+        "order": 0
+      },
+      "duration": {
+        "type": "slider",
+        "value": 20,
+        "min": 1,
+        "max": 100,
+        "text": "Duration",
+        "order": 1
+      }
+    }
+  }
+}
