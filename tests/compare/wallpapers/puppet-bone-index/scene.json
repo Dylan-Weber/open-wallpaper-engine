@@ -1,0 +1,107 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0 0 0",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "strip",
+      "image": "models/strip.json",
+      "origin": {
+        "value": "960 200 0",
+        "script": "'use strict';\nexport function init(value) {\n    const names = ['root', 'mid', 'tip', 'missing', ''];\n    for (let i = 0; i < names.length; i++) {\n        thisScene.getLayer('mark ' + i).origin = new Vec3(300 + 150 * (thisLayer.getBoneIndex(names[i]) + 1), 800 - i * 100, 0);\n    }\n    return value;\n}\nexport function update(value) { return value; }\n",
+        "scriptproperties": {}
+      },
+      "size": "600 100",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 1,
+      "visible": true
+    },
+    {
+      "name": "mark 0",
+      "image": "models/util/solidlayer.json",
+      "origin": "100 800 0",
+      "size": "40 40",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 2,
+      "visible": true
+    },
+    {
+      "name": "mark 1",
+      "image": "models/util/solidlayer.json",
+      "origin": "100 700 0",
+      "size": "40 40",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 3,
+      "visible": true
+    },
+    {
+      "name": "mark 2",
+      "image": "models/util/solidlayer.json",
+      "origin": "100 600 0",
+      "size": "40 40",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 4,
+      "visible": true
+    },
+    {
+      "name": "mark 3",
+      "image": "models/util/solidlayer.json",
+      "origin": "100 500 0",
+      "size": "40 40",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 5,
+      "visible": true
+    },
+    {
+      "name": "mark 4",
+      "image": "models/util/solidlayer.json",
+      "origin": "100 400 0",
+      "size": "40 40",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 6,
+      "visible": true
+    }
+  ],
+  "version": 1
+}
