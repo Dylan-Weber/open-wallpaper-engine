@@ -342,7 +342,8 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
                                     obj.backgroundcolor[usize(2)] };
     style.background_brightness = obj.backgroundbrightness;
     style.halign  = (obj.horizontalalign.is_empty() ? obj.alignment : obj.horizontalalign).clone();
-    style.padding = rstd::as_cast<float>(obj.padding);
+    style.padding   = obj.padding[usize(0)];
+    style.padding_y = obj.padding[usize(1)];
     if (obj.limitwidth && obj.maxwidth > 0.0f) style.wrap_width = obj.maxwidth;
     if (obj.limitrows && obj.maxrows > u32()) style.max_rows = obj.maxrows.to_primitive();
     style.row_limit_ellipsis = obj.limituseellipsis;
@@ -360,7 +361,8 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
         obj.verticalalign.as_str(), obj.alignment.as_str(), "top"_str, "bottom"_str);
     style.halign = rstd::into(initial_halign);
 
-    const float text_padding = style.padding;
+    const float text_padding   = style.padding;
+    const float text_padding_y = style.padding_y;
     const float wrap_width   = style.wrap_width;
     auto        layouter     = Arc<text::TextLayouter>::make(resources.clone(),
                                                              rstd::move(font),
@@ -399,7 +401,7 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
                                                    Vector3f(obj.angles.data()),
                                                    direct_text ? obj.name.as_str() : ""_str);
     const float text_bbox_w = text_w + 2.0f * text_padding;
-    const float text_bbox_h = text_h + 2.0f * text_padding;
+    const float text_bbox_h = text_h + 2.0f * text_padding_y;
     sp_node->SetSize({ text_bbox_w, text_bbox_h });
     sp_node->AddMesh(sp_mesh.clone());
 
@@ -880,14 +882,16 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
          runtime_targets   = runtime_targets.clone(),
          geometry_policy,
          direct_text,
-         text_padding](text::TextLayoutMetrics metrics) {
+         text_padding,
+         text_padding_y](text::TextLayoutMetrics metrics) {
             auto* layer_ptr      = layer_hold.as_ptr().as_raw_ptr();
             metrics.padding      = text_padding;
+            metrics.padding_y    = text_padding_y;
             anchor_state->width  = metrics.text_width;
             anchor_state->height = metrics.text_height;
             if (direct_text) {
                 layer_ptr->SetSize({ metrics.text_width + 2.0f * text_padding,
-                                     metrics.text_height + 2.0f * text_padding });
+                                     metrics.text_height + 2.0f * text_padding_y });
                 apply_text_anchor->operator()();
                 return;
             }
