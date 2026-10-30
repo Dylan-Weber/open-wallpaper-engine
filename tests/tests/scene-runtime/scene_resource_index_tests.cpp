@@ -2291,13 +2291,16 @@ TEST(SpriteAnimation, PlaysAtTheRateOfItsFramesWhateverTheUpdateRate) {
         for (int i = 0; i < steps; ++i) (void)animation.GetAnimateFrame(1.0 / updates_per_second);
         EXPECT_EQ(animation.CurrentFrameIndex(), usize(20)) << updates_per_second << " updates a second";
     }
-    // a frame can last less than an update: two frames go by in one
+    // a frame can last less than an update: still only one goes by in it (Wallpaper Engine's gifs of 0.03 s frames play
+    // at the update rate, not 33 a second)
     auto fast = owe::SpriteAnimation();
     for (int i = 0; i < 10; ++i) {
         owe::SpriteFrame frame;
         frame.frametime = 0.02f;
         fast.AppendFrame(frame);
     }
+    (void)fast.GetAnimateFrame(0.05);
+    EXPECT_EQ(fast.CurrentFrameIndex(), usize(1));
     (void)fast.GetAnimateFrame(0.05);
     EXPECT_EQ(fast.CurrentFrameIndex(), usize(2));
 }
