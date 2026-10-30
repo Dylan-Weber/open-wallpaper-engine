@@ -1315,6 +1315,34 @@ TEST(FrameUniformSource, PublishesUpdatedAmbientAndSkylightColors) {
     EXPECT_FLOAT_EQ(sky[usize(2)], 0.5f);
 }
 
+TEST(SceneParserScript, GeneralFovScriptSetsThePerspectiveCamerasFov) {
+    // Ocarina of Time zooms with a script on general.fov, and its top level sets shared state others read
+    auto document = owe::wpscene::ParseSceneDocumentJson(R"JSON({
+        "camera": {"center": "0 0 0", "eye": "0 0 12", "up": "0 1 0"},
+        "general": {
+            "orthogonalprojection": null,
+            "fov": {"value": 50, "script": "shared.fovscript = 1; export function update(value) { return 30; }"}
+        }, "objects": []
+    })JSON"_str,
+                                                         owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    owe::fs::VFS                vfs;
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed =
+        parser.Parse("general-fov"_str,
+                     ref<owe::wpscene::SceneDocument>::from_raw_parts(&*document),
+                     mut_ref<owe::fs::VFS>::from_raw_parts(&vfs),
+                     mut_ref<wavsen::audio::SoundManager>::from_raw_parts(&sound_manager));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene  = rstd::move(parsed).unwrap();
+    auto camera = scene.scene->Camera("global_perspective"_str);
+    ASSERT_TRUE(camera.is_some());
+    EXPECT_DOUBLE_EQ((**camera).Fov(), 50.0);
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+    EXPECT_DOUBLE_EQ((**camera).Fov(), 30.0);
+}
+
 TEST(SceneParserScript, GeneralLightingPublishesFieldScriptResults) {
     auto document = owe::wpscene::ParseSceneDocumentJson(R"JSON({
         "camera": {},
