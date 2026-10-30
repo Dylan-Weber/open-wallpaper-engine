@@ -52,20 +52,23 @@ public:
     // Only for synchronous callers without an outstanding snapshot.
     void ClearDirtyRects();
 };
-// Letter-pair kerning read from a font file: the pair adjustments of its GPOS 'kern' feature, or
-// its legacy 'kern' table when it has no such feature, in font units.
+// Letter spacing read from a font file, in font units: each glyph's advance (its horizontal
+// metrics, unhinted), and letter-pair kerning: the pair adjustments of its GPOS 'kern' feature, or
+// its legacy 'kern' table when it has no such feature.
 class FontKerning {
     Vec<unsigned char>    m_bytes;
     Vec<rstd::uint32_t>   m_subtables;   // GPOS pair adjustment subtables, from the file's start
     Vec<rstd::uint32_t>   m_lookup_ends; // where each kern lookup's subtables end in m_subtables
     Vec<rstd::uint32_t>   m_kern_tables; // legacy format 0 subtables, from the file's start
     rstd::uint32_t        m_units_per_em { 1000 };
+    rstd::uint32_t        m_hmtx {}, m_hmetrics {}, m_glyphs {};
 
 public:
     static auto Read(slice<u8> font) -> FontKerning;
     auto        Empty() const -> bool;
     auto        UnitsPerEm() const -> rstd::uint32_t { return m_units_per_em; }
     auto        Pair(rstd::uint32_t left, rstd::uint32_t right) const -> rstd::int32_t;
+    auto        Advance(rstd::uint32_t glyph) const -> Option<rstd::uint32_t>;
 };
 class TextResources {
     struct Impl;
@@ -76,7 +79,7 @@ public:
     TextResources(vectext::FontCollection collection, AtlasOptions options = {});
     ~TextResources();
     auto RegisterFont(slice<u8> bytes) -> Result<vectext::FontSource, vectext::TextError>;
-    // The kerning of a font RegisterFont took, if it has any.
+    // The spacing of a font RegisterFont took, if it could be read.
     auto Kerning(const vectext::FontSource& source) const -> const FontKerning*;
     auto Layout(vectext::TextRequest request) -> Result<vectext::TextLayout, vectext::TextError>;
     // `outline` > 0: the glyph grown by that many pixels, for a text outline drawn behind it
