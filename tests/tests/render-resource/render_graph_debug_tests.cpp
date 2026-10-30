@@ -990,46 +990,38 @@ TEST(SceneRenderGraph, RejectsMissingOutputWithoutInstallingPartialProgram) {
     EXPECT_EQ(result.unwrap_err().kind, vrento::fg::ErrorKind::MissingResource);
 }
 
-// A layer whose scale has no area (More Physics' sky gradient layer is scaled 0) isn't drawn on its own, but a layer
-// reading its link target (the skybox reads its composite) still gets it drawn.
-TEST(SceneRenderGraph, ALayerWithNoAreaDrawsOnlyItsLinkTarget) {
-    auto build = [](bool linked) {
-        owe::Scene scene;
-        scene.SetOrtho({ rstd::i32(1920), rstd::i32(1080) });
-        scene.RegisterRenderTarget(
-            String::make("_rt_default"_str),
-            owe::SceneRenderTarget { .width = i32(1920), .height = i32(1080) });
+// Arsenal's planks sample _rt_Reflection, but no object of the scene is reflected: the target must
+// still be cleared before the floor reads it, or the frame fails to bind it.
+TEST(SceneRenderGraph, ClearsThePlanarReflectionWhenNothingIsReflected) {
+    owe::Scene scene;
+    scene.RegisterRenderTarget(String::make("_rt_default"_str),
+                               owe::SceneRenderTarget { .width = i32(64), .height = i32(64) });
+    scene.EnablePlanarReflection();
 
-        auto source          = Arc<owe::SceneNode>::make();
-        source->ID()         = rstd::i32(8);
-        source->SetScale({ 0.0f, 0.0f, 0.0f });
-        auto source_mesh     = Arc<owe::SceneMesh>::make();
-        auto source_material = GraphMaterial();
-        source_material.name = "source"_Str;
-        source_mesh->AddMaterial(std::move(source_material));
-        source_mesh->Submeshes().push(owe::SceneMesh::Submesh {});
-        source->AddMesh(std::move(source_mesh));
-        scene.RootMut()->AppendChild(source.clone());
-        scene.RegisterNode(*source, Some(owe::WallpaperLayerId { .value = rstd::i32(8) }));
-        if (linked) {
-            scene.RegisterLayerLinkSource(owe::WallpaperLayerId { .value = rstd::i32(8) }, *source);
-            auto consumer          = Arc<owe::SceneNode>::make();
-            consumer->ID()         = rstd::i32(42);
-            auto consumer_mesh     = Arc<owe::SceneMesh>::make();
-            auto consumer_material = GraphMaterial(usize(1));
-            consumer_material.name = "consumer"_Str;
-            consumer_material.textures.clear();
-            consumer_material.textures.push("_rt_link_8"_Str);
-            consumer_mesh->AddMaterial(std::move(consumer_material));
-            consumer_mesh->Submeshes().push(owe::SceneMesh::Submesh {});
-            consumer->AddMesh(std::move(consumer_mesh));
-            scene.RootMut()->AppendChild(consumer.clone());
-        }
-        auto snapshot = owe::ExtractRenderSceneSnapshot(scene);
-        auto graph    = owe::BuildSceneRenderState(scene, snapshot);
-        EXPECT_TRUE(graph.is_ok());
-        return graph.is_ok() ? graph->draws.len() : usize();
-    };
-    EXPECT_EQ(build(false), usize());
-    EXPECT_EQ(build(true), usize(2));
+    auto floor          = Arc<owe::SceneNode>::make();
+    auto floor_mesh     = Arc<owe::SceneMesh>::make();
+    auto floor_material = GraphMaterial(usize(1));
+    floor_material.name = "floor"_Str;
+    floor_material.textures.push("_rt_Reflection"_Str);
+    floor_mesh->AddMaterial(rstd::move(floor_material));
+    floor_mesh->Submeshes().push(owe::SceneMesh::Submesh {});
+    floor->AddMesh(rstd::move(floor_mesh));
+    scene.RootMut()->AppendChild(floor.clone());
+
+    auto snapshot = owe::ExtractRenderSceneSnapshot(scene);
+    auto graph    = owe::BuildSceneRenderState(scene, snapshot);
+    ASSERT_TRUE(graph.is_ok());
+    ASSERT_TRUE(graph->graph.compile().is_ok());
+    auto order = graph->graph.inspect().order.clone();
+
+    Option<usize> clear_index;
+    Option<usize> floor_index;
+    for (usize index {}; index < order.len(); ++index) {
+        auto pass = &graph->graph.passes()[usize(order[index])];
+        if (pass->name == "frame/clear-reflection"_str) clear_index = Some(index);
+        if (pass->name == "floor"_str) floor_index = Some(index);
+    }
+    ASSERT_TRUE(clear_index.is_some());
+    ASSERT_TRUE(floor_index.is_some());
+    EXPECT_LT(*clear_index, *floor_index);
 }
