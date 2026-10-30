@@ -1153,14 +1153,27 @@ void VulkanRender::Impl::UpdateCameraFillMode(owe::Scene& scene, owe::FillMode f
     if (global.is_none() || perspective.is_none()) return;
     auto& gCam    = **global;
     auto& gPerCam = **perspective;
+    // The perspective camera of an orthographic scene follows the cropped projection: at 1000 units, or, when the
+    // scene overrides the perspective fov (it looks from a distance), at its look-at distance. A perspective
+    // scene's own camera (the active one) is left as authored.
+    auto refit_perspective = [&] {
+        if (! gPerCam.IsLookAt()) {
+            gPerCam.SetFov(algorism::CalculatePersperctiveFov(1000.0f, gCam.Height()));
+            return;
+        }
+        auto active = scene.ActiveCamera();
+        auto own    = scene.Camera("global_perspective"_str);
+        if (active.is_some() && own.is_some() && (*active).as_raw_ptr() == (*own).as_raw_ptr())
+            return;
+        gPerCam.FitFovToHeightAtCenter(gCam.Height());
+    };
     // assum cam
     switch (fillmode) {
     case FillMode::STRETCH:
         gCam.SetWidth(sw);
         gCam.SetHeight(sh);
         gPerCam.SetAspect(sAspect);
-        if (! gPerCam.IsLookAt())
-            gPerCam.SetFov(algorism::CalculatePersperctiveFov(1000.0f, gCam.Height()));
+        refit_perspective();
         break;
     case FillMode::ASPECTFIT:
         if (fboAspect < sAspect) {
@@ -1172,8 +1185,7 @@ void VulkanRender::Impl::UpdateCameraFillMode(owe::Scene& scene, owe::FillMode f
             gCam.SetHeight(sh);
         }
         gPerCam.SetAspect(fboAspect);
-        if (! gPerCam.IsLookAt())
-            gPerCam.SetFov(algorism::CalculatePersperctiveFov(1000.0f, gCam.Height()));
+        refit_perspective();
         break;
     case FillMode::ASPECTCROP:
     default:
@@ -1186,8 +1198,7 @@ void VulkanRender::Impl::UpdateCameraFillMode(owe::Scene& scene, owe::FillMode f
             gCam.SetHeight(sh);
         }
         gPerCam.SetAspect(fboAspect);
-        if (! gPerCam.IsLookAt())
-            gPerCam.SetFov(algorism::CalculatePersperctiveFov(1000.0f, gCam.Height()));
+        refit_perspective();
         break;
     }
     gCam.Update();
