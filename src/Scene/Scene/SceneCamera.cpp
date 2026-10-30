@@ -21,9 +21,15 @@ Matrix4d NodeCameraFrame(SceneNode& node) {
     if (! frame.allFinite()) return Matrix4d::Identity();
 
     constexpr double kAxisEps = 1e-10;
-    Vector3d         x        = frame.block<3, 1>(0, 0);
-    Vector3d         y        = frame.block<3, 1>(0, 1);
-    Vector3d         z        = frame.block<3, 1>(0, 2);
+    // a layer scaled to no area still has its frame: a collapsed x or y axis counts as scale 1 (the sky's
+    // gradient layer is 0 x 0)
+    for (int column = 0; column < 2; ++column) {
+        if (frame.block<3, 1>(0, column).squaredNorm() <= kAxisEps)
+            frame.block<3, 1>(0, column) = Vector3d::Unit(column);
+    }
+    Vector3d x = frame.block<3, 1>(0, 0);
+    Vector3d y = frame.block<3, 1>(0, 1);
+    Vector3d z = frame.block<3, 1>(0, 2);
 
     if (! z.allFinite() || z.squaredNorm() <= kAxisEps) {
         z = x.cross(y);

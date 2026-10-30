@@ -569,6 +569,8 @@ auto TransformUniformSource::Evaluate(ref<dyn<UniformUpdateContext>> context,
         auto        attached = camera.GetAttachedNode();
         // A layer camera renders the complete local surface; its outer draw owns parallax.
         const bool layer_camera = attached.is_some() && (*attached)->HasLayer();
+        // the layer's own frame is what a layer camera renders: a layer scaled to no area still has one
+        if (layer_camera) model = RestoreCollapsedAxes(model);
         const bool apply_model_parallax =
             node.Camera() != "effect"_str && parallax.enable && ! layer_camera;
         array<float, 2> shift {};
