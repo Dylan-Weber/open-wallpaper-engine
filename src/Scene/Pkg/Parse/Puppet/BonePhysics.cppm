@@ -71,9 +71,12 @@ public:
     // The bone's local transform with its physics applied, given its parent's
     // world transform (with the parent's physics) and the pose the animation
     // gave it. Steps the bone's simulation by `dt`; with dt 0 it only applies
-    // the current state.
+    // the current state. `scale` is the object's: the springs, gravity and
+    // largest distance are in the scene's units, so a bone of an object scaled
+    // 2 along y moves half as far along y in its own (puppet-physics-scale-axes).
     auto Apply(usize bone, const BoneSimulation&, const Eigen::Affine3f& parent,
-               const Eigen::Affine3f& local, float dt) -> Eigen::Affine3f;
+               const Eigen::Affine3f& local, float dt,
+               const Eigen::Vector3f& scale = Eigen::Vector3f::Ones()) -> Eigen::Affine3f;
 
     // Adds to the bone's movement (units a second) and turn (degrees a sixtieth
     // of a second), as applyBonePhysicsImpulse does.

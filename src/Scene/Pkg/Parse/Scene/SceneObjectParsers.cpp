@@ -423,7 +423,7 @@ void ParseModelObjImpl(SceneParseContext& context, wpscene::ModelObject& model_o
     Option<Arc<PuppetLayer>> model_puppet_layer;
     if (mdl.puppet.is_some() && ! (*mdl.puppet)->bones.is_empty()) {
         model_puppet_layer =
-            Some(MakePuppetLayer((*mdl.puppet).clone(), model_obj.puppet_layers.as_slice()));
+            Some(MakePuppetLayer((*mdl.puppet).clone(), model_obj.puppet_layers.as_slice(), model_obj.scale));
         RegisterPuppetLayer(context, node.as_ptr(), (*model_puppet_layer).clone());
     }
 

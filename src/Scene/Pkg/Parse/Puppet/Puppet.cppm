@@ -291,6 +291,8 @@ public:
     void ApplyBoneImpulse(Option<rstd::uint32_t> bone, const Eigen::Vector3f& directional,
                           const Eigen::Vector3f& angular);
     void ResetBonePhysics(Option<rstd::uint32_t> bone);
+    // the object's scale, for the bone physics (BonePhysics::Apply)
+    void SetObjectScale(const Eigen::Vector3f& scale) { m_object_scale = scale; }
     auto TextureChannelBlendMap(double time) noexcept -> slice<float>;
 
     struct PartOrder {
@@ -320,6 +322,7 @@ private:
     Vec<float>                       m_texture_channel_blend_map;
     Vec<Eigen::Affine3f>             m_final_affines;
     BonePhysics                      m_physics;
+    Eigen::Vector3f                  m_object_scale { Eigen::Vector3f::Ones() };
     Arc<Puppet>                      m_puppet;
 };
 

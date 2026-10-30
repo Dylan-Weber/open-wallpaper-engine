@@ -242,6 +242,30 @@ TEST(Puppet, GravitySettlesABoneBelowItsPlace) {
     EXPECT_TRUE(layer.boneTransform(1, time - 1.0 / 60.0)->translation().isApprox(settled));
 }
 
+// Wallpaper Engine's springs, gravity and largest distance are in the scene's units: an object scaled 2 along y sags half as
+// far along y in its own, and a scale along x or z changes nothing (puppet-physics-scale-axes: every strip's tip sags as far
+// on screen).
+TEST(Puppet, GravitySagsAScaledObjectAsFarInTheScene) {
+    auto  puppet  = Arc<owe::Puppet>::make();
+    auto& hanging = puppet->bones.emplace_back();
+    std::string settings = Settings(false, true);
+    settings.replace(settings.find("\"ge\":false"), 10, "\"ge\":true");
+    settings.replace(settings.find("\"tm\":2.0"), 8, "\"tm\":100");
+    hanging.simulation_json = String::make(rstd::cppstd::as_str(settings).unwrap());
+    puppet->prepared();
+
+    const auto settled = [&](const Eigen::Vector3f& scale) -> Eigen::Vector3f {
+        owe::PuppetLayer scaled(puppet.clone());
+        scaled.prepared({});
+        scaled.SetObjectScale(scale);
+        double time = 0.0;
+        for (int frame = 0; frame < 600; ++frame, time += 1.0 / 60.0) (void)scaled.genFrame(time);
+        return scaled.boneTransform(1, time - 1.0 / 60.0)->translation();
+    };
+    EXPECT_NEAR(settled({ 2.0f, 2.0f, 1.0f }).y(), -20.0f * 1000.0f / 300.0f / 2.0f, 0.1f);
+    EXPECT_NEAR(settled({ 2.0f, 1.0f, 4.0f }).y(), -20.0f * 1000.0f / 300.0f, 0.1f);
+}
+
 TEST(Puppet, LayerImpulseMovesTheBoneAndResetPutsItBack) {
     auto  puppet        = Arc<owe::Puppet>::make();
     auto& leg           = puppet->bones.emplace_back();
