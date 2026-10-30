@@ -161,6 +161,11 @@ struct TextLayoutMetrics {
     float padding { 0.0f };
 };
 
+// The pixel size text is laid out at: Wallpaper Engine's em is 4 scene units a point and its
+// letters are drawn 25/24 of that (measured: an H of 20 to 200 points is 4.2% taller than at 4
+// units a point), not rounded to a whole pixel; 1 to 1024.
+auto PointsToPixels(double points) -> double;
+
 struct TextGeometryPolicy {
     float frame_width { 1.0f };
     float frame_height { 1.0f };

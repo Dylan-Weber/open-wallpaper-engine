@@ -33,16 +33,8 @@ array<i32, 2> TextLayerExtent(const text::TextGeometry& geometry) {
     };
 }
 
-// Wallpaper Engine's em is 4 scene units a point; its letters are drawn 25/24 of that
-// (measured: an H of 20 to 200 points is 4.2% taller than at 4 units a point).
+// Wallpaper Engine's em is 4 scene units a point (text::PointsToPixels).
 constexpr float kUnitsPerPoint = 4.0f;
-
-rstd::uint32_t TextPointSizeToPx(float point_size) {
-    constexpr float kPointsizeToPx = kUnitsPerPoint * 25.0f / 24.0f;
-    if (! f32(point_size).is_finite() || point_size <= 0.0f) return 1;
-    auto px = static_cast<rstd::uint32_t>(f32(point_size * kPointsizeToPx).round().to_primitive());
-    return rstd::cmp::min<rstd::uint32_t>(1024, rstd::cmp::max<rstd::uint32_t>(1, px));
-}
 
 array<i32, 2> TextEffectFboExtent(const text::TextGeometry& geometry, u32 scale, u32 fit) {
     if (fit > u32()) {
@@ -299,7 +291,7 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
             String::make(file->to_str().unwrap().strip_prefix("systemfont_"_str).unwrap());
     } else
         font.family = font_name.clone();
-    auto px   = TextPointSizeToPx(obj.pointsize);
+    auto px   = text::PointsToPixels(obj.pointsize);
     font.size = px;
 
     auto shader = text::GetTextSceneShader();
@@ -950,7 +942,7 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
          update_text_layout = update_text_layout.clone(),
          current_point_size = current_point_size.clone()](double next_point_size) {
             if (! f64(next_point_size).is_finite() || next_point_size <= 0) return false;
-            if (layouter->SetPixelSize(TextPointSizeToPx(static_cast<float>(next_point_size)))
+            if (layouter->SetPixelSize(text::PointsToPixels(next_point_size))
                     .is_err()) {
                 rstd_warn("text pointsize update failed");
                 return false;
