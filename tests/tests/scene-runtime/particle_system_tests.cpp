@@ -827,8 +827,9 @@ struct CollidedParticle {
 };
 
 static CollidedParticle CollideWithPlane(ref<str> collision, Eigen::Vector3f origin, ref<str> velocity,
-                                        int ticks = 1) {
+                                        int ticks = 1, bool scene_bounds = false) {
     owe::Scene             scene;
+    if (scene_bounds) scene.SetOrtho({ i32(1920), i32(1080) });
     auto                   mesh = Arc<owe::SceneMesh>::make();
     owe::ParticleSubSystem subsystem(scene,
                                      mesh.clone(),
@@ -900,6 +901,33 @@ TEST(ParticleSubSystem, CollisionPlaneSlidesDeletesAndTakesAnyNormal) {
     EXPECT_NEAR(wall.position.x(), -100.0f, 1e-4f);
     EXPECT_NEAR(wall.velocity.x(), 30.0f, 1e-3f);
     EXPECT_NEAR(wall.velocity.y(), 7.0f, 1e-3f);
+}
+
+// collisionbounds (particles-collisionbounds-rest): the scene's edges, 0..1920 across and 0..1080 up
+TEST(ParticleSubSystem, CollisionBoundsKeepParticlesInsideTheScene) {
+    const auto bounds = R"({"name":"collisionbounds","bouncefactor":0.5})"_str;
+    auto       velocity = [](ref<str> v) { return rstd::format(R"({{"name":"velocityrandom","min":"{}","max":"{}"}})", v, v); };
+    auto       run      = [&](Eigen::Vector3f origin, ref<str> v, ref<str> operator_json = R"({"name":"collisionbounds","bouncefactor":0.5})"_str) {
+        auto json = velocity(v);
+        return CollideWithPlane(operator_json, origin, json.as_str(), 1, true);
+    };
+    auto right = run({ 1919, 500, 0 }, "120 0 0"_str);
+    EXPECT_NEAR(right.position.x(), 1920.0f, 1e-3f);
+    EXPECT_NEAR(right.velocity.x(), -60.0f, 1e-3f);
+    auto left = run({ 1, 500, 0 }, "-120 30 0"_str);
+    EXPECT_NEAR(left.position.x(), 0.0f, 1e-3f);
+    EXPECT_NEAR(left.velocity.x(), 60.0f, 1e-3f);
+    EXPECT_NEAR(left.velocity.y(), 30.0f, 1e-3f);
+    auto floor = run({ 500, 1, 0 }, "0 -120 0"_str);
+    EXPECT_NEAR(floor.position.y(), 0.0f, 1e-3f);
+    EXPECT_NEAR(floor.velocity.y(), 60.0f, 1e-3f);
+    auto ceiling = run({ 500, 1079, 0 }, "0 120 0"_str);
+    EXPECT_NEAR(ceiling.position.y(), 1080.0f, 1e-3f);
+    EXPECT_NEAR(ceiling.velocity.y(), -60.0f, 1e-3f);
+    auto inside = run({ 500, 500, 0 }, "120 0 0"_str);
+    EXPECT_NEAR(inside.velocity.x(), 120.0f, 1e-3f);
+    auto gone = run({ 1919, 500, 0 }, "120 0 0"_str, R"({"name":"collisionbounds","collisionbehavior":"delete"})"_str);
+    EXPECT_FLOAT_EQ(gone.alive ? gone.alpha : 0.0f, 0.0f);
 }
 
 // collisionsphere / collisionquad (particles-collisionshapes, particles-collisionquad-sides)

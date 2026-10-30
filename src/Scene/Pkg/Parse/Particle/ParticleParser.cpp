@@ -1484,6 +1484,56 @@ struct CollisionQuadOperator {
     }
 };
 
+// collisionbounds: particles stay inside the scene, 0..width across and 0..height up (particles-collisionbounds-rest:
+// single particles bouncing between the walls and the ceiling and floor at 0.5).
+struct CollisionBoundsOperator {
+    CollisionState state;
+
+    void Compile(particle::ParticleViewCompiler& compiler) { state.Compile(compiler); }
+
+    void Update(particle::ParticleUpdateContext& context) {
+        auto frame = ParticleFrameFrom(context.frame);
+        if (frame->scene_extent.x() <= 0.0 || frame->scene_extent.y() <= 0.0) return;
+        const Eigen::Matrix4d world_from_local =
+            frame->world_space ? Eigen::Matrix4d::Identity() : Eigen::Matrix4d(frame->local_from_world.inverse());
+        const Eigen::Matrix4d local_from_world =
+            frame->world_space ? Eigen::Matrix4d::Identity() : frame->local_from_world;
+        const Eigen::Matrix3d world_dir = world_from_local.block<3, 3>(0, 0);
+        const Eigen::Matrix3d local_dir = world_dir.inverse();
+        const Eigen::Vector2d extent    = frame->scene_extent;
+        auto                  positions  = context.view.PositionsMut();
+        auto                  velocities = context.view.Write(state.velocity);
+        auto                  lifetimes  = context.view.Write(state.lifetime);
+        auto                  alphas     = context.view.Write(state.alpha);
+        for (auto slot : context.slots) {
+            Eigen::Vector3d position =
+                (world_from_local * positions[slot.index].cast<double>().homogeneous()).head<3>();
+            Eigen::Vector3d velocity = world_dir * velocities[slot.index].cast<double>();
+            bool            hit      = false;
+            auto            wall     = [&](int axis, double edge, double sign) {
+                if ((position[axis] - edge) * sign >= 0.0) return;
+                hit             = true;
+                position[axis]  = edge;
+                Eigen::Vector3d normal = Eigen::Vector3d::Zero();
+                normal[axis]    = sign;
+                velocity        = AfterContact(state.behavior, state.bounce, normal, velocity);
+            };
+            wall(0, 0.0, 1.0);
+            wall(0, extent.x(), -1.0);
+            wall(1, 0.0, 1.0);
+            wall(1, extent.y(), -1.0);
+            if (! hit) continue;
+            if (state.behavior == CollisionBehavior::Delete) {
+                lifetimes[slot.index] = 0.0f;
+                alphas[slot.index]    = 0.0f;
+                continue;
+            }
+            positions[slot.index]  = (local_from_world * position.homogeneous()).head<3>().cast<float>();
+            velocities[slot.index] = (local_dir * velocity).cast<float>();
+        }
+    }
+};
+
 struct ControlPointAttractOperator {
     ParticleAttributes                                        attributes;
     ControlPointForce                                         config;
@@ -1666,6 +1716,13 @@ ParticleParser::GenOperator(const Json& wpj, ParticleInstanceModifiers modifiers
             return Box<dyn<particle::ParticleUpdateProgram>>::make(CollisionQuadOperator {
                 .state = rstd::move(state), .origin = center, .width = double(size[usize(0)]),
                 .depth = double(size[usize(1)]) });
+        } else if (name == "collisionbounds"_str) {
+            CollisionState state { .attributes = attributes, .behavior = ReadCollisionBehavior(wpj) };
+            float          bounce { 1.0f };
+            owe::GetJsonValue(wpj, "bouncefactor"_str, bounce, false);
+            state.bounce = double(bounce);
+            return Box<dyn<particle::ParticleUpdateProgram>>::make(
+                CollisionBoundsOperator { .state = rstd::move(state) });
         } else if (name == "controlpointattract"_str) {
             return Box<dyn<particle::ParticleUpdateProgram>>::make(ControlPointAttractOperator {
                 .attributes = attributes,
