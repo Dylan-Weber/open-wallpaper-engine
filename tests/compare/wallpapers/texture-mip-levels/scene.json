@@ -1,0 +1,77 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0.1 0.1 0.1",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "at 256",
+      "image": "models/mips.json",
+      "origin": "300 540 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.2 1.2 1",
+      "alignment": "center",
+      "id": 1,
+      "visible": true
+    },
+    {
+      "name": "at 128",
+      "image": "models/mips.json",
+      "origin": "800 540 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "0.6 0.6 1",
+      "alignment": "center",
+      "id": 2,
+      "visible": true
+    },
+    {
+      "name": "at 90",
+      "image": "models/mips.json",
+      "origin": "1250 540 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "0.421875 0.421875 1",
+      "alignment": "center",
+      "id": 3,
+      "visible": true
+    },
+    {
+      "name": "at 64",
+      "image": "models/mips.json",
+      "origin": "1650 540 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "0.3 0.3 1",
+      "alignment": "center",
+      "id": 4,
+      "visible": true
+    }
+  ],
+  "version": 1
+}

@@ -1,0 +1,24 @@
+{
+	"passes" : 
+	[
+		{
+			"alphawriting" : "default",
+			"blending" : "normal",
+			"combos" : 
+			{
+				"REFLECTION" : 0
+			},
+			"constantshadervalues" : 
+			{
+				"color" : "0.34118 0.60000 0.35294",
+				"metallic" : 0,
+				"roughness" : 0
+			},
+			"cullmode" : "normal",
+			"depthtest" : "enabled",
+			"depthwrite" : "enabled",
+			"shader" : "generic4",
+			"textures" : [ "checker" ]
+		}
+	]
+}

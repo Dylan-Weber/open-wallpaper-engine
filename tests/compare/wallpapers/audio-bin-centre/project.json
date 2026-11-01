@@ -1,0 +1,10 @@
+{
+  "title": "wpe-test equal tones: in the middle of a bin on the left, between two bins on the right",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {},
+    "supportsaudioprocessing": true
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "title": "wpe-test script audio buffers and the wallpaper's own sound",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {},
+    "supportsaudioprocessing": true
+  }
+}

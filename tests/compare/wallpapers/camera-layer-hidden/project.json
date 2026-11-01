@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test a script moves the camera once, under a hidden camera layer",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}

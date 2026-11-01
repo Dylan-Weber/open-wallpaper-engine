@@ -1,0 +1,14 @@
+{
+  "passes": [
+    {
+      "shader": "reflectfloor",
+      "blending": "normal",
+      "cullmode": "nocull",
+      "depthtest": "enabled",
+      "depthwrite": "enabled",
+      "textures": [
+        "_rt_Reflection"
+      ]
+    }
+  ]
+}

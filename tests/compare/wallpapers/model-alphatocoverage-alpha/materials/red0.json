@@ -1,0 +1,25 @@
+{
+  "passes": [
+    {
+      "shader": "generic4",
+      "blending": "alphatocoverage",
+      "cullmode": "normal",
+      "depthtest": "enabled",
+      "depthwrite": "enabled",
+      "combos": {
+        "LIGHTING": 0,
+        "REFLECTION": 0,
+        "RIMLIGHTING": 0,
+        "SHADINGGRADIENT": 0
+      },
+      "constantshadervalues": {
+        "color": "1 0 0",
+        "alpha": 0.0,
+        "Alpha": 1
+      },
+      "textures": [
+        null
+      ]
+    }
+  ]
+}

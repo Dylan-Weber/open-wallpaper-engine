@@ -1,0 +1,263 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0 0 0",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "trail_0_0",
+      "particle": "particles/trail_0_0.json",
+      "origin": "260 900 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 1
+    },
+    {
+      "name": "trail_0_1",
+      "particle": "particles/trail_0_1.json",
+      "origin": "600 900 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 2
+    },
+    {
+      "name": "trail_0_2",
+      "particle": "particles/trail_0_2.json",
+      "origin": "940 900 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 3
+    },
+    {
+      "name": "trail_0_3",
+      "particle": "particles/trail_0_3.json",
+      "origin": "1280 900 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 4
+    },
+    {
+      "name": "trail_0_4",
+      "particle": "particles/trail_0_4.json",
+      "origin": "1620 900 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 5
+    },
+    {
+      "name": "trail_1_0",
+      "particle": "particles/trail_1_0.json",
+      "origin": "260 680 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 6
+    },
+    {
+      "name": "trail_1_1",
+      "particle": "particles/trail_1_1.json",
+      "origin": "600 680 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 7
+    },
+    {
+      "name": "trail_1_2",
+      "particle": "particles/trail_1_2.json",
+      "origin": "940 680 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 8
+    },
+    {
+      "name": "trail_1_3",
+      "particle": "particles/trail_1_3.json",
+      "origin": "1280 680 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 9
+    },
+    {
+      "name": "trail_1_4",
+      "particle": "particles/trail_1_4.json",
+      "origin": "1620 680 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 10
+    },
+    {
+      "name": "trail_2_0",
+      "particle": "particles/trail_2_0.json",
+      "origin": "260 460 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 11
+    },
+    {
+      "name": "trail_2_1",
+      "particle": "particles/trail_2_1.json",
+      "origin": "600 460 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 12
+    },
+    {
+      "name": "trail_2_2",
+      "particle": "particles/trail_2_2.json",
+      "origin": "940 460 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 13
+    },
+    {
+      "name": "trail_2_3",
+      "particle": "particles/trail_2_3.json",
+      "origin": "1280 460 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 14
+    },
+    {
+      "name": "trail_2_4",
+      "particle": "particles/trail_2_4.json",
+      "origin": "1620 460 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 15
+    },
+    {
+      "name": "trail_3_0",
+      "particle": "particles/trail_3_0.json",
+      "origin": "260 240 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 16
+    },
+    {
+      "name": "trail_3_1",
+      "particle": "particles/trail_3_1.json",
+      "origin": "600 240 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 17
+    },
+    {
+      "name": "trail_3_2",
+      "particle": "particles/trail_3_2.json",
+      "origin": "940 240 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 18
+    },
+    {
+      "name": "trail_3_3",
+      "particle": "particles/trail_3_3.json",
+      "origin": "1280 240 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 19
+    },
+    {
+      "name": "trail_3_4",
+      "particle": "particles/trail_3_4.json",
+      "origin": "1620 240 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 20
+    },
+    {
+      "id": 21,
+      "name": "owe clock probe",
+      "image": "models/util/fullscreenlayer.json",
+      "origin": "0 0 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "color": "1 1 1",
+      "alpha": 1,
+      "visible": true,
+      "effects": [
+        {
+          "file": "effects/oweclock/effect.json",
+          "id": 22,
+          "name": "oweclock",
+          "visible": true,
+          "passes": [
+            {
+              "id": 23,
+              "constantshadervalues": {
+                "scriptframe": {
+                  "script": "'use strict';\n\nexport function update(value) {\n\treturn Math.floor(engine.runtime * 30 + 0.5);\n}\n",
+                  "value": -1
+                },
+                "press": {
+                  "script": "'use strict';\n\nlet last = 0;\nlet wasDown = false;\n\nexport function update(value) {\n\ttry {\n\t\tconst down = !!input.cursorLeftDown;\n\t\tif (down && !wasDown) last = Math.min(Math.floor(engine.runtime * 30 + 0.5) + 1, 4094);\n\t\twasDown = down;\n\t\treturn last;\n\t} catch (e) {\n\t\treturn 4095;\n\t}\n}\n",
+                  "value": -1
+                },
+                "date_day": {
+                  "script": "'use strict';\n\nexport function update(value) {\n\treturn Math.floor(Date.now() / 86400000) - 18262;\n}\n",
+                  "value": -1
+                },
+                "date_centis": {
+                  "script": "'use strict';\n\nexport function update(value) {\n\treturn Math.floor((Date.now() % 86400000) / 10);\n}\n",
+                  "value": -1
+                },
+                "timezone": {
+                  "script": "'use strict';\n\nexport function update(value) {\n\treturn new Date().getTimezoneOffset() + 1024;\n}\n",
+                  "value": -1
+                },
+                "camerax": {
+                  "script": "'use strict';\n\nfunction quantise(value, offset, scale, bits) {\n\tconst most = Math.pow(2, bits) - 1;\n\treturn Math.min(Math.max(Math.floor((value + offset) * scale + 0.5), 0), most);\n}\n\nexport function update(value) {\n\ttry {\n\t\treturn quantise(thisScene.getCameraTransforms().eye.x, 32768, 256, 24);\n\t} catch (e) {\n\t\treturn 16777215;\n\t}\n}\n",
+                  "value": -1
+                },
+                "cameray": {
+                  "script": "'use strict';\n\nfunction quantise(value, offset, scale, bits) {\n\tconst most = Math.pow(2, bits) - 1;\n\treturn Math.min(Math.max(Math.floor((value + offset) * scale + 0.5), 0), most);\n}\n\nexport function update(value) {\n\ttry {\n\t\treturn quantise(thisScene.getCameraTransforms().eye.y, 32768, 256, 24);\n\t} catch (e) {\n\t\treturn 16777215;\n\t}\n}\n",
+                  "value": -1
+                },
+                "cameraz": {
+                  "script": "'use strict';\n\nfunction quantise(value, offset, scale, bits) {\n\tconst most = Math.pow(2, bits) - 1;\n\treturn Math.min(Math.max(Math.floor((value + offset) * scale + 0.5), 0), most);\n}\n\nexport function update(value) {\n\ttry {\n\t\treturn quantise(thisScene.getCameraTransforms().eye.z, 32768, 256, 24);\n\t} catch (e) {\n\t\treturn 16777215;\n\t}\n}\n",
+                  "value": -1
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "version": 1
+}

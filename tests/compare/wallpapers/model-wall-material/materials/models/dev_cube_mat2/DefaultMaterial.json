@@ -1,0 +1,38 @@
+{
+	"passes" : 
+	[
+		{
+			"alphawriting" : "default",
+			"blending" : "alphatocoverage",
+			"combos" : 
+			{
+				"FOG" : 1,
+				"LIGHTING" : 0,
+				"REFLECTION" : 0,
+				"RIMLIGHTING" : 0,
+				"SHADINGGRADIENT" : 0,
+				"TINTMASKALPHA" : 0
+			},
+			"constantshadervalues" : 
+			{
+				"Alpha" : 1,
+				"Color" : "1.00000 1.00000 1.00000",
+				"alpha" : 0,
+				"brightness" : 1.0,
+				"color" : "0.6745098039215687 0.6745098039215687 0.6745098039215687",
+				"metallic" : 0.25,
+				"reflectivity" : 0.45,
+				"roughness" : 0.075,
+				"speculartint" : "0.10980 0.47059 1.00000",
+				"tintback" : "0.00000 0.00000 0.00000",
+				"tintfront" : "0.50980 0.50980 0.50980",
+				"tintpigmentation" : 0
+			},
+			"cullmode" : "normal",
+			"depthtest" : "enabled",
+			"depthwrite" : "enabled",
+			"shader" : "generic4",
+			"textures" : [ "cubic", null ]
+		}
+	]
+}

@@ -1,0 +1,8 @@
+{
+  "bar_jitter": 20,
+  "probe": true,
+  "probe_bands": [
+    64
+  ],
+  "probe_mirrored": true
+}

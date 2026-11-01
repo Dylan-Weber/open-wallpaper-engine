@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test distortion and blur effects that ship with Wallpaper Engine",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}

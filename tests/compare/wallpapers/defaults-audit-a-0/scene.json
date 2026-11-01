@@ -1,0 +1,349 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0.12 0.12 0.12",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "blend",
+      "image": "models/picture.json",
+      "origin": "260 880 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/blend/effect.json",
+          "id": 100,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1000
+            }
+          ]
+        }
+      ],
+      "id": 1,
+      "visible": true
+    },
+    {
+      "name": "blendgradient",
+      "image": "models/picture.json",
+      "origin": "720 880 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/blendgradient/effect.json",
+          "id": 110,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1010
+            }
+          ]
+        }
+      ],
+      "id": 2,
+      "visible": true
+    },
+    {
+      "name": "blur",
+      "image": "models/picture.json",
+      "origin": "1180 880 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/blur/effect.json",
+          "id": 120,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1020
+            },
+            {
+              "id": 1021
+            },
+            {
+              "id": 1022
+            },
+            {
+              "id": 1023
+            }
+          ]
+        }
+      ],
+      "id": 3,
+      "visible": true
+    },
+    {
+      "name": "blurprecise",
+      "image": "models/picture.json",
+      "origin": "1640 880 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/blurprecise/effect.json",
+          "id": 130,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1030
+            },
+            {
+              "id": 1031
+            }
+          ]
+        }
+      ],
+      "id": 4,
+      "visible": true
+    },
+    {
+      "name": "blurradial",
+      "image": "models/picture.json",
+      "origin": "260 540 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/blurradial/effect.json",
+          "id": 140,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1040
+            }
+          ]
+        }
+      ],
+      "id": 5,
+      "visible": true
+    },
+    {
+      "name": "chromaticaberration",
+      "image": "models/picture.json",
+      "origin": "720 540 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/chromaticaberration/effect.json",
+          "id": 150,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1050
+            }
+          ]
+        }
+      ],
+      "id": 6,
+      "visible": true
+    },
+    {
+      "name": "cloudmotion",
+      "image": "models/picture.json",
+      "origin": "1180 540 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/cloudmotion/effect.json",
+          "id": 160,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1060
+            }
+          ]
+        }
+      ],
+      "id": 7,
+      "visible": true
+    },
+    {
+      "name": "clouds",
+      "image": "models/picture.json",
+      "origin": "1640 540 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/clouds/effect.json",
+          "id": 170,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1070
+            }
+          ]
+        }
+      ],
+      "id": 8,
+      "visible": true
+    },
+    {
+      "name": "colorkey",
+      "image": "models/picture.json",
+      "origin": "260 200 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/colorkey/effect.json",
+          "id": 180,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1080
+            }
+          ]
+        }
+      ],
+      "id": 9,
+      "visible": true
+    },
+    {
+      "name": "depthparallax",
+      "image": "models/picture.json",
+      "origin": "720 200 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/depthparallax/effect.json",
+          "id": 190,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1090
+            }
+          ]
+        }
+      ],
+      "id": 10,
+      "visible": true
+    },
+    {
+      "name": "edgedetection",
+      "image": "models/picture.json",
+      "origin": "1180 200 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/edgedetection/effect.json",
+          "id": 200,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1100
+            }
+          ]
+        }
+      ],
+      "id": 11,
+      "visible": true
+    },
+    {
+      "name": "filmgrain",
+      "image": "models/picture.json",
+      "origin": "1640 200 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/filmgrain/effect.json",
+          "id": 210,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1110
+            }
+          ]
+        }
+      ],
+      "id": 12,
+      "visible": true
+    }
+  ],
+  "version": 1
+}

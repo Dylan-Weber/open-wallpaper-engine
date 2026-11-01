@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test an opaque and a translucent part of one model in the sun",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}

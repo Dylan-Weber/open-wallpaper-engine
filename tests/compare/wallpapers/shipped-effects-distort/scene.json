@@ -1,0 +1,294 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0.12 0.12 0.12",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "fisheye",
+      "image": "models/picture.json",
+      "origin": "260 880 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/fisheye/effect.json",
+          "id": 100,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1000,
+              "constantshadervalues": {
+                "size": 0.8,
+                "distortion": 1.5
+              }
+            }
+          ]
+        }
+      ],
+      "id": 1,
+      "visible": true
+    },
+    {
+      "name": "twirl",
+      "image": "models/picture.json",
+      "origin": "720 880 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/twirl/effect.json",
+          "id": 110,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1010,
+              "constantshadervalues": {
+                "size": 0.4,
+                "angle": 0.5
+              }
+            }
+          ]
+        }
+      ],
+      "id": 2,
+      "visible": true
+    },
+    {
+      "name": "chromatic aberration",
+      "image": "models/picture.json",
+      "origin": "1180 880 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/chromaticaberration/effect.json",
+          "id": 120,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1020,
+              "constantshadervalues": {
+                "strength": 1.5
+              }
+            }
+          ]
+        }
+      ],
+      "id": 3,
+      "visible": true
+    },
+    {
+      "name": "transform",
+      "image": "models/picture.json",
+      "origin": "1640 880 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/transform/effect.json",
+          "id": 130,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1030
+            }
+          ]
+        }
+      ],
+      "id": 4,
+      "visible": true
+    },
+    {
+      "name": "skew",
+      "image": "models/picture.json",
+      "origin": "260 540 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/skew/effect.json",
+          "id": 140,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1040
+            }
+          ]
+        }
+      ],
+      "id": 5,
+      "visible": true
+    },
+    {
+      "name": "perspective",
+      "image": "models/picture.json",
+      "origin": "720 540 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/perspective/effect.json",
+          "id": 150,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1050
+            }
+          ]
+        }
+      ],
+      "id": 6,
+      "visible": true
+    },
+    {
+      "name": "blur",
+      "image": "models/picture.json",
+      "origin": "1180 540 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/blur/effect.json",
+          "id": 160,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1060
+            },
+            {
+              "id": 1061
+            },
+            {
+              "id": 1062
+            },
+            {
+              "id": 1063
+            }
+          ]
+        }
+      ],
+      "id": 7,
+      "visible": true
+    },
+    {
+      "name": "blur precise",
+      "image": "models/picture.json",
+      "origin": "1640 540 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/blurprecise/effect.json",
+          "id": 170,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1070
+            },
+            {
+              "id": 1071
+            }
+          ]
+        }
+      ],
+      "id": 8,
+      "visible": true
+    },
+    {
+      "name": "local contrast",
+      "image": "models/picture.json",
+      "origin": "260 200 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/localcontrast/effect.json",
+          "id": 180,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1080,
+              "constantshadervalues": {
+                "strength": 2
+              }
+            },
+            {
+              "id": 1081
+            },
+            {
+              "id": 1082
+            },
+            {
+              "id": 1083
+            }
+          ]
+        }
+      ],
+      "id": 9,
+      "visible": true
+    }
+  ],
+  "version": 1
+}

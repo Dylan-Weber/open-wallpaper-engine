@@ -1,0 +1,191 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0 0 0",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "set colour",
+      "particle": "particles/c0.json",
+      "origin": "340 850 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 1
+    },
+    {
+      "name": "multiply colour",
+      "particle": "particles/c1.json",
+      "origin": "780 850 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 2
+    },
+    {
+      "name": "add colour",
+      "particle": "particles/c2.json",
+      "origin": "1220 850 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 3
+    },
+    {
+      "name": "subtract colour",
+      "particle": "particles/c3.json",
+      "origin": "1660 850 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 4
+    },
+    {
+      "name": "setcolor (not an output)",
+      "particle": "particles/c4.json",
+      "origin": "340 600 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 5
+    },
+    {
+      "name": "multiplycolor (not an output)",
+      "particle": "particles/c5.json",
+      "origin": "780 600 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 6
+    },
+    {
+      "name": "size subtract",
+      "particle": "particles/c6.json",
+      "origin": "1220 600 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 7
+    },
+    {
+      "name": "size add",
+      "particle": "particles/c7.json",
+      "origin": "1660 600 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 8
+    },
+    {
+      "name": "opacity multiply",
+      "particle": "particles/c8.json",
+      "origin": "340 350 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 9
+    },
+    {
+      "name": "triangle (not an operation)",
+      "particle": "particles/c9.json",
+      "origin": "780 350 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 10
+    },
+    {
+      "name": "sine (not an operation)",
+      "particle": "particles/c10.json",
+      "origin": "1220 350 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 11
+    },
+    {
+      "name": "average (not an operation)",
+      "particle": "particles/c11.json",
+      "origin": "1660 350 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 12
+    },
+    {
+      "id": 13,
+      "name": "owe clock probe",
+      "image": "models/util/fullscreenlayer.json",
+      "origin": "0 0 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "color": "1 1 1",
+      "alpha": 1,
+      "visible": true,
+      "effects": [
+        {
+          "file": "effects/oweclock/effect.json",
+          "id": 14,
+          "name": "oweclock",
+          "visible": true,
+          "passes": [
+            {
+              "id": 15,
+              "constantshadervalues": {
+                "scriptframe": {
+                  "script": "'use strict';\n\nexport function update(value) {\n\treturn Math.floor(engine.runtime * 30 + 0.5);\n}\n",
+                  "value": -1
+                },
+                "press": {
+                  "script": "'use strict';\n\nlet last = 0;\nlet wasDown = false;\n\nexport function update(value) {\n\ttry {\n\t\tconst down = !!input.cursorLeftDown;\n\t\tif (down && !wasDown) last = Math.min(Math.floor(engine.runtime * 30 + 0.5) + 1, 4094);\n\t\twasDown = down;\n\t\treturn last;\n\t} catch (e) {\n\t\treturn 4095;\n\t}\n}\n",
+                  "value": -1
+                },
+                "date_day": {
+                  "script": "'use strict';\n\nexport function update(value) {\n\treturn Math.floor(Date.now() / 86400000) - 18262;\n}\n",
+                  "value": -1
+                },
+                "date_centis": {
+                  "script": "'use strict';\n\nexport function update(value) {\n\treturn Math.floor((Date.now() % 86400000) / 10);\n}\n",
+                  "value": -1
+                },
+                "timezone": {
+                  "script": "'use strict';\n\nexport function update(value) {\n\treturn new Date().getTimezoneOffset() + 1024;\n}\n",
+                  "value": -1
+                },
+                "camerax": {
+                  "script": "'use strict';\n\nfunction quantise(value, offset, scale, bits) {\n\tconst most = Math.pow(2, bits) - 1;\n\treturn Math.min(Math.max(Math.floor((value + offset) * scale + 0.5), 0), most);\n}\n\nexport function update(value) {\n\ttry {\n\t\treturn quantise(thisScene.getCameraTransforms().eye.x, 32768, 256, 24);\n\t} catch (e) {\n\t\treturn 16777215;\n\t}\n}\n",
+                  "value": -1
+                },
+                "cameray": {
+                  "script": "'use strict';\n\nfunction quantise(value, offset, scale, bits) {\n\tconst most = Math.pow(2, bits) - 1;\n\treturn Math.min(Math.max(Math.floor((value + offset) * scale + 0.5), 0), most);\n}\n\nexport function update(value) {\n\ttry {\n\t\treturn quantise(thisScene.getCameraTransforms().eye.y, 32768, 256, 24);\n\t} catch (e) {\n\t\treturn 16777215;\n\t}\n}\n",
+                  "value": -1
+                },
+                "cameraz": {
+                  "script": "'use strict';\n\nfunction quantise(value, offset, scale, bits) {\n\tconst most = Math.pow(2, bits) - 1;\n\treturn Math.min(Math.max(Math.floor((value + offset) * scale + 0.5), 0), most);\n}\n\nexport function update(value) {\n\ttry {\n\t\treturn quantise(thisScene.getCameraTransforms().eye.z, 32768, 256, 24);\n\t} catch (e) {\n\t\treturn 16777215;\n\t}\n}\n",
+                  "value": -1
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "version": 1
+}

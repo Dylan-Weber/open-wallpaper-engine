@@ -1,0 +1,28 @@
+{
+  "title": "wpe-test a material's Alpha bound to a user property",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {
+      "opacity": {
+        "index": 0,
+        "order": 100,
+        "text": "Opacity",
+        "type": "slider",
+        "min": 0,
+        "max": 1,
+        "value": 0
+      },
+      "half": {
+        "index": 1,
+        "order": 101,
+        "text": "Half",
+        "type": "slider",
+        "min": 0,
+        "max": 1,
+        "value": 0.5
+      }
+    }
+  }
+}

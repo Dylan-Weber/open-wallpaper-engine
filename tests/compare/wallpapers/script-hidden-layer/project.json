@@ -1,0 +1,17 @@
+{
+  "title": "wpe-test a hidden layer's scripts",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {
+      "show": {
+        "index": 0,
+        "order": 100,
+        "text": "Show",
+        "type": "bool",
+        "value": false
+      }
+    }
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "material": "materials/particle/halo.json",
+  "maxcount": 8,
+  "starttime": 0,
+  "flags": 0,
+  "controlpoint": [
+    {
+      "id": 0,
+      "flags": 0,
+      "offset": "-60 0 0"
+    },
+    {
+      "id": 1,
+      "flags": 0,
+      "offset": "60 0 0"
+    }
+  ],
+  "emitter": [
+    {
+      "id": 1,
+      "name": "boxrandom",
+      "distancemin": "0 0 0",
+      "distancemax": "0 0 0",
+      "directions": "1 1 0",
+      "origin": "0 0 0",
+      "rate": 0,
+      "instantaneous": 3,
+      "speedmin": 0,
+      "speedmax": 0
+    }
+  ],
+  "initializer": [
+    {
+      "id": 2,
+      "name": "lifetimerandom",
+      "min": 100000,
+      "max": 100000
+    },
+    {
+      "id": 3,
+      "name": "sizerandom",
+      "min": 30,
+      "max": 30
+    },
+    {
+      "id": 4,
+      "name": "mapsequencebetweencontrolpoints",
+      "count": 3
+    }
+  ],
+  "operator": [
+    {
+      "id": 5,
+      "name": "movement",
+      "drag": 3
+    },
+    {
+      "id": 6,
+      "name": "boids",
+      "cohesionfactor": 4,
+      "separationfactor": 0,
+      "alignmentfactor": 0,
+      "neighborthreshold": 150
+    }
+  ],
+  "renderer": [
+    {
+      "id": 90,
+      "name": "sprite"
+    }
+  ]
+}

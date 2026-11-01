@@ -1,0 +1,207 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0.12 0.12 0.12",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "twirl",
+      "image": "models/picture.json",
+      "origin": "260 880 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/twirl/effect.json",
+          "id": 100,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1000
+            }
+          ]
+        }
+      ],
+      "id": 1,
+      "visible": true
+    },
+    {
+      "name": "vhs",
+      "image": "models/picture.json",
+      "origin": "720 880 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/vhs/effect.json",
+          "id": 110,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1010
+            }
+          ]
+        }
+      ],
+      "id": 2,
+      "visible": true
+    },
+    {
+      "name": "watercaustics",
+      "image": "models/picture.json",
+      "origin": "1180 880 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/watercaustics/effect.json",
+          "id": 120,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1020
+            }
+          ]
+        }
+      ],
+      "id": 3,
+      "visible": true
+    },
+    {
+      "name": "waterflow",
+      "image": "models/picture.json",
+      "origin": "1640 880 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/waterflow/effect.json",
+          "id": 130,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1030
+            }
+          ]
+        }
+      ],
+      "id": 4,
+      "visible": true
+    },
+    {
+      "name": "waterripple",
+      "image": "models/picture.json",
+      "origin": "260 540 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/waterripple/effect.json",
+          "id": 140,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1040
+            }
+          ]
+        }
+      ],
+      "id": 5,
+      "visible": true
+    },
+    {
+      "name": "waterwaves",
+      "image": "models/picture.json",
+      "origin": "720 540 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/waterwaves/effect.json",
+          "id": 150,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1050
+            }
+          ]
+        }
+      ],
+      "id": 6,
+      "visible": true
+    },
+    {
+      "name": "xray",
+      "image": "models/picture.json",
+      "origin": "1180 540 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/xray/effect.json",
+          "id": 160,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1060
+            }
+          ]
+        }
+      ],
+      "id": 7,
+      "visible": true
+    }
+  ],
+  "version": 1
+}

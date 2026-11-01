@@ -1,0 +1,352 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0.12 0.12 0.12",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "pulse",
+      "image": "models/picture.json",
+      "origin": "260 880 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/pulse/effect.json",
+          "id": 100,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1000
+            }
+          ]
+        }
+      ],
+      "id": 1,
+      "visible": true
+    },
+    {
+      "name": "reflection",
+      "image": "models/picture.json",
+      "origin": "720 880 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/reflection/effect.json",
+          "id": 110,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1010
+            }
+          ]
+        }
+      ],
+      "id": 2,
+      "visible": true
+    },
+    {
+      "name": "refraction",
+      "image": "models/picture.json",
+      "origin": "1180 880 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/refraction/effect.json",
+          "id": 120,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1020
+            },
+            {
+              "id": 1021
+            }
+          ]
+        }
+      ],
+      "id": 3,
+      "visible": true
+    },
+    {
+      "name": "scroll",
+      "image": "models/picture.json",
+      "origin": "1640 880 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/scroll/effect.json",
+          "id": 130,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1030
+            }
+          ]
+        }
+      ],
+      "id": 4,
+      "visible": true
+    },
+    {
+      "name": "shake",
+      "image": "models/picture.json",
+      "origin": "260 540 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/shake/effect.json",
+          "id": 140,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1040
+            }
+          ]
+        }
+      ],
+      "id": 5,
+      "visible": true
+    },
+    {
+      "name": "shimmer",
+      "image": "models/picture.json",
+      "origin": "720 540 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/shimmer/effect.json",
+          "id": 150,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1050
+            }
+          ]
+        }
+      ],
+      "id": 6,
+      "visible": true
+    },
+    {
+      "name": "shine",
+      "image": "models/picture.json",
+      "origin": "1180 540 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/shine/effect.json",
+          "id": 160,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1060
+            },
+            {
+              "id": 1061
+            },
+            {
+              "id": 1062
+            },
+            {
+              "id": 1063
+            },
+            {
+              "id": 1064
+            }
+          ]
+        }
+      ],
+      "id": 7,
+      "visible": true
+    },
+    {
+      "name": "skew",
+      "image": "models/picture.json",
+      "origin": "1640 540 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/skew/effect.json",
+          "id": 170,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1070
+            }
+          ]
+        }
+      ],
+      "id": 8,
+      "visible": true
+    },
+    {
+      "name": "spin",
+      "image": "models/picture.json",
+      "origin": "260 200 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/spin/effect.json",
+          "id": 180,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1080
+            }
+          ]
+        }
+      ],
+      "id": 9,
+      "visible": true
+    },
+    {
+      "name": "swing",
+      "image": "models/picture.json",
+      "origin": "720 200 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/swing/effect.json",
+          "id": 190,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1090
+            }
+          ]
+        }
+      ],
+      "id": 10,
+      "visible": true
+    },
+    {
+      "name": "tint",
+      "image": "models/picture.json",
+      "origin": "1180 200 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/tint/effect.json",
+          "id": 200,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1100
+            }
+          ]
+        }
+      ],
+      "id": 11,
+      "visible": true
+    },
+    {
+      "name": "transform",
+      "image": "models/picture.json",
+      "origin": "1640 200 0",
+      "size": "256 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1.1 1.1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/transform/effect.json",
+          "id": 210,
+          "name": "",
+          "visible": true,
+          "passes": [
+            {
+              "id": 1110
+            }
+          ]
+        }
+      ],
+      "id": 12,
+      "visible": true
+    }
+  ],
+  "version": 1
+}

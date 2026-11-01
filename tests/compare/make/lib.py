@@ -232,6 +232,10 @@ _binary_spec = importlib.util.spec_from_file_location('binary', os.path.join(MAK
 binary = importlib.util.module_from_spec(_binary_spec)
 _binary_spec.loader.exec_module(binary)
 cube_mdl = binary.cube_mdl
+puppet_mdl = binary.puppet_mdl
+quad_mdl = binary.quad_mdl
+quads_mdl = binary.quads_mdl
+tex_mips = binary.tex_mips
 
 
 class Scene3D(Wallpaper):
@@ -267,8 +271,9 @@ class Scene3D(Wallpaper):
                 [('point', 'lpoint'), ('spot', 'lspot'), ('tube', 'ltube'), ('directional', 'ldirectional')]}
 
     def light(self, name, kind, x, y, z, color='1 1 1', intensity=2, radius=20, angles=(0, 0, 0), **extra):
+        angles = angles if isinstance(angles, dict) else vec(*angles)
         return self.add({"name": name, "light": kind, "origin": vec(x, y, z), "color": color, "intensity": intensity,
-                         "radius": radius, "angles": vec(*angles), "scale": "1 1 1", **extra})
+                         "radius": radius, "angles": angles, "scale": "1 1 1", **extra})
 
     def save(self):
         write(self.name + '/project.json', {
@@ -429,6 +434,9 @@ def audio_wallpaper(name, title, sound):
                         '-ar', '48000', '-c:a', 'pcm_s16le', path], check=True)
     # made again from the line above whenever it is missing, so it is not committed
     write(name + '/.gitignore', 'audio.wav\n')
+    # the bars follow the script's reading of the sound, a moment after the probe's record of it: one bar's width
+    # of difference is not a difference
+    write(name + '/compare.json', {"bar_jitter": 20})
     # the probe records the bands Wallpaper Engine heard, which the viewer is then given
     clock_probe.stamp(os.path.join(HERE, name))
 
@@ -489,3 +497,20 @@ void main() {
 	gl_FragColor = vec4(saturate(pointer.x), saturate(pointer.y), v_TexCoord.x, 1.0);
 }
 """
+
+
+def strip_mesh(width=600.0, height=100.0, columns=9, bones=2):
+    """A strip of two rows of `columns` vertices centred on the origin, skinned along its length to `bones` bones
+    (each weighted across its own stretch, blended with the next): its vertices and triangles for puppet_mdl()."""
+    vertices, indices = [], []
+    for row in range(2):
+        for column in range(columns):
+            t = column / (columns - 1) * (bones - 1)
+            first = min(int(t), bones - 2)
+            blend = t - first
+            vertices.append((-width / 2 + width * column / (columns - 1), (row - 0.5) * height, 0,
+                             column / (columns - 1), row, [first, first + 1, 0, 0], [1 - blend, blend, 0, 0]))
+    for column in range(columns - 1):
+        a, b, c, d = column, column + 1, columns + column, columns + column + 1
+        indices += [(a, b, c), (b, d, c)]
+    return vertices, indices

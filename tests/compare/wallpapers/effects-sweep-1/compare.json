@@ -1,0 +1,7 @@
+{
+  "fps": 30,
+  "probe": true,
+  "probe_bands": [
+    16
+  ]
+}

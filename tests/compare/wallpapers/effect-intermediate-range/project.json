@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test values above 1 between two effects",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}

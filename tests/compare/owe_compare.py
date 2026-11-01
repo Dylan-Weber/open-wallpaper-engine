@@ -34,7 +34,8 @@ and is "ok" with an ssim of at least --threshold and no region, or "near" when i
 reference as a second take of it (reference-2.png) taken within 3 frames of it: Wallpaper Engine's own randomness.
 Takes further apart are only reported (what moved between them counts too). Pictures go to output-owe/<name>/:
 reference.png, owe.png, diff.png and side-by-side.png (reference | owe | difference, changed pixels in red), with
-the viewer's log in engine/viewer.log; report.json has every score.
+the viewer's log in engine/viewer.log; report.json has every score. A wallpaper's compare.json "bar_jitter" (pixels)
+leaves out regions no wider than that: script-driven audio bars read the sound a moment after the probe recorded it.
 
 Needs: SceneViewer (--viewer, default the debug build: lito build -p owe-sceneviewer), Wallpaper Engine's assets
 (WPE_ASSETS, default tests/assets) and the venv of tests/compare/ (python3 -m venv .venv &&
@@ -160,6 +161,30 @@ def render(name, size, viewer, frames=None, script_start=0.0, camera_path_delay=
     return frame
 
 
+def configured_date(folder):
+    """The date scripts should start from, in milliseconds since the epoch: the wallpaper's compare.json "date", else a date.txt
+    in the folder or above it (the share's, which the VM's clock is set to: ISO, in the VM's UTC-7)."""
+    import datetime
+    text = None
+    path = os.path.join(folder, 'compare.json')
+    if os.path.exists(path):
+        text = json.load(open(path)).get('date')
+    here = os.path.abspath(folder)
+    for _ in range(4):
+        if text:
+            break
+        candidate = os.path.join(here, 'date.txt')
+        if os.path.exists(candidate):
+            text = open(candidate).read().strip()
+        here = os.path.dirname(here)
+    if not text:
+        return None
+    moment = datetime.datetime.fromisoformat(text)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=datetime.timezone(datetime.timedelta(hours=-7)))
+    return moment.timestamp() * 1000
+
+
 def input_arguments(inputs, frames, help_text, folder):
     """The viewer arguments and environment that give owe what a reference's clock probe recorded (`inputs`, from
     clock_probe.read_inputs, at frame `frames`), as far as the viewer (its `help_text`) takes them, and notes on
@@ -184,6 +209,12 @@ def input_arguments(inputs, frames, help_text, folder):
             env['TZ'] = 'OWE%s%02d:%02d' % ('+' if minutes >= 0 else '-', abs(minutes) // 60, abs(minutes) % 60)
         else:
             notes.append('the viewer has no --script-clock: scripts see this machine\'s clock')
+    elif '--script-clock' in help_text and 'date' not in inputs:
+        # no date recorded (a reference without the probe): the configured one, the day the Windows clock was set to
+        target = configured_date(folder)
+        if target is not None:
+            arguments += ['--script-clock', '%d' % round(target - frames * 1000 / 30)]
+            env['TZ'] = 'OWE+07:00'
     if inputs.get('press') is not None:
         notes.append('the reference\'s scripts saw a left press at frame %d, which owe isn\'t given' % inputs['press'])
     return arguments, env, notes
@@ -228,6 +259,12 @@ def eye_camera_delay(name, size, viewer, frames, script_start, inputs, env, eye)
     print('     %-28s camera paths %d frames behind (its eye %.4f off)' % (name, round(found[0] * 30), found[1]),
           flush=True)
     return found[0]
+
+
+def without_bar_jitter(regions, bar_width):
+    """The regions wider than `bar_width` pixels (compare.json "bar_jitter"): a script-driven bar can read the audio
+    buffer a moment after the probe recorded it, so a region no wider than one bar is not a difference."""
+    return [r for r in regions if r['width'] > bar_width]
 
 
 def near_floor(ssim, floor, frames_apart=3):
@@ -406,6 +443,8 @@ def main():
                 floor = compare(reference, other, args.tolerance, masked)[0]
                 metrics['floor'] = {'ssim': floor['ssim'], 'mae': floor['mae'], 'regions': len(floor['regions']),
                                     'frames': [frames, clock_probe.read(other) if probe else None]}
+        if settings_of(name).get('bar_jitter'):
+            metrics['regions'] = without_bar_jitter(metrics['regions'], settings_of(name)['bar_jitter'])
         save_pictures(name, reference, owe, difference, changed)
         results[name] = metrics
         ok = metrics['ssim'] >= args.threshold and not metrics['regions']

@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test the flag shader over a cloth with a brightness for each mipmap",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}

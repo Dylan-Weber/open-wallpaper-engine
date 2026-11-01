@@ -1,0 +1,68 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0.05 0.05 0.1",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "sky",
+      "image": "models/sky.json",
+      "origin": "960 540 0",
+      "size": "1920 1080",
+      "color": "0.4 0.6 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "visible": {
+        "value": true,
+        "script": "'use strict';\n\nexport function init() {\n\tthisLayer.getEffect('redden').visible = false;\n}\n",
+        "scriptproperties": {}
+      },
+      "effects": [
+        {
+          "file": "effects/redden/effect.json",
+          "id": 700,
+          "name": "redden",
+          "visible": true,
+          "passes": [
+            {
+              "id": 800,
+              "constantshadervalues": {}
+            }
+          ]
+        }
+      ],
+      "id": 1
+    },
+    {
+      "name": "marker",
+      "image": "models/util/solidlayer.json",
+      "origin": "960 540 0",
+      "size": "300 300",
+      "color": "1 0.5 0",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 2,
+      "visible": true
+    }
+  ],
+  "version": 1
+}

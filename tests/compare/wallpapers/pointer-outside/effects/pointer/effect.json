@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "pointer",
+  "passes": [
+    {
+      "material": "materials/effects/pointer.json"
+    }
+  ]
+}

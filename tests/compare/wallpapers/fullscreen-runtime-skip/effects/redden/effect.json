@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "redden",
+  "passes": [
+    {
+      "material": "materials/effects/redden.json"
+    }
+  ]
+}

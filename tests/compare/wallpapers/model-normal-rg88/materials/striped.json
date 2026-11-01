@@ -1,0 +1,19 @@
+{
+  "passes": [
+    {
+      "shader": "generic4",
+      "blending": "normal",
+      "cullmode": "normal",
+      "depthtest": "enabled",
+      "depthwrite": "enabled",
+      "combos": {
+        "LIGHTING": 1
+      },
+      "constantshadervalues": {},
+      "textures": [
+        "test/white",
+        "test/stripes_n"
+      ]
+    }
+  ]
+}

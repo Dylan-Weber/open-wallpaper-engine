@@ -1,0 +1,260 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0 0 0",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "strip",
+      "image": "models/strip.json",
+      "origin": {
+        "value": "960 540 0",
+        "script": "'use strict';\nexport function update(value) {\n    const facts = (m) => [\n        typeof m === 'object' && m !== null,\n        m && typeof m.x === 'number',\n        m && !!m.translation,\n        m && m.translation && typeof m.translation.x === 'number',\n        m && typeof m.length === 'number' && m.length === 16,\n        m && typeof m.getTranslation === 'function',\n        m && typeof m.translation === 'function',\n        m && typeof m.m === 'object',\n    ];\n    let a = [], b = [];\n    try { a = facts(thisLayer.getBoneTransform('tip')); } catch (e) { }\n    try { b = facts(thisLayer.getBoneTransform(2)); } catch (e) { }\n    for (let i = 0; i < 8; i++) {\n        thisScene.getLayer('a' + i).visible = !!a[i];\n        thisScene.getLayer('b' + i).visible = !!b[i];\n    }\n    return value;\n}\n",
+        "scriptproperties": {}
+      },
+      "size": "600 100",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "animationlayers": [
+        {
+          "animation": 1,
+          "blend": 1.0,
+          "rate": 1.0,
+          "visible": true,
+          "id": 1,
+          "name": "idle"
+        }
+      ],
+      "id": 1,
+      "visible": true
+    },
+    {
+      "name": "a0",
+      "image": "models/util/solidlayer.json",
+      "origin": "200 900 0",
+      "size": "60 60",
+      "color": "1 0 0",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 2,
+      "visible": true
+    },
+    {
+      "name": "b0",
+      "image": "models/util/solidlayer.json",
+      "origin": "200 200 0",
+      "size": "60 60",
+      "color": "0 1 0",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 3,
+      "visible": true
+    },
+    {
+      "name": "a1",
+      "image": "models/util/solidlayer.json",
+      "origin": "400 900 0",
+      "size": "60 60",
+      "color": "1 0 0",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 4,
+      "visible": true
+    },
+    {
+      "name": "b1",
+      "image": "models/util/solidlayer.json",
+      "origin": "400 200 0",
+      "size": "60 60",
+      "color": "0 1 0",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 5,
+      "visible": true
+    },
+    {
+      "name": "a2",
+      "image": "models/util/solidlayer.json",
+      "origin": "600 900 0",
+      "size": "60 60",
+      "color": "1 0 0",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 6,
+      "visible": true
+    },
+    {
+      "name": "b2",
+      "image": "models/util/solidlayer.json",
+      "origin": "600 200 0",
+      "size": "60 60",
+      "color": "0 1 0",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 7,
+      "visible": true
+    },
+    {
+      "name": "a3",
+      "image": "models/util/solidlayer.json",
+      "origin": "800 900 0",
+      "size": "60 60",
+      "color": "1 0 0",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 8,
+      "visible": true
+    },
+    {
+      "name": "b3",
+      "image": "models/util/solidlayer.json",
+      "origin": "800 200 0",
+      "size": "60 60",
+      "color": "0 1 0",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 9,
+      "visible": true
+    },
+    {
+      "name": "a4",
+      "image": "models/util/solidlayer.json",
+      "origin": "1000 900 0",
+      "size": "60 60",
+      "color": "1 0 0",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 10,
+      "visible": true
+    },
+    {
+      "name": "b4",
+      "image": "models/util/solidlayer.json",
+      "origin": "1000 200 0",
+      "size": "60 60",
+      "color": "0 1 0",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 11,
+      "visible": true
+    },
+    {
+      "name": "a5",
+      "image": "models/util/solidlayer.json",
+      "origin": "1200 900 0",
+      "size": "60 60",
+      "color": "1 0 0",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 12,
+      "visible": true
+    },
+    {
+      "name": "b5",
+      "image": "models/util/solidlayer.json",
+      "origin": "1200 200 0",
+      "size": "60 60",
+      "color": "0 1 0",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 13,
+      "visible": true
+    },
+    {
+      "name": "a6",
+      "image": "models/util/solidlayer.json",
+      "origin": "1400 900 0",
+      "size": "60 60",
+      "color": "1 0 0",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 14,
+      "visible": true
+    },
+    {
+      "name": "b6",
+      "image": "models/util/solidlayer.json",
+      "origin": "1400 200 0",
+      "size": "60 60",
+      "color": "0 1 0",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 15,
+      "visible": true
+    },
+    {
+      "name": "a7",
+      "image": "models/util/solidlayer.json",
+      "origin": "1600 900 0",
+      "size": "60 60",
+      "color": "1 0 0",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 16,
+      "visible": true
+    },
+    {
+      "name": "b7",
+      "image": "models/util/solidlayer.json",
+      "origin": "1600 200 0",
+      "size": "60 60",
+      "color": "0 1 0",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 17,
+      "visible": true
+    }
+  ],
+  "version": 1
+}

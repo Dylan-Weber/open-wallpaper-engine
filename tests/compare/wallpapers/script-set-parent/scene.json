@@ -1,0 +1,177 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0 0 0",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "kept",
+      "image": "models/util/solidlayer.json",
+      "size": "120 120",
+      "color": "1 0.1 0.1",
+      "alpha": {
+        "value": 1,
+        "script": "'use strict';\nlet done = false;\nexport function update(value) {\n    if (!done) { done = true; try { thisLayer.setParent('parent', true); } catch (e) { console.log('setParent: ' + e); } }\n    return value;\n}\n",
+        "scriptproperties": {}
+      },
+      "origin": "1150 700 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 1,
+      "visible": true
+    },
+    {
+      "name": "moved",
+      "image": "models/util/solidlayer.json",
+      "size": "120 120",
+      "color": "1 0.1 0.1",
+      "alpha": {
+        "value": 1,
+        "script": "'use strict';\nlet done = false;\nexport function update(value) {\n    if (!done) { done = true; try { thisLayer.setParent(thisScene.getLayer('parent'), false); } catch (e) { console.log('setParent: ' + e); } }\n    return value;\n}\n",
+        "scriptproperties": {}
+      },
+      "origin": "100 300 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 2,
+      "visible": true
+    },
+    {
+      "name": "by id",
+      "image": "models/util/solidlayer.json",
+      "size": "120 120",
+      "color": "1 0.1 0.1",
+      "alpha": {
+        "value": 1,
+        "script": "'use strict';\nlet done = false;\nexport function update(value) {\n    if (!done) { done = true; try { thisLayer.setParent(4); } catch (e) { console.log('setParent: ' + e); } }\n    return value;\n}\n",
+        "scriptproperties": {}
+      },
+      "origin": "-300 -300 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 3,
+      "visible": true
+    },
+    {
+      "name": "parent",
+      "image": "models/util/solidlayer.json",
+      "origin": "1200 700 0",
+      "size": "300 300",
+      "color": "0.1 0.3 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 4,
+      "visible": true
+    },
+    {
+      "name": "look x",
+      "image": "models/util/solidlayer.json",
+      "origin": "300 900 0",
+      "size": "200 40",
+      "color": "0.6 0.6 0.6",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 5,
+      "visible": true
+    },
+    {
+      "name": "look y",
+      "image": "models/util/solidlayer.json",
+      "origin": "300 780 0",
+      "size": "200 40",
+      "color": "0.6 0.6 0.6",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 6,
+      "visible": true
+    },
+    {
+      "name": "look z",
+      "image": "models/util/solidlayer.json",
+      "origin": "300 660 0",
+      "size": "200 40",
+      "color": "0.6 0.6 0.6",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 7,
+      "visible": true
+    },
+    {
+      "name": "look up",
+      "image": "models/util/solidlayer.json",
+      "origin": "300 540 0",
+      "size": "200 40",
+      "color": "0.6 0.6 0.6",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 8,
+      "visible": true
+    },
+    {
+      "name": "yaw xz",
+      "image": "models/util/solidlayer.json",
+      "origin": "300 420 0",
+      "size": "200 40",
+      "color": "0.6 0.6 0.6",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 9,
+      "visible": true
+    },
+    {
+      "name": "report",
+      "text": {
+        "value": "report",
+        "script": "'use strict';\nconst f = (v) => v === undefined ? 'undefined' : [v.x, v.y, v.z].map((n) => n.toFixed(3)).join(',');\nfunction look(name, call) {\n    const layer = thisScene.getLayer(name);\n    try { call(layer); return name + ': ' + f(layer.angles); } catch (e) { return name + ': ' + e; }\n}\nexport function update(value) {\n    const lines = [];\n    for (const name of ['kept', 'moved', 'by id']) {\n        const layer = thisScene.getLayer(name);\n        const parent = layer.getParent();\n        lines.push(name + ': parent ' + (parent ? parent.name : 'none') + ' origin ' + f(layer.origin));\n    }\n    lines.push(look('look x', (l) => l.lookAt(new Vec3(800, 900, 0))));\n    lines.push(look('look y', (l) => l.lookAt(new Vec3(300, 1280, 0))));\n    lines.push(look('look z', (l) => l.lookAt(new Vec3(300, 660, 500))));\n    lines.push(look('look up', (l) => l.lookAt(new Vec3(800, 540, 0), new Vec3(0, 0, 1))));\n    lines.push(look('yaw xz', (l) => l.lookAtYaw(new Vec3(800, 420, 500))));\n    return lines.join('\\n');\n}\n",
+        "scriptproperties": {}
+      },
+      "font": "systemfont_arial",
+      "pointsize": 6,
+      "size": "1100 400",
+      "origin": "760 330 0",
+      "color": "1 1 1",
+      "alpha": 1,
+      "visible": true,
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "horizontalalign": "left",
+      "verticalalign": "top",
+      "padding": 10,
+      "opaquebackground": true,
+      "backgroundcolor": "0 0.2 0.5",
+      "id": 10
+    }
+  ],
+  "version": 1
+}

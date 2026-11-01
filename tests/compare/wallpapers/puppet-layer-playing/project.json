@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test whether a puppet's animation layers play from the start",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "passes": [
+    {
+      "blending": "normal",
+      "cullmode": "nocull",
+      "depthtest": "disabled",
+      "depthwrite": "disabled",
+      "shader": "flat",
+      "textures": [
+        "util/white"
+      ]
+    }
+  ]
+}

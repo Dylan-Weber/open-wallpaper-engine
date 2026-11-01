@@ -1,0 +1,794 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0.05 0.05 0.1",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "flat handles",
+      "image": "models/util/solidlayer.json",
+      "size": "60 60",
+      "color": "1 0.8 0.3",
+      "alpha": 1,
+      "origin": {
+        "value": "300 960 0",
+        "animation": {
+          "c0": [
+            {
+              "frame": 0,
+              "value": 300,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            },
+            {
+              "frame": 90,
+              "value": 1600,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "c1": [
+            {
+              "frame": 0,
+              "value": 0,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "c2": [
+            {
+              "frame": 0,
+              "value": 0,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "options": {
+            "fps": 30,
+            "length": 90,
+            "mode": "loop",
+            "wraploop": null
+          },
+          "relative": false
+        }
+      },
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "id": 1
+    },
+    {
+      "name": "flat handles mark",
+      "image": "models/util/solidlayer.json",
+      "size": "1300 2",
+      "color": "0.3 0.3 0.6",
+      "alpha": 1,
+      "origin": "950 920 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "id": 2
+    },
+    {
+      "name": "handles off",
+      "image": "models/util/solidlayer.json",
+      "size": "60 60",
+      "color": "1 0.8 0.3",
+      "alpha": 1,
+      "origin": {
+        "value": "300 840 0",
+        "animation": {
+          "c0": [
+            {
+              "frame": 0,
+              "value": 300,
+              "back": {
+                "enabled": false,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": false,
+                "x": 1,
+                "y": 0
+              }
+            },
+            {
+              "frame": 90,
+              "value": 1600,
+              "back": {
+                "enabled": false,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": false,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "c1": [
+            {
+              "frame": 0,
+              "value": 0,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "c2": [
+            {
+              "frame": 0,
+              "value": 0,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "options": {
+            "fps": 30,
+            "length": 90,
+            "mode": "loop",
+            "wraploop": null
+          },
+          "relative": false
+        }
+      },
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "id": 3
+    },
+    {
+      "name": "handles off mark",
+      "image": "models/util/solidlayer.json",
+      "size": "1300 2",
+      "color": "0.3 0.3 0.6",
+      "alpha": 1,
+      "origin": "950 800 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "id": 4
+    },
+    {
+      "name": "magic handles",
+      "image": "models/util/solidlayer.json",
+      "size": "60 60",
+      "color": "1 0.8 0.3",
+      "alpha": 1,
+      "origin": {
+        "value": "300 720 0",
+        "animation": {
+          "c0": [
+            {
+              "frame": 0,
+              "value": 300,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0,
+                "magic": true
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0,
+                "magic": true
+              }
+            },
+            {
+              "frame": 90,
+              "value": 1600,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0,
+                "magic": true
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0,
+                "magic": true
+              }
+            }
+          ],
+          "c1": [
+            {
+              "frame": 0,
+              "value": 0,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "c2": [
+            {
+              "frame": 0,
+              "value": 0,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "options": {
+            "fps": 30,
+            "length": 90,
+            "mode": "loop",
+            "wraploop": null
+          },
+          "relative": false
+        }
+      },
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "id": 5
+    },
+    {
+      "name": "magic handles mark",
+      "image": "models/util/solidlayer.json",
+      "size": "1300 2",
+      "color": "0.3 0.3 0.6",
+      "alpha": 1,
+      "origin": "950 680 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "id": 6
+    },
+    {
+      "name": "steep handles",
+      "image": "models/util/solidlayer.json",
+      "size": "60 60",
+      "color": "1 0.8 0.3",
+      "alpha": 1,
+      "origin": {
+        "value": "300 600 0",
+        "animation": {
+          "c0": [
+            {
+              "frame": 0,
+              "value": 300,
+              "back": {
+                "enabled": true,
+                "x": -10,
+                "y": -300
+              },
+              "front": {
+                "enabled": true,
+                "x": 10,
+                "y": 300
+              }
+            },
+            {
+              "frame": 90,
+              "value": 1600,
+              "back": {
+                "enabled": true,
+                "x": -10,
+                "y": -300
+              },
+              "front": {
+                "enabled": true,
+                "x": 10,
+                "y": 300
+              }
+            }
+          ],
+          "c1": [
+            {
+              "frame": 0,
+              "value": 0,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "c2": [
+            {
+              "frame": 0,
+              "value": 0,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "options": {
+            "fps": 30,
+            "length": 90,
+            "mode": "loop",
+            "wraploop": null
+          },
+          "relative": false
+        }
+      },
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "id": 7
+    },
+    {
+      "name": "steep handles mark",
+      "image": "models/util/solidlayer.json",
+      "size": "1300 2",
+      "color": "0.3 0.3 0.6",
+      "alpha": 1,
+      "origin": "950 560 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "id": 8
+    },
+    {
+      "name": "three keys",
+      "image": "models/util/solidlayer.json",
+      "size": "60 60",
+      "color": "1 0.8 0.3",
+      "alpha": 1,
+      "origin": {
+        "value": "300 480 0",
+        "animation": {
+          "c0": [
+            {
+              "frame": 0,
+              "value": 300,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            },
+            {
+              "frame": 30,
+              "value": 1400,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            },
+            {
+              "frame": 90,
+              "value": 1600,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "c1": [
+            {
+              "frame": 0,
+              "value": 0,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "c2": [
+            {
+              "frame": 0,
+              "value": 0,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "options": {
+            "fps": 30,
+            "length": 90,
+            "mode": "loop",
+            "wraploop": null
+          },
+          "relative": false
+        }
+      },
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "id": 9
+    },
+    {
+      "name": "three keys mark",
+      "image": "models/util/solidlayer.json",
+      "size": "1300 2",
+      "color": "0.3 0.3 0.6",
+      "alpha": 1,
+      "origin": "950 440 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "id": 10
+    },
+    {
+      "name": "mirror",
+      "image": "models/util/solidlayer.json",
+      "size": "60 60",
+      "color": "1 0.8 0.3",
+      "alpha": 1,
+      "origin": {
+        "value": "300 360 0",
+        "animation": {
+          "c0": [
+            {
+              "frame": 0,
+              "value": 300,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            },
+            {
+              "frame": 90,
+              "value": 1600,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "c1": [
+            {
+              "frame": 0,
+              "value": 0,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "c2": [
+            {
+              "frame": 0,
+              "value": 0,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "options": {
+            "fps": 30,
+            "length": 90,
+            "mode": "mirror",
+            "wraploop": null
+          },
+          "relative": false
+        }
+      },
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "id": 11
+    },
+    {
+      "name": "mirror mark",
+      "image": "models/util/solidlayer.json",
+      "size": "1300 2",
+      "color": "0.3 0.3 0.6",
+      "alpha": 1,
+      "origin": "950 320 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "id": 12
+    },
+    {
+      "name": "single",
+      "image": "models/util/solidlayer.json",
+      "size": "60 60",
+      "color": "1 0.8 0.3",
+      "alpha": 1,
+      "origin": {
+        "value": "300 240 0",
+        "animation": {
+          "c0": [
+            {
+              "frame": 0,
+              "value": 300,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            },
+            {
+              "frame": 90,
+              "value": 1600,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "c1": [
+            {
+              "frame": 0,
+              "value": 0,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "c2": [
+            {
+              "frame": 0,
+              "value": 0,
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              }
+            }
+          ],
+          "options": {
+            "fps": 30,
+            "length": 90,
+            "mode": "single",
+            "wraploop": null
+          },
+          "relative": false
+        }
+      },
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "id": 13
+    },
+    {
+      "name": "single mark",
+      "image": "models/util/solidlayer.json",
+      "size": "1300 2",
+      "color": "0.3 0.3 0.6",
+      "alpha": 1,
+      "origin": "950 200 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "id": 14
+    },
+    {
+      "id": 15,
+      "name": "owe clock probe",
+      "image": "models/util/fullscreenlayer.json",
+      "origin": "0 0 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "color": "1 1 1",
+      "alpha": 1,
+      "visible": true,
+      "effects": [
+        {
+          "file": "effects/oweclock/effect.json",
+          "id": 16,
+          "name": "oweclock",
+          "visible": true,
+          "passes": [
+            {
+              "id": 17,
+              "constantshadervalues": {
+                "scriptframe": {
+                  "script": "'use strict';\n\nexport function update(value) {\n\treturn Math.floor(engine.runtime * 30 + 0.5);\n}\n",
+                  "value": -1
+                },
+                "press": {
+                  "script": "'use strict';\n\nlet last = 0;\nlet wasDown = false;\n\nexport function update(value) {\n\ttry {\n\t\tconst down = !!input.cursorLeftDown;\n\t\tif (down && !wasDown) last = Math.min(Math.floor(engine.runtime * 30 + 0.5) + 1, 4094);\n\t\twasDown = down;\n\t\treturn last;\n\t} catch (e) {\n\t\treturn 4095;\n\t}\n}\n",
+                  "value": -1
+                },
+                "date_day": {
+                  "script": "'use strict';\n\nexport function update(value) {\n\treturn Math.floor(Date.now() / 86400000) - 18262;\n}\n",
+                  "value": -1
+                },
+                "date_centis": {
+                  "script": "'use strict';\n\nexport function update(value) {\n\treturn Math.floor((Date.now() % 86400000) / 10);\n}\n",
+                  "value": -1
+                },
+                "timezone": {
+                  "script": "'use strict';\n\nexport function update(value) {\n\treturn new Date().getTimezoneOffset() + 1024;\n}\n",
+                  "value": -1
+                },
+                "camerax": {
+                  "script": "'use strict';\n\nfunction quantise(value, offset, scale, bits) {\n\tconst most = Math.pow(2, bits) - 1;\n\treturn Math.min(Math.max(Math.floor((value + offset) * scale + 0.5), 0), most);\n}\n\nexport function update(value) {\n\ttry {\n\t\treturn quantise(thisScene.getCameraTransforms().eye.x, 32768, 256, 24);\n\t} catch (e) {\n\t\treturn 16777215;\n\t}\n}\n",
+                  "value": -1
+                },
+                "cameray": {
+                  "script": "'use strict';\n\nfunction quantise(value, offset, scale, bits) {\n\tconst most = Math.pow(2, bits) - 1;\n\treturn Math.min(Math.max(Math.floor((value + offset) * scale + 0.5), 0), most);\n}\n\nexport function update(value) {\n\ttry {\n\t\treturn quantise(thisScene.getCameraTransforms().eye.y, 32768, 256, 24);\n\t} catch (e) {\n\t\treturn 16777215;\n\t}\n}\n",
+                  "value": -1
+                },
+                "cameraz": {
+                  "script": "'use strict';\n\nfunction quantise(value, offset, scale, bits) {\n\tconst most = Math.pow(2, bits) - 1;\n\treturn Math.min(Math.max(Math.floor((value + offset) * scale + 0.5), 0), most);\n}\n\nexport function update(value) {\n\ttry {\n\t\treturn quantise(thisScene.getCameraTransforms().eye.z, 32768, 256, 24);\n\t} catch (e) {\n\t\treturn 16777215;\n\t}\n}\n",
+                  "value": -1
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "version": 1
+}
