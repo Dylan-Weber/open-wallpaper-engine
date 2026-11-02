@@ -201,6 +201,10 @@ script::ScriptScene& EnsureScriptScene(SceneParseContext& context) {
     if (context.script_scene.is_none()) {
         context.script_scene =
             Some(Box<script::ScriptScene>::make(Some(context.audio_response_demand.clone())));
+        if (context.authored_layer_names.is_some())
+            (*context.script_scene)
+                ->runtime()
+                .SetAuthoredLayerNames(context.authored_layer_names->clone());
         auto layers = context.puppet_layers.clone();
         (*context.script_scene)
             ->runtime()

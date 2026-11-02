@@ -159,6 +159,9 @@ struct TextLayoutMetrics {
     float source_center_x { 0.0f };
     float source_center_y { 0.0f };
     float padding { 0.0f };
+    // How much further below the text than above it a background box reaches: the last line's
+    // line gap (0 without a background).
+    float background_gap { 0.0f };
 };
 
 struct TextGeometryPolicy {

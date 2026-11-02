@@ -502,6 +502,8 @@ struct EngineHostState {
     HashSet<owe::SceneNode*>          script_layers;
     // Keep registered queries enabled even when the scene has no wallpaper layers.
     bool registered_layer_queries { false };
+    // Set by the scene parser: see JsRuntime::SetAuthoredLayerNames.
+    Option<HashSet<String>> authored_layer_names;
     // engine.setTimeout / setInterval queue. Swept once per frame in
     // JsRuntime::TickAll before the script update loop runs.
     Vec<DeferredCb> deferred;
@@ -2624,6 +2626,53 @@ JSValue NodeRotateObjectSpace(JSContext* ctx, JSValueConst this_val, int argc, J
     return JS_UNDEFINED;
 }
 
+owe::SceneNode* SceneLayerAt(JSContext* ctx, owe::SceneNode* root, JSValueConst value);
+
+// setParent(parent, adjustTransforms) or setParent(parent, attachment, adjustTransform): the parent
+// is a layer, a name or the layer's index in the scene, undefined for none. As measured in
+// Wallpaper Engine, the layers keep their draw order. Attachments aren't supported yet.
+JSValue NodeSetParent(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    auto* n    = GetLayerNode(this_val);
+    if (! n) return JS_UNDEFINED;
+    owe::SceneNode* parent = nullptr;
+    if (argc > 0 && ! JS_IsUndefined(argv[0]) && ! JS_IsNull(argv[0])) {
+        if (JS_IsNumber(argv[0]))
+            parent = SceneLayerAt(ctx, host->scene_root, argv[0]);
+        else
+            parent = GetLayerNode(argv[0]);
+        if (parent == nullptr && ! JS_IsNumber(argv[0]) && host->scene_root) {
+            const char* name = JS_ToCString(ctx, argv[0]);
+            if (name == nullptr) return JS_EXCEPTION;
+            parent = host->scene_root->FindByName(rstd::cppstd::as_str(name).unwrap());
+            JS_FreeCString(ctx, name);
+        }
+        if (parent == nullptr) return JS_UNDEFINED;
+    }
+    const int  flag   = argc > 2 ? 2 : 1;
+    const bool adjust = argc > flag && JS_ToBool(ctx, argv[flag]) > 0;
+    (void)n->SetParent(parent, adjust);
+    return JS_UNDEFINED;
+}
+
+// lookAt(center, up = (0, 1, 0)) and lookAtYaw(center, up): see SceneNode::LookAt.
+JSValue LookAt(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv, bool yaw_only) {
+    auto*  n = GetLayerNode(this_val);
+    double x = 0, y = 0, z = 0, up_x = 0, up_y = 1, up_z = 0;
+    if (! n || argc < 1 || ! ReadXYZ(ctx, argv[0], x, y, z)) return JS_UNDEFINED;
+    if (argc > 1 && ! JS_IsUndefined(argv[1])) (void)ReadXYZ(ctx, argv[1], up_x, up_y, up_z);
+    n->LookAt({ x, y, z }, { up_x, up_y, up_z }, yaw_only);
+    return JS_UNDEFINED;
+}
+
+JSValue NodeLookAt(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+    return LookAt(ctx, this_val, argc, argv, false);
+}
+
+JSValue NodeLookAtYaw(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+    return LookAt(ctx, this_val, argc, argv, true);
+}
+
 JSValue BoneTransformTranslation(JSContext* ctx, JSValueConst this_val, int, JSValueConst*) {
     JSValue v = JS_GetPropertyStr(ctx, this_val, "__wwTranslation");
     if (! JS_IsUndefined(v)) return v;
@@ -2756,7 +2805,11 @@ JSValue NodeGetLayer(JSContext* ctx, JSValueConst this_val, int argc, JSValueCon
     String          layer_name = rstd::into(rstd::cppstd::as_str(name).unwrap());
     owe::SceneNode* hit        = n->FindByName(layer_name.as_str());
     JS_FreeCString(ctx, name);
-    return hit ? WrapLayerNode(ctx, hit) : WrapLayerName(ctx, rstd::move(layer_name));
+    if (hit) return WrapLayerNode(ctx, hit);
+    if (host->authored_layer_names.is_some() &&
+        ! host->authored_layer_names->contains(layer_name.as_str()))
+        return JS_NULL;
+    return WrapLayerName(ctx, rstd::move(layer_name));
 }
 
 JSValue NodeGetEffect(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
@@ -3517,6 +3570,9 @@ const JSCFunctionListEntry s_layer_proto_funcs[] = {
     JS_CFUNC_DEF("getParent", 0, NodeGetParent),
     JS_CFUNC_DEF("getTransformMatrix", 0, NodeGetTransformMatrix),
     JS_CFUNC_DEF("rotateObjectSpace", 1, NodeRotateObjectSpace),
+    JS_CFUNC_DEF("setParent", 2, NodeSetParent),
+    JS_CFUNC_DEF("lookAt", 2, NodeLookAt),
+    JS_CFUNC_DEF("lookAtYaw", 2, NodeLookAtYaw),
     JS_CFUNC_DEF("getChildren", 0, NodeGetChildren),
     JS_CFUNC_DEF("getName", 0, NodeGetName),
     JS_CFUNC_DEF("getLayer", 1, NodeGetLayer),
@@ -3950,6 +4006,10 @@ void JsRuntime::RegisterInitialLayerConfig(owe::SceneNode* node, Json config) {
     m_impl->host.registered_layer_queries = true;
 }
 
+void JsRuntime::SetAuthoredLayerNames(HashSet<String> names) {
+    m_impl->host.authored_layer_names = Some(rstd::move(names));
+}
+
 void JsRuntime::SetSceneRoot(owe::SceneNode* root) {
     if (! m_impl->ctx) return;
     if (m_impl->scene_root && m_impl->scene_root != root)
@@ -4251,7 +4311,18 @@ void RunFieldScriptInit(JSContext* ctx, JsRuntime::Impl* rt, FieldScript* fs) {
     JSValue arg                  = JS_DupValue(ctx, I->current_value);
     JSValue r                    = JS_Call(ctx, I->init_fn, JS_UNDEFINED, 1, &arg);
     JS_FreeValue(ctx, arg);
-    if (JS_IsException(r)) rt->LogError(ctx, I->sha.as_str(), "init threw");
+    if (JS_IsException(r)) {
+        rt->LogError(ctx, I->sha.as_str(), "init threw");
+    } else {
+        // What init returns is the property's value, as with update.
+        auto value = CoerceReturn(ctx, r, I->kind);
+        if (! value.is_Empty()) {
+            JSValue next_value = ScriptValueToJs(ctx, value);
+            JS_FreeValue(ctx, I->current_value);
+            I->current_value = next_value;
+            I->last_value    = rstd::move(value);
+        }
+    }
     JS_FreeValue(ctx, r);
     rt->host.active_field_script = nullptr;
     I->init_done                 = true;

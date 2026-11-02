@@ -608,9 +608,11 @@ void IndexSceneDocument(SceneParseContext& context, ref<wpscene::SceneDocument> 
                         slice<SceneObjectVar> objects) {
     context.scene_has_scripts       = SceneHasScripts(objects);
     context.scene_layer_text_writes = SceneWritesLayerText(objects);
+    HashSet<String> layer_names;
     for (const auto& record : document->objects) {
         const auto& metadata = record.metadata;
         if (metadata.kind == wpscene::SceneObjectKind::Unknown || ! metadata.has_id) continue;
+        (void)layer_names.insert(metadata.name.clone());
         (void)context.initial_layer_configs.insert(metadata.id, record.authored.clone());
         (void)context.script_initialization_orders.insert(
             metadata.id, static_cast<rstd::uint64_t>(context.node_id_order.len().to_primitive()));
@@ -618,6 +620,10 @@ void IndexSceneDocument(SceneParseContext& context, ref<wpscene::SceneDocument> 
         (void)context.object_parent_ids.insert(metadata.id, metadata.parent);
         if (metadata.solid) context.solid_layer_ids.insert(i32(metadata.id));
     }
+    // Scripts of the general settings may have started the runtime already.
+    if (context.script_scene.is_some())
+        (*context.script_scene)->runtime().SetAuthoredLayerNames(layer_names.clone());
+    context.authored_layer_names = Some(rstd::move(layer_names));
 }
 
 SceneParseContext

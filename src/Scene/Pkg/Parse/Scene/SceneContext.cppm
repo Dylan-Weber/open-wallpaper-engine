@@ -205,6 +205,8 @@ struct SceneParseContext {
     HashSet<i32>         linked_source_ids;
     HashSet<i32>         hidden_link_source_ids;
     bool                 scene_has_scripts { false };
+    // Every layer name the document authors, for the script runtime's getLayer.
+    Option<HashSet<String>> authored_layer_names;
     bool                 scene_layer_text_writes { false };
 
     bool IsLinkedSource(i32 id) const { return linked_source_ids.contains(i32(id)); }
