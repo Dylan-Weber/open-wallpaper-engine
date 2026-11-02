@@ -1146,6 +1146,61 @@ TEST(MdlMesh, BlockVersionsUseBoundedDecimalPrefixes) {
     }
 }
 
+// Vertex flag 0x10000 makes the position four floats (as wallpaper64.exe sizes the vertex: 16
+// bytes for it, 12 for 0x1). The fourth is the vertex's blend shape (morph) index; the normal and
+// texture coordinates come after it.
+TEST(MdlMesh, FourFloatPositionsKeepTheirMorphIndex) {
+    auto    temporary = rstd::fs::TempDir::make("owe-mdl-position4"_str).unwrap();
+    auto    root      = rstd::path::PathBuf::from(temporary.path().as_os_str().to_os_string());
+    Vec<u8> bytes;
+    auto    append = [&](ref<str> text) {
+        for (auto byte : text.as_bytes()) bytes.push(rstd::move(byte));
+    };
+    auto put = [&](auto value) {
+        const auto* raw = reinterpret_cast<const unsigned char*>(&value);
+        for (usize i {}; i < usize(sizeof value); ++i) bytes.push(u8(raw[i.to_primitive()]));
+    };
+    const std::uint32_t flag = 0x10000 | 0x2 | 0x8;
+    append("MDLV0017\0"_str);
+    put(std::int32_t(flag));
+    put(std::int32_t(1));
+    put(std::uint32_t(1));
+    append("materials/a.json\0"_str);
+    put(std::int32_t(0));
+    for (float bound : { 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f }) put(bound);
+    put(flag);
+    // position (x, y, z, morph index), normal, uv
+    const float vertices[3][9] = {
+        { 1, 2, 3, 0, 0, 0, 1, 0.25f, 0.5f },
+        { 4, 5, 6, 7, 0, 0, 1, 0.75f, 0.5f },
+        { 7, 8, 9, 2, 0, 0, 1, 0.5f, 1.0f },
+    };
+    put(std::uint32_t(sizeof vertices));
+    for (const auto& vertex : vertices)
+        for (float value : vertex) put(value);
+    put(std::uint32_t(6));
+    for (std::uint16_t index : { 0, 1, 2 }) put(index);
+    ASSERT_TRUE(rstd::fs::write(root.join("p4.mdl"_str).as_path(), bytes.as_slice()).is_ok());
+    owe::fs::VFS vfs;
+    auto         mount = owe::fs::make_physical_fs(temporary.path());
+    ASSERT_TRUE(mount.is_ok());
+    ASSERT_TRUE(vfs.mount("/assets"_str, rstd::move(mount).unwrap()).is_ok());
+    owe::Mdl mdl;
+    ASSERT_TRUE(owe::MdlParser::Parse("p4.mdl"_str, vfs, mdl));
+    ASSERT_EQ(mdl.meshes.len(), usize(1));
+    const auto& mesh = mdl.meshes[usize()];
+    ASSERT_EQ(mesh.positions.len(), usize(3));
+    EXPECT_FLOAT_EQ(mesh.positions[usize(1)][usize(0)], 4.0f);
+    EXPECT_FLOAT_EQ(mesh.positions[usize(1)][usize(2)], 6.0f);
+    ASSERT_EQ(mesh.morph_indices.len(), usize(3));
+    EXPECT_FLOAT_EQ(mesh.morph_indices[usize(0)], 0.0f);
+    EXPECT_FLOAT_EQ(mesh.morph_indices[usize(1)], 7.0f);
+    ASSERT_EQ(mesh.normals.len(), usize(3));
+    EXPECT_FLOAT_EQ(mesh.normals[usize(1)][usize(2)], 1.0f);
+    EXPECT_FLOAT_EQ(mesh.normals[usize(1)][usize(0)], 0.0f);
+    EXPECT_FLOAT_EQ(mesh.texcoords[usize(1)][usize(0)], 0.75f);
+}
+
 TEST(MdlMesh, NativeMaterialPathsShareResolutionAndPreserveDefaults) {
     auto temporary = rstd::fs::TempDir::make("owe-mdl-material"_str).unwrap();
     auto root      = rstd::path::PathBuf::from(temporary.path().as_os_str().to_os_string());

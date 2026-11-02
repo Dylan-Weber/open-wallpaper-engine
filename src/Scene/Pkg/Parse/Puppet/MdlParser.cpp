@@ -56,7 +56,8 @@ constexpr uint32_t MDL_FLAG_NORMAL      = 0x00000002;
 constexpr uint32_t MDL_FLAG_TANGENT     = 0x00000004;
 constexpr uint32_t MDL_FLAG_UV          = 0x00000008;
 constexpr uint32_t MDL_FLAG_UV2         = 0x00000020;
-constexpr uint32_t MDL_FLAG_EXTRA4      = 0x00010000;
+// The position has a fourth float, the vertex's blend shape index (wallpaper64.exe: 16 bytes).
+constexpr uint32_t MDL_FLAG_POSITION4   = 0x00010000;
 constexpr uint32_t MDL_FLAG_SKIN_BLEND  = 0x00800000;
 constexpr uint32_t MDL_FLAG_SKIN_WEIGHT = 0x01000000;
 
@@ -73,7 +74,7 @@ uint32_t compute_vertex_stride(uint32_t flag) {
     uint32_t s = 12;
     if (flag & MDL_FLAG_NORMAL) s += 12;
     if (flag & MDL_FLAG_TANGENT) s += 16;
-    if (flag & MDL_FLAG_EXTRA4) s += 4;
+    if (flag & MDL_FLAG_POSITION4) s += 4;
     if (flag & MDL_FLAG_SKIN_BLEND) s += 16;
     if (flag & MDL_FLAG_SKIN_WEIGHT) s += 16;
     if (flag & (MDL_FLAG_UV | MDL_FLAG_UV2)) s += 8;
@@ -313,7 +314,7 @@ bool ParseMesh(fs::BinaryReader& f, const MdlHeader& header, Mdl::Mesh& mesh, re
     ResetDefault(mesh.positions, usize(vertex_num));
     if (mesh_flag & MDL_FLAG_NORMAL) ResetDefault(mesh.normals, usize(vertex_num));
     if (mesh_flag & MDL_FLAG_TANGENT) ResetDefault(mesh.tangents, usize(vertex_num));
-    if (mesh_flag & MDL_FLAG_EXTRA4) ResetDefault(mesh.extra4, usize(vertex_num));
+    if (mesh_flag & MDL_FLAG_POSITION4) ResetDefault(mesh.morph_indices, usize(vertex_num));
     if (mesh_flag & MDL_FLAG_SKIN_BLEND) ResetDefault(mesh.blend_indices, usize(vertex_num));
     if (mesh_flag & MDL_FLAG_SKIN_WEIGHT) ResetDefault(mesh.blend_weights, usize(vertex_num));
     if (mesh_flag & (MDL_FLAG_UV | MDL_FLAG_UV2)) {
@@ -324,14 +325,12 @@ bool ParseMesh(fs::BinaryReader& f, const MdlHeader& header, Mdl::Mesh& mesh, re
     for (uint32_t i = 0; i < vertex_num; ++i) {
         const usize index(i);
         for (auto& v : mesh.positions[index]) v = f.ReadFloat();
+        if (mesh_flag & MDL_FLAG_POSITION4) mesh.morph_indices[index] = f.ReadFloat();
         if (mesh_flag & MDL_FLAG_NORMAL) {
             for (auto& v : mesh.normals[index]) v = f.ReadFloat();
         }
         if (mesh_flag & MDL_FLAG_TANGENT) {
             for (auto& v : mesh.tangents[index]) v = f.ReadFloat();
-        }
-        if (mesh_flag & MDL_FLAG_EXTRA4) {
-            for (auto& v : mesh.extra4[index]) v = f.ReadUint8();
         }
         if (mesh_flag & MDL_FLAG_SKIN_BLEND) {
             for (auto& v : mesh.blend_indices[index]) v = f.ReadUint32();
