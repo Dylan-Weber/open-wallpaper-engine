@@ -1205,6 +1205,72 @@ TEST(ScriptAnimationLayer, BlendAndVisible) {
     EXPECT_FALSE(playback->Visible());
 }
 
+// The times an animation gets to its end: every loop, or the end of a single play.
+TEST(SceneAnimationPlayback, CountsEachEnd) {
+    auto make = [](ref<str> mode) {
+        return Arc<owe::SceneAnimationPlayback>::make(
+            Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {
+                .name = String::make("Wave"_str),
+                .mode = String::make(mode),
+                .fps  = 30.0f,
+                .end  = i32(30),
+            }));
+    };
+    Vec<owe::SceneAnimationEvent> events;
+    auto                          loop = make("loop"_str);
+    loop->Advance(0.0, events);
+    loop->Advance(0.5, events);
+    EXPECT_EQ(loop->EndedCount(), u64(0));
+    loop->Advance(2.5, events);
+    EXPECT_EQ(loop->EndedCount(), u64(2));
+
+    auto single = make("single"_str);
+    single->Advance(0.0, events);
+    single->Advance(1.5, events);
+    single->Advance(3.0, events);
+    EXPECT_EQ(single->EndedCount(), u64(1));
+}
+
+// addEndedCallback: called every time the animation layer gets to its end.
+TEST(ScriptAnimationLayer, EndedCallbacksFireEachTimeTheLayerEnds) {
+    owe::SceneNode node;
+    auto           playback = Arc<owe::SceneAnimationPlayback>::make(
+        Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {
+            .name = String::make("Wave"_str),
+            .mode = String::make("loop"_str),
+            .fps  = 30.0f,
+            .end  = i32(30),
+        }));
+    node.RegisterAnimationLayer(playback.clone());
+
+    JsRuntime rt;
+    rt.SetFrameInputs(MakeFi());
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            let ended = 0;
+            export function init() {
+                thisLayer.getAnimationLayer(0).addEndedCallback(() => { ended++; });
+            }
+            export function update() { return ended; }
+        )JS"_str,
+        "test/animation_layer_ended"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+    rt.SetSceneRoot(&node);
+    Vec<owe::SceneAnimationEvent> events;
+    playback->Advance(0.0, events);
+    rt.TickAll();
+    EXPECT_EQ(LastScalar(fs), 0.0);
+    playback->Advance(2.5, events);
+    rt.TickAll();
+    EXPECT_EQ(LastScalar(fs), 2.0);
+    rt.TickAll();
+    EXPECT_EQ(LastScalar(fs), 2.0);
+}
+
 TEST(ScriptCursor, ClickRestartsNamedAnimationLayer) {
     owe::SceneNode node;
     node.SetTranslate({ 500.0f, 500.0f, 0.0f });
