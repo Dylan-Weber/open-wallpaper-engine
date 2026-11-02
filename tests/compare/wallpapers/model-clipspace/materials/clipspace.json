@@ -1,0 +1,14 @@
+{
+  "passes": [
+    {
+      "shader": "clipspace",
+      "blending": "normal",
+      "cullmode": "nocull",
+      "depthtest": "disabled",
+      "depthwrite": "disabled",
+      "textures": [
+        null
+      ]
+    }
+  ]
+}
