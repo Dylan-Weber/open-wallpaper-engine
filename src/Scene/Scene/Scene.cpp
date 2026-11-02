@@ -1165,6 +1165,19 @@ auto SceneAnimationPlayback::Sample() const -> SceneAnimationSample {
     return { .current = frame, .end = end, .wraps = m_loop && m_clip->WrapLoop() };
 }
 
+void SceneAnimationSet::Unregister(const SceneAnimationPlayback& playback) {
+    const auto* pointer = rstd::addressof(playback);
+    m_players.retain([pointer](const Arc<SceneAnimationPlayback>& value) {
+        return value.as_ptr() != pointer;
+    });
+    m_names.retain([pointer](const auto&, const Arc<SceneAnimationPlayback>& value) {
+        return value.as_ptr() != pointer;
+    });
+    m_properties.retain([pointer](const auto&, const Arc<SceneAnimationPlayback>& value) {
+        return value.as_ptr() != pointer;
+    });
+}
+
 void SceneAnimationSet::Register(Arc<SceneAnimationPlayback> playback) {
     bool found = false;
     for (const auto& value : m_players) found = found || value.as_ptr() == playback.as_ptr();
@@ -1270,6 +1283,17 @@ auto SceneNode::NamedAnimation(ref<str> name) const -> Option<Arc<SceneAnimation
 void SceneNode::RegisterAnimationLayer(Arc<SceneAnimationPlayback> playback) {
     RegisterAnimation(playback.clone());
     m_animation_layers.push(rstd::move(playback));
+}
+
+bool SceneNode::UnregisterAnimationLayer(const SceneAnimationPlayback& playback) {
+    const auto* pointer = rstd::addressof(playback);
+    const auto  before  = m_animation_layers.len();
+    m_animation_layers.retain([pointer](const Arc<SceneAnimationPlayback>& value) {
+        return value.as_ptr() != pointer;
+    });
+    if (m_animation_layers.len() == before) return false;
+    m_animations.Unregister(playback);
+    return true;
 }
 
 auto SceneNode::AnimationLayer(usize index) const -> Option<Arc<SceneAnimationPlayback>> {

@@ -1271,6 +1271,80 @@ TEST(ScriptAnimationLayer, EndedCallbacksFireEachTimeTheLayerEnds) {
     EXPECT_EQ(LastScalar(fs), 2.0);
 }
 
+// createAnimationLayer (an animation's name, or a layer's settings), destroyAnimationLayer (a
+// layer, its name or its index) and playSingleAnimation, whose layer goes once it has played.
+TEST(ScriptAnimationLayer, CreateDestroyAndPlaySingle) {
+    owe::SceneNode                        node;
+    Vec<JsRuntime::AnimationLayerRequest> requests;
+    usize                                 destroyed {};
+    JsRuntime                             rt;
+    rt.SetFrameInputs(MakeFi());
+    rt.SetAnimationLayerResolvers(
+        JsRuntime::AnimationLayerCreator::make(
+            [&](owe::SceneNode* owner, JsRuntime::AnimationLayerRequest request)
+                -> Option<Arc<owe::SceneAnimationPlayback>> {
+                if (request.animation != "wave"_str) return None();
+                auto playback = Arc<owe::SceneAnimationPlayback>::make(
+                    Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {
+                        .name = String::make("wave"_str),
+                        .mode = String::make(request.single ? "single"_str : "loop"_str),
+                        .fps  = 30.0f,
+                        .end  = i32(30),
+                    }));
+                owner->RegisterAnimationLayer(playback.clone());
+                requests.push(rstd::move(request));
+                return Some(rstd::move(playback));
+            }),
+        JsRuntime::AnimationLayerDestroyer::make(
+            [&](owe::SceneNode* owner, const owe::SceneAnimationPlayback& playback) {
+                destroyed += usize(1);
+                return owner->UnregisterAnimationLayer(playback);
+            }));
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            let single;
+            export function update() {
+                if (single) return 100 + thisLayer.getAnimationLayerCount();
+                const made = thisLayer.createAnimationLayer('wave');
+                const missing = thisLayer.createAnimationLayer('missing');
+                thisLayer.createAnimationLayer({ animation: 'wave', rate: 2, blend: 0.5, visible: false });
+                const count = thisLayer.getAnimationLayerCount();
+                const removed = thisLayer.destroyAnimationLayer(made);
+                const again = thisLayer.destroyAnimationLayer(made);
+                single = thisLayer.playSingleAnimation('wave');
+                const read = [made !== undefined, missing === undefined, count, removed, again,
+                              thisLayer.getAnimationLayerCount()].join(' ');
+                return read === 'true true 2 true false 2' ? 1 : 0;
+            }
+        )JS"_str,
+        "test/animation_layer_create"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+    rt.TickAll();
+    EXPECT_EQ(LastScalar(fs), 1.0);
+    ASSERT_EQ(requests.len(), usize(3));
+    EXPECT_FALSE(requests[usize(0)].single);
+    EXPECT_DOUBLE_EQ(requests[usize(1)].rate, 2.0);
+    EXPECT_DOUBLE_EQ(requests[usize(1)].blend, 0.5);
+    EXPECT_FALSE(requests[usize(1)].visible);
+    EXPECT_TRUE(requests[usize(2)].single);
+
+    // the single play's layer goes when it gets to its end
+    auto single = node.AnimationLayer(usize(1));
+    ASSERT_TRUE(single.is_some());
+    Vec<owe::SceneAnimationEvent> events;
+    (*single)->Advance(0.0, events);
+    rt.TickAll();
+    EXPECT_EQ(LastScalar(fs), 102.0);
+    (*single)->Advance(2.0, events);
+    rt.TickAll();
+    EXPECT_EQ(LastScalar(fs), 101.0);
+    EXPECT_EQ(destroyed, usize(3));
+}
+
 TEST(ScriptCursor, ClickRestartsNamedAnimationLayer) {
     owe::SceneNode node;
     node.SetTranslate({ 500.0f, 500.0f, 0.0f });

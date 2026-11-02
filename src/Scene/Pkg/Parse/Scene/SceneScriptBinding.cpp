@@ -234,6 +234,39 @@ script::ScriptScene& EnsureScriptScene(SceneParseContext& context) {
                         Eigen::Vector3f t     = (world * *bone).translation();
                         return Some(script::BoneTranslation { t.x(), t.y(), t.z() });
                     }));
+        (*context.script_scene)
+            ->runtime()
+            .SetAnimationLayerResolvers(
+                script::JsRuntime::AnimationLayerCreator::make(
+                    [layers = layers.clone()](SceneNode*                               node,
+                                              script::JsRuntime::AnimationLayerRequest request)
+                        -> Option<Arc<SceneAnimationPlayback>> {
+                        auto layer = LookupPuppetLayer(layers, node);
+                        if (layer.is_none()) return None();
+                        auto id = request.animation_id.is_some()
+                                      ? request.animation_id
+                                      : (*layer)->AnimationIdNamed(request.animation.as_str());
+                        if (id.is_none()) return None();
+                        auto playback = (*layer)->AddAnimationLayer(
+                            PuppetLayer::AnimationLayer {
+                                .id       = *id,
+                                .rate     = request.rate,
+                                .blend    = request.blend,
+                                .visible  = request.visible,
+                                .name     = rstd::move(request.name),
+                                .additive = request.additive,
+                            },
+                            request.single);
+                        if (playback.is_some()) node->RegisterAnimationLayer((*playback).clone());
+                        return playback;
+                    }),
+                script::JsRuntime::AnimationLayerDestroyer::make(
+                    [layers = layers.clone()](SceneNode*                    node,
+                                              const SceneAnimationPlayback& playback) {
+                        auto layer = LookupPuppetLayer(layers, node);
+                        if (layer.is_some()) (void)(*layer)->RemoveAnimationLayer(playback);
+                        return node->UnregisterAnimationLayer(playback);
+                    }));
         if (context.user_properties.is_some())
             (*context.user_properties)->iter().for_each([&](auto entry) {
                 auto [entry_key, entry_value] = entry;
