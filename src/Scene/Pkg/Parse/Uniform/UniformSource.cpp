@@ -550,6 +550,15 @@ auto TransformUniformSource::Evaluate(ref<dyn<UniformUpdateContext>> context,
         const Vector3f position = camera.GetPosition(render_view).cast<float>();
         writer.Write(Output::EyePosition,
                      array<float, 3> { position.x(), position.y(), position.z() });
+    } else {
+        // an orthographic pass (an effect's, a 2D layer's) sees the scene camera's eye, as in
+        // Wallpaper Engine. A 2D scene's is 2000 in front of its middle (measured with the clock
+        // probe), where owe's orthographic camera sits at depth 0
+        auto&    scene_camera = *active_camera_ref;
+        Vector3f position     = scene_camera.GetPosition(render_view).cast<float>();
+        if (! scene_camera.IsPerspective()) position.z() += 2000.0f;
+        writer.Write(Output::EyePosition,
+                     array<float, 3> { position.x(), position.y(), position.z() });
     }
 
     if (req_m || req_normal_model || req_am || req_mvp || req_mi || req_mvpi || req_effect_model ||
