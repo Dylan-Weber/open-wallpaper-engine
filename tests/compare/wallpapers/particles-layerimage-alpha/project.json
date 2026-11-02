@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test layerimage emission and the layer's opacity, and textures",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}

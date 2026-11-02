@@ -251,8 +251,11 @@ struct ColorRandomProgram {
             auto raw   = component.to_primitive();
             value[raw] = static_cast<float>(algorism::lerp(random, min[component], max[component]));
         }
-        columns.colors[request.slot.index]         = value;
-        columns.initial_colors[request.slot.index] = value;
+        // times the colour the emitter gave (a layer image's pixels; white for the others), not instead of it
+        const Eigen::Vector3f base                 = columns.colors[request.slot.index];
+        const Eigen::Vector3f tinted               = base.cwiseProduct(value);
+        columns.colors[request.slot.index]         = tinted;
+        columns.initial_colors[request.slot.index] = tinted;
     }
 };
 
@@ -1509,9 +1512,9 @@ ParticleParser::GenOperator(const Json& wpj, ParticleInstanceModifiers modifiers
     return Box<dyn<particle::ParticleUpdateProgram>>::make(NoopUpdateOperator {});
 }
 
-Box<dyn<particle::ParticleEmitterProgram>> ParticleParser::GenEmitter(const wpscene::Emitter& wpe,
-                                                                      ParticleSubSystem& subsystem,
-                                                                      usize emitter_index) {
+Box<dyn<particle::ParticleEmitterProgram>>
+ParticleParser::GenEmitter(const wpscene::Emitter& wpe, ParticleSubSystem& subsystem,
+                           usize emitter_index, Option<Arc<LayerImageSource>> layer_image) {
     ParticleAudioResponse audio_response {
         .enable    = wpe.audioprocessingmode != u32(),
         .amount    = wpe.audioamount,
@@ -1535,6 +1538,17 @@ Box<dyn<particle::ParticleEmitterProgram>> ParticleParser::GenEmitter(const wpsc
         box.audio_response = audio_response;
         return Box<dyn<particle::ParticleEmitterProgram>>::make(
             BoxEmitterProgram(subsystem.SpawnPipeline(), rstd::move(box), emitter_index));
+    } else if (wpe.name == "layerimage"_str && layer_image.is_some()) {
+        ParticleLayerImageEmitterArgs image;
+        image.emit_speed     = wpe.rate;
+        image.one_per_frame  = wpe.flags[wpscene::Emitter::FlagEnum::one_per_frame];
+        image.instantaneous  = wpe.instantaneous;
+        image.duration       = wpe.duration;
+        image.controlpoint   = wpe.controlpoint;
+        image.audio_response = audio_response;
+        image.source         = rstd::move(layer_image);
+        return Box<dyn<particle::ParticleEmitterProgram>>::make(
+            LayerImageEmitterProgram(subsystem.SpawnPipeline(), rstd::move(image), emitter_index));
     } else if (wpe.name == "sphererandom"_str) {
         ParticleSphereEmitterArgs sphere;
         sphere.emit_speed     = wpe.rate;
