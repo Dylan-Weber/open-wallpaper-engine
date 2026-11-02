@@ -1634,3 +1634,78 @@ TEST(FullscreenImageParsing, OnlyPassthroughLayersAreElidable) {
 
     std::filesystem::remove_all(root);
 }
+
+// The same holds for a fullscreen layer whose effects are all turned off while it runs: only a
+// passthrough layer has nothing left to draw then.
+TEST(FullscreenImageParsing, OnlyPassthroughLayersSkipWithoutEffects) {
+    auto root = std::filesystem::temp_directory_path() /
+                ("owe-fullscreen-effects-" + std::to_string(rstd::process::id().to_primitive()));
+    std::filesystem::remove_all(root);
+    for (auto folder : { "models", "materials/effects", "effects/copy", "shaders/effects" })
+        std::filesystem::create_directories(root / folder);
+    std::ofstream(root / "models" / "sky.json")
+        << R"({"material": "materials/util/fullscreenlayer.json", "fullscreen": true})";
+    std::ofstream(root / "effects" / "copy" / "effect.json")
+        << R"({"version": 1, "name": "copy", "passes": [{"material": "materials/effects/copy.json"}]})";
+    std::ofstream(root / "materials" / "effects" / "copy.json") << R"({"passes": [{
+        "shader": "effects/copy", "blending": "normal", "cullmode": "nocull",
+        "depthtest": "disabled", "depthwrite": "disabled"}]})";
+    std::ofstream(root / "shaders" / "effects" / "copy.vert") << R"(
+uniform mat4 g_ModelViewProjectionMatrix;
+attribute vec3 a_Position;
+attribute vec2 a_TexCoord;
+varying vec2 v_TexCoord;
+void main() {
+    gl_Position = mul(vec4(a_Position, 1.0), g_ModelViewProjectionMatrix);
+    v_TexCoord = a_TexCoord;
+})";
+    std::ofstream(root / "shaders" / "effects" / "copy.frag") << R"(
+varying vec2 v_TexCoord;
+uniform sampler2D g_Texture0; // {"hidden":true}
+void main() { gl_FragColor = texSample2D(g_Texture0, v_TexCoord); })";
+
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {},
+            "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+            "objects": [
+                {"id": 1, "name": "Passthrough", "image": "models/util/fullscreenlayer.json",
+                 "visible": true, "effects": [{"file": "effects/copy/effect.json", "visible": true}]},
+                {"id": 2, "name": "Sky", "image": "models/sky.json", "visible": true,
+                 "effects": [{"file": "effects/copy/effect.json", "visible": true}]}
+            ]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    auto own =
+        owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(root.string()).unwrap()));
+    ASSERT_TRUE(own.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, std::move(assets).unwrap_unchecked()).is_ok());
+    ASSERT_TRUE(vfs.mount("/assets"_str, std::move(own).unwrap_unchecked()).is_ok());
+
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "fullscreen-effects"_str,
+        rstd::ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        rstd::mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        rstd::mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+
+    auto* passthrough = scene.scene->RootMut()->FindByName("Passthrough"_str);
+    auto* sky         = scene.scene->RootMut()->FindByName("Sky"_str);
+    ASSERT_NE(passthrough, nullptr);
+    ASSERT_NE(sky, nullptr);
+    ASSERT_TRUE(passthrough->HasLayer());
+    ASSERT_TRUE(sky->HasLayer());
+    EXPECT_TRUE(passthrough->Layer()->SkipWhenNoRuntimeEffect());
+    EXPECT_FALSE(sky->Layer()->SkipWhenNoRuntimeEffect());
+
+    std::filesystem::remove_all(root);
+}
