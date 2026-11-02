@@ -561,18 +561,34 @@ struct TextLayouter::Impl {
         Vec<Quad>         quads;
         TextLayoutMetrics measured;
         const auto        bounds = output.typographic_bounds();
-        // Wrapped text is as wide as its widest line (as in Wallpaper Engine), not its
-        // wrap width; its lines keep their alignment within that width.
-        float line_left {};
+        // Wallpaper Engine places text by its ink, not its advances: a line spans from its pen,
+        // or from ink that hangs left of it, to its ink's right edge; lines align against the
+        // widest span, and ink left of a pen moves every line right by that much. Wrapped text
+        // is no wider than its lines either.
+        const auto span = [](const vectext::TextLine& line) -> array<float, 2> {
+            if (line.ink.width == 0) return { 0.0f, 0.0f };
+            const float left = float(line.ink.x - line.logical.x);
+            return { left, left + float(line.ink.width) };
+        };
+        Vec<float> line_pen; // where each line's pen starts, from the text's left edge
         measured.text_width = float(bounds.width);
-        if (request.width.is_some() && ! output.lines().is_empty()) {
-            float line_right {};
-            line_left = float(output.lines()[usize()].logical.x);
+        if (! output.lines().is_empty()) {
+            float hang {}, ink_right {}, widest {};
             for (auto& line : output.lines()) {
-                line_left  = rstd::cmp::min(line_left, float(line.logical.x));
-                line_right = rstd::cmp::max(line_right, float(line.logical.x + line.logical.width));
+                const auto [left, right] = span(line);
+                hang                     = rstd::cmp::min(hang, left);
+                ink_right                = rstd::cmp::max(ink_right, right);
+                widest = rstd::cmp::max(widest, right - rstd::cmp::min(left, 0.0f));
             }
-            measured.text_width = rstd::cmp::max(line_right - line_left, 0.0f);
+            const float share = request.alignment == vectext::TextAlignment::Center  ? 0.5f
+                                : request.alignment == vectext::TextAlignment::Right ? 1.0f
+                                                                                     : 0.0f;
+            for (auto& line : output.lines()) {
+                const auto [left, right] = span(line);
+                line_pen.push(
+                    float(share * (widest - (right - rstd::cmp::min(left, 0.0f))) - hang));
+            }
+            measured.text_width = ink_right - hang;
         }
         measured.text_height     = float(bounds.height);
         measured.source_width    = measured.text_width;
@@ -600,8 +616,10 @@ struct TextLayouter::Impl {
             if (raster.is_err()) return Err(raster.unwrap_err());
             auto atlas = raster.unwrap();
             if (! atlas.width || ! atlas.height) continue;
-            float left =
-                float(glyph.position.x + atlas.origin.x) - line_left - measured.text_width / 2;
+            const auto& line = output.lines()[usize(glyph.line)];
+            float       left = line_pen[usize(glyph.line)] +
+                               float(glyph.position.x - line.logical.x + atlas.origin.x) -
+                               measured.text_width / 2;
             float top =
                 measured.text_height / 2 - float(glyph.position.y - bounds.y + atlas.origin.y);
             float right  = left + float(atlas.width / atlas.scale),
