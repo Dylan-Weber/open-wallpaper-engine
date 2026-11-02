@@ -259,8 +259,10 @@ uniform vec4 g_LightsDirectionType[4];
 uniform vec4 g_LightsConeExponent[4];
 uniform float g_LightsCastShadow[4];
 #if LIGHTS_SHADOW_MAPPING
-uniform mat4 g_ViewportViewProjectionMatrices[6];
-uniform vec4 g_ShadowAtlasTransforms[3];
+// every shadowed light's views and their squares of the atlas; each light slot's first view
+uniform mat4 g_OweShadowViewProjections[24];
+uniform vec4 g_OweShadowAtlasTransforms[24];
+uniform vec4 g_OweLightsShadowView;
 #endif
 
 float3 PerformLighting_V1(float3 worldPos, float3 albedo, float3 normal, float3 viewVector,
@@ -278,16 +280,19 @@ float3 PerformLighting_V1(float3 worldPos, float3 albedo, float3 normal, float3 
         if (type < -0.5 || dot(color, color) <= 0.0)
             continue;
 
+#if LIGHTS_SHADOW_MAPPING
+        int shadowView = int(g_OweLightsShadowView[i] + 0.5);
+#endif
         if (type > 1.5) {
 #if LIGHTS_SHADOW_MAPPING
-            if (g_LightsCastShadow[i] > 0.5) {
+            if (g_OweLightsShadowView[i] > -0.5) {
                 float selectedCascade = 0.0;
                 for (int cascade = 0; cascade < 3; ++cascade) {
                     float4 projected = CalculateProjectedCoordsCascades(
-                        worldPos, g_ViewportViewProjectionMatrices[cascade]);
+                        worldPos, g_OweShadowViewProjections[shadowView + cascade]);
                     float active = (1.0 - projected.w) * (1.0 - selectedCascade);
                     float sampled = PerformShadowMapping(
-                        projected.xyz, g_ShadowAtlasTransforms[cascade]);
+                        projected.xyz, g_OweShadowAtlasTransforms[shadowView + cascade]);
                     shadowFactor = lerp(shadowFactor, sampled, active);
                     selectedCascade = saturate(selectedCascade + active);
                 }
@@ -528,6 +533,27 @@ inline String NormalizePackedAudioSpectrumAccess(ref<str> src) {
 
     if (! changed) return String::make(src);
     out.push_str(*src.get(copied, src.size()));
+    return out;
+}
+
+// Wallpaper Engine's shadow casters draw one instance a view, reading
+// `g_ViewportViewProjectionMatrices[gl_InstanceID]`. owe keeps every shadowed
+// light's views in one longer list and gives each light's caster material its
+// first view (the OWE_SHADOW_VIEW_OFFSET combo).
+inline String StartCasterViewsAtTheirLight(ref<str> src) {
+    constexpr ref<str> stock = "g_ViewportViewProjectionMatrices[gl_InstanceID]"_str;
+    if (! src.contains(stock)) return String::make(src);
+    auto out  = String::make("uniform mat4 g_OweShadowViewProjections[24];\n"
+                             "#ifndef OWE_SHADOW_VIEW_OFFSET\n"
+                             "#define OWE_SHADOW_VIEW_OFFSET 0\n"
+                             "#endif\n"_str);
+    auto rest = src;
+    for (auto pos = rest.find(stock); pos.is_some(); pos = rest.find(stock)) {
+        out.push_str(*rest.get(usize(), *pos));
+        out.push_str("g_OweShadowViewProjections[gl_InstanceID + OWE_SHADOW_VIEW_OFFSET]"_str);
+        rest = *rest.get(*pos + stock.len(), rest.len());
+    }
+    out.push_str(rest);
     return out;
 }
 
@@ -1890,7 +1916,7 @@ constexpr array<rstd::uint8_t, 8> kShaderCacheMagic { rstd::uint8_t('O'), rstd::
                                                       rstd::uint8_t('P'), rstd::uint8_t('V'),
                                                       rstd::uint8_t('3'), rstd::uint8_t(0) };
 constexpr rstd::uint32_t          kShaderCacheFormatVersion = 3;
-constexpr rstd::uint32_t          kShaderCacheAbiVersion    = 19;
+constexpr rstd::uint32_t          kShaderCacheAbiVersion    = 21;
 // 8-byte magic, six u32 fields, and four SHA-1 digests total 112 bytes.
 constexpr rstd::uint32_t kShaderCacheHeaderSize = static_cast<rstd::uint32_t>(
     kShaderCacheMagic.len().to_primitive() + 6 * sizeof(rstd::uint32_t) +
@@ -2596,7 +2622,8 @@ String ShaderParser::PreShaderHeader(ref<str> src, const Combos& combos, ShaderT
     auto undefined        = UndefBeforeConflictingMacroDefines(compatible.as_str());
     auto normalized_audio = NormalizePackedAudioSpectrumAccess(undefined.as_str());
     auto normalized_mul   = NormalizeLeadingIntegerMulLiteral(normalized_audio.as_str());
-    auto user_src         = normalized_mul.as_str();
+    auto shadow_views     = StartCasterViewsAtTheirLight(normalized_mul.as_str());
+    auto user_src         = shadow_views.as_str();
 
     // All stages route through glslang's HLSL frontend.
     String pre;

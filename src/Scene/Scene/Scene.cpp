@@ -872,16 +872,21 @@ void RenderSceneSnapshot::Rebuild(Scene& scene, RenderSceneVersion version) {
                                                .submesh_index   = item.submesh_index,
                                                .output_override = output_override });
         auto view = index.resolve(item.id);
-        if (node == nullptr || ! node->shadow.cast || view.is_none() || view->material == nullptr ||
-            ! view->material->shadow_variant || m_shadow_definitions.is_empty()) {
+        if (node == nullptr || ! node->shadow.cast || view.is_none() || view->material == nullptr) {
             continue;
         }
-        m_shadow_casters.push(RenderShadowCasterRecord {
-            .render_item = id,
-            .material    = (*view->material->shadow_variant).clone(),
-            .instance_count =
-                rstd::as_cast<u32>(m_shadow_definitions.first().unwrap()->viewports.len()),
-        });
+        const auto& variants = view->material->shadow_variants;
+        for (usize definition {};
+             definition < rstd::cmp::min(variants.len(), m_shadow_definitions.len());
+             ++definition) {
+            m_shadow_casters.push(RenderShadowCasterRecord {
+                .render_item = id,
+                .material    = variants[definition].clone(),
+                .instance_count =
+                    rstd::as_cast<u32>(m_shadow_definitions[definition].viewports.len()),
+                .definition = definition,
+            });
+        }
     }
 
     auto linked_ids = m_linked_layer_ids.iter();

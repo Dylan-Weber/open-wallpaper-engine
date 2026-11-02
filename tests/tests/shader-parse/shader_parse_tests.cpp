@@ -1297,6 +1297,72 @@ void main() {
     EXPECT_TRUE(reflection.input_location_map.contains_key("a_Position"_str));
 }
 
+// Every shadowed light has its own views in one longer array; a caster drawn for a light starts
+// at that light's views (its material's OWE_SHADOW_VIEW_OFFSET combo).
+TEST(ShaderParser, PreShaderHeaderStartsCasterViewsAtTheirLight) {
+    const std::string out =
+        rstd::cppstd::to_string(owe::ShaderParser::PreShaderHeader(rstd::cppstd::as_str(
+                                                                       R"(
+in uint gl_InstanceID;
+uniform mat4 g_ViewportViewProjectionMatrices[6];
+void main() {
+    gl_Position = mul(vec4(a_Position, 1.0), g_ViewportViewProjectionMatrices[gl_InstanceID]);
+}
+)")
+                                                                       .unwrap(),
+                                                                   {},
+                                                                   owe::ShaderType::VERTEX)
+                                    .as_str());
+
+    EXPECT_EQ(out.find("g_ViewportViewProjectionMatrices[gl_InstanceID]"), std::string::npos);
+    EXPECT_NE(out.find("g_OweShadowViewProjections[gl_InstanceID + OWE_SHADOW_VIEW_OFFSET]"),
+              std::string::npos);
+    EXPECT_NE(out.find("uniform mat4 g_OweShadowViewProjections[24];"), std::string::npos);
+}
+
+TEST(ShaderParser, CasterViewsComeFromTheSharedShadowViews) {
+    owe::SceneShaderVariantDesc desc;
+    desc.scene_id    = "shadow-views-test"_Str;
+    desc.shader_name = "shadow-views-test"_Str;
+    (void)desc.resolved_combos.insert("OWE_SHADOW_VIEW_OFFSET"_Str, "3"_Str);
+    desc.stages.push(owe::SceneShaderVariantStage {
+        .stage      = owe::ShaderType::VERTEX,
+        .source_key = "/assets/shaders/shadow-views-test.vert"_Str,
+        .source     = R"(
+attribute vec3 a_Position;
+in uint gl_InstanceID;
+varying uint gl_ViewportIndex;
+uniform mat4 g_ViewportViewProjectionMatrices[6];
+void main() {
+    gl_Position = mul(vec4(a_Position, 1.0),
+                      g_ViewportViewProjectionMatrices[gl_InstanceID]);
+    gl_ViewportIndex = gl_InstanceID;
+}
+)"_Str,
+    });
+    desc.stages.push(owe::SceneShaderVariantStage {
+        .stage      = owe::ShaderType::FRAGMENT,
+        .source_key = "/assets/shaders/shadow-views-test.frag"_Str,
+        .source     = "void main() { gl_FragColor = vec4(1.0); }"_Str,
+    });
+
+    owe::fs::VFS vfs;
+    auto         compile = owe::ShaderParser::CompileSceneShaderVariant(desc, vfs);
+    ASSERT_TRUE(compile.ok) << compile.error;
+
+    Vec<owe::vulkan::Uni_ShaderSpv> spvs;
+    owe::vulkan::ShaderReflected    reflection;
+    ASSERT_TRUE(owe::vulkan::GenReflect((*compile.shader)->codes.as_slice(), spvs, reflection));
+    const auto global =
+        std::find_if(reflection.blocks.begin(), reflection.blocks.end(), [](const auto& block) {
+            return block.name.as_str() == "ww_LightingUniforms"_str;
+        });
+    ASSERT_NE(global, reflection.blocks.end());
+    const auto views = global->member_map.get("g_OweShadowViewProjections"_str);
+    ASSERT_TRUE(views.is_some());
+    EXPECT_EQ((**views).num, rstd::usize(24));
+}
+
 TEST(ShaderParser, FallsBackAsOneLegacyInterfaceOnGlobalTypeConflict) {
     owe::SceneShaderVariantDesc desc;
     desc.scene_id    = "global-uniform-conflict-test"_Str;
@@ -1712,7 +1778,7 @@ void main() {
                (static_cast<std::uint32_t>(header[offset + 3]) << 24);
     };
     EXPECT_EQ(read_u32(8), 3u);
-    EXPECT_EQ(read_u32(12), 19u);
+    EXPECT_EQ(read_u32(12), 21u);
     EXPECT_EQ(read_u32(16), 112u);
     EXPECT_EQ(read_u32(24), 2u);
     const auto initial_write_time = std::filesystem::last_write_time(artifact_path);

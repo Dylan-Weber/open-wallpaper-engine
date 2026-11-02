@@ -35,20 +35,27 @@ auto owe::SceneParser::Parse(ref<str> scene_id, ref<wpscene::SceneDocument> docu
         return ExpandSceneObjects(document, vfs, options.user_properties);
     }();
     auto objects = rstd::move(expanded.objects);
-    bool has_directional_shadow_light { false };
-    bool has_directional_shadow_caster { false };
+    // The lights that cast a shadow map: as many of each kind as the light config allows (owe
+    // draws one directional light's cascades).
+    const auto& config = metadata.general.lightconfig;
+    u32         directional_left { rstd::cmp::min(config.directionalshadow, u32(1)) };
+    auto        shadow_lights = Vec<SceneShadowLight>::make();
+    bool        has_shadow_caster { false };
     for (const auto& object : objects) {
         if (object.is_Light()) {
             const auto& light = object.as_Light().value;
-            has_directional_shadow_light =
-                has_directional_shadow_light ||
-                ((light.light == "directional"_str || light.light == "ldirectional"_str) &&
-                 light.castshadow);
+            if (! light.castshadow) continue;
+            if ((light.light == "directional"_str || light.light == "ldirectional"_str) &&
+                directional_left > u32()) {
+                --directional_left;
+                shadow_lights.push(
+                    SceneShadowLight { .id = light.id, .type = SceneLightType::Directional });
+            }
         } else if (object.is_Model()) {
-            has_directional_shadow_caster =
-                has_directional_shadow_caster || object.as_Model().value.castshadow;
+            has_shadow_caster = has_shadow_caster || object.as_Model().value.castshadow;
         }
     }
+    if (! options.capabilities.directional_shadow || ! has_shadow_caster) shadow_lights.clear();
 
     auto context_span = SceneLoadSpan(options.load_bench, &SceneLoadProbeIds::parse_context);
     auto context =
@@ -63,8 +70,7 @@ auto owe::SceneParser::Parse(ref<str> scene_id, ref<wpscene::SceneDocument> docu
                          .max_total_output_components =
                              options.capabilities.max_geometry_total_output_components,
                      },
-                     options.capabilities.directional_shadow && has_directional_shadow_light &&
-                         has_directional_shadow_caster,
+                     shadow_lights.as_slice(),
                      options.capabilities.geometry_shader_supported,
                      rstd::move(options.image_ready),
                      rstd::move(options.texture_memory));

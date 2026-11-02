@@ -39,6 +39,8 @@ public:
         float cascade_distances[3] { 0.0f, 0.0f, 0.0f };
         bool  cast_shadow { false };
         bool  cast_volumetrics { false };
+        // Its first view in the scene's list of shadow views (-1: it has no shadow map).
+        i32 shadow_view { i32(-1) };
     };
 
     explicit SceneLight(const Desc& d)
