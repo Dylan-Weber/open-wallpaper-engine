@@ -247,6 +247,9 @@ int main(int argc, char** argv) {
     config.graphviz        = args.graphviz;
     config.load_bench      = load_bench.clone();
     config.fps             = static_cast<uint32_t>(args.fps.to_primitive());
+    if (args.script_start.is_some()) config.script_start = args.script_start->to_primitive();
+    if (args.camera_path_delay.is_some())
+        config.camera_path_delay = args.camera_path_delay->to_primitive();
     if (args.random_seed.is_some()) {
         config.random_seed = Some(*args.random_seed);
     }
