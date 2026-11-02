@@ -328,7 +328,7 @@ Option<LayerImagePixelSet> LayerImagePixels(const TexImageParser& textures, ref<
 // rectangle (a solid layer's size; for another image the size of its texture, whose pixels are not read), colour and
 // opacity (particles-layerimage).
 Option<Arc<LayerImageSource>> BuildLayerImageSource(SceneParseContext& context, i32 id) {
-    auto node_ref = context.node_id_map.get(id);
+    auto node_ref = context.layer_build.node_id_map.get(id);
     auto config   = context.initial_layer_configs.get(id);
     if (node_ref.is_none() || (*node_ref)->node.is_none() || config.is_none()) return None();
     const Json&     json = **config;
@@ -339,7 +339,7 @@ Option<Arc<LayerImageSource>> BuildLayerImageSource(SceneParseContext& context, 
     owe::GetJsonValue(json, "color"_str, color, false);
     owe::GetJsonValue(json, "alpha"_str, alpha, false);
     Option<LayerImagePixelSet> texture_pixels;
-    if (! context.solid_layer_ids.contains(id)) {
+    if (! context.layer_resources->solid_layer_ids.contains(id)) {
         TexImageParser textures(context.vfs);
         String         model, material, texture;
         owe::GetJsonValue(json, "image"_str, model, false);
@@ -691,8 +691,12 @@ void BuildParticleObjectNode(ParticleObjectParseServices& services,
     if (child_data.controlpointstartindex.is_some())
         particleSub->SetParentControlpointStartIndex(*child_data.controlpointstartindex);
     Option<Arc<LayerImageSource>> layer_image;
-    if (! is_child && wppartobj.emitterimage_layer.is_some() && services.construction_context != nullptr)
-        layer_image = BuildLayerImageSource(*services.construction_context, *wppartobj.emitterimage_layer);
+    // the parser's context knows the scene's layers; a layer a script creates has none to emit from
+    if (! is_child && wppartobj.emitterimage_layer.is_some() &&
+        ! services.construction_context.runtime_created)
+        layer_image = BuildLayerImageSource(
+            static_cast<SceneParseContext&>(services.construction_context),
+            *wppartobj.emitterimage_layer);
     LoadEmitter(*particleSub, particle_obj, modifiers, layer_image);
     LoadInitializer(*particleSub, particle_obj, modifiers.Clone());
     LoadOperator(*particleSub, particle_obj, modifiers.Clone());
