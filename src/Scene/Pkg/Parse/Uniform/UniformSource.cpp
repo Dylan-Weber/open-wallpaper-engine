@@ -1026,6 +1026,46 @@ auto SpotMatrix(const SceneLight& light) -> Option<array<float, 16>> {
         values[value] = matrix.data()[value.to_primitive()];
     return Some(rstd::move(values));
 }
+
+// A point light's nearest and farthest shadow depths: from its size (at least kShadowNear) to its
+// radius.
+auto PointDepths(const SceneLight& light) -> array<double, 2> {
+    const double nearz = std::max(kShadowNear, static_cast<double>(light.desc().light_source_size));
+    const double farz  = std::max(static_cast<double>(light.radius()), nearz + 0.01);
+    return { nearz, farz };
+}
+
+// A point light's six views, +x -x, +y -y, +z -z, turned as the stock point lookup
+// (CalculateProjectedCoordsPoint) reads them. Medium shadows draw them 94 degrees wide, which the
+// lookup's 0.47 compensation (LIGHTS_SHADOW_MAPPING_QUALITY 2) undoes.
+auto PointMatrices(const SceneLight& light) -> Option<array<float, 96>> {
+    auto* node = light.node();
+    if (node == nullptr) return None();
+    node->UpdateTrans();
+    const Vector3d position = node->ModelTrans().block<3, 1>(0, 3);
+    // each face's sideways, upwards and backwards axes (it looks down its -z)
+    static const double faces[6][3][3] = {
+        { { 0, 0, 1 }, { 0, 1, 0 }, { -1, 0, 0 } },  { { 0, 0, -1 }, { 0, 1, 0 }, { 1, 0, 0 } },
+        { { 1, 0, 0 }, { 0, 0, 1 }, { 0, -1, 0 } },  { { 1, 0, 0 }, { 0, 0, -1 }, { 0, 1, 0 } },
+        { { -1, 0, 0 }, { 0, 1, 0 }, { 0, 0, -1 } }, { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } },
+    };
+    const auto     depths     = PointDepths(light);
+    const double   degree     = 3.14159265358979323846 / 180.0;
+    const Matrix4d projection = ShadowPerspective(94.0 * degree, depths[usize()], depths[usize(1)]);
+    array<float, 96> values {};
+    for (int face = 0; face < 6; ++face) {
+        Matrix4d view = Matrix4d::Identity();
+        for (int row = 0; row < 3; ++row) {
+            const Vector3d axis(faces[face][row][0], faces[face][row][1], faces[face][row][2]);
+            view.block<1, 3>(row, 0) = axis.transpose();
+            view(row, 3)             = -axis.dot(position);
+        }
+        const Eigen::Matrix4f matrix = (projection * view).cast<float>();
+        for (int value = 0; value < 16; ++value)
+            values[usize(face * 16 + value)] = matrix.data()[value];
+    }
+    return Some(rstd::move(values));
+}
 } // namespace
 
 auto ShadowUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
@@ -1041,6 +1081,7 @@ auto ShadowUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
     array<float, 96>      cascades {};
     array<float, 12>      cascade_atlas {};
     array<float, 4>       slots { -1.0f, -1.0f, -1.0f, -1.0f };
+    array<float, 16>      point_projections {};
     for (usize value {};
          value < rstd::cmp::min(kShadowViewCount * usize(4), m_atlas_transforms.len());
          ++value)
@@ -1057,6 +1098,23 @@ auto ShadowUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
         const auto  first = light.desc().shadow_view;
         if (first < i32() || ! light.runtimeVisible()) continue;
         const auto view = usize(rstd::as_cast<rstd::size_t>(first.to_primitive()));
+        if (light.type() == SceneLightType::Point) {
+            if (view + usize(6) > kShadowViewCount) continue;
+            auto matrices = PointMatrices(light);
+            if (matrices.is_none()) continue;
+            for (usize value {}; value < usize(96); ++value)
+                views[view * usize(16) + value] = (*matrices)[value];
+            // the lookup's projection: depth = (z * x + y) / (z * z' + w), nearer deeper
+            const auto   depths                = PointDepths(light);
+            const double nearz                 = depths[usize()];
+            const double farz                  = depths[usize(1)];
+            point_projections[slot * usize(4)] = static_cast<float>(nearz / (farz - nearz));
+            point_projections[slot * usize(4) + usize(1)] =
+                static_cast<float>(nearz * farz / (farz - nearz));
+            point_projections[slot * usize(4) + usize(2)] = -1.0f;
+            slots[slot] = static_cast<float>(first.to_primitive());
+            continue;
+        }
         if (light.type() == SceneLightType::Spot) {
             if (view >= kShadowViewCount) continue;
             auto matrix = SpotMatrix(light);
@@ -1091,6 +1149,7 @@ auto ShadowUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
             views.data(), u32(4), u32(4), kShadowViewCount, UniformMatrixStorage::ColumnMajor));
     writer.Write(Output::ViewAtlasTransforms, atlas);
     writer.Write(Output::LightViews, slots);
+    writer.Write(Output::PointProjections, point_projections);
     return writer.Finish();
 }
 

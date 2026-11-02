@@ -398,6 +398,19 @@ TEST(RenderGraphResources, PreservesFrameBoundaryTextureVersions) {
     }
 }
 
+// Casters keep the depth nearest the light (the greater: the atlas clears to 0), unclipped, moved
+// away from the light by its slope (Wallpaper Engine's bias of 4) and by a few steps of the depth:
+// a point light's -z face sees model-shadow-point's wall square on, where the slope is nothing
+// and the wall shadowed itself all over.
+TEST(SceneRenderGraph, ShadowCastersMoveTheirDepthAwayFromTheLight) {
+    const auto pipeline = owe::ShadowCasterPipeline({});
+    EXPECT_TRUE(pipeline.depth_clamp);
+    EXPECT_EQ(pipeline.depth_compare, owe::CompareOp::Greater);
+    EXPECT_TRUE(pipeline.depth_bias);
+    EXPECT_FLOAT_EQ(pipeline.depth_bias_slope, -4.0f);
+    EXPECT_FLOAT_EQ(pipeline.depth_bias_constant, -4.0f);
+}
+
 TEST(SceneRenderGraph, OrdersShadowAtlasWriterBeforeReceiver) {
     owe::Scene scene;
     scene.RegisterRenderTarget(String::make("_rt_default"_str),

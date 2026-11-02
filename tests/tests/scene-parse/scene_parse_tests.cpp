@@ -1322,6 +1322,76 @@ TEST(SceneShadowParsing, SpotLightsHaveTheFirstSquares) {
     EXPECT_EQ(lights[rstd::usize(2)]->desc().shadow_view, rstd::i32(-1));
 }
 
+// Point lights cast shadow maps too, as many as the light config's `pointshadow`: one square each,
+// after the spots' and the cascades', holding the six views (+x -x, +y -y, +z -z) in two columns
+// and three rows.
+TEST(SceneShadowParsing, PointLightsHaveSixFacesInTheirSquare) {
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {},
+            "general": {
+                "lightconfig": {"point": 1, "spot": 1, "pointshadow": 1, "spotshadow": 1},
+                "orthogonalprojection": {"width": 1920, "height": 1080}
+            },
+            "objects": [{
+                "id": 5, "name": "Point", "light": "lpoint", "castshadow": true,
+                "origin": [0.0, 0.0, 0.0], "angles": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0]
+            }, {
+                "id": 3, "name": "Spot", "light": "lspot", "castshadow": true,
+                "origin": [0.0, 0.0, 0.0], "angles": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0]
+            }, {
+                "id": 2, "name": "Caster", "model": "models/editor/camera/camera.mdl", "castshadow": true,
+                "origin": [0.0, 0.0, 0.0], "angles": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0]
+            }]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, std::move(assets).unwrap_unchecked()).is_ok());
+
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "shadow-point"_str,
+        rstd::ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        rstd::mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        rstd::mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)),
+        owe::SceneParseOptions {
+            .capabilities = { .directional_shadow = true },
+        });
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+    // two squares: the spot's, then the point's
+    auto atlas = scene.scene->RenderTarget("_rt_shadowAtlas"_str);
+    ASSERT_TRUE(atlas.is_some());
+    EXPECT_EQ((**atlas).width, rstd::i32(512));
+    EXPECT_EQ((**atlas).height, rstd::i32(256));
+    const auto definitions = scene.scene->ShadowDefinitions();
+    ASSERT_EQ(definitions.len(), rstd::usize(2));
+    EXPECT_EQ(definitions[rstd::usize()].light_id, rstd::i32(3));
+    const auto& point = definitions[rstd::usize(1)];
+    EXPECT_EQ(point.light_id, rstd::i32(5));
+    EXPECT_EQ(point.type, owe::SceneLightType::Point);
+    EXPECT_EQ(point.view_offset, rstd::u32(1));
+    ASSERT_EQ(point.viewports.len(), rstd::usize(6));
+    for (rstd::usize face {}; face < point.viewports.len(); ++face) {
+        const auto& viewport = point.viewports[face];
+        const int   index    = static_cast<int>(face.to_primitive());
+        EXPECT_EQ(viewport.scissor_x, rstd::i32(256 + (index % 2) * 128)) << index;
+        EXPECT_EQ(viewport.scissor_y, rstd::i32((index / 2) * 85)) << index;
+        EXPECT_EQ(viewport.scissor_width, rstd::u32(128));
+        EXPECT_EQ(viewport.scissor_height, rstd::u32(85));
+    }
+    auto lights = scene.scene->Lights();
+    ASSERT_EQ(lights.len(), rstd::usize(2));
+    EXPECT_EQ(lights[rstd::usize()]->desc().shadow_view, rstd::i32(1));
+    EXPECT_EQ(lights[rstd::usize(1)]->desc().shadow_view, rstd::i32());
+}
+
 TEST(ModelObjectJson, ReadsMaterialSkin) {
     auto parsed = owe::ParseJson(R"({"model":"models/prism.mdl","skin":2,"perspective":true})"_str);
     ASSERT_TRUE(parsed.is_ok());
