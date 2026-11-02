@@ -986,3 +986,53 @@ TEST(ParticleInstanceModifiers, CloneRetainsReadOnlyBindingsAfterSourceReplaceme
     ASSERT_TRUE(binding->animation.is_some());
     EXPECT_FLOAT_EQ(binding->animation->c0[usize()].value, 7.0f);
 }
+
+// maintaindistancebetweencontrolpoints (particles-maintain-between): a particle stays between control points 0 and 1
+// along the axis joining them (clamped to the nearer end), drifts a little towards control point 0 (about 1.1 % a
+// second), and keeps its sideways place.
+static Eigen::Vector3f KeepBetweenControlpoints(Eigen::Vector3f origin, int ticks = 1) {
+    owe::Scene             scene;
+    auto                   mesh = Arc<owe::SceneMesh>::make();
+    owe::ParticleSubSystem subsystem(scene,
+                                     mesh.clone(),
+                                     u32(1),
+                                     f64(1.0),
+                                     u32(1),
+                                     f64(1.0),
+                                     owe::ParticleSubSystem::SpawnType::STATIC,
+                                     owe::ParticleAnimationSpec {});
+    subsystem.ControlpointsMut()[usize(1)].base_offset = Eigen::Vector3d { 200.0, 0.0, 0.0 };
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(1)));
+    subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+        owe::BoxEmitterProgram(subsystem.SpawnPipeline(),
+                               owe::ParticleBoxEmitterArgs {
+                                   .origin        = { origin.x(), origin.y(), origin.z() },
+                                   .instantaneous = u32(1),
+                               },
+                               usize())));
+    owe::ParticleInstanceModifiers modifiers(Arc<owe::wpscene::ParticleInstanceoverride>::make(),
+                                             owe::wpscene::Particle::EFlags { 0 },
+                                             false);
+    subsystem.AddOperator(owe::ParticleParser::GenOperator(
+        owe::ParseJson(R"({"name":"maintaindistancebetweencontrolpoints"})"_str).unwrap(), modifiers.Clone(),
+        subsystem, usize()));
+    subsystem.Finalize();
+    for (int tick = 0; tick < ticks; ++tick) subsystem.Tick(f64(1.0 / 60.0), false);
+    auto&                        storage = subsystem.System().Instance(usize()).Storage();
+    particle::ParticleSlotReader value(storage, particle::ParticleSlot {});
+    return value.Read(subsystem.Attributes().position);
+}
+
+TEST(ParticleSubSystem, MaintainDistanceBetweenControlpointsClampsAlongTheAxis) {
+    EXPECT_NEAR(KeepBetweenControlpoints({ 260, 100, 0 }).x(), 200.0f, 0.1f); // past control point 1
+    EXPECT_NEAR(KeepBetweenControlpoints({ -50, 100, 0 }).x(), 0.0f, 0.1f);   // behind control point 0
+    EXPECT_NEAR(KeepBetweenControlpoints({ 100, 100, 0 }).x(), 100.0f, 0.1f); // between: left (barely drifting)
+    EXPECT_NEAR(KeepBetweenControlpoints({ 100, 100, 0 }).y(), 100.0f, 1e-4f); // sideways place kept
+}
+
+TEST(ParticleSubSystem, MaintainDistanceBetweenControlpointsDriftsTowardsTheFirst) {
+    // 1.08 % a second: after 6 s at 60 ticks a second, 100 becomes about 93.7
+    auto after = KeepBetweenControlpoints({ 100, 0, 0 }, 360);
+    EXPECT_NEAR(after.x(), 100.0f * 0.93733f, 0.2f);
+}
