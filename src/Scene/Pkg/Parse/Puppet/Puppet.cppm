@@ -283,6 +283,8 @@ public:
     auto AnimationPlayback(i32 layer_id) const -> Option<Arc<SceneAnimationPlayback>>;
     void SetAnimationVisible(i32 layer_id, bool visible);
     auto TextureChannelBlendMap(double time) noexcept -> slice<float>;
+    // Each blend shape's weight at `time` (its mesh's first), from the layers' weight curves.
+    auto MorphWeights(double time) noexcept -> Vec<float>;
 
     struct PartOrder {
         u32 bone;

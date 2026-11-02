@@ -83,6 +83,31 @@ TEST(Puppet, VisibilityChangesKeepTheSamePlayback) {
     EXPECT_FLOAT_EQ((*playback)->Sample().current, 0.5f);
 }
 
+// A blend shape's weight comes from the animation layers' weight curves (one per shape, a value per
+// frame), at their frame: an additive layer adds its value times its blend, the others move the
+// weight towards theirs by their blend.
+TEST(Puppet, BlendShapeWeightsFollowTheAnimationLayers) {
+    auto puppet = MakeReplacementPuppet();
+    for (auto& animation : puppet->anims) {
+        auto& event = animation.v4_events.emplace_back();
+        event.time  = 77.5f;
+        auto& curve = event.curves.emplace_back();
+        curve.id    = 0;
+        for (float value : { 0.0f, 1.0f }) curve.values.push(float(value));
+    }
+    owe::PuppetLayer                 layer(puppet.clone());
+    owe::PuppetLayer::AnimationLayer authored[] = {
+        { .id = 1, .blend = 0.5, .layer_id = 1, .additive = true },
+        { .id = 2, .blend = 0.5, .layer_id = 2 },
+    };
+    layer.prepared(slice<owe::PuppetLayer::AnimationLayer>::from_raw_parts(authored, usize(2)));
+    for (auto id : { 1, 2 }) (*layer.AnimationPlayback(i32(id)))->SetFrame(0.5f);
+    // additive: 0.5 x 0.5; then halfway to the second layer's 0.5
+    const auto weights = layer.MorphWeights(0.0);
+    ASSERT_EQ(weights.len(), usize(1));
+    EXPECT_FLOAT_EQ(weights[usize()], 0.375f);
+}
+
 TEST(Puppet, ReplacementLayersBlendSequentiallyFromReference) {
     auto puppet = MakeReplacementPuppet();
     for (bool reverse : { false, true }) {
@@ -1279,6 +1304,35 @@ TEST(MdlMesh, BlendShapesAreReadPerMesh) {
     EXPECT_EQ(shape.offsets[usize(1)][usize(2)], 32767);
     ASSERT_EQ(shape.alpha.len(), usize(2));
     EXPECT_EQ(shape.alpha[usize(1)], 16384);
+}
+
+// The shapes move the vertices whose morph index is set, by scale x weight x offset / 32767.
+TEST(MdlMesh, BlendShapesMoveTheirVertices) {
+    owe::Mdl::Mesh mesh;
+    for (float x : { 0.0f, 1.0f, 2.0f }) mesh.positions.push(array<float, 3> { x, 0.0f, 0.0f });
+    for (float index : { 0.0f, 2.0f, 1.0f }) mesh.morph_indices.push(float(index));
+    mesh.morph_scale        = 10.0f;
+    mesh.morph_vertex_count = 2;
+    for (int shape = 0; shape < 2; ++shape) {
+        auto& entry = mesh.morph_shapes.emplace_back();
+        entry.offsets.push(
+            array<rstd::int16_t, 3> { rstd::int16_t(32767), rstd::int16_t(0), rstd::int16_t(0) });
+        entry.offsets.push(array<rstd::int16_t, 3> {
+            rstd::int16_t(0), rstd::int16_t(shape == 0 ? -32767 : 0), rstd::int16_t(0) });
+    }
+    auto morph = owe::MdlParser::MakeMorph(mesh, { 100.0f, 0.0f, 0.0f });
+    ASSERT_TRUE(morph.is_some());
+    const float weights[] = { 0.5f, 0.25f };
+    const auto  moved =
+        owe::MdlParser::MorphPositions(**morph, slice<float>::from_raw_parts(weights, usize(2)));
+    ASSERT_EQ(moved.len(), usize(9));
+    EXPECT_FLOAT_EQ(moved[usize(0)], 100.0f); // not morphed
+    // index 2: the shapes' second offsets
+    EXPECT_FLOAT_EQ(moved[usize(3)], 101.0f);
+    EXPECT_FLOAT_EQ(moved[usize(4)], -5.0f);
+    // index 1: their first ones, 10 x (0.5 + 0.25)
+    EXPECT_FLOAT_EQ(moved[usize(6)], 109.5f);
+    EXPECT_FALSE(owe::MdlParser::MakeMorph(owe::Mdl::Mesh {}, {}).is_some());
 }
 
 TEST(MdlMesh, NativeMaterialPathsShareResolutionAndPreserveDefaults) {
