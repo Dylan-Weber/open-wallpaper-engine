@@ -760,6 +760,66 @@ TEST(ParticleSubSystem, AppliesVortexAroundWorldSpaceOwner) {
     EXPECT_GT(std::abs(positions[usize()].z()), 0.01f);
 }
 
+// reducemovementnearcontrolpoint slows particles near a control point like a drag: its full
+// reductioninner within distanceinner, falling to reductionouter at distanceouter by the squared
+// distance (particles-reduce-near: streams at 200 units/s through a control point, inner 50, outer
+// 150, reduction 1, 3 and 10; owe ignored the operator). A particle that stays within distanceinner
+// at reduction 10 goes 200/60 (1 - r^60) / (1 - r) = 23.3 units in a second of 60 frames,
+// r = 1 / (1 + 10/60).
+TEST(ParticleSubSystem, ReduceMovementNearControlPointSlowsLikeADrag) {
+    owe::Scene             scene;
+    auto                   mesh = Arc<owe::SceneMesh>::make();
+    owe::ParticleSubSystem subsystem(scene,
+                                     mesh.clone(),
+                                     u32(1),
+                                     f64(),
+                                     u32(1),
+                                     f64(1.0),
+                                     owe::ParticleSubSystem::SpawnType::STATIC,
+                                     owe::ParticleAnimationSpec {},
+                                     {},
+                                     u32(),
+                                     f64(),
+                                     f64(),
+                                     true);
+    auto owner    = rstd::sync::Arc<owe::SceneNode>::make(
+        Eigen::Vector3f::Zero(), Eigen::Vector3f::Ones(), Eigen::Vector3f::Zero());
+    auto override = rstd::sync::Arc<owe::wpscene::ParticleInstanceoverride>::make();
+    subsystem.SetOwnerNode(owner.as_ptr());
+    auto modifiers = owe::ParticleInstanceModifiers(
+        override.clone(), owe::wpscene::Particle::EFlags { 0 }, true);
+    subsystem.SetInstanceModifiers(modifiers.Clone());
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"lifetimerandom","min":1000,"max":1000})"_str).unwrap(), u32(1)));
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"velocityrandom","min":"200 0 0","max":"200 0 0"})"_str).unwrap(),
+        u32(2)));
+    subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+        owe::BoxEmitterProgram(subsystem.SpawnPipeline(),
+                               owe::ParticleBoxEmitterArgs {
+                                   .instantaneous = u32(1),
+                               },
+                               usize())));
+    subsystem.AddOperator(owe::ParticleParser::GenOperator(
+        owe::ParseJson(R"({"name":"movement","drag":0,"gravity":"0 0 0"})"_str).unwrap(),
+        modifiers.Clone(),
+        subsystem,
+        usize()));
+    subsystem.AddOperator(owe::ParticleParser::GenOperator(
+        owe::ParseJson(
+            R"({"name":"reducemovementnearcontrolpoint","controlpoint":0,"distanceinner":50,"distanceouter":150,"reductioninner":10,"reductionouter":0})"_str)
+            .unwrap(),
+        modifiers.Clone(),
+        subsystem,
+        usize(1)));
+    subsystem.Finalize();
+    for (int frame = 0; frame < 60; ++frame) subsystem.Tick(f64(1.0 / 60.0), false);
+
+    auto positions = subsystem.System().Instance(usize()).Binding().Read().Positions();
+    ASSERT_EQ(positions.len(), usize(1));
+    EXPECT_NEAR(positions[usize()].x(), 23.33f, 0.5f);
+}
+
 TEST(ParticleSubSystem, AppliesTurbulenceMaskAsAxisWeights) {
     auto simulate = [](ref<str> config) -> Eigen::Vector3f {
         owe::Scene             scene;
