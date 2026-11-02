@@ -33,8 +33,12 @@ array<i32, 2> TextLayerExtent(const text::TextGeometry& geometry) {
     };
 }
 
+// Wallpaper Engine's em is 4 scene units a point; its letters are drawn 25/24 of that
+// (measured: an H of 20 to 200 points is 4.2% taller than at 4 units a point).
+constexpr float kUnitsPerPoint = 4.0f;
+
 rstd::uint32_t TextPointSizeToPx(float point_size) {
-    constexpr float kPointsizeToPx = 4.0f;
+    constexpr float kPointsizeToPx = kUnitsPerPoint * 25.0f / 24.0f;
     if (! f32(point_size).is_finite() || point_size <= 0.0f) return 1;
     auto px = static_cast<rstd::uint32_t>(f32(point_size * kPointsizeToPx).round().to_primitive());
     return rstd::cmp::min<rstd::uint32_t>(1024, rstd::cmp::max<rstd::uint32_t>(1, px));
@@ -846,8 +850,10 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
     }
 
     auto layer_hold        = layer_node.clone();
-    auto apply_text_anchor = Arc<dyn<Fn<void()>>>::make(
-        [layer_hold = layer_hold.clone(), anchor_state = anchor_state.clone()]() {
+    auto apply_text_anchor =
+        Arc<dyn<Fn<void()>>>::make([layer_hold         = layer_hold.clone(),
+                                    anchor_state       = anchor_state.clone(),
+                                    current_point_size = current_point_size.clone()]() {
             auto*    layer_ptr = layer_hold.as_ptr().as_raw_ptr();
             Vector3d offset    = Vector3d::Zero();
             if (anchor_state->horizontal.as_str().contains("left"_str))
@@ -858,6 +864,10 @@ void ParseTextObjImpl(SceneParseContext& context, wpscene::TextObject& obj) {
                 offset.y() -= anchor_state->height * 0.5;
             if (anchor_state->vertical.as_str().contains("bottom"_str))
                 offset.y() += anchor_state->height * 0.5;
+            // Vertically centred text sits 0.11 em below its origin (measured: text-size).
+            if (! anchor_state->vertical.as_str().contains("top"_str) &&
+                ! anchor_state->vertical.as_str().contains("bottom"_str))
+                offset.y() -= 0.11 * kUnitsPerPoint * *current_point_size;
             // Alignment moves the text geometry, not the frame inherited by children.
             layer_ptr->SetGeometryTransform(Eigen::Affine3d(Eigen::Translation3d(offset)).matrix());
         });
