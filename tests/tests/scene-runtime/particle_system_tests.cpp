@@ -986,3 +986,29 @@ TEST(ParticleInstanceModifiers, CloneRetainsReadOnlyBindingsAfterSourceReplaceme
     ASSERT_TRUE(binding->animation.is_some());
     EXPECT_FLOAT_EQ(binding->animation->c0[usize()].value, 7.0f);
 }
+
+// A rotationrandom given as numbers turns sprites in their plane only, as a vector's z
+// (particles-sprite: -0.35 tilts the sprite in Wallpaper Engine; on every axis it foreshortened
+// it).
+TEST(ParticleInitializers, RotationRandomNumbersTurnInThePlane) {
+    auto numbers = owe::ReadRotationRandom(
+        owe::ParseJson(R"({"name":"rotationrandom","min":-0.35,"max":0.5})"_str).unwrap());
+    EXPECT_FLOAT_EQ(numbers.min[usize(0)], 0.0f);
+    EXPECT_FLOAT_EQ(numbers.min[usize(1)], 0.0f);
+    EXPECT_FLOAT_EQ(numbers.min[usize(2)], -0.35f);
+    EXPECT_FLOAT_EQ(numbers.max[usize(0)], 0.0f);
+    EXPECT_FLOAT_EQ(numbers.max[usize(1)], 0.0f);
+    EXPECT_FLOAT_EQ(numbers.max[usize(2)], 0.5f);
+
+    auto vectors = owe::ReadRotationRandom(
+        owe::ParseJson(R"({"name":"rotationrandom","min":"0.1 0.2 0.3","max":"0.4 0.5 0.6"})"_str)
+            .unwrap());
+    EXPECT_FLOAT_EQ(vectors.min[usize(0)], 0.1f);
+    EXPECT_FLOAT_EQ(vectors.max[usize(2)], 0.6f);
+
+    // without a range, any turn in the plane
+    auto defaults =
+        owe::ReadRotationRandom(owe::ParseJson(R"({"name":"rotationrandom"})"_str).unwrap());
+    EXPECT_FLOAT_EQ(defaults.min[usize(2)], 0.0f);
+    EXPECT_GT(defaults.max[usize(2)], 6.28f);
+}
