@@ -266,6 +266,16 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
         auto texture = context.scene->Texture(material.textures[usize()].as_str());
         point_source = texture.is_some() && (**texture).sample.magFilter == TextureFilter::NEAREST;
     }
+    // The first pass of the layer's effects reads the layer's image in Wallpaper Engine, so it
+    // sees that texture's resolution: its size padded to a multiple of 4, the picture's in zw.
+    Option<SceneMaterialTextureMetadata> image_texture_metadata;
+    if (! material.texture_metadata.is_empty() && material.texture_metadata[usize()].has_extent) {
+        auto metadata = material.texture_metadata[usize()];
+        for (usize axis {}; axis < usize(2); ++axis)
+            metadata.source_extent[axis] =
+                4.0f * f32(metadata.source_extent[axis] / 4.0f).ceil().to_primitive();
+        image_texture_metadata = Some(metadata);
+    }
 
     // mesh
     auto      geometry_span = SceneLoadSpan(context.load_bench, &SceneLoadProbeIds::image_geometry);
@@ -696,6 +706,7 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
         const bool allow_transparent_previous_final = ! solid_composite_context;
         const bool passthrough_can_composite_final =
             isPassthrough || ! parse_geometry.requires_source_draw;
+        bool first_effect_pass = true;
         for (const auto& wpeffobj : wpimgobj.effects) {
             Arc<SceneImageEffect> imgEffect = Arc<SceneImageEffect>::make();
             imgEffect->name                 = rstd::into(wpeffobj.name.as_str());
@@ -859,6 +870,11 @@ void ParseImageObjImpl(SceneParseContext& context, wpscene::ImageObject& img_obj
                 auto effect_build = rstd::move(effect_result).unwrap_unchecked();
                 material          = rstd::move(effect_build.material);
                 wpEffShaderInfo   = rstd::move(effect_build.shader_info);
+                if (first_effect_pass && image_texture_metadata.is_some() &&
+                    ! material.texture_metadata.is_empty() &&
+                    wpmat.textures[usize()].as_str() == inRT)
+                    material.texture_metadata[usize()] = *image_texture_metadata;
+                first_effect_pass = false;
 
                 // load glname from alias and load to constvalue
                 LoadConstvalue(

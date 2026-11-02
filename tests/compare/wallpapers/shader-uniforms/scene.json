@@ -1,0 +1,305 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0.15 0.15 0.15",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "probe 0",
+      "image": "models/rainbow.json",
+      "origin": "250 800 0",
+      "size": "320 200",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/probe/effect.json",
+          "id": 10,
+          "name": "probe",
+          "visible": true,
+          "passes": [
+            {
+              "id": 110,
+              "combos": {
+                "MODE": 0
+              },
+              "constantshadervalues": {
+                "float": 0.25,
+                "vec2": "0.5 0.25",
+                "vec3": "0 1 0",
+                "vec4": "1 0 1 0.5"
+              }
+            }
+          ]
+        }
+      ],
+      "id": 1,
+      "visible": true
+    },
+    {
+      "name": "probe fire 0",
+      "image": "models/fire.json",
+      "origin": "250 450 0",
+      "size": "320 200",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/probe/effect.json",
+          "id": 20,
+          "name": "probe",
+          "visible": true,
+          "passes": [
+            {
+              "id": 110,
+              "combos": {
+                "MODE": 0
+              },
+              "constantshadervalues": {
+                "float": 0.25,
+                "vec2": "0.5 0.25",
+                "vec3": "0 1 0",
+                "vec4": "1 0 1 0.5"
+              }
+            }
+          ]
+        }
+      ],
+      "id": 2,
+      "visible": true
+    },
+    {
+      "name": "probe 1",
+      "image": "models/rainbow.json",
+      "origin": "700 800 0",
+      "size": "320 200",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/probe/effect.json",
+          "id": 11,
+          "name": "probe",
+          "visible": true,
+          "passes": [
+            {
+              "id": 111,
+              "combos": {
+                "MODE": 1
+              },
+              "constantshadervalues": {
+                "float": 0.25,
+                "vec2": "0.5 0.25",
+                "vec3": "0 1 0",
+                "vec4": "1 0 1 0.5"
+              }
+            }
+          ]
+        }
+      ],
+      "id": 3,
+      "visible": true
+    },
+    {
+      "name": "probe fire 1",
+      "image": "models/fire.json",
+      "origin": "700 450 0",
+      "size": "320 200",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/probe/effect.json",
+          "id": 21,
+          "name": "probe",
+          "visible": true,
+          "passes": [
+            {
+              "id": 111,
+              "combos": {
+                "MODE": 1
+              },
+              "constantshadervalues": {
+                "float": 0.25,
+                "vec2": "0.5 0.25",
+                "vec3": "0 1 0",
+                "vec4": "1 0 1 0.5"
+              }
+            }
+          ]
+        }
+      ],
+      "id": 4,
+      "visible": true
+    },
+    {
+      "name": "probe 2",
+      "image": "models/rainbow.json",
+      "origin": "1150 800 0",
+      "size": "320 200",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/probe/effect.json",
+          "id": 12,
+          "name": "probe",
+          "visible": true,
+          "passes": [
+            {
+              "id": 112,
+              "combos": {
+                "MODE": 2
+              },
+              "constantshadervalues": {
+                "float": 0.25,
+                "vec2": "0.5 0.25",
+                "vec3": "0 1 0",
+                "vec4": "1 0 1 0.5"
+              }
+            }
+          ]
+        }
+      ],
+      "id": 5,
+      "visible": true
+    },
+    {
+      "name": "probe fire 2",
+      "image": "models/fire.json",
+      "origin": "1150 450 0",
+      "size": "320 200",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/probe/effect.json",
+          "id": 22,
+          "name": "probe",
+          "visible": true,
+          "passes": [
+            {
+              "id": 112,
+              "combos": {
+                "MODE": 2
+              },
+              "constantshadervalues": {
+                "float": 0.25,
+                "vec2": "0.5 0.25",
+                "vec3": "0 1 0",
+                "vec4": "1 0 1 0.5"
+              }
+            }
+          ]
+        }
+      ],
+      "id": 6,
+      "visible": true
+    },
+    {
+      "name": "probe 3",
+      "image": "models/rainbow.json",
+      "origin": "1600 800 0",
+      "size": "320 200",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/probe/effect.json",
+          "id": 13,
+          "name": "probe",
+          "visible": true,
+          "passes": [
+            {
+              "id": 113,
+              "combos": {
+                "MODE": 3
+              },
+              "constantshadervalues": {
+                "float": 0.25,
+                "vec2": "0.5 0.25",
+                "vec3": "0 1 0",
+                "vec4": "1 0 1 0.5"
+              }
+            }
+          ]
+        }
+      ],
+      "id": 7,
+      "visible": true
+    },
+    {
+      "name": "probe fire 3",
+      "image": "models/fire.json",
+      "origin": "1600 450 0",
+      "size": "320 200",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/probe/effect.json",
+          "id": 23,
+          "name": "probe",
+          "visible": true,
+          "passes": [
+            {
+              "id": 113,
+              "combos": {
+                "MODE": 3
+              },
+              "constantshadervalues": {
+                "float": 0.25,
+                "vec2": "0.5 0.25",
+                "vec3": "0 1 0",
+                "vec4": "1 0 1 0.5"
+              }
+            }
+          ]
+        }
+      ],
+      "id": 8,
+      "visible": true
+    }
+  ],
+  "version": 1
+}
