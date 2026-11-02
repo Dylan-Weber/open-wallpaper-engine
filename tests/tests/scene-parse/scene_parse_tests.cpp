@@ -1583,3 +1583,27 @@ TEST(SceneAssetPaths, ModelCameraAndClipRetainTheirReparseSemantics) {
     EXPECT_EQ(camera.path, "motion.json"_str);
     EXPECT_TRUE(clip.name.is_empty());
 }
+
+// A light without an exponent falls off as (1 - distance / radius) squared in Wallpaper Engine
+// (model-light-point, model-light-spot): its exponent is 2, an authored one is kept.
+TEST(LightParsing, LightsWithoutAnExponentFallOffSquared) {
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {}, "general": {},
+            "objects": [
+                {"id": 1, "name": "Default", "light": "lpoint", "radius": 30},
+                {"id": 2, "name": "Authored", "light": "lpoint", "radius": 30, "exponent": 3}
+            ]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    owe::fs::VFS vfs;
+    auto         decoded = owe::wpscene::DecodeSceneObjects(
+        rstd::ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        rstd::mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)));
+    ASSERT_EQ(decoded.len(), rstd::usize(2));
+    ASSERT_TRUE(decoded[rstd::usize(0)].is_Light());
+    ASSERT_TRUE(decoded[rstd::usize(1)].is_Light());
+    EXPECT_FLOAT_EQ(decoded[rstd::usize(0)].as_Light().value.exponent, 2.0f);
+    EXPECT_FLOAT_EQ(decoded[rstd::usize(1)].as_Light().value.exponent, 3.0f);
+}
