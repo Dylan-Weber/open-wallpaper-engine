@@ -517,8 +517,9 @@ TEST(LightUniformSource, PublishesWorldDirectionAndType) {
     EXPECT_NEAR(direction[usize(2)], 0.0f, 1e-5f);
     EXPECT_FLOAT_EQ(direction[usize(3)], static_cast<float>(owe::SceneLightType::Directional));
 
-    auto color = scene_test::Capture(frame, source, owe::LightUniformOutput::ColorRadius);
-    ASSERT_EQ(color.size(), usize(16));
+    // the newer kind of light's color is Lighting V1's (the old arrays have the old kind's only)
+    auto color = scene_test::Capture(frame, source, owe::LightUniformOutput::LightingV1ColorRadius);
+    ASSERT_EQ(color.size(), usize(32));
     EXPECT_FLOAT_EQ(color[usize()], 0.5f);
     EXPECT_FLOAT_EQ(color[usize(1)], 1.0f);
     EXPECT_FLOAT_EQ(color[usize(2)], 2.0f);
@@ -548,8 +549,110 @@ TEST(LightUniformSource, ATubeLightTakesTheTubeCount) {
     owe::SceneFrame         frame;
 
     auto color = scene_test::Capture(frame, source, owe::LightUniformOutput::LightingV1ColorRadius);
-    ASSERT_EQ(color.size(), usize(16));
+    ASSERT_EQ(color.size(), usize(32));
     EXPECT_FLOAT_EQ(color[usize()], 2.0f);
+}
+
+namespace
+{
+// `count` point lights by the origin and then a sun, as Ocarina of Time's courtyard lists its torches before its sun.
+struct PointsThenSun {
+    Vec<Arc<owe::SceneNode>>  nodes;
+    Vec<Box<owe::SceneLight>> lights;
+
+    explicit PointsThenSun(int count, bool sun_shadow = false) {
+        owe::SceneLight::Desc point;
+        point.type      = owe::SceneLightType::Point;
+        point.color     = { 0.0f, 0.0f, 1.0f };
+        point.intensity = 1.0f;
+        for (int index = 0; index < count; ++index) add(point);
+        owe::SceneLight::Desc sun;
+        sun.type        = owe::SceneLightType::Directional;
+        sun.color       = { 1.0f, 0.5f, 0.25f };
+        sun.intensity   = 2.0f;
+        sun.cast_shadow = sun_shadow;
+        if (sun_shadow) {
+            sun.cascade_distances[0] = 10.0f;
+            sun.shadow_view          = i32(0);
+        }
+        add(sun);
+    }
+    void add(const owe::SceneLight::Desc& desc) {
+        nodes.push(Arc<owe::SceneNode>::make());
+        lights.push(Box<owe::SceneLight>::make(desc));
+        (*lights.last_mut().unwrap())->setNode(nodes.last_mut().unwrap()->as_ptr());
+    }
+    auto refs() {
+        auto out = Vec<ref<owe::SceneLight>>::make();
+        for (auto& light : lights) out.push(ref<owe::SceneLight>::from_raw_parts(light.as_ptr()));
+        return out;
+    }
+};
+} // namespace
+
+// Wallpaper Engine lights every light its light config counts through the newer interface, not the first four: four
+// point lights listed before a sun, with a config of four points and a directional, light with the sun too.
+TEST(LightUniformSource, LightingV1LightsEveryLightTheConfigCounts) {
+    PointsThenSun scene(4);
+    owe::LightKindLimits limits;
+    limits.point       = u32(4);
+    limits.directional = u32(1);
+    owe::LightUniformSource source(scene.refs(), Some(limits));
+    owe::SceneFrame         frame;
+
+    auto types = scene_test::Capture(frame, source, owe::LightUniformOutput::LightingV1DirectionType);
+    ASSERT_EQ(types.size(), usize(32));
+    for (usize slot {}; slot < usize(4); ++slot)
+        EXPECT_FLOAT_EQ(types[slot * usize(4) + usize(3)], 0.0f) << "slot " << slot.to_primitive();
+    EXPECT_FLOAT_EQ(types[usize(19)], 2.0f);
+    for (usize slot { 5 }; slot < usize(8); ++slot)
+        EXPECT_FLOAT_EQ(types[slot * usize(4) + usize(3)], -1.0f) << "slot " << slot.to_primitive();
+
+    auto color = scene_test::Capture(frame, source, owe::LightUniformOutput::LightingV1ColorRadius);
+    ASSERT_EQ(color.size(), usize(32));
+    EXPECT_FLOAT_EQ(color[usize(16)], 2.0f);
+    EXPECT_FLOAT_EQ(color[usize(17)], 1.0f);
+    EXPECT_FLOAT_EQ(color[usize(18)], 0.5f);
+    auto position = scene_test::Capture(frame, source, owe::LightUniformOutput::LightingV1Position);
+    ASSERT_EQ(position.size(), usize(24));
+}
+
+// A light the config has no more of its kind for takes no slot: the next light that fits takes it.
+TEST(LightUniformSource, LightingV1SlotsSkipLightsBeyondTheirKindsCount) {
+    PointsThenSun scene(3);
+    owe::LightKindLimits limits;
+    limits.point       = u32(2);
+    limits.directional = u32(1);
+    owe::LightUniformSource source(scene.refs(), Some(limits));
+    owe::SceneFrame         frame;
+
+    auto types = scene_test::Capture(frame, source, owe::LightUniformOutput::LightingV1DirectionType);
+    ASSERT_EQ(types.size(), usize(32));
+    EXPECT_FLOAT_EQ(types[usize(3)], 0.0f);
+    EXPECT_FLOAT_EQ(types[usize(7)], 0.0f);
+    EXPECT_FLOAT_EQ(types[usize(11)], 2.0f);
+    EXPECT_FLOAT_EQ(types[usize(15)], -1.0f);
+}
+
+// A light's shadow views sit in the slot it takes in the newer interface: the sun after four point lights, the fifth slot.
+TEST(ShadowUniformSource, ALightsViewsFollowItsLightingV1Slot) {
+    auto camera =
+        Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000.0, 50.0));
+    camera->SetLookAt(Eigen::Vector3d::Zero(), -Eigen::Vector3d::UnitZ(), Eigen::Vector3d::UnitY());
+    PointsThenSun scene(4, true);
+    owe::LightKindLimits limits;
+    limits.point       = u32(4);
+    limits.directional = u32(1);
+    auto transforms = Vec<float>::make();
+    for (int value = 0; value < 12; ++value) transforms.push(float(value) / 12.0f);
+    owe::ShadowUniformSource source(
+        rstd::move(camera), scene.refs(), rstd::move(transforms), owe::ShadowQuality::Medium, Some(limits));
+
+    owe::SceneFrame frame;
+    auto slots = scene_test::Capture(frame, source, owe::ShadowUniformOutput::LightViews);
+    ASSERT_EQ(slots.size(), usize(8));
+    for (usize slot {}; slot < usize(8); ++slot)
+        EXPECT_FLOAT_EQ(slots[slot], slot == usize(4) ? 0.0f : -1.0f) << "slot " << slot.to_primitive();
 }
 
 TEST(ShadowUniformSource, UsesAuthoredCascadeExtentAndLightObjectFrame) {
@@ -636,9 +739,9 @@ TEST(ShadowUniformSource, HiddenLightsLeaveTheirSlotsToTheOthers) {
 
     owe::SceneFrame frame;
     auto slots = scene_test::Capture(frame, source, owe::ShadowUniformOutput::LightViews);
-    ASSERT_EQ(slots.size(), usize(4));
+    ASSERT_EQ(slots.size(), usize(8));
     EXPECT_FLOAT_EQ(slots[usize()], 0.0f);
-    for (usize slot { 1 }; slot < usize(4); ++slot)
+    for (usize slot { 1 }; slot < usize(8); ++slot)
         EXPECT_FLOAT_EQ(slots[slot], -1.0f) << "slot " << slot.to_primitive();
 }
 
@@ -669,11 +772,10 @@ TEST(ShadowUniformSource, EachShadowedLightHasItsViews) {
 
     owe::SceneFrame frame;
     auto slots = scene_test::Capture(frame, source, owe::ShadowUniformOutput::LightViews);
-    ASSERT_EQ(slots.size(), usize(4));
+    ASSERT_EQ(slots.size(), usize(8));
     EXPECT_FLOAT_EQ(slots[usize()], -1.0f);
     EXPECT_FLOAT_EQ(slots[usize(1)], 2.0f);
-    EXPECT_FLOAT_EQ(slots[usize(2)], -1.0f);
-    EXPECT_FLOAT_EQ(slots[usize(3)], -1.0f);
+    for (usize slot { 2 }; slot < usize(8); ++slot) EXPECT_FLOAT_EQ(slots[slot], -1.0f);
 
     auto cascades =
         scene_test::Capture(frame, source, owe::ShadowUniformOutput::ViewProjectionMatrices);
@@ -782,7 +884,7 @@ TEST(ShadowUniformSource, PointLightSeesSixFacesFromItsSizeToRadius) {
     const float nearz = 0.2f, farz = 10.0f;
     auto        projections =
         scene_test::Capture(frame, source, owe::ShadowUniformOutput::PointProjections);
-    ASSERT_EQ(projections.size(), usize(16));
+    ASSERT_EQ(projections.size(), usize(32));
     EXPECT_NEAR(projections[usize()], nearz / (farz - nearz), 1e-6f);
     EXPECT_NEAR(projections[usize(1)], nearz * farz / (farz - nearz), 1e-6f);
     EXPECT_FLOAT_EQ(projections[usize(2)], -1.0f);

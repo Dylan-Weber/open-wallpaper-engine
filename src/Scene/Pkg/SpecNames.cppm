@@ -83,8 +83,13 @@ inline constexpr ref<str> G_LCR                = "g_LightsColorRadius"_str;
 inline constexpr ref<str> G_LIGHTDIRECTIONTYPE = "g_LightsDirectionType"_str;
 inline constexpr ref<str> G_LIGHTCONEEXPONENT  = "g_LightsConeExponent"_str;
 inline constexpr ref<str> G_LIGHTCASTSHADOW    = "g_LightsCastShadow"_str;
-// Lighting V1's light colors: every kind of light, where the old arrays have the old kind only.
-inline constexpr ref<str> G_LIGHTINGV1COLORRADIUS = "g_OweLightsColorRadius"_str;
+// Lighting V1's own light slots (kLightingV1Slots): every light the light config counts, where the old
+// arrays have the first four lights and the old kind's colors only.
+inline constexpr ref<str> G_LIGHTINGV1POSITION      = "g_OweLightsPosition"_str;
+inline constexpr ref<str> G_LIGHTINGV1COLORRADIUS   = "g_OweLightsColorRadius"_str;
+inline constexpr ref<str> G_LIGHTINGV1DIRECTIONTYPE = "g_OweLightsDirectionType"_str;
+inline constexpr ref<str> G_LIGHTINGV1CONEEXPONENT  = "g_OweLightsConeExponent"_str;
+inline constexpr ref<str> G_LIGHTINGV1CASTSHADOW    = "g_OweLightsCastShadow"_str;
 inline constexpr ref<str> G_LIGHTAMBIENTCOLOR  = "g_LightAmbientColor"_str;
 inline constexpr ref<str> G_LIGHTSKYLIGHTCOLOR = "g_LightSkylightColor"_str;
 inline constexpr ref<str> G_FOGDISTANCECOLOR   = "g_FogDistanceColor"_str;
