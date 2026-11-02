@@ -22,6 +22,13 @@ the spectrum (--audio-spectrum, for a wallpaper stamped with its bands), and the
 (--script-clock, TZ).
 A compare.json's "shadow_quality" (low, medium, high, ultra) is the Wallpaper Engine "shadows" setting its reference
 was taken at (--shadow-quality). A viewer without one of these options renders without it.
+A wallpaper can also have a series of references, reference-shot-01.png, reference-shot-02.png, ... (compare.json
+"shots": how many pictures vm/guest/capture.ps1 takes one after another, with "shot_interval_ms" between them, and
+"shot_wait" seconds more before the first): each is compared at the frame its own clock probe records, as the label
+"name#01" (name#NN alone compares one), so a wallpaper that moves over time (bone physics after an impulse) is
+followed picture by picture. The report adds a line for the series with the lowest, highest and mean ssim, and
+output-owe/series/NAME.csv has a row for each picture (shot, frame, ssim, mae, changed, regions) to chart.
+
 Video wallpapers are skipped (the viewer draws scenes), and so are those with an audio.wav whose bands weren't
 recorded: their bars follow a test sound the viewer does not hear.
 
@@ -47,6 +54,7 @@ import importlib.util
 import json
 import math
 import os
+import re
 import subprocess
 import sys
 
@@ -72,8 +80,74 @@ clock_probe = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(clock_probe)
 
 
+def folder_of(label):
+    """The wallpaper's folder of a label: a wallpaper's name, or "name#07" for the 7th picture of its series."""
+    return label.split('#')[0]
+
+
+def reference_of(label):
+    """The reference picture a label compares with: reference.png, or reference-shot-07.png for "name#07"."""
+    name, _, shot = label.partition('#')
+    return os.path.join(WALLPAPERS, name, 'reference-shot-%02d.png' % int(shot) if shot else 'reference.png')
+
+
+def shots_of(name):
+    """The numbers of a wallpaper's series of pictures (reference-shot-01.png, ...: Wallpaper Engine's pictures taken one
+    after another, to see how it changes), in order."""
+    folder = os.path.join(WALLPAPERS, name)
+    found = (re.fullmatch(r'reference-shot-(\d+)\.png', file) for file in os.listdir(folder)) \
+        if os.path.isdir(folder) else ()
+    return sorted(int(match.group(1)) for match in found if match)
+
+
+def labels_of(names):
+    """What to compare: each wallpaper's reference.png and then each picture of its series; a label "name#07" is that
+    picture alone."""
+    labels = []
+    for name in names:
+        if '#' in name:
+            labels.append(name)
+            continue
+        if os.path.exists(os.path.join(WALLPAPERS, name, 'reference.png')):
+            labels.append(name)
+        labels += ['%s#%02d' % (name, shot) for shot in shots_of(name)]
+    return labels
+
+
+def cached(cache, key, make):
+    """make()'s result, made once for each key: the pictures of a series often show the same frame (the screen is
+    copied faster than the wallpaper draws), and owe renders it once."""
+    if key not in cache:
+        cache[key] = make()
+    return cache[key]
+
+
+def series_rows(results, name):
+    """The series of the wallpaper `name` in `results` (label to metrics): a row for each picture, in order."""
+    rows = []
+    for label, metrics in results.items():
+        base, _, shot = label.partition('#')
+        if base != name or not shot or 'ssim' not in metrics:
+            continue
+        rows.append({'shot': int(shot), 'frame': metrics.get('probe', {}).get('reference'), 'ssim': metrics['ssim'],
+                     'mae': metrics['mae'], 'changed': metrics['changed'], 'regions': len(metrics['regions'])})
+    return sorted(rows, key=lambda row: row['shot'])
+
+
+def write_series(folder, name, rows):
+    """Writes the series' rows to folder/name.csv (to chart how owe follows Wallpaper Engine over time)."""
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, name + '.csv')
+    with open(path, 'w') as f:
+        f.write('shot,frame,ssim,mae,changed,regions\n')
+        for row in rows:
+            f.write('%d,%s,%.4f,%.2f,%.4f,%d\n' % (row['shot'], '' if row['frame'] is None else row['frame'],
+                                                   row['ssim'], row['mae'], row['changed'], row['regions']))
+    return path
+
+
 def settings_of(name):
-    path = os.path.join(WALLPAPERS, name, 'compare.json')
+    path = os.path.join(WALLPAPERS, folder_of(name), 'compare.json')
     if not os.path.exists(path):
         return {}
     with open(path) as f:
@@ -94,11 +168,11 @@ def probe_boxes(size, inputs=None, bands=(), mirrored=False):
 
 def skipped(name):
     """Why the wallpaper is left out, or None."""
-    with open(os.path.join(WALLPAPERS, name, 'project.json')) as f:
+    with open(os.path.join(WALLPAPERS, folder_of(name), 'project.json')) as f:
         kind = json.load(f).get('type', 'scene').lower()
     if kind != 'scene':
         return 'a %s wallpaper' % kind
-    if os.path.exists(os.path.join(WALLPAPERS, name, 'audio.wav')) and \
+    if os.path.exists(os.path.join(WALLPAPERS, folder_of(name), 'audio.wav')) and \
             not settings_of(name).get('probe_bands'):
         return 'its bars follow a test sound the viewer does not hear (stamp it to record the bands)'
     return None
@@ -153,7 +227,7 @@ def render(name, size, viewer, frames=None, script_start=0.0, camera_path_delay=
                         '--fps', '30', '--capture', frame, '--capture-frame', str(frames)] + (
                            ['--script-start', '%.4f' % script_start] if script_start > 0 else []) + (
                            ['--camera-path-delay', '%.4f' % camera_path_delay] if camera_path_delay > 0
-                           else []) + shadows + list(inputs) + [ASSETS, scene_package(os.path.join(WALLPAPERS, name))]
+                           else []) + shadows + list(inputs) + [ASSETS, scene_package(os.path.join(WALLPAPERS, folder_of(name)))]
     with open(os.path.join(out, 'viewer.log'), 'w') as log:
         subprocess.run(command, env=env, stdout=log, stderr=subprocess.STDOUT, check=False)
     if not os.path.exists(frame):
@@ -315,11 +389,12 @@ def main():
         if not has_capture(args.viewer):
             parser.error('%s has no --capture: build owe-sceneviewer (lito build -p owe-sceneviewer)' % args.viewer)
         print('viewer: %s' % args.viewer, flush=True)
-    names = args.wallpapers or sorted(
+    names = labels_of(args.wallpapers or sorted(
         n for n in (os.listdir(WALLPAPERS) if os.path.isdir(WALLPAPERS) else ())
-        if os.path.exists(os.path.join(WALLPAPERS, n, 'reference.png')))
+        if os.path.exists(os.path.join(WALLPAPERS, n, 'reference.png')) or shots_of(n)))
     results, counts = {}, {'ok': 0, 'near': 0, 'differ': 0, 'failed': 0, 'skipped': 0}
     help_text = '' if args.no_render else viewer_help(args.viewer)
+    rendered = {}
     for name in names:
         why = skipped(name)
         if why:
@@ -327,7 +402,7 @@ def main():
             counts['skipped'] += 1
             continue
         os.makedirs(os.path.join(OUTPUT, name), exist_ok=True)
-        reference = Image.open(os.path.join(WALLPAPERS, name, 'reference.png'))
+        reference = Image.open(reference_of(name))
         probe = settings_of(name).get('probe')
         bands = settings_of(name).get('probe_bands', ())
         frames, stamp, script_start = None, {}, 0.0
@@ -377,8 +452,9 @@ def main():
                         name, reference, args.viewer, frames, script_start, args.tolerance, input_args, input_env,
                         probe_boxes(reference.size, inputs, bands, settings_of(name).get('probe_mirrored', False)))
                     stamp['camera_path_delay'] = round(camera_path_delay * 30)
-                frame = render(name, reference.size, args.viewer, frames, script_start, camera_path_delay,
-                               input_args, input_env)
+                frame = cached(rendered, (folder_of(name), frames, script_start, camera_path_delay, tuple(input_args)),
+                               lambda: render(name, reference.size, args.viewer, frames, script_start,
+                                              camera_path_delay, input_args, input_env))
             owe = Image.open(frame)
             if owe.size != reference.size:
                 raise RuntimeError('sizes differ: reference %s, owe %s' % (reference.size, owe.size))
@@ -407,7 +483,7 @@ def main():
         # moved between the two takes' frames
         floor = None
         second = os.path.join(WALLPAPERS, name, 'reference-2.png')
-        if os.path.exists(second):
+        if '#' not in name and os.path.exists(second):
             other = Image.open(second)
             if other.size == reference.size:
                 floor = compare(reference, other, args.tolerance, masked)[0]
@@ -429,6 +505,13 @@ def main():
     os.makedirs(OUTPUT, exist_ok=True)
     with open(os.path.join(OUTPUT, 'report.json'), 'w') as f:
         json.dump(results, f, indent=2)
+    for name in sorted({folder_of(label) for label in results if '#' in label}):
+        rows = series_rows(results, name)
+        if rows:
+            path = write_series(os.path.join(OUTPUT, 'series'), name, rows)
+            print('series %-24s %d pictures, frames %s to %s, ssim %.4f to %.4f (mean %.4f): %s' % (
+                name, len(rows), rows[0]['frame'], rows[-1]['frame'], min(r['ssim'] for r in rows),
+                max(r['ssim'] for r in rows), sum(r['ssim'] for r in rows) / len(rows), path))
     print('\n%(ok)d ok, %(near)d near, %(differ)d differ, %(failed)d failed, %(skipped)d skipped' % counts)
     print('pictures and report.json: %s' % OUTPUT)
     return 0 if counts['differ'] == counts['failed'] == 0 else 1
