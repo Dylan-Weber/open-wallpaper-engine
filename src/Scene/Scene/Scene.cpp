@@ -1243,6 +1243,11 @@ void SceneNode::SetAlphaAnimation(SceneAnimationTrack track) {
                       m_base_alpha);
 }
 
+void SceneNode::SetColorAnimation(SceneAnimationTrack track) {
+    SetFieldAnimation(
+        "color"_Str, SceneNodeAnimationTarget::Color, rstd::move(track), m_base_color, 0.0f);
+}
+
 auto SceneNode::FieldAnimation(ref<str> field) const -> Option<Arc<SceneAnimationPlayback>> {
     return m_animations.ForProperty(field);
 }
@@ -1273,6 +1278,9 @@ void SceneNode::TickFieldAnimations(double runtime, Vec<SceneAnimationEventDispa
             break;
         case SceneNodeAnimationTarget::Alpha:
             SetUserAlpha(binding.track.EvaluateScalar(binding.scalar_base));
+            break;
+        case SceneNodeAnimationTarget::Color:
+            SetColor(binding.track.EvaluateVec3(binding.vector_base));
             break;
         }
     }
