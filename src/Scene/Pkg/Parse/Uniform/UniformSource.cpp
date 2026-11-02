@@ -784,12 +784,11 @@ auto AudioUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
 auto ColorUniformSource::Describe(mut_ref<dyn<UniformBindingSink>> sink) const
     -> Result<empty, UniformError> {
     using Output = ColorUniformOutput;
-    const array<BindingEntry<Output>, 5> entries {
-        BindingEntry<Output> { Output::UserAlpha, G_USERALPHA, UniformValueShape::Float(u32(1)) },
+    // g_UserAlpha and g_Brightness are material settings, not the layer's alpha and brightness.
+    const array<BindingEntry<Output>, 3> entries {
         BindingEntry<Output> { Output::Color4, G_COLOR4, UniformValueShape::Float(u32(4)) },
         BindingEntry<Output> { Output::Color, G_COLOR, UniformValueShape::Float(u32(3)) },
         BindingEntry<Output> { Output::Alpha, G_ALPHA, UniformValueShape::Float(u32(1)) },
-        BindingEntry<Output> { Output::Brightness, G_BRIGHTNESS, UniformValueShape::Float(u32(1)) },
     };
     return BindEntries(sink, entries);
 }
@@ -803,34 +802,26 @@ auto ColorUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
     -> Result<empty, UniformError> {
     using Output = ColorUniformOutput;
     UniformWriter writer(sink);
-    const auto&   node           = *m_node;
-    const bool    has_user_alpha = writer.Wants(Output::UserAlpha);
-    const bool    has_alpha      = writer.Wants(Output::Alpha);
-    const bool    has_color4     = writer.Wants(Output::Color4);
-    const bool    has_color      = writer.Wants(Output::Color);
-    auto          write_color4   = [&](const Vector3f& color, float alpha) {
+    const auto&   node         = *m_node;
+    const bool    has_alpha    = writer.Wants(Output::Alpha);
+    const bool    has_color4   = writer.Wants(Output::Color4);
+    const bool    has_color    = writer.Wants(Output::Color);
+    auto          write_color4 = [&](const Vector3f& color, float alpha) {
         writer.Write(Output::Color4, array<float, 4> { color.x(), color.y(), color.z(), alpha });
     };
     auto write_color = [&](const Vector3f& color) {
         writer.Write(Output::Color, array<float, 3> { color.x(), color.y(), color.z() });
     };
     if (node.IsAlphaOverridden()) {
-        if (has_user_alpha) writer.Write(Output::UserAlpha, node.EffectiveAlpha());
         if (has_alpha) writer.Write(Output::Alpha, node.EffectiveAlpha());
-        if (has_color4) {
-            if (! has_user_alpha) {
-                write_color4(node.IsColorOverridden() ? node.Color() : node.BaseColor(),
-                             node.EffectiveAlpha());
-            } else if (node.IsColorOverridden()) {
-                write_color4(node.Color(), node.BaseAlpha());
-            }
-        }
+        if (has_color4)
+            write_color4(node.IsColorOverridden() ? node.Color() : node.BaseColor(),
+                         node.EffectiveAlpha());
         if (has_color && node.IsColorOverridden()) write_color(node.Color());
     } else if (node.IsColorOverridden()) {
         if (has_color4) write_color4(node.Color(), node.BaseAlpha());
         if (has_color) write_color(node.Color());
     }
-    if (node.IsBrightnessOverridden()) writer.Write(Output::Brightness, node.Brightness());
     return writer.Finish();
 }
 

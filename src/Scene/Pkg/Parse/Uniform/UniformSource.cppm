@@ -72,11 +72,9 @@ enum class ShadowUniformOutput : rstd::uint32_t
 
 enum class ColorUniformOutput : rstd::uint32_t
 {
-    UserAlpha,
     Color4,
     Color,
     Alpha,
-    Brightness,
 };
 
 enum class AudioUniformOutput : rstd::uint32_t

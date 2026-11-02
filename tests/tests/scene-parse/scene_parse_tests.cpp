@@ -1583,3 +1583,70 @@ TEST(SceneAssetPaths, ModelCameraAndClipRetainTheirReparseSemantics) {
     EXPECT_EQ(camera.path, "motion.json"_str);
     EXPECT_TRUE(clip.name.is_empty());
 }
+
+// genericimage2 takes g_UserAlpha and g_Brightness from its material settings ("Alpha",
+// "Brightness"); a layer's own alpha and brightness don't reach them (image-alpha-variants:
+// Wallpaper Engine draws a layer of alpha 0.5 and brightness 0.5 as if both were 1).
+TEST(ImageParsing, LayerAlphaAndBrightnessDoNotReachGenericImage2Settings) {
+    auto root = std::filesystem::temp_directory_path() /
+                ("owe-material-alpha-" + std::to_string(rstd::process::id().to_primitive()));
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root / "models");
+    std::filesystem::create_directories(root / "materials");
+    for (auto [name, constants] :
+         { std::pair { "plain", "{}" }, std::pair { "setting", R"({"Alpha": 0.5})" } }) {
+        std::ofstream(root / "models" / (std::string(name) + ".json"))
+            << R"({"material": "materials/)" << name << R"(.json"})";
+        std::ofstream(root / "materials" / (std::string(name) + ".json"))
+            << R"({"passes": [{"shader": "genericimage2", "blending": "translucent",
+                "cullmode": "nocull", "depthtest": "disabled", "depthwrite": "disabled",
+                "textures": ["gradient/gradient_rainbow"], "constantshadervalues": )"
+            << constants << "}]}";
+    }
+
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {},
+            "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+            "objects": [
+                {"id": 1, "name": "Layer", "image": "models/plain.json", "size": "64 2",
+                 "alpha": 0.5, "brightness": 0.5, "visible": true},
+                {"id": 2, "name": "Setting", "image": "models/setting.json", "size": "64 2",
+                 "visible": true}
+            ]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    auto own =
+        owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(root.string()).unwrap()));
+    ASSERT_TRUE(own.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, std::move(assets).unwrap_unchecked()).is_ok());
+    ASSERT_TRUE(vfs.mount("/assets"_str, std::move(own).unwrap_unchecked()).is_ok());
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "material-alpha"_str,
+        rstd::ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        rstd::mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        rstd::mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+
+    auto setting_value = [&](rstd::ref<rstd::str> layer, rstd::ref<rstd::str> uniform) -> float {
+        auto node = scene.scene->RootMut()->FindByName(layer);
+        if (node == nullptr || node->Mesh() == nullptr || node->Mesh()->Material() == nullptr)
+            return -1.0f;
+        auto value = node->Mesh()->Material()->customShader.constValues.get(uniform);
+        return value.is_some() ? (*value)->data()[0] : 1.0f;
+    };
+    EXPECT_FLOAT_EQ(setting_value("Layer"_str, "g_UserAlpha"_str), 1.0f);
+    EXPECT_FLOAT_EQ(setting_value("Layer"_str, "g_Brightness"_str), 1.0f);
+    EXPECT_FLOAT_EQ(setting_value("Setting"_str, "g_UserAlpha"_str), 0.5f);
+
+    std::filesystem::remove_all(root);
+}

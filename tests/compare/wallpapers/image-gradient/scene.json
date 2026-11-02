@@ -1,0 +1,155 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0 0 0",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "natural size",
+      "image": "models/rainbow.json",
+      "origin": "200 950 0",
+      "size": "64 2",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 1,
+      "visible": true
+    },
+    {
+      "name": "rainbow wide",
+      "image": "models/rainbow.json",
+      "origin": "900 950 0",
+      "size": "64 2",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "15 40 1",
+      "alignment": "center",
+      "id": 2,
+      "visible": true
+    },
+    {
+      "name": "rainbow mirrored",
+      "image": "models/rainbow.json",
+      "origin": "900 750 0",
+      "size": "64 2",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "-15 40 1",
+      "alignment": "center",
+      "id": 3,
+      "visible": true
+    },
+    {
+      "name": "rainbow vertical",
+      "image": "models/rainbow.json",
+      "origin": "1650 750 0",
+      "size": "64 2",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 1.5708",
+      "scale": "10 40 1",
+      "alignment": "center",
+      "id": 4,
+      "visible": true
+    },
+    {
+      "name": "fire square",
+      "image": "models/fire.json",
+      "origin": "300 400 0",
+      "size": "64 2",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "6 200 1",
+      "alignment": "center",
+      "id": 5,
+      "visible": true
+    },
+    {
+      "name": "ice stretched",
+      "image": "models/ice.json",
+      "origin": "900 400 0",
+      "size": "64 2",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "8 50 1",
+      "alignment": "center",
+      "id": 6,
+      "visible": true
+    },
+    {
+      "name": "fire flipped",
+      "image": "models/fire.json",
+      "origin": "1500 300 0",
+      "size": "64 2",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "6 -100 1",
+      "alignment": "center",
+      "id": 7,
+      "visible": true
+    },
+    {
+      "name": "rainbow alpha",
+      "image": "models/rainbow.json",
+      "origin": "1000 150 0",
+      "size": "64 2",
+      "color": "1 1 1",
+      "alpha": 0.5,
+      "angles": "0 0 0",
+      "scale": "8 50 1",
+      "alignment": "center",
+      "id": 8,
+      "visible": true
+    },
+    {
+      "name": "size differs",
+      "image": "models/rainbow.json",
+      "origin": "400 700 0",
+      "size": "300 100",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 9,
+      "visible": true
+    },
+    {
+      "name": "size differs small",
+      "image": "models/fire.json",
+      "origin": "700 600 0",
+      "size": "100 100",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 10,
+      "visible": true
+    }
+  ],
+  "version": 1
+}
