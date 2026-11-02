@@ -138,6 +138,16 @@ auto BindEntries(mut_ref<dyn<UniformBindingSink>>      sink,
     return Ok(empty {});
 }
 
+// A layer scaled to no area (the sky's gradient layer is 0 x 0) still makes its composite: the matrices an effect pass
+// reads take its collapsed axes as scale 1, or they would be singular.
+Matrix4d RestoreCollapsedAxes(Matrix4d matrix) {
+    for (int column = 0; column < 3; ++column) {
+        if (f64(matrix.col(column).head<3>().norm()).to_primitive() < 1e-4)
+            matrix.col(column).head<3>() = Vector3d::Unit(column);
+    }
+    return matrix;
+}
+
 } // namespace
 
 void UniformNodeConfigDraft::SetParallaxContract(wpscene::ParallaxDepthBinding binding, i32 owner,
@@ -559,6 +569,8 @@ auto TransformUniformSource::Evaluate(ref<dyn<UniformUpdateContext>> context,
         auto        attached = camera.GetAttachedNode();
         // A layer camera renders the complete local surface; its outer draw owns parallax.
         const bool layer_camera = attached.is_some() && (*attached)->HasLayer();
+        // the layer's own frame is what a layer camera renders: a layer scaled to no area still has one
+        if (layer_camera) model = RestoreCollapsedAxes(model);
         const bool apply_model_parallax =
             node.Camera() != "effect"_str && parallax.enable && ! layer_camera;
         array<float, 2> shift {};
@@ -639,7 +651,7 @@ auto TransformUniformSource::Evaluate(ref<dyn<UniformUpdateContext>> context,
             if (m_node->effect_projection_node.is_some()) {
                 auto& source = **m_node->effect_projection_node;
                 source.UpdateTrans();
-                layer_model  = source.ModelTrans() * source.GeometryTransform();
+                layer_model  = RestoreCollapsedAxes(source.ModelTrans()) * source.GeometryTransform();
                 effect_model = layer_model;
                 if (m_node->effect_projection_size[usize(0)] > 0.0f &&
                     m_node->effect_projection_size[usize(1)] > 0.0f) {

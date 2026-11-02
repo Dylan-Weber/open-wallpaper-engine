@@ -2269,3 +2269,23 @@ TEST(SceneTextures, CapturedImageSourcesReuseParsedContentAndPreserveOldRuntimeI
     EXPECT_EQ(before->Describe("asset"_str).unwrap().header.width, 32);
     EXPECT_TRUE(Arc<owe::Image>::ptr_eq(parsed, before->Parse("asset"_str).unwrap()));
 }
+
+// A camera attached to a layer node that is scaled to no area (the sky gradient layer, 0 x 0) still looks at the layer's
+// own frame: the node's collapsed axes count as scale 1. A singular frame fell back to the identity, a view that doesn't
+// see the layer at all.
+TEST(SceneCameras, ANodeCameraOfALayerWithNoAreaStillLooksAtTheLayer) {
+    auto node = Arc<owe::SceneNode>::make();
+    node->SetTranslate({ 100.0f, 50.0f, 0.0f });
+    node->SetScale({ 0.0f, 0.0f, 0.0f });
+    auto camera =
+        Arc<owe::SceneCamera>::make(owe::SceneCamera::MakeOrthographic(200.0, 100.0, -10.0, 10.0));
+    camera->AttatchNode(node.as_ptr());
+    camera->Update();
+
+    const Eigen::Matrix4d view_projection = camera->GetViewProjectionMatrix();
+    const Eigen::Vector4d at_node         = view_projection * Eigen::Vector4d(100.0, 50.0, 0.0, 1.0);
+    const Eigen::Vector4d beside_node     = view_projection * Eigen::Vector4d(110.0, 50.0, 0.0, 1.0);
+    EXPECT_NEAR(at_node.x() / at_node.w(), 0.0, 1e-9);
+    EXPECT_NEAR(at_node.y() / at_node.w(), 0.0, 1e-9);
+    EXPECT_NEAR(beside_node.x() / beside_node.w(), 0.1, 1e-9);
+}

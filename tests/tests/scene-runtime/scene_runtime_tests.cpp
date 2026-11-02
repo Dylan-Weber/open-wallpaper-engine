@@ -2443,3 +2443,34 @@ TEST(UniformSourceParallax, PerspectiveWithAuthoredParallaxDepthAppliesShift) {
                 std::abs(mvp_without_parallax[rstd::usize(13)] -
                          mvp_with_parallax[rstd::usize(13)]) > 1e-5f);
 }
+
+// A layer scaled to no area (More Physics' sky gradient layer, 0 x 0) still makes its composite in Wallpaper Engine: the
+// matrices an effect pass uses must not collapse with the layer's scale (owe's were singular, so the composite came out black).
+TEST(TransformUniformSource, EffectMatricesOfALayerWithNoAreaStayInvertible) {
+    auto camera =
+        Arc<owe::SceneCamera>::make(owe::SceneCamera::MakeOrthographic(200, 100, -1.0, 1.0));
+    auto node  = Arc<owe::SceneNode>::make();
+    auto layer = Arc<owe::SceneNode>::make();
+    layer->SetTranslate({ 100, 50, 0 });
+    layer->SetScale({ 0, 0, 0 });
+
+    auto uniform_state = Arc<owe::UniformSceneState>::make(Arc<owe::AudioResponseDemand>::make());
+    auto resolver      = Arc<owe::UniformCameraResolver>::make(camera.clone());
+    auto node_state    = Arc<owe::UniformNodeState>::make(node.clone(), resolver.clone());
+    node_state->effect_projection_node = Some(layer.clone());
+    node_state->effect_projection_size = { 40.0f, 20.0f };
+    owe::TransformUniformSource transform_source(uniform_state.clone(), node_state.clone());
+
+    auto projected = scene_test::Capture(owe::SceneFrame {},
+                                         transform_source,
+                                         owe::TransformUniformOutput::EffectModelViewProjection);
+    ASSERT_EQ(projected.size(), usize(16));
+    // as a layer of scale 1 (the existing test shows 0.4 and 0.6 for a scale of 2 and 3)
+    EXPECT_FLOAT_EQ(projected[usize()], 0.2f);
+    EXPECT_FLOAT_EQ(projected[usize(5)], 0.2f);
+    auto inverse = scene_test::Capture(
+        owe::SceneFrame {}, transform_source, owe::TransformUniformOutput::EffectModelViewProjectionInverse);
+    ASSERT_EQ(inverse.size(), usize(16));
+    for (usize i {}; i < inverse.size(); ++i) EXPECT_TRUE(std::isfinite(inverse[i]));
+    EXPECT_FLOAT_EQ(inverse[usize()], 5.0f);
+}
