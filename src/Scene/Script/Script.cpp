@@ -2624,6 +2624,53 @@ JSValue NodeRotateObjectSpace(JSContext* ctx, JSValueConst this_val, int argc, J
     return JS_UNDEFINED;
 }
 
+owe::SceneNode* SceneLayerAt(JSContext* ctx, owe::SceneNode* root, JSValueConst value);
+
+// setParent(parent, adjustTransforms) or setParent(parent, attachment, adjustTransform): the parent
+// is a layer, a name or the layer's index in the scene, undefined for none. As measured in
+// Wallpaper Engine, the layers keep their draw order. Attachments aren't supported yet.
+JSValue NodeSetParent(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    auto* n    = GetLayerNode(this_val);
+    if (! n) return JS_UNDEFINED;
+    owe::SceneNode* parent = nullptr;
+    if (argc > 0 && ! JS_IsUndefined(argv[0]) && ! JS_IsNull(argv[0])) {
+        if (JS_IsNumber(argv[0]))
+            parent = SceneLayerAt(ctx, host->scene_root, argv[0]);
+        else
+            parent = GetLayerNode(argv[0]);
+        if (parent == nullptr && ! JS_IsNumber(argv[0]) && host->scene_root) {
+            const char* name = JS_ToCString(ctx, argv[0]);
+            if (name == nullptr) return JS_EXCEPTION;
+            parent = host->scene_root->FindByName(rstd::cppstd::as_str(name).unwrap());
+            JS_FreeCString(ctx, name);
+        }
+        if (parent == nullptr) return JS_UNDEFINED;
+    }
+    const int  flag   = argc > 2 ? 2 : 1;
+    const bool adjust = argc > flag && JS_ToBool(ctx, argv[flag]) > 0;
+    (void)n->SetParent(parent, adjust);
+    return JS_UNDEFINED;
+}
+
+// lookAt(center, up = (0, 1, 0)) and lookAtYaw(center, up): see SceneNode::LookAt.
+JSValue LookAt(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv, bool yaw_only) {
+    auto*  n = GetLayerNode(this_val);
+    double x = 0, y = 0, z = 0, up_x = 0, up_y = 1, up_z = 0;
+    if (! n || argc < 1 || ! ReadXYZ(ctx, argv[0], x, y, z)) return JS_UNDEFINED;
+    if (argc > 1 && ! JS_IsUndefined(argv[1])) (void)ReadXYZ(ctx, argv[1], up_x, up_y, up_z);
+    n->LookAt({ x, y, z }, { up_x, up_y, up_z }, yaw_only);
+    return JS_UNDEFINED;
+}
+
+JSValue NodeLookAt(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+    return LookAt(ctx, this_val, argc, argv, false);
+}
+
+JSValue NodeLookAtYaw(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+    return LookAt(ctx, this_val, argc, argv, true);
+}
+
 JSValue BoneTransformTranslation(JSContext* ctx, JSValueConst this_val, int, JSValueConst*) {
     JSValue v = JS_GetPropertyStr(ctx, this_val, "__wwTranslation");
     if (! JS_IsUndefined(v)) return v;
@@ -3517,6 +3564,9 @@ const JSCFunctionListEntry s_layer_proto_funcs[] = {
     JS_CFUNC_DEF("getParent", 0, NodeGetParent),
     JS_CFUNC_DEF("getTransformMatrix", 0, NodeGetTransformMatrix),
     JS_CFUNC_DEF("rotateObjectSpace", 1, NodeRotateObjectSpace),
+    JS_CFUNC_DEF("setParent", 2, NodeSetParent),
+    JS_CFUNC_DEF("lookAt", 2, NodeLookAt),
+    JS_CFUNC_DEF("lookAtYaw", 2, NodeLookAtYaw),
     JS_CFUNC_DEF("getChildren", 0, NodeGetChildren),
     JS_CFUNC_DEF("getName", 0, NodeGetName),
     JS_CFUNC_DEF("getLayer", 1, NodeGetLayer),

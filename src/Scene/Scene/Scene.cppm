@@ -1664,6 +1664,13 @@ public:
         MarkTransDirty();
     }
     void RotateObjectSpace(const Eigen::Vector3f& rotation);
+    // Scripts' setParent: changes only what the node moves with, not where it is drawn (its
+    // owner); keep_world keeps it where it is by changing its own transform. False for a parent
+    // that moves with the node.
+    bool SetParent(SceneNode* parent, bool keep_world);
+    // Scripts' lookAt: turns the node so that its +z points at `center`, about `up` only when
+    // yaw_only.
+    void LookAt(const Eigen::Vector3d& center, const Eigen::Vector3d& up, bool yaw_only);
     void SetTranslate(Eigen::Vector3f v) {
         m_translate = v;
         MarkTransDirty();
@@ -1875,6 +1882,8 @@ public:
 
     ref<str>   Name() const { return m_name.as_str(); }
     SceneNode* Parent() const { return m_node.Parent(); }
+    // The node whose children it is drawn with (its parent, unless a script changed that).
+    SceneNode* Owner() const { return m_node.Owner(); }
 
     // Anchor for transform-only inheritance. The node does NOT join `p`'s
     // children, so TraverseNode never visits it through `p`. Used for the
