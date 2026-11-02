@@ -15,6 +15,7 @@ export import wescene.utils;
 export import wescene.pkg.parse;
 export import wescene.texture_memory;
 export import owe.audio_response;
+export import owe.scene_audio_response;
 
 using namespace rstd::prelude;
 using rstd::path::PathBuf;
@@ -73,6 +74,9 @@ struct SceneWallpaperConfig {
     bool                                mouse_parallax { true };
     bool                                graphviz { false };
     Option<u64>                         random_seed;
+    // a spectrum held still instead of what is heard, for shaders and scripts alike (a reference's
+    // recorded bands: scene_audio::ParseFixedSpectrum)
+    Option<scene_audio::Buffers> fixed_audio;
 };
 
 class SceneRuntimeController;

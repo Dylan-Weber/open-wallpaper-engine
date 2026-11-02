@@ -287,6 +287,24 @@ int main(int argc, char** argv) {
         });
     }
 
+    // --audio-spectrum FILE: shaders and scripts see these bands every frame, not what is heard
+    if (const auto& spectrum_path = args.audio_spectrum_path; ! spectrum_path.is_empty()) {
+        auto source = rstd::fs::read_to_string(spectrum_path);
+        if (source.is_err()) {
+            eprintln("--audio-spectrum: cannot open '{}'",
+                     spectrum_path.as_path().as_os_str().display());
+            return 1;
+        }
+        auto spectrum = owe::scene_audio::ParseFixedSpectrum(source->as_str());
+        if (spectrum.is_err()) {
+            eprintln("--audio-spectrum: '{}': {}",
+                     spectrum_path.as_path().as_os_str().display(),
+                     spectrum.unwrap_err());
+            return 1;
+        }
+        config.fixed_audio = Some(spectrum.unwrap());
+    }
+
     (void)startup_span.finish();
     if (startup_recorder) {
         auto batch = startup_recorder->drain();

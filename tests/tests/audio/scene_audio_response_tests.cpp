@@ -7,6 +7,7 @@ import rstd;
 
 using namespace owe;
 using namespace rstd::prelude;
+using namespace rstd::literals;
 
 namespace
 {
@@ -153,4 +154,104 @@ TEST(SceneAudioResponse, PreservesChannelsSmoothingAndGenerationState) {
 
     processor.end();
     EXPECT_FALSE(processor.advance(1.0f / 30.0f, output));
+}
+
+namespace
+{
+
+// "N": {"left": [...], "right": [...]} with left[i] = left_of(i), right[i] = right_of(i)
+template<typename Left, typename Right>
+String SpectrumEntry(int resolution, Left left_of, Right right_of) {
+    auto json = String::make();
+    json.push_str(rstd::format("\"{}\": {{\"left\": [", resolution).as_str());
+    for (int index = 0; index < resolution; ++index)
+        json.push_str(rstd::format("{}{}", index ? ", " : "", left_of(index)).as_str());
+    json.push_str("], \"right\": ["_str);
+    for (int index = 0; index < resolution; ++index)
+        json.push_str(rstd::format("{}{}", index ? ", " : "", right_of(index)).as_str());
+    json.push_str("]}"_str);
+    return json;
+}
+
+String Braced(ref<str> entries) { return rstd::format("{{{}}}", entries); }
+
+} // namespace
+
+TEST(SceneAudioResponse, FixedSpectrumPoolsTheFinestGiven) {
+    // a reference's recorded 64 bands: the 32 and 16 are pooled from them, as the live spectrum's
+    // are, and each average is the two sides' mean
+    auto json   = Braced(SpectrumEntry(
+                             64,
+                             [](int index) {
+                               return index / 64.0;
+                             },
+                             [](int index) {
+                               return 1.0 - index / 64.0;
+                             })
+                             .as_str());
+    auto parsed = scene_audio::ParseFixedSpectrum(json.as_str());
+    ASSERT_TRUE(parsed.is_ok());
+    const auto& buffers = *parsed;
+    EXPECT_TRUE(Near(buffers.bands64.left.data()[3], 3.0f / 64.0f));
+    EXPECT_TRUE(Near(buffers.bands64.right.data()[3], 61.0f / 64.0f));
+    EXPECT_TRUE(Near(buffers.bands32.left.data()[3], 7.0f / 64.0f));
+    EXPECT_TRUE(Near(buffers.bands16.right.data()[0], 1.0f));
+    EXPECT_TRUE(Near(buffers.bands64.average.data()[5], 0.5f));
+    EXPECT_TRUE(Near(buffers.bands16.average.data()[2], 0.5f));
+}
+
+TEST(SceneAudioResponse, FixedSpectrumRepeatsACoarserOne) {
+    // only 16 bands recorded (all a wallpaper reads): the finer ones repeat them
+    auto json   = Braced(SpectrumEntry(
+                             16,
+                             [](int index) {
+                               return index / 16.0;
+                             },
+                             [](int) {
+                               return 0.25;
+                             })
+                             .as_str());
+    auto parsed = scene_audio::ParseFixedSpectrum(json.as_str());
+    ASSERT_TRUE(parsed.is_ok());
+    const auto& buffers = *parsed;
+    EXPECT_TRUE(Near(buffers.bands16.left.data()[5], 5.0f / 16.0f));
+    EXPECT_TRUE(Near(buffers.bands32.left.data()[11], 5.0f / 16.0f));
+    EXPECT_TRUE(Near(buffers.bands64.left.data()[23], 5.0f / 16.0f));
+    EXPECT_TRUE(Near(buffers.bands64.right.data()[63], 0.25f));
+}
+
+TEST(SceneAudioResponse, FixedSpectrumKeepsEachResolutionGiven) {
+    // Wallpaper Engine's 16 bands need not be its 64 pooled: a resolution given is used as it is
+    auto entries = SpectrumEntry(
+        16,
+        [](int) {
+            return 0.75;
+        },
+        [](int) {
+            return 0.5;
+        });
+    entries.push_str(", "_str);
+    entries.push_str(SpectrumEntry(
+                         64,
+                         [](int) {
+                             return 0.125;
+                         },
+                         [](int) {
+                             return 0.125;
+                         })
+                         .as_str());
+    auto parsed = scene_audio::ParseFixedSpectrum(Braced(entries.as_str()).as_str());
+    ASSERT_TRUE(parsed.is_ok());
+    EXPECT_TRUE(Near(parsed->bands16.left.data()[0], 0.75f));
+    EXPECT_TRUE(Near(parsed->bands32.left.data()[0], 0.125f));
+    EXPECT_TRUE(Near(parsed->bands64.right.data()[9], 0.125f));
+}
+
+TEST(SceneAudioResponse, FixedSpectrumRejectsWhatItCannotUse) {
+    EXPECT_TRUE(scene_audio::ParseFixedSpectrum("not json"_str).is_err());
+    EXPECT_TRUE(scene_audio::ParseFixedSpectrum("{}"_str).is_err());
+    EXPECT_TRUE(
+        scene_audio::ParseFixedSpectrum(R"({"16": {"left": [0.5], "right": [0.5]}})"_str).is_err());
+    EXPECT_TRUE(
+        scene_audio::ParseFixedSpectrum(R"({"24": {"left": [], "right": []}})"_str).is_err());
 }
