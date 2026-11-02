@@ -247,9 +247,24 @@ int main(int argc, char** argv) {
     config.graphviz        = args.graphviz;
     config.load_bench      = load_bench.clone();
     config.fps             = static_cast<uint32_t>(args.fps.to_primitive());
+    if (args.script_start.is_some()) config.script_start = args.script_start->to_primitive();
+    if (args.camera_path_delay.is_some())
+        config.camera_path_delay = args.camera_path_delay->to_primitive();
+    {
+        const auto quality    = args.shadow_quality.as_str();
+        config.shadow_quality = quality == "low"_str    ? owe::ShadowQuality::Low
+                                : quality == "high"_str  ? owe::ShadowQuality::High
+                                : quality == "ultra"_str ? owe::ShadowQuality::Ultra
+                                                         : owe::ShadowQuality::Medium;
+        if (quality != "low"_str && quality != "medium"_str && quality != "high"_str &&
+            quality != "ultra"_str)
+            eprintln("--shadow-quality: '{}' isn't low, medium, high or ultra; medium", quality);
+    }
     if (args.random_seed.is_some()) {
         config.random_seed = Some(*args.random_seed);
     }
+    if (args.script_clock.is_some()) config.script_clock = Some(args.script_clock->to_primitive());
+    config.camera_eye_log = args.camera_eye_log.clone();
 
     config.cache_dir = args.cache_path.is_empty() ? viewer::DefaultCacheDir("wescene-renderer"_str)
                                                   : rstd::move(args.cache_path);
@@ -285,6 +300,24 @@ int main(int argc, char** argv) {
             auto [entry_key, entry_value] = entry;
             config.user_properties.insert(entry_key->clone(), entry_value->clone());
         });
+    }
+
+    // --audio-spectrum FILE: shaders and scripts see these bands every frame, not what is heard
+    if (const auto& spectrum_path = args.audio_spectrum_path; ! spectrum_path.is_empty()) {
+        auto source = rstd::fs::read_to_string(spectrum_path);
+        if (source.is_err()) {
+            eprintln("--audio-spectrum: cannot open '{}'",
+                     spectrum_path.as_path().as_os_str().display());
+            return 1;
+        }
+        auto spectrum = owe::scene_audio::ParseFixedSpectrum(source->as_str());
+        if (spectrum.is_err()) {
+            eprintln("--audio-spectrum: '{}': {}",
+                     spectrum_path.as_path().as_os_str().display(),
+                     spectrum.unwrap_err());
+            return 1;
+        }
+        config.fixed_audio = Some(spectrum.unwrap());
     }
 
     (void)startup_span.finish();

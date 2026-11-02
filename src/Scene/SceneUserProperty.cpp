@@ -358,9 +358,7 @@ void ApplyImageColor(Scene& scene, ref<str> key, const Json& property) {
         for (usize material_index {}; material_index < binding.materials.len(); ++material_index) {
             const auto& material = binding.materials[material_index];
             if (! material) continue;
-            const bool      has_user_alpha = MaterialHasUniform(*material, G_USERALPHA);
-            const float     alpha = has_user_alpha ? node.BaseAlpha() : CurrentImageAlpha(node);
-            array<float, 4> color4 { color.x(), color.y(), color.z(), alpha };
+            array<float, 4> color4 { color.x(), color.y(), color.z(), CurrentImageAlpha(node) };
             if (MaterialHasUniform(*material, G_COLOR4))
                 scene.SetMaterialShaderValue(*material, G_COLOR4, color4);
             if (MaterialHasUniform(*material, G_COLOR))
@@ -385,11 +383,9 @@ void ApplyImageAlpha(Scene& scene, ref<str> key, const Json& property) {
         for (usize material_index {}; material_index < binding.materials.len(); ++material_index) {
             const auto& material = binding.materials[material_index];
             if (! material) continue;
-            const bool has_user_alpha = MaterialHasUniform(*material, G_USERALPHA);
-            if (has_user_alpha) scene.SetMaterialShaderValue(*material, G_USERALPHA, alpha);
             if (MaterialHasUniform(*material, G_ALPHA))
                 scene.SetMaterialShaderValue(*material, G_ALPHA, alpha);
-            if (! has_user_alpha && MaterialHasUniform(*material, G_COLOR4))
+            if (MaterialHasUniform(*material, G_COLOR4))
                 scene.SetMaterialShaderValue(*material, G_COLOR4, color4);
         }
     }

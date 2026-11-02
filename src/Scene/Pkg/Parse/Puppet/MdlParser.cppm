@@ -46,7 +46,21 @@ struct Mdl {
         Vec<array<float, 3>>          positions;
         Vec<array<float, 3>>          normals;
         Vec<array<float, 4>>          tangents; // tangent[3] + tangent_sign
-        Vec<array<uint8_t, 4>>        extra4;
+        // The fourth position float (vertex flag 0x10000): the vertex's blend shape index, 1..V
+        // for the vertices the mesh's blend shapes move, 0 for the others.
+        Vec<float>                    morph_indices;
+
+        // Blend shapes (MDMP): each moves the `morph_vertex_count` vertices whose morph index is
+        // set, by its offsets (over 32767) times `morph_scale` times its weight.
+        struct MorphShape {
+            rstd::uint32_t               id { 0 };
+            String                       name;
+            Vec<array<rstd::int16_t, 3>> offsets;
+            Vec<rstd::int16_t>           alpha; // flag_a 0x1000: over 32767
+        };
+        float                         morph_scale { 0.0f };
+        rstd::uint32_t                morph_vertex_count { 0 };
+        Vec<MorphShape>               morph_shapes;
         Vec<array<rstd::uint32_t, 4>> blend_indices;
         Vec<array<float, 4>>          blend_weights;
         Vec<array<float, 2>>          texcoords;
@@ -82,21 +96,6 @@ struct Mdl {
     rstd::int32_t mdmp { 0 };
 
     // MDMP morph sections — present when an animation drives shape blends.
-    // Each section keyed by event_time matching a v4 AnimV4Event.time.
-    struct MorphSectionData {
-        rstd::uint32_t          shape_id;
-        String                  tag;
-        rstd::uint32_t          hash;
-        Vec<array<uint16_t, 3>> vertices;
-        Vec<uint16_t>           vertex_trailers; // shape_id != 0
-        Vec<uint8_t>            trailer;         // shape_id == 0
-    };
-    struct MorphSection {
-        float                 event_time;
-        uint16_t              event_id;
-        Vec<MorphSectionData> sections;
-    };
-    Vec<MorphSection> morph_sections;
 
     Option<Arc<Puppet>> puppet;
     // combo
@@ -107,6 +106,16 @@ struct Mdl {
     // uvec4 a_BlendIndices
     // vec4 a_BlendWeights
     // uniform mat4x3 g_Bones[BONECOUNT]
+};
+
+// What a mesh's blend shapes move: each vertex's rest position (with the submesh's offset), its
+// morph index (0 for none), and each shape's offsets.
+struct MdlMorph {
+    Vec<array<float, 3>>              rest;
+    Vec<rstd::uint32_t>               index;
+    float                             scale { 0.0f };
+    rstd::uint32_t                    vertex_count { 0 };
+    Vec<Vec<array<rstd::int16_t, 3>>> offsets;
 };
 
 class MdlParser {
@@ -137,6 +146,15 @@ public:
                                       slice<rstd::uint32_t> clip_part_ids,
                                       array<float, 2>       texcoord_scale = { 1.0f, 1.0f });
     static void BindDrawOrder(SceneMesh::Submesh&, const Mdl::Mesh&, Arc<PuppetLayer>);
+    // A mesh's blend shapes, or None without any.
+    static auto MakeMorph(const Mdl::Mesh&, array<float, 3> position_offset)
+        -> Option<Arc<MdlMorph>>;
+    // The positions (three floats a vertex) with the shapes at these weights.
+    static auto MorphPositions(const MdlMorph&, slice<float> weights) -> Vec<float>;
+    // Moves this submesh's vertices by the mesh's blend shapes every frame, as the puppet's
+    // animation layers weigh them. Nothing for a mesh without blend shapes.
+    static void BindMorph(Scene& scene, SceneMesh& mesh, usize submesh, const Mdl::Mesh& src,
+                          Arc<PuppetLayer> layer, array<float, 3> position_offset = {});
 };
 
 } // namespace owe

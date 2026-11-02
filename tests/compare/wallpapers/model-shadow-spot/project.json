@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test spot light shadow",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}

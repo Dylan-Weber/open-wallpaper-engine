@@ -15,6 +15,7 @@ export import wescene.utils;
 export import wescene.pkg.parse;
 export import wescene.texture_memory;
 export import owe.audio_response;
+export import owe.scene_audio_response;
 
 using namespace rstd::prelude;
 using rstd::path::PathBuf;
@@ -73,6 +74,22 @@ struct SceneWallpaperConfig {
     bool                                mouse_parallax { true };
     bool                                graphviz { false };
     Option<u64>                         random_seed;
+    // Seconds of the scene's clock before scripts start (they read the scene's clock), and before
+    // camera paths start (they then run that much behind it); Wallpaper Engine starts both later in
+    // some wallpapers, as they load. 0 by default.
+    float script_start { 0.0f };
+    float camera_path_delay { 0.0f };
+    // Wallpaper Engine's "shadows" setting (low, medium, high, ultra)
+    ShadowQuality shadow_quality { ShadowQuality::Medium };
+    // a spectrum held still instead of what is heard, for shaders and scripts alike (a reference's
+    // recorded bands: scene_audio::ParseFixedSpectrum)
+    Option<scene_audio::Buffers> fixed_audio;
+    // the moment (milliseconds since 1970) the scripts' Date reads when the scene starts; None: the
+    // system clock
+    Option<double> script_clock;
+    // a file each drawn frame adds the scene's clock and the camera's eye to ("t x y z"); empty:
+    // none
+    PathBuf camera_eye_log;
 };
 
 class SceneRuntimeController;

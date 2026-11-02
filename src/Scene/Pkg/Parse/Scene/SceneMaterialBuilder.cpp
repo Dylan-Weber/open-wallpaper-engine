@@ -369,6 +369,9 @@ auto BuildMaterial(fs::VFS& vfs, ShaderCache& shader_cache,
                 textures.resize(index + usize(1), String {});
             }
             textures[index] = t.texture.clone();
+            // The cookie the scene's cookie spot lights project.
+            if (t.texture == "_alias_lightCookie"_str && scene.LightCookieTexture().is_some())
+                textures[index] = String::make(*scene.LightCookieTexture());
         }
     }
 
@@ -400,12 +403,14 @@ auto BuildMaterial(fs::VFS& vfs, ShaderCache& shader_cache,
                 return parsed_header.is_ok() ? rstd::move(parsed_header).unwrap_unchecked()
                                              : ImageHeader {};
             }();
-            if (i == usize()) {
-                if (texh.format == TextureFormat::R8)
-                    (void)shader_info_ref.combos.insert("TEX0FORMAT"_Str, "FORMAT_R8"_Str);
-                else if (texh.format == TextureFormat::RG8)
-                    (void)shader_info_ref.combos.insert("TEX0FORMAT"_Str, "FORMAT_RG88"_Str);
-            }
+            // every texture's format, as TEXnFORMAT: generic4 decodes an RG88 normal map
+            // (g_Texture1) from .rg only when TEX1FORMAT says so
+            if (texh.format == TextureFormat::R8)
+                (void)shader_info_ref.combos.insert(rstd::format("TEX{}FORMAT", i),
+                                                    "FORMAT_R8"_Str);
+            else if (texh.format == TextureFormat::RG8)
+                (void)shader_info_ref.combos.insert(rstd::format("TEX{}FORMAT", i),
+                                                    "FORMAT_RG88"_Str);
             if (texh.mipmap_larger) {
                 resolution = {
                     i32(texh.width), i32(texh.height), i32(texh.mapWidth), i32(texh.mapHeight)
@@ -476,11 +481,16 @@ auto BuildMaterial(fs::VFS& vfs, ShaderCache& shader_cache,
         }
     }
     if (shader_info_ref.combos.contains_key(WE_CB_LIGHTING)) {
-        if (environment.directional_shadow &&
+        if (environment.shadow_mapping &&
             (**shader_info_ref.combos.get(WE_CB_LIGHTING)).as_str() != "0"_str) {
             (void)shader_info_ref.combos.insert("LIGHTS_SHADOW_MAPPING"_Str, "1"_Str);
-            (void)shader_info_ref.combos.insert("LIGHTS_SHADOW_MAPPING_QUALITY"_Str, "2"_Str);
+            (void)shader_info_ref.combos.insert(
+                "LIGHTS_SHADOW_MAPPING_QUALITY"_Str,
+                rstd::format("{}", static_cast<int>(environment.shadow_quality)));
         }
+        if (scene.LightCookieTexture().is_some() &&
+            (**shader_info_ref.combos.get(WE_CB_LIGHTING)).as_str() != "0"_str)
+            (void)shader_info_ref.combos.insert("LIGHTS_COOKIE"_Str, "1"_Str);
     }
 
     (void)texture_span.finish();

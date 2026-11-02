@@ -39,7 +39,20 @@ struct PuppetLayerRegistry {
 struct SceneShaderEnvironment {
     bool fog_distance { false };
     bool fog_height { false };
-    bool directional_shadow { false };
+    // some light casts a shadow map, and models cast their shadows into it
+    bool          shadow_mapping { false };
+    ShadowQuality shadow_quality { ShadowQuality::Medium };
+    // The scene's light config: how many lights of each kind the newer light interface gets.
+    u32 point_lights {};
+    u32 spot_lights {};
+    u32 directional_lights {};
+    u32 tube_lights {};
+};
+
+// A light that casts a shadow map (by its object id).
+struct SceneShadowLight {
+    i32            id;
+    SceneLightType type;
 };
 
 struct GeometryShaderLimits {
@@ -132,6 +145,8 @@ struct SceneParseContext {
 
     ShaderValueMap         global_base_uniforms;
     SceneShaderEnvironment shader_environment;
+    // each shadowed light's first view in the scene's list of shadow views, by its object id
+    HashMap<i32, i32>      shadow_views;
     GeometryShaderLimits   geometry_shader_limits;
     bool                   geometry_shader_supported { true };
     Option<Arc<SceneNode>> effect_camera_node;
@@ -205,6 +220,10 @@ struct SceneParseContext {
     HashSet<i32>         linked_source_ids;
     HashSet<i32>         hidden_link_source_ids;
     bool                 scene_has_scripts { false };
+    // Every layer name the document authors, for the script runtime's getLayer.
+    Option<HashSet<String>> authored_layer_names;
+    // The spot lights that project the light cookie: the first spotcookie-many with usecookie.
+    HashSet<i32>         light_cookie_ids;
     bool                 scene_layer_text_writes { false };
 
     bool IsLinkedSource(i32 id) const { return linked_source_ids.contains(i32(id)); }
@@ -345,7 +364,8 @@ SceneParseContext
 BuildContext(fs::VFS&, ref<str> scene_id, const wpscene::SceneMetadata&, array<i32, 2> ortho_extent,
              Option<ref<rstd::json::Map>> user_properties  = None(),
              Option<rstd::path::PathBuf>  shader_cache_dir = None(),
-             GeometryShaderLimits geometry_limits = {}, bool directional_shadow = false,
+             GeometryShaderLimits geometry_limits = {}, slice<SceneShadowLight> shadow_lights = {},
+             ShadowQuality shadow_quality = ShadowQuality::Medium,
              bool geometry_shader_supported = true, Option<ImageReadyCallback> image_ready = None(),
              TextureMemoryOptions texture_memory = {});
 

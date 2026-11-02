@@ -19,7 +19,9 @@ enum class SceneLightType : rstd::uint8_t
 {
     Point       = 0,
     Spot        = 1,
-    Directional = 2
+    Directional = 2,
+    // A segment: from the light's origin 2 units along its x axis, scaled and turned with it.
+    Tube = 3
 };
 
 class SceneLight {
@@ -39,6 +41,13 @@ public:
         float cascade_distances[3] { 0.0f, 0.0f, 0.0f };
         bool  cast_shadow { false };
         bool  cast_volumetrics { false };
+        // The old kind of light ("point"), which the old four-light arrays get; the newer
+        // kinds ("lpoint", "lspot", ...) light only through Lighting V1.
+        bool old_kind { false };
+        // A spot light projecting the scene's light cookie over its cone.
+        bool cookie { false };
+        // Its first view in the scene's list of shadow views (-1: it has no shadow map).
+        i32 shadow_view { i32(-1) };
     };
 
     explicit SceneLight(const Desc& d)

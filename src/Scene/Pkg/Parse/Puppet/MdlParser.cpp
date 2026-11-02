@@ -56,7 +56,8 @@ constexpr uint32_t MDL_FLAG_NORMAL      = 0x00000002;
 constexpr uint32_t MDL_FLAG_TANGENT     = 0x00000004;
 constexpr uint32_t MDL_FLAG_UV          = 0x00000008;
 constexpr uint32_t MDL_FLAG_UV2         = 0x00000020;
-constexpr uint32_t MDL_FLAG_EXTRA4      = 0x00010000;
+// The position has a fourth float, the vertex's blend shape index (wallpaper64.exe: 16 bytes).
+constexpr uint32_t MDL_FLAG_POSITION4   = 0x00010000;
 constexpr uint32_t MDL_FLAG_SKIN_BLEND  = 0x00800000;
 constexpr uint32_t MDL_FLAG_SKIN_WEIGHT = 0x01000000;
 
@@ -73,7 +74,7 @@ uint32_t compute_vertex_stride(uint32_t flag) {
     uint32_t s = 12;
     if (flag & MDL_FLAG_NORMAL) s += 12;
     if (flag & MDL_FLAG_TANGENT) s += 16;
-    if (flag & MDL_FLAG_EXTRA4) s += 4;
+    if (flag & MDL_FLAG_POSITION4) s += 4;
     if (flag & MDL_FLAG_SKIN_BLEND) s += 16;
     if (flag & MDL_FLAG_SKIN_WEIGHT) s += 16;
     if (flag & (MDL_FLAG_UV | MDL_FLAG_UV2)) s += 8;
@@ -313,7 +314,7 @@ bool ParseMesh(fs::BinaryReader& f, const MdlHeader& header, Mdl::Mesh& mesh, re
     ResetDefault(mesh.positions, usize(vertex_num));
     if (mesh_flag & MDL_FLAG_NORMAL) ResetDefault(mesh.normals, usize(vertex_num));
     if (mesh_flag & MDL_FLAG_TANGENT) ResetDefault(mesh.tangents, usize(vertex_num));
-    if (mesh_flag & MDL_FLAG_EXTRA4) ResetDefault(mesh.extra4, usize(vertex_num));
+    if (mesh_flag & MDL_FLAG_POSITION4) ResetDefault(mesh.morph_indices, usize(vertex_num));
     if (mesh_flag & MDL_FLAG_SKIN_BLEND) ResetDefault(mesh.blend_indices, usize(vertex_num));
     if (mesh_flag & MDL_FLAG_SKIN_WEIGHT) ResetDefault(mesh.blend_weights, usize(vertex_num));
     if (mesh_flag & (MDL_FLAG_UV | MDL_FLAG_UV2)) {
@@ -324,14 +325,12 @@ bool ParseMesh(fs::BinaryReader& f, const MdlHeader& header, Mdl::Mesh& mesh, re
     for (uint32_t i = 0; i < vertex_num; ++i) {
         const usize index(i);
         for (auto& v : mesh.positions[index]) v = f.ReadFloat();
+        if (mesh_flag & MDL_FLAG_POSITION4) mesh.morph_indices[index] = f.ReadFloat();
         if (mesh_flag & MDL_FLAG_NORMAL) {
             for (auto& v : mesh.normals[index]) v = f.ReadFloat();
         }
         if (mesh_flag & MDL_FLAG_TANGENT) {
             for (auto& v : mesh.tangents[index]) v = f.ReadFloat();
-        }
-        if (mesh_flag & MDL_FLAG_EXTRA4) {
-            for (auto& v : mesh.extra4[index]) v = f.ReadUint8();
         }
         if (mesh_flag & MDL_FLAG_SKIN_BLEND) {
             for (auto& v : mesh.blend_indices[index]) v = f.ReadUint32();
@@ -892,44 +891,63 @@ void ParseMasks(fs::BinaryReader& f, Mdl::Mesh& mesh) {
     }
 }
 
+// The mesh's flag_a says which blocks each blend shape has after its offsets.
+constexpr uint32_t MDL_MORPH_NORMALS   = 0x0400;
+constexpr uint32_t MDL_MORPH_TANGENTS  = 0x0800;
+constexpr uint32_t MDL_MORPH_ALPHA     = 0x1000;
+constexpr uint32_t MDL_MORPH_MODIFIERS = 0x2000;
+
+// MDMP, as wallpaper64.exe's MDL loader reads it: for each mesh, a u16 shape count; with shapes, a
+// f32 scale and a u32 vertex count, then per shape a u32 id, a u32, its name and length-prefixed
+// blocks (u32 byte count + bytes): the offsets, three int16 a vertex, then the blocks flag_a names.
 bool ParseMDMP(fs::BinaryReader& f, Mdl& mdl, int version, ref<str> path) {
     mdl.mdmp            = version;
     uint32_t end_offset = f.ReadUint32();
-    while (f.Tell() < end_offset) {
-        auto&    sec    = mdl.morph_sections.emplace_back();
-        uint16_t count  = f.ReadUint16();
-        sec.event_time  = f.ReadFloat();
-        sec.event_id    = f.ReadUint16();
-        uint16_t zero_a = f.ReadUint16();
-        if (zero_a != 0) {
-            rstd_info("MDMPSection zero_a expected 0, got {}", zero_a);
-        }
-        ResetDefault(sec.sections, usize(count));
-        for (auto& sd : sec.sections) {
-            sd.shape_id      = f.ReadUint32();
-            uint32_t sd_zero = f.ReadUint32();
-            if (sd_zero != 0) {
-                rstd_info("MDMPSectionData zero_a expected 0, got {}", sd_zero);
-            }
-            sd.tag          = f.ReadStr();
+    auto     block      = [&](uint32_t expected) -> Option<uint32_t> {
+        uint32_t length = f.ReadUint32();
+        if (length != expected) return None();
+        return Some(length);
+    };
+    for (auto& mesh : mdl.meshes) {
+        if (static_cast<uint32_t>(f.Tell()) >= end_offset) break;
+        uint16_t count = f.ReadUint16();
+        if (count == 0) continue;
+        mesh.morph_scale        = f.ReadFloat();
+        mesh.morph_vertex_count = f.ReadUint32();
+        ResetDefault(mesh.morph_shapes, usize(count));
+        for (auto& shape : mesh.morph_shapes) {
+            shape.id = f.ReadUint32();
+            (void)f.ReadUint32();
+            shape.name              = f.ReadStr();
             uint32_t length = f.ReadUint32();
-            sd.hash         = f.ReadUint32();
-            if (length % 6 != 0) {
-                rstd_error("MDMPSectionData length {} not %% 6", length);
+            mesh.morph_vertex_count = rstd::cmp::min(mesh.morph_vertex_count, length / uint32_t(6));
+            const uint32_t vertices = mesh.morph_vertex_count;
+            if (length != vertices * 6) {
+                rstd_error("MDMP shape {} has {} bytes of offsets for {} vertices in {}",
+                           shape.id,
+                           length,
+                           vertices,
+                           path);
                 return false;
             }
-            uint32_t vcount = length / 6;
-            ResetDefault(sd.vertices, usize(vcount));
-            for (auto& v : sd.vertices) {
-                for (auto& x : v) x = f.ReadUint16();
+            ResetDefault(shape.offsets, usize(vertices));
+            for (auto& offset : shape.offsets) {
+                for (auto& v : offset) v = static_cast<rstd::int16_t>(f.ReadUint16());
             }
-            if (sd.shape_id == 0) {
-                ResetDefault(sd.trailer, usize(length));
-                for (auto& b : sd.trailer) b = f.ReadUint8();
-            } else {
-                ResetDefault(sd.vertex_trailers, usize(vcount));
-                for (auto& v : sd.vertex_trailers) v = f.ReadUint16();
+            // the normals' and tangents' offsets aren't used yet
+            auto skip = [&](uint32_t flag) {
+                if ((mesh.flag_a & flag) == 0) return true;
+                if (block(vertices * 6).is_none()) return false;
+                f.SeekSet(f.Tell() + vertices * 6);
+                return true;
+            };
+            if (! skip(MDL_MORPH_NORMALS) || ! skip(MDL_MORPH_TANGENTS)) return false;
+            if (mesh.flag_a & MDL_MORPH_ALPHA) {
+                if (block(vertices * 2).is_none()) return false;
+                ResetDefault(shape.alpha, usize(vertices));
+                for (auto& v : shape.alpha) v = static_cast<rstd::int16_t>(f.ReadUint16());
             }
+            if (mesh.flag_a & MDL_MORPH_MODIFIERS) f.SeekSet(f.Tell() + 16);
         }
     }
     if (end_offset > 0 && static_cast<uint32_t>(f.Tell()) != end_offset) {
@@ -1323,6 +1341,71 @@ void MdlParser::GenMeshFromMdl(SceneMesh::Submesh& submesh, const Mdl::Mesh& src
         }
     }
     submesh.PublishGeometry();
+}
+
+auto MdlParser::MakeMorph(const Mdl::Mesh& src, array<float, 3> position_offset)
+    -> Option<Arc<MdlMorph>> {
+    if (src.morph_shapes.is_empty() || src.morph_indices.len() != src.positions.len())
+        return None();
+    auto morph = Arc<MdlMorph>::make();
+    for (const auto& position : src.positions) {
+        morph->rest.push(array<float, 3> { position[usize(0)] + position_offset[usize(0)],
+                                           position[usize(1)] + position_offset[usize(1)],
+                                           position[usize(2)] + position_offset[usize(2)] });
+    }
+    for (float index : src.morph_indices)
+        morph->index.push(index > 0.0f ? static_cast<rstd::uint32_t>(index) : 0u);
+    morph->scale        = src.morph_scale;
+    morph->vertex_count = src.morph_vertex_count;
+    for (const auto& shape : src.morph_shapes) morph->offsets.push(shape.offsets.clone());
+    return Some(rstd::move(morph));
+}
+
+// As the shaders' MORPHING does: the sum of each shape's offset (over 32767) times its weight,
+// times the mesh's scale, for the vertices with a morph index (1..vertex_count).
+auto MdlParser::MorphPositions(const MdlMorph& morph, slice<float> weights) -> Vec<float> {
+    Vec<float> positions;
+    positions.reserve(morph.rest.len() * usize(3));
+    for (usize vertex {}; vertex < morph.rest.len(); ++vertex) {
+        array<float, 3> position = morph.rest[vertex];
+        const auto      index    = morph.index[vertex];
+        if (index > 0 && index <= morph.vertex_count) {
+            const usize entry(index - 1);
+            for (usize shape {}; shape < rstd::cmp::min(weights.len(), morph.offsets.len());
+                 ++shape) {
+                const auto& offsets = morph.offsets[shape];
+                if (entry >= offsets.len() || weights[shape] == 0.0f) continue;
+                const float amount = weights[shape] * morph.scale / 32767.0f;
+                for (usize axis {}; axis < usize(3); ++axis)
+                    position[axis] += amount * static_cast<float>(offsets[entry][axis]);
+            }
+        }
+        for (float value : position) positions.push(float(value));
+    }
+    return positions;
+}
+
+void MdlParser::BindMorph(Scene& scene, SceneMesh& mesh, usize submesh, const Mdl::Mesh& src,
+                          Arc<PuppetLayer> layer, array<float, 3> position_offset) {
+    auto morph = MakeMorph(src, position_offset);
+    if (morph.is_none() || submesh >= mesh.Submeshes().len()) return;
+    scene.RegisterTransformUpdater(
+        Box<dyn<FnMut<void(f64)>>>::make([target = &mesh,
+                                          submesh,
+                                          layer = rstd::move(layer),
+                                          morph = rstd::move(*morph),
+                                          last  = Vec<float> {}](f64 time) mutable {
+            auto weights = layer->MorphWeights(time.to_primitive());
+            bool same    = weights.len() == last.len();
+            for (usize i {}; same && i < weights.len(); ++i) same = weights[i] == last[i];
+            if (same) return;
+            auto  positions = MorphPositions(*morph, weights.as_slice());
+            auto& part      = target->Submeshes()[submesh];
+            (void)part.vertex_arrays[usize()].SetVertex(WE_IN_POSITION, positions.as_slice());
+            part.PublishGeometry();
+            target->SetDirty();
+            last = rstd::move(weights);
+        }));
 }
 
 void MdlParser::BindDrawOrder(SceneMesh::Submesh& submesh, const Mdl::Mesh& src,

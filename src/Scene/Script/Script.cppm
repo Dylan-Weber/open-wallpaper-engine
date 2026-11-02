@@ -61,6 +61,18 @@ struct BoneTranslation {
     float x { 0.0f }, y { 0.0f }, z { 0.0f };
 };
 
+// A layer script's applyBonePhysicsImpulse or resetBonePhysicsSimulation.
+struct BonePhysicsRequest {
+    // the bone as the bone index resolver numbers it; None for every bone
+    // with physics
+    Option<uint32_t> bone;
+    bool             reset { false };
+    // the impulse: a movement (units a second) and a turn (degrees a sixtieth
+    // of a second)
+    array<float, 3> directional {};
+    array<float, 3> angular {};
+};
+
 // What kind of value a FieldScript is expected to produce. Set at parse
 // time based on the field name's well-known type — see the per-field-kind
 // table in the API doc.
@@ -99,6 +111,8 @@ struct FrameInputs {
     uint32_t mouse_buttons_down { 0 };
     uint32_t mouse_buttons_pressed { 0 };
     uint32_t mouse_buttons_released { 0 };
+    // the scripts' Date, in milliseconds since 1970 (Scene::SetScriptClock); None: the system clock
+    Option<double> clock_ms;
 };
 
 struct MediaStatus {
@@ -212,6 +226,11 @@ public:
     // The package parser supplies this snapshot before pending initializers run.
     void RegisterInitialLayerConfig(owe::SceneNode* node, Json config);
 
+    // The names of every layer the scene authors, including layers left out of the
+    // scene tree. With them, `getLayer(name)` returns null for a name no layer has;
+    // without them, a missing name returns a handle that resolves once such a layer appears.
+    void SetAuthoredLayerNames(rstd::collections::HashSet<String> names);
+
     // Install the Scene root that backs `thisScene`. `thisScene.getLayer(name)`
     // searches from this node. Call once per scene after parsing finishes.
     void SetScene(owe::Scene* scene);
@@ -239,8 +258,30 @@ public:
     using BoneIndexResolver = Box<dyn<FnMut<uint32_t(owe::SceneNode*, ref<str>)>>>;
     using BoneTransformResolver =
         Box<dyn<FnMut<Option<BoneTranslation>(owe::SceneNode*, uint32_t, double)>>>;
+    // createAnimationLayer / playSingleAnimation: the animation by name or id, and the new layer's
+    // settings; the creator adds the layer to the node and gives its playback, or None.
+    struct AnimationLayerRequest {
+        String                animation;
+        Option<rstd::int32_t> animation_id;
+        String                name;
+        double                rate { 1.0 };
+        double                blend { 1.0 };
+        bool                  visible { true };
+        bool                  additive { false };
+        bool                  single { false };
+    };
+    using AnimationLayerCreator = Box<dyn<
+        FnMut<Option<Arc<owe::SceneAnimationPlayback>>(owe::SceneNode*, AnimationLayerRequest)>>>;
+    // destroyAnimationLayer: false when the playback isn't one of the node's animation layers.
+    using AnimationLayerDestroyer =
+        Box<dyn<FnMut<bool(owe::SceneNode*, const owe::SceneAnimationPlayback&)>>>;
+    void SetAnimationLayerResolvers(AnimationLayerCreator   creator,
+                                    AnimationLayerDestroyer destroyer);
+
     void SetBoneResolvers(BoneIndexResolver     index_resolver,
                           BoneTransformResolver transform_resolver);
+    using BonePhysicsHandler = Box<dyn<FnMut<void(owe::SceneNode*, const BonePhysicsRequest&)>>>;
+    void SetBonePhysicsHandler(BonePhysicsHandler handler);
 
     // Drive every alive FieldScript once. Invokes their cached `update`
     // export and stores the coerced return into FieldScript::last_value().
