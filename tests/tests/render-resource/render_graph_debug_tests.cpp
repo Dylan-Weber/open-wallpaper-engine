@@ -738,6 +738,74 @@ TEST(SceneRenderGraph, ElidesSceneOwnedVisibilityHiddenSubtreeAndRestoresIt) {
     EXPECT_GT(shared, usize());
 }
 
+// A layer in a hidden group layer isn't drawn (Ocarina of Time's "Saria Set" and "Epona and Malon"
+// groups start hidden; owe drew Mido, Malon, Talon and Epona anyway).
+TEST(SceneRenderGraph, ElidesALayerInAHiddenGroupLayer) {
+    owe::Scene scene;
+    scene.SetOrtho({ rstd::i32(1920), rstd::i32(1080) });
+    scene.RegisterRenderTarget(String::make("_rt_default"_str),
+                               owe::SceneRenderTarget { .width = i32(1920), .height = i32(1080) });
+
+    auto group    = Arc<owe::SceneNode>::make();
+    group->ID()   = rstd::i32(7);
+    auto child    = Arc<owe::SceneNode>::make();
+    child->ID()   = rstd::i32(8);
+    auto mesh     = Arc<owe::SceneMesh>::make();
+    auto material = GraphMaterial();
+    material.name = "mido"_Str;
+    mesh->AddMaterial(std::move(material));
+    mesh->Submeshes().push(owe::SceneMesh::Submesh {});
+    child->AddMesh(std::move(mesh));
+    group->AppendChild(child.clone());
+    scene.RootMut()->AppendChild(group.clone());
+    scene.RegisterNode(*group, Some(owe::WallpaperLayerId { .value = rstd::i32(7) }));
+    scene.RegisterNode(*child, Some(owe::WallpaperLayerId { .value = rstd::i32(8) }));
+
+    (void)scene.SetNodeVisible(*group, false);
+    auto snapshot = owe::ExtractRenderSceneSnapshot(scene);
+    auto graph    = owe::BuildSceneRenderState(scene, snapshot);
+    ASSERT_TRUE(graph.is_ok());
+    ASSERT_TRUE(graph->graph.compile().is_ok());
+    EXPECT_TRUE(graph->draws.is_empty());
+
+    // ... even with a linked layer below it (Mido's eyes and mouth): that one still draws its link
+    // target for the layer reading it, and the hidden child still isn't drawn
+    auto eyes          = Arc<owe::SceneNode>::make();
+    eyes->ID()         = rstd::i32(9);
+    auto eyes_mesh     = Arc<owe::SceneMesh>::make();
+    auto eyes_material = GraphMaterial();
+    eyes_material.name = "eyes"_Str;
+    eyes_mesh->AddMaterial(std::move(eyes_material));
+    eyes_mesh->Submeshes().push(owe::SceneMesh::Submesh {});
+    eyes->AddMesh(std::move(eyes_mesh));
+    child->AppendChild(eyes.clone());
+    scene.RegisterLayerLinkSource(owe::WallpaperLayerId { .value = rstd::i32(9) }, *eyes);
+    scene.MarkLayerStaticElidable(owe::WallpaperLayerId { .value = rstd::i32(9) });
+    auto consumer          = Arc<owe::SceneNode>::make();
+    consumer->ID()         = rstd::i32(42);
+    auto consumer_mesh     = Arc<owe::SceneMesh>::make();
+    auto consumer_material = GraphMaterial(usize(1));
+    consumer_material.name = "consumer"_Str;
+    consumer_material.textures.clear();
+    consumer_material.textures.push("_rt_link_9"_Str);
+    consumer_mesh->AddMaterial(std::move(consumer_material));
+    consumer_mesh->Submeshes().push(owe::SceneMesh::Submesh {});
+    consumer->AddMesh(std::move(consumer_mesh));
+    scene.RootMut()->AppendChild(consumer.clone());
+
+    auto linked_snapshot = owe::ExtractRenderSceneSnapshot(scene);
+    auto linked_graph    = owe::BuildSceneRenderState(scene, linked_snapshot);
+    ASSERT_TRUE(linked_graph.is_ok());
+    ASSERT_TRUE(linked_graph->graph.compile().is_ok());
+    usize mido {};
+    for (auto handle : linked_graph->graph.inspect().order) {
+        auto state = &linked_graph->graph.passes()[usize(handle)];
+        if (state != nullptr && state->name == "mido"_str) ++mido;
+    }
+    EXPECT_EQ(mido, usize());
+    EXPECT_EQ(linked_graph->draws.len(), rstd::usize(2));
+}
+
 TEST(SceneRenderGraph, PreservesLinkedSourceBelowVisibilityHiddenParent) {
     owe::Scene scene;
     scene.SetOrtho({ rstd::i32(1920), rstd::i32(1080) });

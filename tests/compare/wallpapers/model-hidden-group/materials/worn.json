@@ -1,0 +1,18 @@
+{
+  "passes": [
+    {
+      "shader": "generic4",
+      "blending": "normal",
+      "cullmode": "normal",
+      "depthtest": "enabled",
+      "depthwrite": "enabled",
+      "combos": {
+        "LIGHTING": 0
+      },
+      "constantshadervalues": {},
+      "textures": [
+        "_rt_imageLayerComposite_2_a"
+      ]
+    }
+  ]
+}
