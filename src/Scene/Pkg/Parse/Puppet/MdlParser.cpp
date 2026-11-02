@@ -891,44 +891,63 @@ void ParseMasks(fs::BinaryReader& f, Mdl::Mesh& mesh) {
     }
 }
 
+// The mesh's flag_a says which blocks each blend shape has after its offsets.
+constexpr uint32_t MDL_MORPH_NORMALS   = 0x0400;
+constexpr uint32_t MDL_MORPH_TANGENTS  = 0x0800;
+constexpr uint32_t MDL_MORPH_ALPHA     = 0x1000;
+constexpr uint32_t MDL_MORPH_MODIFIERS = 0x2000;
+
+// MDMP, as wallpaper64.exe's MDL loader reads it: for each mesh, a u16 shape count; with shapes, a
+// f32 scale and a u32 vertex count, then per shape a u32 id, a u32, its name and length-prefixed
+// blocks (u32 byte count + bytes): the offsets, three int16 a vertex, then the blocks flag_a names.
 bool ParseMDMP(fs::BinaryReader& f, Mdl& mdl, int version, ref<str> path) {
     mdl.mdmp            = version;
     uint32_t end_offset = f.ReadUint32();
-    while (f.Tell() < end_offset) {
-        auto&    sec    = mdl.morph_sections.emplace_back();
-        uint16_t count  = f.ReadUint16();
-        sec.event_time  = f.ReadFloat();
-        sec.event_id    = f.ReadUint16();
-        uint16_t zero_a = f.ReadUint16();
-        if (zero_a != 0) {
-            rstd_info("MDMPSection zero_a expected 0, got {}", zero_a);
-        }
-        ResetDefault(sec.sections, usize(count));
-        for (auto& sd : sec.sections) {
-            sd.shape_id      = f.ReadUint32();
-            uint32_t sd_zero = f.ReadUint32();
-            if (sd_zero != 0) {
-                rstd_info("MDMPSectionData zero_a expected 0, got {}", sd_zero);
-            }
-            sd.tag          = f.ReadStr();
+    auto     block      = [&](uint32_t expected) -> Option<uint32_t> {
+        uint32_t length = f.ReadUint32();
+        if (length != expected) return None();
+        return Some(length);
+    };
+    for (auto& mesh : mdl.meshes) {
+        if (static_cast<uint32_t>(f.Tell()) >= end_offset) break;
+        uint16_t count = f.ReadUint16();
+        if (count == 0) continue;
+        mesh.morph_scale        = f.ReadFloat();
+        mesh.morph_vertex_count = f.ReadUint32();
+        ResetDefault(mesh.morph_shapes, usize(count));
+        for (auto& shape : mesh.morph_shapes) {
+            shape.id = f.ReadUint32();
+            (void)f.ReadUint32();
+            shape.name              = f.ReadStr();
             uint32_t length = f.ReadUint32();
-            sd.hash         = f.ReadUint32();
-            if (length % 6 != 0) {
-                rstd_error("MDMPSectionData length {} not %% 6", length);
+            mesh.morph_vertex_count = rstd::cmp::min(mesh.morph_vertex_count, length / uint32_t(6));
+            const uint32_t vertices = mesh.morph_vertex_count;
+            if (length != vertices * 6) {
+                rstd_error("MDMP shape {} has {} bytes of offsets for {} vertices in {}",
+                           shape.id,
+                           length,
+                           vertices,
+                           path);
                 return false;
             }
-            uint32_t vcount = length / 6;
-            ResetDefault(sd.vertices, usize(vcount));
-            for (auto& v : sd.vertices) {
-                for (auto& x : v) x = f.ReadUint16();
+            ResetDefault(shape.offsets, usize(vertices));
+            for (auto& offset : shape.offsets) {
+                for (auto& v : offset) v = static_cast<rstd::int16_t>(f.ReadUint16());
             }
-            if (sd.shape_id == 0) {
-                ResetDefault(sd.trailer, usize(length));
-                for (auto& b : sd.trailer) b = f.ReadUint8();
-            } else {
-                ResetDefault(sd.vertex_trailers, usize(vcount));
-                for (auto& v : sd.vertex_trailers) v = f.ReadUint16();
+            // the normals' and tangents' offsets aren't used yet
+            auto skip = [&](uint32_t flag) {
+                if ((mesh.flag_a & flag) == 0) return true;
+                if (block(vertices * 6).is_none()) return false;
+                f.SeekSet(f.Tell() + vertices * 6);
+                return true;
+            };
+            if (! skip(MDL_MORPH_NORMALS) || ! skip(MDL_MORPH_TANGENTS)) return false;
+            if (mesh.flag_a & MDL_MORPH_ALPHA) {
+                if (block(vertices * 2).is_none()) return false;
+                ResetDefault(shape.alpha, usize(vertices));
+                for (auto& v : shape.alpha) v = static_cast<rstd::int16_t>(f.ReadUint16());
             }
+            if (mesh.flag_a & MDL_MORPH_MODIFIERS) f.SeekSet(f.Tell() + 16);
         }
     }
     if (end_offset > 0 && static_cast<uint32_t>(f.Tell()) != end_offset) {

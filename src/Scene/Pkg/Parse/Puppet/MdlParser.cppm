@@ -49,6 +49,18 @@ struct Mdl {
         // The fourth position float (vertex flag 0x10000): the vertex's blend shape index, 1..V
         // for the vertices the mesh's blend shapes move, 0 for the others.
         Vec<float>                    morph_indices;
+
+        // Blend shapes (MDMP): each moves the `morph_vertex_count` vertices whose morph index is
+        // set, by its offsets (over 32767) times `morph_scale` times its weight.
+        struct MorphShape {
+            rstd::uint32_t               id { 0 };
+            String                       name;
+            Vec<array<rstd::int16_t, 3>> offsets;
+            Vec<rstd::int16_t>           alpha; // flag_a 0x1000: over 32767
+        };
+        float                         morph_scale { 0.0f };
+        rstd::uint32_t                morph_vertex_count { 0 };
+        Vec<MorphShape>               morph_shapes;
         Vec<array<rstd::uint32_t, 4>> blend_indices;
         Vec<array<float, 4>>          blend_weights;
         Vec<array<float, 2>>          texcoords;
@@ -84,21 +96,6 @@ struct Mdl {
     rstd::int32_t mdmp { 0 };
 
     // MDMP morph sections — present when an animation drives shape blends.
-    // Each section keyed by event_time matching a v4 AnimV4Event.time.
-    struct MorphSectionData {
-        rstd::uint32_t          shape_id;
-        String                  tag;
-        rstd::uint32_t          hash;
-        Vec<array<uint16_t, 3>> vertices;
-        Vec<uint16_t>           vertex_trailers; // shape_id != 0
-        Vec<uint8_t>            trailer;         // shape_id == 0
-    };
-    struct MorphSection {
-        float                 event_time;
-        uint16_t              event_id;
-        Vec<MorphSectionData> sections;
-    };
-    Vec<MorphSection> morph_sections;
 
     Option<Arc<Puppet>> puppet;
     // combo
