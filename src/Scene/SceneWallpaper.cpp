@@ -1215,7 +1215,8 @@ void SceneRuntimeController::loadScene() {
                 CloneUserPropertyDiagnostics(result.parsed.scene->UserPropertyDiagnostics()));
     publishClearColor(result.parsed.scene->ClearColor());
     auto parsed = rstd::move(result.parsed);
-    auto rtx    = m_render_controller->sender();
+    parsed.scene->SetScriptClock(m_config.script_clock);
+    auto rtx = m_render_controller->sender();
     if (rtx.send(RenderMsg::SetScene(scene_load.clone(),
                                      rstd::move(parsed.scene),
                                      rstd::move(parsed.runtime_input),
