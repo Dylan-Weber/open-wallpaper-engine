@@ -408,8 +408,8 @@ private:
 
 class ShadowUniformSource {
 public:
-    // `scene`'s lights take the light slots as LightUniformSource gives them; `atlas_transforms` holds
-    // each view's square of the atlas (x, y, width, height, in its texture coordinates).
+    // `scene`'s lights take the light slots as LightUniformSource gives them; `atlas_transforms`
+    // holds each view's square of the atlas (x, y, width, height, in its texture coordinates).
     ShadowUniformSource(Arc<SceneCamera> camera, ref<Scene> scene, Vec<float> atlas_transforms)
         : m_camera(rstd::move(camera)),
           m_scene(scene),
