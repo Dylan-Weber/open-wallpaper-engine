@@ -120,7 +120,7 @@ public:
 
     // bloom / camerashake scalars exist since PKGV0001 but were never
     // unpacked into the struct before the version-aware split.
-    bool                    bloom { false };
+    bool bloom { false };
     // Wallpaper Engine's defaults when a scene turns bloom on without them (the editor writes
     // these values out).
     float                   bloomstrength { 2.0f };
