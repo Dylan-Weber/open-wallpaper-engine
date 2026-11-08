@@ -1,3 +1,6 @@
+module;
+#include <time.h>
+
 module wescene.script;
 import eigen;
 import rstd;
@@ -158,11 +161,29 @@ void InstallScriptScene(owe::Scene& scene, Box<ScriptScene> script_scene) {
     scene.InstallExtension(rstd::move(script_scene));
 }
 
+// the local time of day (0..1) at `epoch_ms`
+float LocalTimeOfDay(double epoch_ms) {
+    const auto seconds = static_cast<time_t>(epoch_ms / 1000.0);
+    tm         local {};
+    localtime_r(&seconds, &local);
+    const double into_day = local.tm_hour * 3600.0 + local.tm_min * 60.0 + local.tm_sec +
+                            (epoch_ms - static_cast<double>(seconds) * 1000.0) / 1000.0;
+    return static_cast<float>(into_day / 86400.0);
+}
+
 void TickSceneScripts(owe::Scene& scene, const FrameInputs& fi) {
     auto script_scene = scene.ExtensionMut<ScriptScene>();
     if (script_scene.is_none()) return;
     auto events = scene.ConsumeAnimationEvents();
-    (**script_scene).Tick(fi, events.as_slice());
+    if (auto start = scene.ScriptClock(); start.is_some()) {
+        // the scripts' clock started with the scene: Date and engine.timeOfDay read it
+        auto inputs        = fi;
+        inputs.clock_ms    = Some(*start + static_cast<double>(fi.runtime) * 1000.0);
+        inputs.time_of_day = LocalTimeOfDay(*inputs.clock_ms);
+        (**script_scene).Tick(inputs, events.as_slice());
+    } else {
+        (**script_scene).Tick(fi, events.as_slice());
+    }
     scene.ProcessLayerDeletions();
 }
 

@@ -85,6 +85,9 @@ struct SceneWallpaperConfig {
     PathBuf camera_eye_log;
     // Wallpaper Engine's "shadows" setting (low, medium, high, ultra)
     ShadowQuality shadow_quality { ShadowQuality::Medium };
+    // the moment (milliseconds since 1970) the scripts' Date reads when the scene starts; None: the
+    // system clock
+    Option<double> script_clock;
 };
 
 class SceneRuntimeController;
