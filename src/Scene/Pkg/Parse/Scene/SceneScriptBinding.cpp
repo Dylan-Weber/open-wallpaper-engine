@@ -482,6 +482,8 @@ script::ScriptScene& EnsureScriptScene(SceneLayerBuildContext& context) {
                         if (layer.is_none()) return;
                         (void)(*layer)->setLocalBoneTransform(index, from_matrix(local), time);
                     }));
+        (*context.script_scene)
+            ->runtime()
             .SetBonePhysicsHandler(script::JsRuntime::BonePhysicsHandler::make(
                 [layers = layers.clone()](SceneNode*                        node,
                                           const script::BonePhysicsRequest& request) {
