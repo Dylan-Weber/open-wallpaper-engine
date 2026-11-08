@@ -469,7 +469,7 @@ namespace
 // Everything a property changes but the scripts, which are told separately.
 SceneUserPropertyMutation ApplyBesidesScripts(Scene& scene, ref<str> key, const Json& property) {
     SceneUserPropertyMutation mutation;
-    auto payload                 = property.clone();
+    auto                      payload = property.clone();
     mutation.diagnostics_changed      = ! scene.ShaderComboUserBindings(key).is_empty();
 
     EnsureSceneUserPropertyState(scene).Set(key, payload);
@@ -502,8 +502,8 @@ SceneUserPropertyMutation SceneUserPropertyApplier::Apply(Scene& scene, ref<str>
 SceneUserPropertyMutation SceneUserPropertyApplier::ApplyAll(Scene&                 scene,
                                                              const rstd::json::Map& properties) {
     SceneUserPropertyMutation result;
-    // the scripts get every property in one call (their applyUserProperties reads several at once), the
-    // rest of the scene one at a time
+    // the scripts get every property in one call (their applyUserProperties reads several at once),
+    // the rest of the scene one at a time
     auto canonical = rstd::json::Map::make();
     properties.iter().for_each([&](auto entry) {
         auto [key, property] = entry;
