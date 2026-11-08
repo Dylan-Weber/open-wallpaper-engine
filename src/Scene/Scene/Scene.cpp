@@ -1303,6 +1303,15 @@ void SceneNode::RegisterAnimationLayer(Arc<SceneAnimationLayer> layer) {
     m_animation_layers.push(rstd::move(layer));
 }
 
+bool SceneNode::UnregisterAnimationLayer(const SceneAnimationLayer& layer) {
+    const auto* pointer = rstd::addressof(layer);
+    const auto  before  = m_animation_layers.len();
+    m_animation_layers.retain([pointer](const Arc<SceneAnimationLayer>& value) {
+        return value.as_ptr().as_raw_ptr() != pointer;
+    });
+    return m_animation_layers.len() != before;
+}
+
 auto SceneNode::AnimationLayer(ref<str> name) const -> Option<Arc<SceneAnimationLayer>> {
     Option<Arc<SceneAnimationLayer>> result;
     for (const auto& layer : m_animation_layers)

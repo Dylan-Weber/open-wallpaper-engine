@@ -1784,6 +1784,8 @@ public:
     bool HasFieldAnimationTrack(ref<str> field) const;
     auto NamedAnimation(ref<str> name) const -> Option<Arc<SceneAnimationPlayback>>;
     void RegisterAnimationLayer(Arc<SceneAnimationLayer> layer);
+    // Scripts' destroyAnimationLayer: false for a layer that isn't one of its animation layers.
+    bool UnregisterAnimationLayer(const SceneAnimationLayer& layer);
     auto AnimationLayer(ref<str> name) const -> Option<Arc<SceneAnimationLayer>>;
     auto AnimationLayer(usize index) const -> Option<Arc<SceneAnimationLayer>>;
     // how many animation layers the node has (a script's getAnimationLayerCount)

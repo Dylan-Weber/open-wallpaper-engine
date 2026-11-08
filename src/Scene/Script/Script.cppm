@@ -267,6 +267,26 @@ public:
                           BoneTransformResolver    transform_resolver,
                           BoneSetTransformResolver set_transform_resolver);
 
+    // createAnimationLayer / playSingleAnimation: the animation by name or id, and the new layer's
+    // settings; the creator adds the layer to the node and gives it, or None.
+    struct AnimationLayerRequest {
+        String                animation;
+        Option<rstd::int32_t> animation_id;
+        String                name;
+        double                rate { 1.0 };
+        double                blend { 1.0 };
+        bool                  visible { true };
+        bool                  additive { false };
+        bool                  single { false };
+    };
+    using AnimationLayerCreator = Box<dyn<
+        FnMut<Option<Arc<owe::SceneAnimationLayer>>(owe::SceneNode*, AnimationLayerRequest)>>>;
+    // destroyAnimationLayer: false when the layer isn't one of the node's animation layers.
+    using AnimationLayerDestroyer =
+        Box<dyn<FnMut<bool(owe::SceneNode*, const owe::SceneAnimationLayer&)>>>;
+    void SetAnimationLayerResolvers(AnimationLayerCreator   creator,
+                                    AnimationLayerDestroyer destroyer);
+
     // Drive every alive FieldScript once. Invokes their cached `update`
     // export and stores the coerced return into FieldScript::last_value().
     // Exceptions are caught and logged once per script_sha.
