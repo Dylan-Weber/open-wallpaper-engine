@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test animations on top of the value of the property",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}

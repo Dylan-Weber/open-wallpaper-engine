@@ -1004,6 +1004,16 @@ Eigen::Vector3f SceneAnimationTrack::EvaluateVec3(const Eigen::Vector3f& base) c
     return curve->EvaluateVec3(base, playback->Sample());
 }
 
+float SceneAnimationTrack::EvaluateLayerScalar(float value) const {
+    if (curve->c0.is_empty()) return value;
+    // From a base of zero, relative and absolute curves both give the animated value itself.
+    return curve->EvaluateScalar(0.0f, playback->Sample());
+}
+
+Eigen::Vector3f SceneAnimationTrack::EvaluateLayerVec3(const Eigen::Vector3f& value) const {
+    return value + curve->EvaluateVec3(Eigen::Vector3f::Zero(), playback->Sample());
+}
+
 SceneAnimationPlayback::SceneAnimationPlayback(Arc<SceneAnimationClip> clip, bool start_paused)
     : m_clip(rstd::move(clip)) {
     m_start_paused = start_paused;
@@ -1313,23 +1323,21 @@ auto SceneNode::AnimationLayer(usize index) const -> Option<Arc<SceneAnimationLa
 void SceneNode::TickFieldAnimations(double runtime, Vec<SceneAnimationEventDispatch>& events) {
     m_animations.Advance(*this, runtime, events);
     for (const auto& layer : m_animation_layers) layer->SampleFields();
+    const bool follow = m_animations_follow_relative;
     for (const auto& binding : m_field_animation_tracks) {
+        const auto vector = [&] {
+            return follow ? binding.track.EvaluateVec3(binding.vector_base)
+                          : binding.track.EvaluateLayerVec3(binding.vector_base);
+        };
         switch (binding.target) {
-        case SceneNodeAnimationTarget::Origin:
-            SetTranslate(binding.track.EvaluateVec3(binding.vector_base));
-            break;
-        case SceneNodeAnimationTarget::Scale:
-            SetScale(binding.track.EvaluateVec3(binding.vector_base));
-            break;
-        case SceneNodeAnimationTarget::Rotation:
-            SetRotation(binding.track.EvaluateVec3(binding.vector_base));
-            break;
+        case SceneNodeAnimationTarget::Origin: SetTranslate(vector()); break;
+        case SceneNodeAnimationTarget::Scale: SetScale(vector()); break;
+        case SceneNodeAnimationTarget::Rotation: SetRotation(vector()); break;
         case SceneNodeAnimationTarget::Alpha:
-            SetUserAlpha(binding.track.EvaluateScalar(binding.scalar_base));
+            SetUserAlpha(follow ? binding.track.EvaluateScalar(binding.scalar_base)
+                                : binding.track.EvaluateLayerScalar(binding.scalar_base));
             break;
-        case SceneNodeAnimationTarget::Color:
-            SetColor(binding.track.EvaluateVec3(binding.vector_base));
-            break;
+        case SceneNodeAnimationTarget::Color: SetColor(vector()); break;
         }
     }
 }
