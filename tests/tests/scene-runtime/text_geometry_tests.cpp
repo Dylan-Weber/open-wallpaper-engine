@@ -612,6 +612,28 @@ TEST(TextLayouter, BackgroundKeepsTheLastLineGapBelow) {
     }
 }
 
+// Padding apart across and down: the box and its render target grow by twice each.
+TEST(TextGeometry, PaddingAcrossAndDownGrowTheBoxApart) {
+    const owe::text::TextGeometryPolicy policy {
+        .frame_width        = 500.0f,
+        .frame_height       = 50.0f,
+        .preserve_text_bbox = true,
+    };
+    const owe::text::TextLayoutMetrics metrics {
+        .text_width    = 300.0f,
+        .text_height   = 100.0f,
+        .source_width  = 280.0f,
+        .source_height = 70.0f,
+        .padding       = 40.0f,
+        .padding_y     = 10.0f,
+    };
+    const auto geometry = owe::text::ResolveTextGeometry(policy, metrics);
+    EXPECT_FLOAT_EQ(geometry.rt_width, 380.0f);
+    EXPECT_FLOAT_EQ(geometry.rt_height, 120.0f);
+    EXPECT_FLOAT_EQ(geometry.draw_width, 380.0f);
+    EXPECT_FLOAT_EQ(geometry.draw_height, 120.0f);
+}
+
 // A background box takes in ink that reaches past the line: Wallpaper Engine places the text by
 // its line, but grows the box to hold a letter above the font's ascent (text-metrics: an H 0.7 em
 // tall in a font of ascent 0.5 em, aligned top, reaches 0.2 em above the origin, and so does its
