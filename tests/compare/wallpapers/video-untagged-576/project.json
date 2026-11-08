@@ -1,0 +1,15 @@
+{
+  "file": "clip.mp4",
+  "type": "video",
+  "title": "colour patches, 1024x576 BT.601 limited range, no colour tags",
+  "general": {
+    "properties": {
+      "schemecolor": {
+        "type": "color",
+        "value": "0 0 0",
+        "text": "ui_browse_properties_scheme_color",
+        "order": 0
+      }
+    }
+  }
+}
