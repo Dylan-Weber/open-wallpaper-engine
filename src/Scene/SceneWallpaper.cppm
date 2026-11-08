@@ -78,6 +78,9 @@ struct SceneWallpaperConfig {
     // a spectrum held still instead of what is heard, for shaders and scripts alike (a reference's
     // recorded bands: scene_audio::ParseFixedSpectrum)
     Option<scene_audio::Buffers> fixed_audio;
+    // a file each drawn frame adds the scene's clock and the camera's eye to ("t x y z"); empty:
+    // none
+    PathBuf camera_eye_log;
 };
 
 class SceneRuntimeController;
