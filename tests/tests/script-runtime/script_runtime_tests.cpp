@@ -4521,3 +4521,45 @@ TEST(ScriptScene, CreatedLayerIsQueryableDuringNestedScriptInitialization) {
     EXPECT_EQ(LastScalar(nested), 1.0);
     EXPECT_EQ(created.len(), usize(1));
 }
+
+// getAnimationLayer takes an index as well as a name, below getAnimationLayerCount (measured in
+// Wallpaper Engine).
+TEST(ScriptAnimationLayer, ByIndexAndCount) {
+    owe::SceneNode node;
+    auto           make = [](ref<str> name) {
+        return Arc<owe::SceneAnimationPlayback>::make(
+            Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {
+                .name = String::make(name),
+                .mode = String::make("loop"_str),
+                .fps  = 30.0f,
+                .end  = i32(60),
+            }));
+    };
+    node.RegisterAnimation(make("material"_str));
+    for (auto name : { "Idle"_str, "Wave"_str }) {
+        auto layer = Arc<owe::SceneAnimationLayer>::make(String::make(name));
+        layer->SetPlayback(Some(make(name)));
+        node.RegisterAnimationLayer(rstd::move(layer));
+    }
+
+    JsRuntime rt;
+    rt.SetFrameInputs(MakeFi());
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            export function update() {
+                thisLayer.getAnimationLayer(1).pause();
+                const idle = thisLayer.getAnimationLayer("Idle").isPlaying();
+                const wave = thisLayer.getAnimationLayer("Wave").isPlaying();
+                return thisLayer.getAnimationLayerCount() * 100 + (idle ? 10 : 0) + (wave ? 1 : 0);
+            }
+        )JS"_str,
+        "test/animation_layer_by_index"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+    rt.TickAll();
+    ASSERT_TRUE(fs->last_value().is_Scalar());
+    EXPECT_EQ(fs->last_value().as_Scalar().value.v, 210.0);
+}

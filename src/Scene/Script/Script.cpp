@@ -2618,6 +2618,14 @@ JSValue NodeGetAnimationLayer(JSContext* ctx, JSValueConst value, int argc, JSVa
     return WrapNamedAnimationLayer(ctx, rstd::move(*layer));
 }
 
+// getAnimationLayerCount: how many animation layers the layer has (getAnimationLayer takes an index
+// below it).
+JSValue NodeGetAnimationLayerCount(JSContext* ctx, JSValueConst value, int, JSValueConst*) {
+    auto* node = GetLayerNode(value);
+    if (! node) return JS_NewInt32(ctx, 0);
+    return JS_NewInt32(ctx, static_cast<int32_t>(node->AnimationLayerCount().to_primitive()));
+}
+
 void InitNamedAnimationLayerClass(JSContext* ctx, JSRuntime* rt) {
     if (s_named_animation_layer_class_id == 0) JS_NewClassID(rt, &s_named_animation_layer_class_id);
     JSClassDef def {};
@@ -2827,6 +2835,7 @@ const JSCFunctionListEntry s_layer_proto_funcs[] = {
     JS_CFUNC_DEF("emitParticles", 1, NodeEmitParticles),
     JS_CFUNC_DEF("getAnimation", 1, NodeGetAnimation),
     JS_CFUNC_DEF("getAnimationLayer", 1, NodeGetAnimationLayer),
+    JS_CFUNC_DEF("getAnimationLayerCount", 0, NodeGetAnimationLayerCount),
     JS_CFUNC_DEF("createLayer", 1, NodeSceneCreateLayer),
     JS_CFUNC_DEF("destroyLayer", 1, NodeSceneDestroyLayer),
     JS_CFUNC_DEF("getLayerIndex", 1, NodeSceneGetLayerIndex),

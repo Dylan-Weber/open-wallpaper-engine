@@ -1783,6 +1783,8 @@ public:
     void RegisterAnimationLayer(Arc<SceneAnimationLayer> layer);
     auto AnimationLayer(ref<str> name) const -> Option<Arc<SceneAnimationLayer>>;
     auto AnimationLayer(usize index) const -> Option<Arc<SceneAnimationLayer>>;
+    // how many animation layers the node has (a script's getAnimationLayerCount)
+    usize AnimationLayerCount() const { return m_animation_layers.len(); }
     void TickFieldAnimations(double runtime, Vec<SceneAnimationEventDispatch>& events);
     void SetAlphaSource(SceneNode* node) { m_alpha_source = node; }
 
