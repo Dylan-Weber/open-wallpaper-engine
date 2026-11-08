@@ -527,19 +527,20 @@ void WireFieldScripts(SceneLayerBuildContext& context, const Arc<SceneNode>& nod
         TrackFieldScript(context, fs);
         if (! has_actuator) continue;
         if (field == "visible"_str) {
-            // What the script returns shows or hides the node. Only a change of the returned value does: a script
-            // that returns the value it is given doesn't undo another script's `layer.visible = ...`.
-            ss.AddActuator({ fs,
-                             [scene = context.scene, node,
-                              last  = sb.initial_value.as_bool().unwrap_or(true)](
-                                 const script::ScriptValue& value) mutable {
-                                 auto shown = ScriptValueAsFloat(value);
-                                 if (! shown) return;
-                                 const bool visible = *shown != 0.0f;
-                                 if (visible == last) return;
-                                 last = visible;
-                                 scene->SetNodeVisible(*node, visible);
-                             } });
+            // What the script returns shows or hides the node. Only a change of the returned value
+            // does: a script that returns the value it is given doesn't undo another script's
+            // `layer.visible = ...`.
+            ss.AddActuator(
+                { fs,
+                  [scene = context.scene, node, last = sb.initial_value.as_bool().unwrap_or(true)](
+                      const script::ScriptValue& value) mutable {
+                      auto shown = ScriptValueAsFloat(value);
+                      if (! shown) return;
+                      const bool visible = *shown != 0.0f;
+                      if (visible == last) return;
+                      last = visible;
+                      scene->SetNodeVisible(*node, visible);
+                  } });
             continue;
         }
         if (is_alpha)
