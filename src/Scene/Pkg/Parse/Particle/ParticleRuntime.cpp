@@ -570,6 +570,8 @@ void ParticleSubSystem::UpdateFrameInput(f64 frame_time) {
     m_frame.local_from_world_dir   = local_from_world_dir;
     m_frame.world_from_spawn_space = world_from_spawn_space;
     m_frame.local_from_world       = local_from_world;
+    m_frame.scene_extent           = Eigen::Vector2d(m_scene.Ortho()[usize()].to_primitive(),
+                                                     m_scene.Ortho()[usize(1)].to_primitive());
     m_frame.world_space            = m_world_space;
     m_frame.time                   = m_time;
     m_frame.delta                  = frame_time;
