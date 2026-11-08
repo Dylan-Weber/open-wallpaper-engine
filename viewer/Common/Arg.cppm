@@ -28,6 +28,7 @@ struct SceneViewerArgs {
     String      capture_output;
     u32         capture_frame;
     Option<u64> random_seed;
+    String      shadow_quality;
     Resolution  resolution;
     i32         fps;
     u32         msaa_samples;
@@ -150,6 +151,11 @@ SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
     auto random_seed = command.add_arg(Arg<u64>::value("random-seed"_str, from_str_parser<u64>())
                                            .long_name("random-seed"_str)
                                            .help("Set the scene random seed"_str));
+    auto shadow_quality = command.add_arg(
+        Arg<String>::value("shadow-quality"_str, string_parser())
+            .long_name("shadow-quality"_str)
+            .help("Shadows as Wallpaper Engine's setting: low, medium, high, ultra"_str)
+            .default_value("medium"_str));
     auto load_bench_output =
         command.add_arg(Arg<String>::value("load-bench-output"_str, string_parser())
                             .long_name("load-bench-output"_str)
@@ -201,6 +207,7 @@ SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
         .capture_output        = Value(matches, capture).clone(),
         .capture_frame         = Value(matches, capture_frame),
         .random_seed           = OptionalValue(matches, random_seed),
+        .shadow_quality        = Value(matches, shadow_quality).clone(),
         .resolution            = Value(matches, resolution),
         .fps                   = Value(matches, fps),
         .msaa_samples          = Value(matches, msaa),

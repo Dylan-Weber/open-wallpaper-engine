@@ -479,7 +479,9 @@ auto BuildMaterial(fs::VFS& vfs, ShaderCache& shader_cache,
         if (environment.shadow_mapping &&
             (**shader_info_ref.combos.get(WE_CB_LIGHTING)).as_str() != "0"_str) {
             (void)shader_info_ref.combos.insert("LIGHTS_SHADOW_MAPPING"_Str, "1"_Str);
-            (void)shader_info_ref.combos.insert("LIGHTS_SHADOW_MAPPING_QUALITY"_Str, "2"_Str);
+            (void)shader_info_ref.combos.insert(
+                "LIGHTS_SHADOW_MAPPING_QUALITY"_Str,
+                rstd::format("{}", static_cast<int>(environment.shadow_quality)));
         }
     }
 

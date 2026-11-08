@@ -19,6 +19,7 @@ struct SceneLoadRequest {
     rstd::json::Map                                 user_properties;
     rstd::json::Map                                 general_settings;
     SceneParseCapabilities                          capabilities;
+    ShadowQuality                                   shadow_quality { ShadowQuality::Medium };
     SceneLoadBenchRecorderView                      load_bench;
     Option<ImageReadyCallback>                      image_ready;
     Option<SceneSoundUnmountCallback>               sound_unmount;

@@ -150,6 +150,7 @@ auto LoadScene(SceneLoadRequest request, mut_ref<wavsen::audio::SoundManager> so
           .general_settings = Some(ref<rstd::json::Map>::from_raw_parts(&request.general_settings)),
           .shader_cache_dir = rstd::move(shader_cache),
           .capabilities     = request.capabilities,
+          .shadow_quality   = request.shadow_quality,
           .image_ready      = rstd::move(request.image_ready),
           .sound_unmount    = rstd::move(request.sound_unmount),
           .sound_mount      = rstd::move(request.sound_mount),
