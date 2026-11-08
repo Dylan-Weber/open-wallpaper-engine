@@ -3357,6 +3357,39 @@ void JsRuntime::SetSceneRoot(owe::SceneNode* root) {
     for (const auto& entry : pending) RunFieldScriptInit(m_impl->ctx, m_impl.get(), entry.script);
 }
 
+// Wallpaper Engine hands a property script its own copy of the value in each
+// call: changing `value` without returning it has no effect, and a value kept
+// from an earlier call stays as it was.
+JSValue CopyFieldValue(JSContext* ctx, JSValueConst value) {
+    if (JS_IsArray(value)) {
+        JSValue        length_value = JS_GetPropertyStr(ctx, value, "length");
+        rstd::uint32_t length {};
+        JS_ToUint32(ctx, &length, length_value);
+        JS_FreeValue(ctx, length_value);
+        JSValue copy = JS_NewArray(ctx);
+        for (rstd::uint32_t i = 0; i < length; ++i) {
+            JSValue element = JS_GetPropertyUint32(ctx, value, i);
+            JS_DefinePropertyValueUint32(ctx, copy, i, element, JS_PROP_C_W_E);
+        }
+        return copy;
+    }
+    if (! JS_IsObject(value)) return JS_DupValue(ctx, value);
+
+    // Vec2/Vec3/Vec4 copy every component as it is, non-finite ones included.
+    JSValue copy_fn = JS_GetPropertyStr(ctx, value, "copy");
+    if (! JS_IsFunction(ctx, copy_fn)) {
+        JS_FreeValue(ctx, copy_fn);
+        return JS_DupValue(ctx, value);
+    }
+    JSValue copy = JS_Call(ctx, copy_fn, value, 0, nullptr);
+    JS_FreeValue(ctx, copy_fn);
+    if (JS_IsException(copy)) {
+        JS_FreeValue(ctx, JS_GetException(ctx));
+        return JS_DupValue(ctx, value);
+    }
+    return copy;
+}
+
 void JsRuntime::TickAll(slice<owe::SceneAnimationEventDispatch> animation_events) {
     JSContext* ctx = m_impl->ctx;
     SweepDeferred(ctx, &m_impl->host);
@@ -3485,7 +3518,7 @@ void JsRuntime::TickAll(slice<owe::SceneAnimationEventDispatch> animation_events
             BindFieldScriptContext(ctx, *I, m_impl->host.default_layer);
             m_impl->host.active_field_script = fs;
             JSValue args[2]                  = { MakeAnimationEvent(ctx, dispatch.event),
-                                                 JS_DupValue(ctx, I->current_value) };
+                                                 CopyFieldValue(ctx, I->current_value) };
             JSValue ret = JS_Call(ctx, I->animation_event_fn, JS_UNDEFINED, 2, args);
             JS_FreeValue(ctx, args[0]);
             JS_FreeValue(ctx, args[1]);
@@ -3519,7 +3552,7 @@ void JsRuntime::TickAll(slice<owe::SceneAnimationEventDispatch> animation_events
         m_impl->host.active_field_script = fs;
         JSValue ret;
         if (I->update_takes_arg) {
-            JSValue args[1] = { JS_DupValue(ctx, I->current_value) };
+            JSValue args[1] = { CopyFieldValue(ctx, I->current_value) };
             ret             = JS_Call(ctx, I->update_fn, JS_UNDEFINED, 1, args);
             JS_FreeValue(ctx, args[0]);
         } else {
@@ -3653,7 +3686,7 @@ void RunFieldScriptInit(JSContext* ctx, JsRuntime::Impl* rt, FieldScript* fs) {
     BindFieldScriptContext(ctx, *I, rt->host.default_layer);
     if (! JS_IsUndefined(rt->wrapped_scene)) BindThisScene(ctx, rt->wrapped_scene);
     rt->host.active_field_script = fs;
-    JSValue arg                  = JS_DupValue(ctx, I->current_value);
+    JSValue arg                  = CopyFieldValue(ctx, I->current_value);
     JSValue r                    = JS_Call(ctx, I->init_fn, JS_UNDEFINED, 1, &arg);
     JS_FreeValue(ctx, arg);
     if (JS_IsException(r)) rt->LogError(ctx, I->sha.as_str(), "init threw");
