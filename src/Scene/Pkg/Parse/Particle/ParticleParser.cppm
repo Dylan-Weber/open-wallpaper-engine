@@ -32,4 +32,8 @@ public:
                Option<Arc<LayerImageSource>> layer_image = None());
     static ParticleSpawnInstruction                   GenOverride(ParticleInstanceModifiers);
 };
+
+// Whether a particle shader is drawn with a geometry stage: only when the device has one and the
+// shader comes with a .geom. Shaders with only a .vert and a .frag expand their quads themselves.
+bool ParticleShaderUsesGeometryStage(fs::VFS& vfs, ref<str> shader, bool geometry_shader_supported);
 } // namespace owe
