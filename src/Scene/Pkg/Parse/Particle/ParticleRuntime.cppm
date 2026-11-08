@@ -355,10 +355,11 @@ struct ParticleSphereEmitterArgs {
     ParticleAudioResponse audio_response;
 };
 
-// An image layer a layerimage emitter emits from (particles-layerimage): the layer's rectangle, its size's half-extents before
-// the layer's scale, turned and moved by the layer's node; the particles take the layer's colour; a layer less than half
-// opaque emits nothing (a pixel counts with its opacity times the layer's).
-// a pixel of a layer's image that emits: its place in layer units from the centre, and its colour
+// An image layer a layerimage emitter emits from (particles-layerimage): the layer's rectangle, its
+// size's half-extents before the layer's scale, turned and moved by the layer's node; the particles
+// take the layer's colour; a layer less than half opaque emits nothing (a pixel counts with its
+// opacity times the layer's). a pixel of a layer's image that emits: its place in layer units from
+// the centre, and its colour
 struct LayerImagePoint {
     float           x {}, y {};
     Eigen::Vector3f color { 1.0f, 1.0f, 1.0f };
@@ -370,30 +371,33 @@ struct LayerImageSource {
     double          half_height {};
     Eigen::Vector3f color { 1.0f, 1.0f, 1.0f };
     float           alpha { 1.0f };
-    // the lattice of the layer's image, when it has one (LayerImageLattice): the emitter picks one of its points at random
+    // the lattice of the layer's image, when it has one (LayerImageLattice): the emitter picks one
+    // of its points at random
     Vec<LayerImagePoint> points;
 };
 
-// The points a layer's image emits from, as Wallpaper Engine reads it (particles-layerimage-pitch, -block): one at the centre of
-// each 4x4 texel block (texel 4i+2 from the top left, no jitter; a part block at the edge is left out, not probed), in
-// texels from the image's centre (y up), where the block's average opacity times the layer's is half or more, in the block's
-// average colour. `data` is 8-bit RGB, RGBA or BGRA by `channels` and `bgra`.
-Vec<LayerImagePoint> LayerImageLattice(const unsigned char* data, int width, int height, int channels, bool bgra,
-                                       float layer_alpha);
+// The points a layer's image emits from, as Wallpaper Engine reads it (particles-layerimage-pitch,
+// -block): one at the centre of each 4x4 texel block (texel 4i+2 from the top left, no jitter; a
+// part block at the edge is left out, not probed), in texels from the image's centre (y up), where
+// the block's average opacity times the layer's is half or more, in the block's average colour.
+// `data` is 8-bit RGB, RGBA or BGRA by `channels` and `bgra`.
+Vec<LayerImagePoint> LayerImageLattice(const unsigned char* data, int width, int height,
+                                       int channels, bool bgra, float layer_alpha);
 
 struct ParticleLayerImageEmitterArgs {
-    float                  emit_speed {};
-    bool                   one_per_frame { false };
-    u32                    instantaneous {};
-    float                  duration {};
-    i32                    controlpoint {};
-    ParticleAudioResponse  audio_response;
+    float                         emit_speed {};
+    bool                          one_per_frame { false };
+    u32                           instantaneous {};
+    float                         duration {};
+    i32                           controlpoint {};
+    ParticleAudioResponse         audio_response;
     Option<Arc<LayerImageSource>> source;
 };
 
 class LayerImageEmitterProgram {
 public:
-    LayerImageEmitterProgram(ParticleSpawnPipeline& pipeline, ParticleLayerImageEmitterArgs args, usize index)
+    LayerImageEmitterProgram(ParticleSpawnPipeline& pipeline, ParticleLayerImageEmitterArgs args,
+                             usize index)
         : m_pipeline(rstd::addressof(pipeline)), m_args(rstd::move(args)), m_index(index) {}
 
     void Compile(particle::ParticleViewCompiler&);
