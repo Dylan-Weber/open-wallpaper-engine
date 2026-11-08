@@ -919,18 +919,18 @@ struct MovementOperator {
         auto delta      = context.delta.to_primitive();
         auto speed      = modifiers.Speed();
         for (auto slot : context.slots) {
-            // Wallpaper Engine moves a particle by its velocity, then slows it: a frame takes
+            // Wallpaper Engine pulls a particle by gravity, moves it, then slows it: a frame takes
             // drag dt / (1 + (dt / 0.065)^2) of its speed, so drag is the rate a second at high
             // frame rates and gentler at low ones (particles-drag-rest at 15, 30 and 60 frames a
             // second: a thrown particle stops at 0.51, 0.80 and 0.95 of what the drag's rate says
-            // for drag 0.5 to 2; at 60 frames a second 0.95 x the drag).
-            positions[slot.index] = (positions[slot.index].cast<double>() +
-                                     velocities[slot.index].cast<double>() * delta)
-                                        .cast<float>();
+            // for drag 0.5 to 2); a capped falling particle moves a frame's gravity faster than
+            // its cap (particles-capvelocity).
             const Eigen::Vector3d pulled =
                 velocities[slot.index].cast<double>() +
                 speed * (frame->world_space ? frame->local_from_world_dir * gravity : gravity) *
                     delta;
+            positions[slot.index] =
+                (positions[slot.index].cast<double>() + pulled * delta).cast<float>();
             const double loss = rstd::cmp::min(
                 1.0, double(drag) * delta / (1.0 + (delta / 0.065) * (delta / 0.065)));
             velocities[slot.index] = (pulled * (1.0 - loss)).cast<float>();
@@ -1387,6 +1387,26 @@ struct ControlPointAttractOperator {
     }
 };
 
+// capvelocity: no particle goes faster than maxspeed (particles-capvelocity).
+struct CapVelocityOperator {
+    ParticleAttributes                                        attributes;
+    double                                                    max_speed {};
+    particle::ParticleWriteIndex<particle::VelocityAttribute> velocity;
+
+    void Compile(particle::ParticleViewCompiler& compiler) {
+        velocity = compiler.Write(attributes.velocity);
+    }
+
+    void Update(particle::ParticleUpdateContext& context) {
+        auto velocities = context.view.Write(velocity);
+        for (auto slot : context.slots) {
+            const Eigen::Vector3d v     = velocities[slot.index].cast<double>();
+            const double          speed = v.norm();
+            if (speed > max_speed) velocities[slot.index] = (v * (max_speed / speed)).cast<float>();
+        }
+    }
+};
+
 struct NoopUpdateOperator {
     void Compile(particle::ParticleViewCompiler&) {}
     void Update(particle::ParticleUpdateContext&) {}
@@ -1507,6 +1527,13 @@ ParticleParser::GenOperator(const Json& wpj, ParticleInstanceModifiers modifiers
             return Box<dyn<particle::ParticleUpdateProgram>>::make(ControlPointAttractOperator {
                 .attributes = attributes,
                 .config     = ControlPointForce::ReadFromJson(wpj),
+            });
+        } else if (name == "capvelocity"_str) {
+            float max_speed { 0.0f };
+            owe::GetJsonValue(wpj, "maxspeed"_str, max_speed, false);
+            return Box<dyn<particle::ParticleUpdateProgram>>::make(CapVelocityOperator {
+                .attributes = attributes,
+                .max_speed  = rstd::cmp::max(0.0, double(max_speed)),
             });
         }
     } while (false);
