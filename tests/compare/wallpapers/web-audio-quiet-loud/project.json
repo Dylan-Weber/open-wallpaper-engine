@@ -1,0 +1,30 @@
+{
+  "file": "index.html",
+  "type": "web",
+  "title": "one tone quiet on the left, loud on the right, through the web audio listener",
+  "general": {
+    "properties": {
+      "probecolor": {
+        "type": "color",
+        "value": "0.2 0.6 1",
+        "text": "colour",
+        "order": 0
+      },
+      "probenumber": {
+        "type": "slider",
+        "value": 37,
+        "min": 0,
+        "max": 100,
+        "text": "number",
+        "order": 1
+      },
+      "probebool": {
+        "type": "bool",
+        "value": true,
+        "text": "flag",
+        "order": 2
+      }
+    },
+    "supportsaudioprocessing": true
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "file": "index.html",
+  "type": "web",
+  "title": "a page with no sound: window size, pixel ratio, user properties",
+  "general": {
+    "properties": {
+      "probecolor": {
+        "type": "color",
+        "value": "0.2 0.6 1",
+        "text": "colour",
+        "order": 0
+      },
+      "probenumber": {
+        "type": "slider",
+        "value": 37,
+        "min": 0,
+        "max": 100,
+        "text": "number",
+        "order": 1
+      },
+      "probebool": {
+        "type": "bool",
+        "value": true,
+        "text": "flag",
+        "order": 2
+      }
+    }
+  }
+}
