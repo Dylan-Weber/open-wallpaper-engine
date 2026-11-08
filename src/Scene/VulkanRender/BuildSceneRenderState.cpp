@@ -666,6 +666,9 @@ static void ConfigureNestedOutput(SceneNode* node, ref<str> output, ref<str> inh
     }
 }
 
+// A node below a hidden one (`hidden_ancestor`) is hidden too: CollectEmitSkipSubtrees skips a
+// hidden subtree only when nothing in it is linked, so a linked layer anywhere below (a puppet's
+// eyes) keeps the subtree, and its other nodes must still not be drawn.
 static void EmitSceneNode(SceneNode* node, ref<str> inherited_output, ref<str> inherited_camera,
                           ExtraInfo& extra, const HashSet<const SceneNode*>& emit_skip_subtrees,
                           const BTreeSet<i32>& linked_ids, bool hidden_ancestor = false) {
@@ -678,14 +681,19 @@ static void EmitSceneNode(SceneNode* node, ref<str> inherited_output, ref<str> i
                                                : (wallpaper.is_some() ? wallpaper->value : i32(-1));
     const bool elidable     = scene.IsLayerElidable(WallpaperLayerId { .value = layer_id });
     const bool linked       = link_source.is_some() && linked_ids.contains(link_source->value);
-    const bool hidden       = hidden_ancestor || (! node->Visible() && ! linked);
+    // a layer the parser hid for good (visibility elidable) hides its subtree like an invisible one
+    const bool self_hidden  = ! node->Visible() ||
+                             (layer_id >= i32() &&
+                              scene.IsLayerVisibilityElidable(WallpaperLayerId { .value = layer_id }));
+    const bool hidden       = hidden_ancestor || (self_hidden && ! linked);
     const bool child_hidden = linked ? false : hidden;
     bool       emit         = ! hidden || linked;
 
     ref<str> node_output = inherited_output;
 
     if (! linked && ShouldSkipNoRuntimeEffect(node, scene)) emit = false;
-    if (elidable) {
+    // a hidden linked layer draws only its link target, for the layers that read it
+    if (elidable || hidden) {
         if (! linked) {
             emit = false;
         } else {
