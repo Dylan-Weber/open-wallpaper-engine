@@ -341,6 +341,9 @@ script::ScriptScene& EnsureScriptScene(SceneLayerBuildContext& context) {
                         if (local.is_none()) return;
                         (void)(*layer)->setLocalBoneTransform(
                             index, WithBoneLocalPose(*local, pose), time);
+                    }));
+        (*context.script_scene)
+            ->runtime()
             .SetAttachmentResolvers(
                 script::JsRuntime::AttachmentIndexResolver::make(
                     [layers =
