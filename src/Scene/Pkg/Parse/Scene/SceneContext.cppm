@@ -153,6 +153,8 @@ struct SceneLayerResources {
     HashSet<i32>                      hidden_link_source_ids;
     bool                              scene_has_scripts { false };
     bool                              scene_layer_text_writes { false };
+    // The scene's first layer of each image asset (createLayer copies its bindings).
+    HashMap<String, Arc<SceneNode>>   asset_layers;
 };
 
 struct SceneLayerBuildContext {

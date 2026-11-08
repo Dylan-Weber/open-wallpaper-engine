@@ -109,7 +109,18 @@ Option<Arc<SceneNode>> InstantiateResolvedAsset(SceneParseContext& context, Scen
         image->id   = context.NextSyntheticObjectId();
         image->name = String::make(asset);
         ParseImageObj(context, *image);
-        return attach(image->id);
+        auto node = attach(image->id);
+        // the copy keeps the scene layer's material user property bindings (a material's Alpha bound to
+        // "opacity")
+        auto source = context.layer_resources->asset_layers.get(asset);
+        if (node.is_some() && source.is_some() && (**source)->Mesh() && (*node)->Mesh()) {
+            const auto& from = (**source)->Mesh()->MaterialSlots();
+            const auto& to   = (*node)->Mesh()->MaterialSlots();
+            for (usize slot {}; slot < from.len() && slot < to.len(); ++slot) {
+                if (from[slot] && to[slot]) context.scene->CopyShaderUserBindings(*from[slot], to[slot]);
+            }
+        }
+        return node;
     } else if (AssetEndsWith(asset, ".mdl"_str)) {
         wpscene::ModelObject model;
         model.id    = context.NextSyntheticObjectId();

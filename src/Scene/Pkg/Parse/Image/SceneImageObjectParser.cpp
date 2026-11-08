@@ -170,6 +170,10 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
                                           Vector3f(wpimgobj.angles.data()),
                                           wpimgobj.name.as_str());
     context.TrackCreatedNode(spImgNode);
+    // the scene's first layer of each image asset, whose bindings a layer a script creates from it keeps
+    if (! context.runtime_created && wpimgobj.id >= i32() &&
+        ! context.layer_resources->asset_layers.contains_key(wpimgobj.image.as_str()))
+        (void)context.layer_resources->asset_layers.insert(wpimgobj.image.clone(), spImgNode.clone());
     const Vector3f alignment_offset =
         wpimgobj.fullscreen ? Vector3f::Zero()
                             : AlignmentOffset(wpimgobj.alignment.as_str(),
