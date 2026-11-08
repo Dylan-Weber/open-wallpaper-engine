@@ -355,10 +355,11 @@ struct ParticleSphereEmitterArgs {
     ParticleAudioResponse audio_response;
 };
 
-// An image layer a layerimage emitter emits from (particles-layerimage): the layer's rectangle, its size's half-extents before
-// the layer's scale, turned and moved by the layer's node; the particles take the layer's colour; a layer less than half
-// opaque emits nothing (a pixel counts with its opacity times the layer's).
-// a pixel of a layer's image that emits: its place in layer units from the centre, and its colour
+// An image layer a layerimage emitter emits from (particles-layerimage): the layer's rectangle, its
+// size's half-extents before the layer's scale, turned and moved by the layer's node; the particles
+// take the layer's colour; a layer less than half opaque emits nothing (a pixel counts with its
+// opacity times the layer's). a pixel of a layer's image that emits: its place in layer units from
+// the centre, and its colour
 struct LayerImagePoint {
     float           x {}, y {};
     Eigen::Vector3f color { 1.0f, 1.0f, 1.0f };
@@ -370,24 +371,26 @@ struct LayerImageSource {
     double          half_height {};
     Eigen::Vector3f color { 1.0f, 1.0f, 1.0f };
     float           alpha { 1.0f };
-    // the opaque pixels of the layer's image, when it has some: the emitter picks one at random (a jitter of half a pixel)
+    // the opaque pixels of the layer's image, when it has some: the emitter picks one at random (a
+    // jitter of half a pixel)
     Vec<LayerImagePoint> points;
     float                jitter { 0.5f };
 };
 
 struct ParticleLayerImageEmitterArgs {
-    float                  emit_speed {};
-    bool                   one_per_frame { false };
-    u32                    instantaneous {};
-    float                  duration {};
-    i32                    controlpoint {};
-    ParticleAudioResponse  audio_response;
+    float                         emit_speed {};
+    bool                          one_per_frame { false };
+    u32                           instantaneous {};
+    float                         duration {};
+    i32                           controlpoint {};
+    ParticleAudioResponse         audio_response;
     Option<Arc<LayerImageSource>> source;
 };
 
 class LayerImageEmitterProgram {
 public:
-    LayerImageEmitterProgram(ParticleSpawnPipeline& pipeline, ParticleLayerImageEmitterArgs args, usize index)
+    LayerImageEmitterProgram(ParticleSpawnPipeline& pipeline, ParticleLayerImageEmitterArgs args,
+                             usize index)
         : m_pipeline(rstd::addressof(pipeline)), m_args(rstd::move(args)), m_index(index) {}
 
     void Compile(particle::ParticleViewCompiler&);
