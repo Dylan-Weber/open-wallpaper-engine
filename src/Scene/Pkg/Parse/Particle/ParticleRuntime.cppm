@@ -300,8 +300,10 @@ public:
     explicit ParticleSpawnPipeline(ParticleAttributes attributes): m_attributes(attributes) {}
 
     void Add(ParticleSpawnInstruction instruction) {
-        if (instruction.RunsLast()) m_last_instructions.push(rstd::move(instruction));
-        else m_instructions.push(rstd::move(instruction));
+        if (instruction.RunsLast())
+            m_last_instructions.push(rstd::move(instruction));
+        else
+            m_instructions.push(rstd::move(instruction));
     }
     void EnableWorldSpace() noexcept { m_world_space = true; }
     void Compile(particle::ParticleViewCompiler&);
