@@ -15,23 +15,21 @@ using namespace rstd::prelude;
 using namespace rstd::literals;
 using rstd::sync::Arc;
 
-// ---------------------------------------------------------------------------
-// Cursor event dispatch
-
 namespace
 {
-FrameInputs MakeFi(float canvas_w = 1920.0f, float canvas_h = 1080.0f) {
-    FrameInputs fi {};
-    fi.canvas_w = canvas_w;
-    fi.canvas_h = canvas_h;
-    return fi;
-}
-} // namespace
 
-double LastScalar(FieldScript* fs) {
-    EXPECT_TRUE(fs->last_value().is_Scalar());
-    if (! fs->last_value().is_Scalar()) return 0.0;
-    return fs->last_value().as_Scalar().value.v;
+// Build a one-shot FieldScript whose update() returns a host-visible counter.
+// The module body schedules timers/intervals that mutate that counter, so we
+// can observe the JsRuntime's deferred-callback sweep through FieldScript's
+// last_value().
+FieldScript* MakeProbe(JsRuntime& rt, const char* sha, const char* src,
+                       owe::SceneNode* node = nullptr) {
+    return rt.MakeFieldScript(rstd::cppstd::as_str(src).unwrap(),
+                              rstd::cppstd::as_str(sha).unwrap(),
+                              FieldKind::Scalar,
+                              /*properties_config=*/owe::MakeObject(),
+                              /*initial_value=*/owe::IntoJson(0),
+                              /*node=*/node);
 }
 
 double Tick(JsRuntime& rt, double runtime) {
@@ -43,6 +41,61 @@ double Tick(JsRuntime& rt, double runtime) {
     // pointer, but for this test the call site walks via ForEach.
     return 0.0;
 }
+
+double LastScalar(FieldScript* fs) {
+    EXPECT_TRUE(fs->last_value().is_Scalar());
+    if (! fs->last_value().is_Scalar()) return 0.0;
+    return fs->last_value().as_Scalar().value.v;
+}
+
+struct ParticleControlState {
+    std::array<float, 3> colorn { 1.0f, 1.0f, 1.0f };
+    bool                 playing { true };
+    int                  resets { 0 };
+};
+
+struct ParticleControlProbe {
+    Arc<ParticleControlState> state;
+
+    Vec<float> Get(ref<str> field) const {
+        Vec<float> out;
+        if (field != "colorn"_str) return out;
+        for (float value : state->colorn) out.push(float(value));
+        return out;
+    }
+    void Apply(ref<str> field, slice<float> values) {
+        if (field != "colorn"_str || values.len() < usize(3)) return;
+        state->colorn = { values[usize()], values[usize(1)], values[usize(2)] };
+    }
+    void Play() {
+        state->playing = true;
+        state->resets++;
+    }
+    void Stop() {
+        state->playing = false;
+        state->resets++;
+    }
+    void Pause() { state->playing = false; }
+    bool IsPlaying() const { return state->playing; }
+    void Emit(u32) const {}
+};
+
+struct SoundControlState {
+    float volume { 1.0f };
+    bool  playing { true };
+};
+
+struct SoundControlProbe {
+    Arc<SoundControlState> state;
+
+    void Play() { state->playing = true; }
+    void Stop() { state->playing = false; }
+    void Pause() { state->playing = false; }
+    bool IsPlaying() const { return state->playing; }
+    void SetVolume(float volume) { state->volume = volume; }
+};
+
+} // namespace
 
 TEST(ScriptInitialization, UsesSceneOwnerOrderInsteadOfRegistrationOrder) {
     auto root = Arc<owe::SceneNode>::make();
@@ -145,6 +198,83 @@ TEST(ScriptValueCoercion, PreservesVec4InitialAndReturnValues) {
     EXPECT_DOUBLE_EQ(value.y, 3.5);
     EXPECT_DOUBLE_EQ(value.z, 5.5);
     EXPECT_DOUBLE_EQ(value.w, 7.5);
+}
+
+// Wallpaper Engine gives a property script its own copy of the value in each
+// call; only what the script returns changes the property.
+TEST(ScriptValueCoercion, InitChangesWithoutReturnLeaveTheValue) {
+    auto root = Arc<owe::SceneNode>::make();
+
+    JsRuntime rt;
+    auto*     script = rt.MakeFieldScript(
+        R"JS(
+            export function init(value) { value.x = 900; }
+            export function update(value) { return value; }
+        )JS"_str,
+        "test/init_without_return"_str,
+        FieldKind::Vec3,
+        owe::MakeObject(),
+        owe::IntoJson("300 200 0"));
+    ASSERT_NE(script, nullptr);
+
+    rt.SetSceneRoot(root.as_ptr());
+    rt.TickAll();
+
+    ASSERT_TRUE(script->last_value().is_Vec3());
+    EXPECT_DOUBLE_EQ(script->last_value().as_Vec3().value.x, 300.0);
+}
+
+TEST(ScriptValueCoercion, UpdateChangesWithoutReturnDoNotReachTheNextCall) {
+    JsRuntime rt;
+    auto*     script = rt.MakeFieldScript(
+        R"JS(
+            let calls = 0;
+            export function update(value) {
+                if (calls++ === 0) {
+                    value.x = 900;
+                    return;
+                }
+                return value;
+            }
+        )JS"_str,
+        "test/update_without_return"_str,
+        FieldKind::Vec3,
+        owe::MakeObject(),
+        owe::IntoJson("300 200 0"));
+    ASSERT_NE(script, nullptr);
+
+    rt.TickAll();
+    rt.TickAll();
+
+    ASSERT_TRUE(script->last_value().is_Vec3());
+    EXPECT_DOUBLE_EQ(script->last_value().as_Vec3().value.x, 300.0);
+}
+
+TEST(ScriptValueCoercion, ValueKeptFromInitStaysAsItWas) {
+    auto root = Arc<owe::SceneNode>::make();
+
+    JsRuntime rt;
+    auto*     script = rt.MakeFieldScript(
+        R"JS(
+            let kept;
+            export function init(value) { kept = value; return value; }
+            export function update(value) {
+                value.x = 900;
+                return kept;
+            }
+        )JS"_str,
+        "test/value_kept_from_init"_str,
+        FieldKind::Vec3,
+        owe::MakeObject(),
+        owe::IntoJson("300 200 0"));
+    ASSERT_NE(script, nullptr);
+
+    rt.SetSceneRoot(root.as_ptr());
+    rt.TickAll();
+    rt.TickAll();
+
+    ASSERT_TRUE(script->last_value().is_Vec3());
+    EXPECT_DOUBLE_EQ(script->last_value().as_Vec3().value.x, 300.0);
 }
 
 TEST(ScriptValueCoercion, InitReturnSetsTheValue) {
@@ -5519,82 +5649,4 @@ TEST(ScriptAnimationLayer, CreateDestroyAndPlaySingle) {
     rt.TickAll();
     EXPECT_EQ(LastScalar(fs), 101.0);
     EXPECT_EQ(destroyed, usize(3));
-}
-
-
-// Wallpaper Engine gives a property script its own copy of the value in each
-// call; only what the script returns changes the property.
-TEST(ScriptValueCoercion, InitChangesWithoutReturnLeaveTheValue) {
-    auto root = Arc<owe::SceneNode>::make();
-
-    JsRuntime rt;
-    auto*     script = rt.MakeFieldScript(
-        R"JS(
-            export function init(value) { value.x = 900; }
-            export function update(value) { return value; }
-        )JS"_str,
-        "test/init_without_return"_str,
-        FieldKind::Vec3,
-        owe::MakeObject(),
-        owe::IntoJson("300 200 0"));
-    ASSERT_NE(script, nullptr);
-
-    rt.SetSceneRoot(root.as_ptr());
-    rt.TickAll();
-
-    ASSERT_TRUE(script->last_value().is_Vec3());
-    EXPECT_DOUBLE_EQ(script->last_value().as_Vec3().value.x, 300.0);
-}
-
-TEST(ScriptValueCoercion, UpdateChangesWithoutReturnDoNotReachTheNextCall) {
-    JsRuntime rt;
-    auto*     script = rt.MakeFieldScript(
-        R"JS(
-            let calls = 0;
-            export function update(value) {
-                if (calls++ === 0) {
-                    value.x = 900;
-                    return;
-                }
-                return value;
-            }
-        )JS"_str,
-        "test/update_without_return"_str,
-        FieldKind::Vec3,
-        owe::MakeObject(),
-        owe::IntoJson("300 200 0"));
-    ASSERT_NE(script, nullptr);
-
-    rt.TickAll();
-    rt.TickAll();
-
-    ASSERT_TRUE(script->last_value().is_Vec3());
-    EXPECT_DOUBLE_EQ(script->last_value().as_Vec3().value.x, 300.0);
-}
-
-TEST(ScriptValueCoercion, ValueKeptFromInitStaysAsItWas) {
-    auto root = Arc<owe::SceneNode>::make();
-
-    JsRuntime rt;
-    auto*     script = rt.MakeFieldScript(
-        R"JS(
-            let kept;
-            export function init(value) { kept = value; return value; }
-            export function update(value) {
-                value.x = 900;
-                return kept;
-            }
-        )JS"_str,
-        "test/value_kept_from_init"_str,
-        FieldKind::Vec3,
-        owe::MakeObject(),
-        owe::IntoJson("300 200 0"));
-    ASSERT_NE(script, nullptr);
-
-    rt.SetSceneRoot(root.as_ptr());
-    rt.TickAll();
-    rt.TickAll();
-
-    ASSERT_TRUE(script->last_value().is_Vec3());
-    EXPECT_DOUBLE_EQ(script->last_value().as_Vec3().value.x, 300.0);
 }
