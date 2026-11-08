@@ -28,6 +28,22 @@ FrameInputs MakeFi(float canvas_w = 1920.0f, float canvas_h = 1080.0f) {
 }
 } // namespace
 
+double LastScalar(FieldScript* fs) {
+    EXPECT_TRUE(fs->last_value().is_Scalar());
+    if (! fs->last_value().is_Scalar()) return 0.0;
+    return fs->last_value().as_Scalar().value.v;
+}
+
+double Tick(JsRuntime& rt, double runtime) {
+    FrameInputs fi {};
+    fi.runtime = float(runtime);
+    rt.SetFrameInputs(fi);
+    rt.TickAll();
+    // last_value() of the last MakeFieldScript'd script — caller must own a
+    // pointer, but for this test the call site walks via ForEach.
+    return 0.0;
+}
+
 TEST(ScriptInitialization, UsesSceneOwnerOrderInsteadOfRegistrationOrder) {
     auto root = Arc<owe::SceneNode>::make();
 

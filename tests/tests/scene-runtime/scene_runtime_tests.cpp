@@ -142,6 +142,77 @@ auto Capture(const owe::SceneFrame& frame, const Source& source, Output output,
 
 } // namespace scene_test
 
+void CheckScriptMusicSelector(ref<str> initial_selection) {
+    // Reduced from workshop 3672671570: the selector script lives on a
+    // container whose visibility condition only matches the default track.
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {}, "general": {},
+            "objects": [
+                {
+                    "id": 1, "name": "Music selector",
+                    "visible": {
+                        "value": true,
+                        "user": {"name": "bgmselect", "condition": "0"},
+                        "script": "const tracks = {'0': 'First', '1': 'Second'}; export function applyUserProperties(changed) { if ('bgmselect' in changed) Object.keys(tracks).forEach(value => { const track = thisScene.getLayer(tracks[value]); if (changed.bgmselect === value) track.play(); else track.stop(); }); }"
+                    }
+                },
+                {"id": 2, "parent": 1, "name": "First", "sound": ["sounds/first.mp3"]},
+                {"id": 3, "parent": 1, "name": "Second", "sound": ["sounds/second.mp3"]}
+            ]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    auto schema     = owe::ParseJson(R"({
+        "type":"combo", "value":"0",
+        "options":[{"value":"0"},{"value":"1"},{"value":"2"}]
+    })"_str)
+                          .unwrap();
+    auto property   = initial_selection == "0"_str
+                          ? schema.clone()
+                          : owe::MergeUserPropertyDescriptor(
+                                schema, owe::MakeUserPropertyWirePatch(initial_selection));
+    auto properties = rstd::json::Map::make();
+    properties.insert(String::make("bgmselect"_str), property.clone());
+
+    owe::fs::VFS                vfs;
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "script-music-selector"_str,
+        ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)),
+        owe::SceneParseOptions {
+            .user_properties =
+                Some(ref<rstd::json::Map>::from_raw_parts(rstd::addressof(properties))),
+        });
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene  = rstd::move(parsed).unwrap();
+    auto first  = scene.scene->RootMut()->FindByName("First"_str);
+    auto second = scene.scene->RootMut()->FindByName("Second"_str);
+    ASSERT_NE(first, nullptr);
+    ASSERT_NE(second, nullptr);
+    ASSERT_TRUE(first->SoundControl().is_some());
+    ASSERT_TRUE(second->SoundControl().is_some());
+    if (initial_selection != "0"_str) {
+        EXPECT_FALSE(first->IsPlaying());
+        EXPECT_FALSE(second->IsPlaying());
+    }
+
+    owe::SceneUserPropertyApplier::ApplyAll(*scene.scene, properties);
+    EXPECT_EQ(first->IsPlaying(), initial_selection == "0"_str);
+    EXPECT_EQ(second->IsPlaying(), initial_selection == "1"_str);
+    for (auto selection : { "1"_str, "2"_str, "0"_str, "1"_str }) {
+        property =
+            owe::MergeUserPropertyDescriptor(property, owe::MakeUserPropertyWirePatch(selection));
+        owe::SceneUserPropertyApplier::Apply(*scene.scene, "bgmselect"_str, property);
+        owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+        EXPECT_EQ(first->IsPlaying(), selection == "0"_str);
+        EXPECT_EQ(second->IsPlaying(), selection == "1"_str);
+    }
+}
+
 TEST(TransformUniformSource, DescribesModelAsMat4) {
     auto state = Arc<owe::UniformSceneState>::make(Arc<owe::AudioResponseDemand>::make());
     auto camera =
@@ -1173,8 +1244,8 @@ namespace
 {
 // `count` point lights by the origin and then a sun, as Ocarina of Time's courtyard lists its torches before its sun.
 struct PointsThenSun {
-    Vec<Arc<owe::SceneNode>>  nodes;
-    Vec<Box<owe::SceneLight>> lights;
+    Vec<Arc<owe::SceneNode>> nodes;
+    owe::Scene               scene;
 
     explicit PointsThenSun(int count, bool sun_shadow = false) {
         owe::SceneLight::Desc point;
@@ -1195,14 +1266,11 @@ struct PointsThenSun {
     }
     void add(const owe::SceneLight::Desc& desc) {
         nodes.push(Arc<owe::SceneNode>::make());
-        lights.push(Box<owe::SceneLight>::make(desc));
-        (*lights.last_mut().unwrap())->setNode(nodes.last_mut().unwrap()->as_ptr());
+        auto light = Box<owe::SceneLight>::make(desc);
+        light->setNode(nodes.last_mut().unwrap()->as_ptr());
+        (void)scene.RegisterLight(rstd::move(light));
     }
-    auto refs() {
-        auto out = Vec<ref<owe::SceneLight>>::make();
-        for (auto& light : lights) out.push(ref<owe::SceneLight>::from_raw_parts(light.as_ptr()));
-        return out;
-    }
+    auto refs() { return ref<owe::Scene>::from_raw_parts(&scene); }
 };
 } // namespace
 
