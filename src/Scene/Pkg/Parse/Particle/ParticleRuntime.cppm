@@ -23,7 +23,7 @@ enum class ParticleAnimationMode
 
 // A colour from hue (0 to 1 around the circle, wrapping), saturation and value.
 inline auto HsvToRgb(double hue, double saturation, double value) -> Eigen::Vector3d {
-    hue          = hue - static_cast<double>(static_cast<long long>(hue));
+    hue = hue - static_cast<double>(static_cast<long long>(hue));
     if (hue < 0.0) hue += 1.0;
     const double h = hue * 6.0;
     const int    i = static_cast<int>(h) % 6;
