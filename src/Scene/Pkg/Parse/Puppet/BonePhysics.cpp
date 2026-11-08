@@ -153,7 +153,8 @@ auto BonePhysics::Apply(usize bone, const BoneSimulation& simulation, const Affi
             // pulled by gravity and back by its spring, along the axes it may
             // move along, no further than its largest distance, and its
             // movement dies down.
-            state.offset -= (place - state.last_place).cwiseProduct(scale) * simulation.translation_inertia;
+            state.offset -=
+                (place - state.last_place).cwiseProduct(scale) * simulation.translation_inertia;
             if (simulation.gravity) {
                 state.velocity += simulation.mass * dt * 1000.0f * simulation.gravity_direction;
             }

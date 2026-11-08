@@ -236,8 +236,8 @@ bool ResolveVisibleUserBinding(bool&, const wpscene::VisibleUserBinding&,
                                Option<ref<rstd::json::Map>>);
 bool AppendLayerCompositePassthroughEffect(fs::VFS&, wpscene::ImageObject&);
 // `scale`: the object's, for its bone physics (PuppetLayer::SetObjectScale)
-auto MakePuppetLayer(Arc<Puppet>, slice<wpscene::PuppetAnimationLayer>, const array<float, 3>& scale)
-    -> Arc<PuppetLayer>;
+auto MakePuppetLayer(Arc<Puppet>, slice<wpscene::PuppetAnimationLayer>,
+                     const array<float, 3>& scale) -> Arc<PuppetLayer>;
 void WirePuppetAnimationScripts(SceneLayerBuildContext&, SceneNode*, Arc<PuppetLayer>,
                                 slice<wpscene::PuppetAnimationLayer>);
 void RegisterPuppetLayer(SceneLayerBuildContext&, SceneNode*, Arc<PuppetLayer>);

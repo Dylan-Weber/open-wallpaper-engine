@@ -247,12 +247,12 @@ TEST(Puppet, GravitySettlesABoneBelowItsPlace) {
     EXPECT_TRUE(layer.boneTransform(1, time - 1.0 / 60.0)->translation().isApprox(settled));
 }
 
-// Wallpaper Engine's springs, gravity and largest distance are in the scene's units: an object scaled 2 along y sags half as
-// far along y in its own, and a scale along x or z changes nothing (puppet-physics-scale-axes: every strip's tip sags as far
-// on screen).
+// Wallpaper Engine's springs, gravity and largest distance are in the scene's units: an object
+// scaled 2 along y sags half as far along y in its own, and a scale along x or z changes nothing
+// (puppet-physics-scale-axes: every strip's tip sags as far on screen).
 TEST(Puppet, GravitySagsAScaledObjectAsFarInTheScene) {
-    auto  puppet  = Arc<owe::Puppet>::make();
-    auto& hanging = puppet->bones.emplace_back();
+    auto        puppet   = Arc<owe::Puppet>::make();
+    auto&       hanging  = puppet->bones.emplace_back();
     std::string settings = Settings(false, true);
     settings.replace(settings.find("\"ge\":false"), 10, "\"ge\":true");
     settings.replace(settings.find("\"tm\":2.0"), 8, "\"tm\":100");
