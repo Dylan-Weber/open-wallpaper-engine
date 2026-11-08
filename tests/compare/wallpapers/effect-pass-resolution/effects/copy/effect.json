@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "copy",
+  "passes": [
+    {
+      "material": "materials/effects/copy.json"
+    }
+  ]
+}

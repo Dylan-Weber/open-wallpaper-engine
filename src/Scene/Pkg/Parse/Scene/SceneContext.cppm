@@ -266,8 +266,6 @@ void WireMaterialShaderValueScripts(SceneLayerBuildContext&, const Arc<SceneNode
                                     const ShaderInfo&);
 auto ScriptValueAsShaderValue(const script::ScriptValue&) -> Option<ShaderValue>;
 auto UsesUnitFinalQuad(const wpscene::Material&) -> bool;
-auto HasSolidCompositeContext(const SceneLayerBuildContext&, const wpscene::ImageObject&) -> bool;
-auto CanCompositeFinalEffectMaterial(ref<str>, const ShaderInfo&, bool) -> bool;
 auto AlignmentOffset(ref<str>, Eigen::Vector2f) -> Eigen::Vector3f;
 void ApplyUserTextureBindings(SceneLayerBuildContext&, wpscene::Material&);
 void IndexSystemMediaImageFallbacks(SceneLayerBuildContext&, slice<SceneObjectVar>);

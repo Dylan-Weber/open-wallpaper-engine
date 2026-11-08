@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "repeat",
+  "passes": [
+    {
+      "material": "materials/effects/repeat.json"
+    }
+  ]
+}
