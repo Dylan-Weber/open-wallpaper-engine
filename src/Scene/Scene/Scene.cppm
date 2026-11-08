@@ -3091,6 +3091,15 @@ public:
     usize RemoveNodeMaterialBindings(SceneNodeId owner);
 
     void RegisterCameraPath(Arc<SceneCameraPath>);
+    // The camera layer that drives the camera through `node`, if it is one.
+    auto CameraPathOfNode(const SceneNode* node) const -> Option<Arc<SceneCameraPath>> {
+        for (const auto& path : m_camera_paths)
+            if (path->node == node) return Some(path.clone());
+        return None();
+    }
+    // The scene's own field of view (general.fov), what scripts read as thisScene.fov.
+    void   SetSceneFov(double fov) { m_scene_fov = fov; }
+    double SceneFov() const { return m_scene_fov; }
     void RegisterCameraPathUserBinding(String key, Arc<SceneCameraPath>);
     void RegisterTexture(String name, SceneTexture texture);
     bool RemoveTexture(ref<str> name);
@@ -3430,6 +3439,8 @@ private:
     Vec<Arc<SceneCameraPath>>                m_camera_paths;
     HashSet<String>                          m_active_camera_paths;
     MaterialBindingIndex<Arc<SceneCameraPath>> m_camera_path_user_index;
+    // The scene's own field of view (general.fov), what scripts read as thisScene.fov
+    double                                   m_scene_fov { 50.0 };
 
     void        RebuildElidableLayerIds();
     void        WriteRenderTarget(String name, SceneRenderTarget target);
