@@ -417,6 +417,7 @@ void ParseModelObjImpl(SceneLayerBuildContext& context, wpscene::ModelObject& mo
     context.TrackCreatedNode(node);
     const auto node_id = context.scene->RegisterNode(*node);
     node->ID()         = model_obj.id;
+    node->SetDrawsAsModel(true);
     node->SetPerspective(model_obj.perspective);
     node->SetReflected(model_obj.reflected);
     node->shadow.cast = context.layer_resources->shader_environment.shadow_mapping && model_obj.castshadow;
@@ -489,6 +490,11 @@ void ParseModelObjImpl(SceneLayerBuildContext& context, wpscene::ModelObject& mo
         }
         auto material_build = rstd::move(material_result).unwrap_unchecked();
         scene_mat           = rstd::move(material_build.material);
+        // With the scene's transparent sorting, translucent models draw far to near and write
+        // depth as their material says (materials otherwise write none when they blend).
+        if (context.scene->TransparentSorting() && wpmat->blending == "translucent"_str &&
+            wpmat->depthwrite == "enabled"_str)
+            (void)scene_mat.SetDepthWrite(true);
         shader_info         = rstd::move(material_build.shader_info);
         LoadConstvalue(context, scene_mat, *wpmat, shader_info);
 
@@ -797,6 +803,7 @@ BuildContext(Scene& scene, fs::VFS& vfs, ref<str> scene_id, const wpscene::Scene
         context, vfs, sc, ortho_extent, rstd::move(image_ready), rstd::move(texture_memory));
     ParseCamera(context, sc);
     context.layer_resources->pkg_version  = sc.pkg_version;
+    context.scene->SetTransparentSorting(sc.general.transparentsorting);
     context.user_properties               = user_properties;
     context.layer_resources->shader_cache = Arc<ShaderCache>::make(rstd::move(shader_cache_dir));
     context.layer_resources->geometry_shader_limits    = geometry_limits;
