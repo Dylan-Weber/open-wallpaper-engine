@@ -37,20 +37,23 @@ struct ParticleRemap {
     enum class Input
     {
         DistanceToControlPoint,
-        // from the particle to a control point (a vector), its direction (unit length), and how far along the line from one
-        // control point to another the particle is, by its shadow on the line (0 at the first, 1 at the second)
+        // from the particle to a control point (a vector), its direction (unit length), and how far
+        // along the line from one control point to another the particle is, by its shadow on the
+        // line (0 at the first, 1 at the second)
         DeltaToControlPoint,
         DirectionToControlPoint,
         PositionBetweenControlPoints,
         Lifetime,
-        // the particle's speed along each axis, its opacity, rotation (about z) and angular speed (about z)
+        // the particle's speed along each axis, its opacity, rotation (about z) and angular speed
+        // (about z)
         Velocity,
         Opacity,
         Rotation,
         AngularSpeed,
         // the object's position
         LayerOrigin,
-        // seconds: the particle system's, the layer's, the engine's; and the local time of day as a fraction
+        // seconds: the particle system's, the layer's, the engine's; and the local time of day as a
+        // fraction
         SystemTime,
         LayerTime,
         Runtime,
@@ -70,8 +73,8 @@ struct ParticleRemap {
         Add,
         Subtract,
     };
-    // the shape the fraction of the input range goes through (particles-remap-transform): triangle and square repeat
-    // twice over the range, sine once
+    // the shape the fraction of the input range goes through (particles-remap-transform): triangle
+    // and square repeat twice over the range, sine once
     enum class Transform
     {
         Linear,
@@ -187,8 +190,8 @@ struct ParticleRemap {
     // how far along the input range a value is, 0 to 1, through the transform
     auto Fraction(double value) const -> double {
         const double span = input_max - input_min;
-        double       t    = span != 0.0 ? (value - input_min) / span : (value >= input_max ? 1.0 : 0.0);
-        t                 = t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t);
+        double t = span != 0.0 ? (value - input_min) / span : (value >= input_max ? 1.0 : 0.0);
+        t        = t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t);
         switch (transform) {
         case Transform::Linear: return t;
         case Transform::Sine: return 0.5 - 0.5 * std::cos(2.0 * 3.14159265358979323846 * t);
@@ -220,7 +223,8 @@ struct ParticleRemap {
         return Apply(current, Eigen::Vector3d::Constant(value));
     }
 
-    auto Apply(const Eigen::Vector3d& current, const Eigen::Vector3d& value) const -> Eigen::Vector3d {
+    auto Apply(const Eigen::Vector3d& current, const Eigen::Vector3d& value) const
+        -> Eigen::Vector3d {
         Eigen::Vector3d mapped = Map(value);
         if (output == Output::Size && operation != Operation::Multiply) mapped *= 2.0;
         switch (operation) {
