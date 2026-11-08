@@ -3214,6 +3214,13 @@ public:
     auto ActiveCameraHandle() const -> Option<Arc<SceneCamera>>;
     auto ActiveCameraTransforms() const -> Option<SceneCameraTransforms>;
     bool SetActiveCameraTransforms(const SceneCameraTransforms& transforms);
+    // The camera scripts see (thisScene.getCameraTransforms): the scene's own camera and what
+    // scripts set, not where a camera path has moved the view (Wallpaper Engine's); the active
+    // camera's without a scene camera recorded.
+    void SetScriptCameraTransforms(const SceneCameraTransforms& transforms) {
+        m_script_camera = Some(SceneCameraTransforms(transforms));
+    }
+    auto ScriptCameraTransforms() const -> Option<SceneCameraTransforms>;
 
     Option<SceneImageEffectRef> FindNodeImageEffect(const SceneNode& node, ref<str> name);
     Option<SceneImageEffectRef> FindNodeImageEffect(const SceneNode& node, usize index);
@@ -3527,6 +3534,8 @@ private:
     MaterialBindingIndex<Arc<SceneCameraPath>> m_camera_path_user_index;
     // The scene's own field of view (general.fov), what scripts read as thisScene.fov
     double                                   m_scene_fov { 50.0 };
+    // the camera scripts see: the scene's own and what scripts set (ScriptCameraTransforms)
+    Option<SceneCameraTransforms>              m_script_camera;
 
     void        RebuildElidableLayerIds();
     void        WriteRenderTarget(String name, SceneRenderTarget target);

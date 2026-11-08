@@ -2453,7 +2453,7 @@ JSValue NodeSceneGetInitialLayerConfig(JSContext* ctx, JSValueConst, int argc, J
 JSValue NodeSceneGetCameraTransforms(JSContext* ctx, JSValueConst, int, JSValueConst*) {
     auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
     if (! host || ! host->scene) return JS_ThrowTypeError(ctx, "scene camera is not available");
-    auto transforms = host->scene->ActiveCameraTransforms();
+    auto transforms = host->scene->ScriptCameraTransforms();
     if (transforms.is_none()) return JS_ThrowTypeError(ctx, "active scene camera is not available");
 
     JSValue out = JS_NewObject(ctx);
@@ -2500,7 +2500,7 @@ JSValue NodeSceneSetCameraTransforms(JSContext* ctx, JSValueConst, int argc, JSV
         return JS_ThrowTypeError(ctx, "camera transforms must be an object");
     // measured in Wallpaper Engine: the camera a script sets in init is the scene's again once it has loaded
     if (host->in_field_init) return JS_UNDEFINED;
-    auto transforms = host->scene->ActiveCameraTransforms();
+    auto transforms = host->scene->ScriptCameraTransforms();
     if (transforms.is_none()) return JS_ThrowTypeError(ctx, "active scene camera is not available");
     if (! ReadOptionalCameraVector(ctx, argv[0], "eye", transforms->eye) ||
         ! ReadOptionalCameraVector(ctx, argv[0], "center", transforms->center) ||
@@ -2508,6 +2508,7 @@ JSValue NodeSceneSetCameraTransforms(JSContext* ctx, JSValueConst, int argc, JSV
         return JS_ThrowTypeError(ctx, "camera transform vectors require x, y and z");
     if (! host->scene->SetActiveCameraTransforms(*transforms))
         return JS_ThrowRangeError(ctx, "camera transforms are degenerate");
+    host->scene->SetScriptCameraTransforms(*transforms);
     return JS_UNDEFINED;
 }
 
