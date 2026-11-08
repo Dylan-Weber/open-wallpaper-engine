@@ -386,8 +386,8 @@ bool ImageObject::FromAsset(rstd::ref<rstd::str> asset, fs::VFS& vfs, SceneVersi
         size = { static_cast<float>(width.to_primitive()),
                  static_cast<float>(height.to_primitive()) };
     } else {
-        // Wallpaper Engine makes a layer created by its path 1 x 1 (a solid layer, or a model that doesn't say
-        // "autosize"), and an autosize model's its texture's size
+        // Wallpaper Engine makes a layer created by its path 1 x 1 (a solid layer, or a model that
+        // doesn't say "autosize"), and an autosize model's its texture's size
         bool autosize { false };
         owe::GetJsonValue(*json, "autosize"_str, autosize, false);
         if (solid_layer || ! autosize)
