@@ -1,0 +1,21 @@
+{
+  "passes": [
+    {
+      "shader": "genericimage4",
+      "blending": "translucent",
+      "cullmode": "nocull",
+      "depthtest": "disabled",
+      "depthwrite": "disabled",
+      "textures": [
+        "util/white"
+      ],
+      "combos": {
+        "LIGHTING": 1
+      },
+      "constantshadervalues": {
+        "roughness": 1.0,
+        "metallic": 0.0
+      }
+    }
+  ]
+}

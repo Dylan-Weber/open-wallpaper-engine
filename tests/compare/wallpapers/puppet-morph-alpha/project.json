@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test blend shapes' per-vertex alpha and normal offsets",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}

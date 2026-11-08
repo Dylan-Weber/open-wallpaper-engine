@@ -65,22 +65,31 @@ def tex_mips(levels):
         data += struct.pack('<IIII', w, h, 0, len(pixels)) + struct.pack('<I', len(pixels)) + bytes(pixels)
     return data
 
-def puppet_mdl(material, vertices, indices, bones, animations=(), shading=False, sim_type=0):
+def puppet_mdl(material, vertices, indices, bones, animations=(), shading=False, sim_type=0, morph=None):
     """A skinned mesh with its skeleton (MDLV0013, MDLS0001) and animations (MDLA0001).
 
     vertices: (x, y, z, u, v, [4 bone numbers], [4 weights]) each; indices: triangles' vertex numbers;
     bones: (name, parent bone number or None, (x, y, z) the bone's place in its parent[, the bone's physics as
     Wallpaper Engine writes it, a JSON string]) each;
-    animations: (name, fps, [per bone: [per frame: (position, angle in radians, scale)]]) each, every bone with the
-    same number of frames."""
+    animations: (name, fps, [per bone: [per frame: (position, angle in radians, scale)]][, [per blend shape: [per
+    frame: weight]]]) each, every bone with the same number of frames;
+    morph: the mesh's blend shapes, as Wallpaper Engine's editor writes them (Reze, Workshop 3686252018), a dict:
+    "index" (per vertex: 0, or 1..V for the V vertices the shapes move), "scale" (an offset of 32767 moves this far),
+    "flags" (the mesh's morph flags: 0x400 normal offsets, 0x1000 a per-vertex alpha; the editor always sets 0x1000),
+    "shapes" (each a dict of "offsets", V (x, y, z) in scene units, and "alpha" and "normals" as the flags need)."""
     flags = 0x1 | 0x8 | 0x800000 | 0x1000000  # positions, texture coordinates, bone numbers and weights
     if shading:
         flags |= 0x2 | 0x4  # and a normal and a tangent
+    if morph:
+        flags = flags & ~0x1 | 0x10000  # a four-float position in place of the three: w is the blend shape index
+    weighted = morph is not None and any(len(animation) > 3 for animation in animations)
     data = b'MDLV0013\0' + struct.pack('<iII', flags, 1, 1)
-    data += material.encode() + b'\0' + struct.pack('<I', 0)
+    data += material.encode() + b'\0' + struct.pack('<I', morph["flags"] if morph else 0)
     body = b''
-    for x, y, z, u, v, blend, weight in vertices:
+    for number, (x, y, z, u, v, blend, weight) in enumerate(vertices):
         body += struct.pack('<3f', x, y, z)
+        if morph:
+            body += struct.pack('<f', morph["index"][number])
         if shading:
             body += struct.pack('<3f', 0, 0, 1) + struct.pack('<4f', 1, 0, 0, 1)
         body += struct.pack('<4I', *blend) + struct.pack('<4f', *weight)
@@ -104,17 +113,51 @@ def puppet_mdl(material, vertices, indices, bones, animations=(), shading=False,
 
     if animations:
         track = b''
-        for name, fps, bone_frames in animations:
+        for number, (name, fps, bone_frames, *shape_weights) in enumerate(animations):
             frames = len(bone_frames[0])
-            track += struct.pack('<iI', 1 + animations.index((name, fps, bone_frames)), 0)
+            track += struct.pack('<iI', 1 + number, 0)
             track += name.encode() + b'\0loop\0' + struct.pack('<fiII', fps, frames - 1, 0, len(bones))
             for frames_of_bone in bone_frames:
                 values = b''.join(struct.pack('<9f', *position, *angle, *scale)
                                   for position, angle, scale in frames_of_bone)
                 track += struct.pack('<iI', 0, len(values)) + values
+            if weighted:
+                # MDLA0006 as Reze's: no root motion, no bone curves, then the blend shapes' weight curves (one event
+                # whose "time" is the morph scale, a curve a shape, the first without its id), bounds, no scalar curves
+                track += struct.pack('<IB', 0, 0)
+                if shape_weights:
+                    curves = shape_weights[0]
+                    track += struct.pack('<BIfHH', 1, 1, morph["scale"], len(curves), 0)
+                    for shape, values in enumerate(curves):
+                        assert len(values) == frames
+                        track += (struct.pack('<H', shape) if shape else b'') + struct.pack('<I', 4 * len(values))
+                        track += struct.pack('<%df' % len(values), *values)
+                else:
+                    track += struct.pack('<B', 0)
+                track += struct.pack('<6f', 0, 0, 0, 0, 0, 0) + struct.pack('<B', 0)
             track += struct.pack('<I', 0)  # no events
-        head = b'MDLA0001\0'
+        head = b'MDLA0006\0' if weighted else b'MDLA0001\0'
         data += head + struct.pack('<II', len(data) + len(head) + 8 + len(track), len(animations)) + track
+
+    if morph:
+        # MDMP: per mesh a u16 shape count, the scale and V; per shape its id, a zero, its name, then length-prefixed
+        # int16 blocks over 32767: the offsets (in units of the scale), the normal offsets, the alpha
+        count = len(morph["index"]) and max(morph["index"])
+        block = struct.pack('<HfI', len(morph["shapes"]), morph["scale"], count)
+        def int16s(values):
+            packed = [max(-32767, min(32767, round(value * 32767))) for value in values]
+            return struct.pack('<I', 2 * len(packed)) + struct.pack('<%dh' % len(packed), *packed)
+        for number, shape in enumerate(morph["shapes"]):
+            name = 'Shape %d' % (number + 1)
+            block += struct.pack('<II', 100 + number, 0) + name.encode() + b'\0'
+            assert len(shape["offsets"]) == count
+            block += int16s([c / morph["scale"] for offset in shape["offsets"] for c in offset])
+            if morph["flags"] & 0x400:
+                block += int16s([c for normal in shape["normals"] for c in normal])
+            if morph["flags"] & 0x1000:
+                block += int16s(shape["alpha"])
+        head = b'MDMP0001\0'
+        data += head + struct.pack('<I', len(data) + len(head) + 4 + len(block)) + block
     return data
 
 
