@@ -38,6 +38,14 @@ struct Buffers {
     float value(Channel channel, rstd::uint32_t resolution, rstd::uint32_t index) const;
 };
 
+// A spectrum held still, as given (SceneViewer --audio-spectrum: a reference's recorded bands), as
+// the JSON
+// {"16": {"left": [...], "right": [...]}, "64": {...}}. A resolution not given is pooled from the
+// finest one given, as the live spectrum's are, or else repeats a coarser one; each average is its
+// two sides' mean.
+auto ParseFixedSpectrum(rstd::prelude::ref<rstd::prelude::str> source)
+    -> rstd::prelude::Result<Buffers, rstd::prelude::String>;
+
 class ResponseProcessor {
 public:
     void submit(audio::ResponseFrame response);
