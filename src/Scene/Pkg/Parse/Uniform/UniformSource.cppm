@@ -70,8 +70,8 @@ enum class LightUniformOutput : rstd::uint32_t
     LightingV1CastShadow,
 };
 
-// How many lights Lighting V1 lights: Wallpaper Engine's lights every light its light config counts, not only the
-// first four (the old arrays' four).
+// How many lights Lighting V1 lights: Wallpaper Engine's lights every light its light config
+// counts, not only the first four (the old arrays' four).
 inline constexpr usize kLightingV1Slots { 8 };
 
 enum class ShadowUniformOutput : rstd::uint32_t

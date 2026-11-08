@@ -83,19 +83,19 @@ inline constexpr ref<str> G_LCR                = "g_LightsColorRadius"_str;
 inline constexpr ref<str> G_LIGHTDIRECTIONTYPE = "g_LightsDirectionType"_str;
 inline constexpr ref<str> G_LIGHTCONEEXPONENT  = "g_LightsConeExponent"_str;
 inline constexpr ref<str> G_LIGHTCASTSHADOW    = "g_LightsCastShadow"_str;
-// Lighting V1's own light slots (kLightingV1Slots): every light the light config counts, where the old
-// arrays have the first four lights and the old kind's colors only.
+// Lighting V1's own light slots (kLightingV1Slots): every light the light config counts, where the
+// old arrays have the first four lights and the old kind's colors only.
 inline constexpr ref<str> G_LIGHTINGV1POSITION      = "g_OweLightsPosition"_str;
 inline constexpr ref<str> G_LIGHTINGV1COLORRADIUS   = "g_OweLightsColorRadius"_str;
 inline constexpr ref<str> G_LIGHTINGV1DIRECTIONTYPE = "g_OweLightsDirectionType"_str;
 inline constexpr ref<str> G_LIGHTINGV1CONEEXPONENT  = "g_OweLightsConeExponent"_str;
 inline constexpr ref<str> G_LIGHTINGV1CASTSHADOW    = "g_OweLightsCastShadow"_str;
-inline constexpr ref<str> G_LIGHTAMBIENTCOLOR  = "g_LightAmbientColor"_str;
-inline constexpr ref<str> G_LIGHTSKYLIGHTCOLOR = "g_LightSkylightColor"_str;
-inline constexpr ref<str> G_FOGDISTANCECOLOR   = "g_FogDistanceColor"_str;
-inline constexpr ref<str> G_FOGDISTANCEPARAMS  = "g_FogDistanceParams"_str;
-inline constexpr ref<str> G_FOGHEIGHTCOLOR     = "g_FogHeightColor"_str;
-inline constexpr ref<str> G_FOGHEIGHTPARAMS    = "g_FogHeightParams"_str;
+inline constexpr ref<str> G_LIGHTAMBIENTCOLOR       = "g_LightAmbientColor"_str;
+inline constexpr ref<str> G_LIGHTSKYLIGHTCOLOR      = "g_LightSkylightColor"_str;
+inline constexpr ref<str> G_FOGDISTANCECOLOR        = "g_FogDistanceColor"_str;
+inline constexpr ref<str> G_FOGDISTANCEPARAMS       = "g_FogDistanceParams"_str;
+inline constexpr ref<str> G_FOGHEIGHTCOLOR          = "g_FogHeightColor"_str;
+inline constexpr ref<str> G_FOGHEIGHTPARAMS         = "g_FogHeightParams"_str;
 
 inline constexpr ref<str> G_TIME                           = "g_Time"_str;
 inline constexpr ref<str> G_FRAMETIME                      = "g_Frametime"_str;
@@ -116,27 +116,27 @@ inline constexpr ref<str> G_MORPHOFFSETS                   = "g_MorphOffsets"_st
 inline constexpr ref<str> G_VIEWPORTVIEWPROJECTIONMATRICES = "g_ViewportViewProjectionMatrices"_str;
 inline constexpr ref<str> G_SHADOWATLASTRANSFORMS          = "g_ShadowAtlasTransforms"_str;
 // owe's own: every shadowed light's views in one list, and where each light slot's views start
-inline constexpr ref<str> G_OWESHADOWVIEWPROJECTIONS       = "g_OweShadowViewProjections"_str;
-inline constexpr ref<str> G_OWESHADOWATLASTRANSFORMS       = "g_OweShadowAtlasTransforms"_str;
-inline constexpr ref<str> G_OWELIGHTSSHADOWVIEW            = "g_OweLightsShadowView"_str;
-inline constexpr ref<str> G_OWELIGHTSSHADOWPROJECTION      = "g_OweLightsShadowProjection"_str;
-inline constexpr ref<str> G_VIEWUP                         = "g_ViewUp"_str;
-inline constexpr ref<str> G_VIEWRIGHT                      = "g_ViewRight"_str;
-inline constexpr ref<str> G_VIEWFORWARD                    = "g_ViewForward"_str;
-inline constexpr ref<str> G_ORIENTATIONUP                  = "g_OrientationUp"_str;
-inline constexpr ref<str> G_ORIENTATIONRIGHT               = "g_OrientationRight"_str;
-inline constexpr ref<str> G_ORIENTATIONFORWARD             = "g_OrientationForward"_str;
-inline constexpr ref<str> G_NORMALMODELMATRIX              = "g_NormalModelMatrix"_str;
-inline constexpr ref<str> G_COLOR4                         = "g_Color4"_str;
-inline constexpr ref<str> G_COLOR                          = "g_Color"_str;
-inline constexpr ref<str> G_ALPHA                          = "g_Alpha"_str;
-inline constexpr ref<str> G_USERALPHA                      = "g_UserAlpha"_str;
-inline constexpr ref<str> G_BRIGHTNESS                     = "g_Brightness"_str;
-inline constexpr ref<str> G_RENDERVAR0                     = "g_RenderVar0"_str;
-inline constexpr ref<str> G_RENDERVAR1                     = "g_RenderVar1"_str;
-inline constexpr ref<str> G_RENDERVAR2                     = "g_RenderVar2"_str;
-inline constexpr ref<str> G_AUDIOFREQUENCYMIN              = "g_AudioFrequencyMin"_str;
-inline constexpr ref<str> G_AUDIOFREQUENCYMAX              = "g_AudioFrequencyMax"_str;
+inline constexpr ref<str> G_OWESHADOWVIEWPROJECTIONS  = "g_OweShadowViewProjections"_str;
+inline constexpr ref<str> G_OWESHADOWATLASTRANSFORMS  = "g_OweShadowAtlasTransforms"_str;
+inline constexpr ref<str> G_OWELIGHTSSHADOWVIEW       = "g_OweLightsShadowView"_str;
+inline constexpr ref<str> G_OWELIGHTSSHADOWPROJECTION = "g_OweLightsShadowProjection"_str;
+inline constexpr ref<str> G_VIEWUP                    = "g_ViewUp"_str;
+inline constexpr ref<str> G_VIEWRIGHT                 = "g_ViewRight"_str;
+inline constexpr ref<str> G_VIEWFORWARD               = "g_ViewForward"_str;
+inline constexpr ref<str> G_ORIENTATIONUP             = "g_OrientationUp"_str;
+inline constexpr ref<str> G_ORIENTATIONRIGHT          = "g_OrientationRight"_str;
+inline constexpr ref<str> G_ORIENTATIONFORWARD        = "g_OrientationForward"_str;
+inline constexpr ref<str> G_NORMALMODELMATRIX         = "g_NormalModelMatrix"_str;
+inline constexpr ref<str> G_COLOR4                    = "g_Color4"_str;
+inline constexpr ref<str> G_COLOR                     = "g_Color"_str;
+inline constexpr ref<str> G_ALPHA                     = "g_Alpha"_str;
+inline constexpr ref<str> G_USERALPHA                 = "g_UserAlpha"_str;
+inline constexpr ref<str> G_BRIGHTNESS                = "g_Brightness"_str;
+inline constexpr ref<str> G_RENDERVAR0                = "g_RenderVar0"_str;
+inline constexpr ref<str> G_RENDERVAR1                = "g_RenderVar1"_str;
+inline constexpr ref<str> G_RENDERVAR2                = "g_RenderVar2"_str;
+inline constexpr ref<str> G_AUDIOFREQUENCYMIN         = "g_AudioFrequencyMin"_str;
+inline constexpr ref<str> G_AUDIOFREQUENCYMAX         = "g_AudioFrequencyMax"_str;
 
 inline constexpr ref<str> G_AUDIO_SPEC_16_L = "g_AudioSpectrum16Left"_str;
 inline constexpr ref<str> G_AUDIO_SPEC_16_R = "g_AudioSpectrum16Right"_str;

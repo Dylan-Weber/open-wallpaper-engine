@@ -166,7 +166,7 @@ struct SceneLayerResources {
     bool                              scene_has_scripts { false };
     bool                              scene_layer_text_writes { false };
     // each shadowed light's first view in the scene's list of shadow views, by its object id
-    HashMap<i32, i32>                 shadow_views;
+    HashMap<i32, i32> shadow_views;
 };
 
 struct SceneLayerBuildContext {
