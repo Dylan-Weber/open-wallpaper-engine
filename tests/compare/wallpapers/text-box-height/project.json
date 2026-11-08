@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test text box heights: one and two lines aligned top, centre and bottom",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}
