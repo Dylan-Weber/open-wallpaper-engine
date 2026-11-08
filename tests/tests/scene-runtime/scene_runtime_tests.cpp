@@ -961,9 +961,8 @@ TEST(SceneParserScript, DynamicObjectsUseSceneIdentity) {
     EXPECT_TRUE(scene.scene->ConsumeRenderGraphDirty());
 }
 
-// A layer a script creates from a registered model keeps its material's user property bindings: Reze's audio visualizer
-// bars have their Alpha bound to "opacity" (0) and Wallpaper Engine draws them transparent (material-user-alpha); owe's
-// copies kept Alpha 1.
+// A solid layer created by its path has no texture to take a size from: Wallpaper Engine makes it 1 x 1 (scaled by 20 it is
+// 20 x 20, script-layer-alignment); owe made none.
 TEST(SceneParserScript, CreatedLayerKeepsMaterialUserBindings) {
     const auto dir = std::filesystem::temp_directory_path() / "owe-created-user-binding";
     std::filesystem::remove_all(dir);
@@ -1023,8 +1022,6 @@ TEST(SceneParserScript, CreatedLayerKeepsMaterialUserBindings) {
     std::filesystem::remove_all(dir);
 }
 
-// A solid layer created by its path has no texture to take a size from: Wallpaper Engine makes it 1 x 1 (scaled by 20 it is
-// 20 x 20, script-layer-alignment); owe made none.
 TEST(SceneParserScript, SolidLayerCreatedByPathIsOneByOne) {
     auto document = owe::wpscene::ParseSceneDocumentJson(
         R"JSON({
@@ -1088,7 +1085,6 @@ TEST(SceneParserScript, CreatedLayerIsOneByOneUnlessAutosize) {
                     "name": "Controller",
                     "visible": {
                         "value": true,
-                        "script": "engine.registerAsset('models/faded.json'); export function init(value) { thisScene.createLayer('models/faded.json'); return value; } export function update(value) { return value; }"
                         "script": "export function init(value) { thisScene.createLayer('models/plain.json'); thisScene.createLayer('models/autosized.json'); return value; } export function update(value) { return value; }"
                     }
                 }
@@ -1109,7 +1105,6 @@ TEST(SceneParserScript, CreatedLayerIsOneByOneUnlessAutosize) {
     wavsen::audio::SoundManager sound_manager;
     owe::SceneParser            parser;
     auto                        parsed = parser.Parse(
-        "created-user-binding"_str,
         "created-size"_str,
         ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
         mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
@@ -1117,15 +1112,6 @@ TEST(SceneParserScript, CreatedLayerIsOneByOneUnlessAutosize) {
     ASSERT_TRUE(parsed.is_ok());
     auto scene = rstd::move(parsed).unwrap();
 
-    auto property = rstd::json::from_str(R"({"type": "slider", "value": 0})"_str).unwrap();
-    (void)owe::SceneUserPropertyApplier::Apply(*scene.scene, "opacity"_str, property);
-
-    auto created = scene.scene->RootMut()->FindByName("models/faded.json"_str);
-    ASSERT_NE(created, nullptr);
-    ASSERT_NE(created->Mesh(), nullptr);
-    auto alpha = created->Mesh()->Material()->customShader.constValues.get("g_UserAlpha"_str);
-    ASSERT_TRUE(alpha.is_some());
-    EXPECT_FLOAT_EQ((**alpha)[rstd::usize()], 0.0f);
     auto plain = scene.scene->RootMut()->FindByName("models/plain.json"_str);
     ASSERT_NE(plain, nullptr);
     EXPECT_FLOAT_EQ(plain->Size().x(), 1.0f);
