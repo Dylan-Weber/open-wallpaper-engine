@@ -316,6 +316,8 @@ public:
     // the object's scale, for the bone physics (BonePhysics::Apply)
     void SetObjectScale(const Eigen::Vector3f& scale) { m_object_scale = scale; }
     auto TextureChannelBlendMap(double time) noexcept -> slice<float>;
+    // Each blend shape's weight at `time` (its mesh's first), from the layers' weight curves.
+    auto MorphWeights(double time) noexcept -> Vec<float>;
 
     struct PartOrder {
         u32 bone;
