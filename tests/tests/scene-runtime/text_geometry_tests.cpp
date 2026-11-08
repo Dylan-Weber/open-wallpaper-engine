@@ -486,13 +486,14 @@ TEST(TextAtlas, AnOutlinedGlyphIsTheGlyphGrownByTheThickness) {
     EXPECT_DOUBLE_EQ(grown.origin.y, plain.origin.y - 4);
     auto& page  = *resources.Pages()[usize(grown.page)];
     auto  pixel = [&](int x, int y) {
-        return int(page.AtlasPixels()[usize(grown.y + y) * usize(page.Extent()) + usize(grown.x + x)]);
+        return int(
+            page.AtlasPixels()[usize(grown.y + y) * usize(page.Extent()) + usize(grown.x + x)]);
     };
-    EXPECT_EQ(pixel(4, 4), 255);     // the glyph itself
-    EXPECT_EQ(pixel(1, 4), 255);     // 3 left of it
-    EXPECT_EQ(pixel(4, 1), 255);     // 3 above it
-    EXPECT_EQ(pixel(0, 4), 0);       // 4 left of it
-    EXPECT_EQ(pixel(10, 9), 0);      // a far corner
+    EXPECT_EQ(pixel(4, 4), 255);                                           // the glyph itself
+    EXPECT_EQ(pixel(1, 4), 255);                                           // 3 left of it
+    EXPECT_EQ(pixel(4, 1), 255);                                           // 3 above it
+    EXPECT_EQ(pixel(0, 4), 0);                                             // 4 left of it
+    EXPECT_EQ(pixel(10, 9), 0);                                            // a far corner
     EXPECT_EQ(resources.Rasterize(font, 255, 1, 3.0).unwrap().x, grown.x); // cached
 }
 
@@ -505,16 +506,19 @@ TEST(TextLayouter, AnOutlineDrawsTheGrownGlyphsBehindTheText) {
     style.outline           = true;
     style.outline_color     = { 0.6f, 0.05f, 0.05f };
     style.outline_thickness = 4.0f;
-    owe::text::TextLayouter layouter(resources.clone(), TextFont(), mesh.clone(), rstd::move(style), 8);
+    owe::text::TextLayouter layouter(
+        resources.clone(), TextFont(), mesh.clone(), rstd::move(style), 8);
     ASSERT_TRUE(layouter.SetText("A"_str).is_ok());
     const auto& vertices = mesh->GetVertexArray(usize());
     // two quads: the outline, then the letter
     ASSERT_GE(vertices.VertexCount(), usize(8));
-    const float* data   = vertices.Data();
+    const float* data = vertices.Data();
     // position, texcoord and colour, each padded to the same width
-    const auto   stride = vertices.OneSize().to_primitive();
-    const auto   colour = stride / 3 * 2;
-    auto         at     = [&](rstd::size_t vertex, rstd::size_t offset) { return data[vertex * stride + offset]; };
+    const auto stride = vertices.OneSize().to_primitive();
+    const auto colour = stride / 3 * 2;
+    auto       at     = [&](rstd::size_t vertex, rstd::size_t offset) {
+        return data[vertex * stride + offset];
+    };
     EXPECT_FLOAT_EQ(at(0, colour), 0.6f);
     EXPECT_FLOAT_EQ(at(0, colour + 3), 0.5f);
     EXPECT_FLOAT_EQ(at(4, colour), 1.0f);
