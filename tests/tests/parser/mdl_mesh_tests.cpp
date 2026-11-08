@@ -1327,6 +1327,7 @@ TEST(MdlMesh, BlendShapesMoveTheirVertices) {
     owe::Mdl::Mesh mesh;
     for (float x : { 0.0f, 1.0f, 2.0f }) mesh.positions.push(array<float, 3> { x, 0.0f, 0.0f });
     for (float index : { 0.0f, 2.0f, 1.0f }) mesh.morph_indices.push(float(index));
+    mesh.flag_a             = 0x1000;
     mesh.morph_scale        = 10.0f;
     mesh.morph_vertex_count = 2;
     for (int shape = 0; shape < 2; ++shape) {
@@ -1349,6 +1350,103 @@ TEST(MdlMesh, BlendShapesMoveTheirVertices) {
     // index 1: their first ones, 10 x (0.5 + 0.25)
     EXPECT_FLOAT_EQ(moved[usize(6)], 109.5f);
     EXPECT_FALSE(owe::MdlParser::MakeMorph(owe::Mdl::Mesh {}, {}).is_some());
+}
+
+// genericimage4's MORPHING: each shape multiplies a morphed vertex's alpha by
+// alpha x weight + (1 - weight), the alpha over 32767; vertices without a morph index keep 1.
+TEST(MdlMesh, BlendShapesMultiplyTheirVertexAlpha) {
+    owe::Mdl::Mesh mesh;
+    for (float x : { 0.0f, 1.0f, 2.0f }) mesh.positions.push(array<float, 3> { x, 0.0f, 0.0f });
+    for (float index : { 0.0f, 1.0f, 2.0f }) mesh.morph_indices.push(float(index));
+    mesh.flag_a             = 0x1000;
+    mesh.morph_scale        = 10.0f;
+    mesh.morph_vertex_count = 2;
+    const rstd::int16_t alphas[2][2] = { { 0, 16384 }, { 32767, 0 } };
+    for (const auto& shape_alpha : alphas) {
+        auto& shape = mesh.morph_shapes.emplace_back();
+        for (int vertex = 0; vertex < 2; ++vertex) {
+            shape.offsets.push(array<rstd::int16_t, 3> {});
+            shape.alpha.push(rstd::int16_t(shape_alpha[vertex]));
+        }
+    }
+    auto morph = owe::MdlParser::MakeMorph(mesh, {});
+    ASSERT_TRUE(morph.is_some());
+    const float weights[] = { 1.0f, 0.5f };
+    const auto  alpha =
+        owe::MdlParser::MorphAlpha(**morph, slice<float>::from_raw_parts(weights, usize(2)));
+    ASSERT_EQ(alpha.len(), usize(3));
+    EXPECT_FLOAT_EQ(alpha[usize(0)], 1.0f);
+    EXPECT_FLOAT_EQ(alpha[usize(1)], 0.0f);                           // 0 x (1 x 0.5 + 0.5)
+    EXPECT_NEAR(alpha[usize(2)], 16384.0f / 32767.0f * 0.5f, 1e-6f); // 0.5 x (0 x 0.5 + 0.5)
+    const float none[] = { 0.0f, 0.0f };
+    for (float value :
+         owe::MdlParser::MorphAlpha(**morph, slice<float>::from_raw_parts(none, usize(2))))
+        EXPECT_FLOAT_EQ(value, 1.0f);
+}
+
+// wallpaper64.exe fills the morph texture only for a mesh whose flag_a has 0x1000 (the editor
+// always sets it): without it the shapes' texels stay zero, so they move nothing and their weight
+// fades the vertices out (alpha 0) - as the puppet-morph-alpha probe shows.
+TEST(MdlMesh, BlendShapesWithoutTheAlphaFlagOnlyFade) {
+    owe::Mdl::Mesh mesh;
+    for (float x : { 0.0f, 1.0f }) mesh.positions.push(array<float, 3> { x, 0.0f, 0.0f });
+    for (float index : { 0.0f, 1.0f }) mesh.morph_indices.push(float(index));
+    mesh.flag_a             = 0;
+    mesh.morph_scale        = 10.0f;
+    mesh.morph_vertex_count = 1;
+    auto& shape             = mesh.morph_shapes.emplace_back();
+    shape.offsets.push(
+        array<rstd::int16_t, 3> { rstd::int16_t(0), rstd::int16_t(32767), rstd::int16_t(0) });
+    auto morph = owe::MdlParser::MakeMorph(mesh, {});
+    ASSERT_TRUE(morph.is_some());
+    const float weights[] = { 0.75f };
+    const auto  weight    = slice<float>::from_raw_parts(weights, usize(1));
+    const auto  moved     = owe::MdlParser::MorphPositions(**morph, weight);
+    ASSERT_EQ(moved.len(), usize(6));
+    EXPECT_FLOAT_EQ(moved[usize(4)], 0.0f);
+    const auto alpha = owe::MdlParser::MorphAlpha(**morph, weight);
+    EXPECT_FLOAT_EQ(alpha[usize(0)], 1.0f);
+    EXPECT_FLOAT_EQ(alpha[usize(1)], 0.25f);
+}
+
+// A mesh with blend shapes gets a vertex colour, white and opaque until the shapes' alpha is
+// applied, and its material the VERTEXCOLOR combo that multiplies it in.
+TEST(MdlMesh, BlendShapeMeshesCarryAVertexColour) {
+    owe::Mdl::Mesh mesh;
+    for (float x : { 0.0f, 1.0f }) mesh.positions.push(array<float, 3> { x, 0.0f, 0.0f });
+    mesh.indices.push(array<uint32_t, 3> { 0u, 1u, 0u });
+    {
+        owe::SceneMesh::Submesh plain;
+        owe::MdlParser::GenMeshFromMdl(plain, mesh);
+        EXPECT_TRUE(
+            plain.vertex_arrays[usize()].AttributeOffset(owe::VAttr::Color.name).is_none());
+        owe::wpscene::Material material;
+        owe::MdlParser::AddMorphMatInfo(material, mesh);
+        EXPECT_TRUE(material.combos.get("VERTEXCOLOR"_str).is_none());
+    }
+    for (float index : { 1.0f, 0.0f }) mesh.morph_indices.push(float(index));
+    mesh.flag_a             = 0x1000;
+    mesh.morph_scale        = 1.0f;
+    mesh.morph_vertex_count = 1;
+    auto& shape             = mesh.morph_shapes.emplace_back();
+    shape.offsets.push(array<rstd::int16_t, 3> {});
+    shape.alpha.push(rstd::int16_t(0));
+
+    owe::SceneMesh::Submesh submesh;
+    owe::MdlParser::GenMeshFromMdl(submesh, mesh);
+    const auto& vertices = submesh.vertex_arrays[usize()];
+    const auto  color    = vertices.AttributeOffset(owe::VAttr::Color.name);
+    ASSERT_TRUE(color.is_some());
+    const auto offset = *color / usize(sizeof(float));
+    for (usize vertex {}; vertex < usize(2); ++vertex)
+        for (usize component {}; component < usize(4); ++component)
+            EXPECT_FLOAT_EQ(
+                vertices.Data()[(vertex * vertices.OneSize() + offset + component).to_primitive()],
+                1.0f);
+    owe::wpscene::Material material;
+    owe::MdlParser::AddMorphMatInfo(material, mesh);
+    ASSERT_TRUE(material.combos.get("VERTEXCOLOR"_str).is_some());
+    EXPECT_EQ(**material.combos.get("VERTEXCOLOR"_str), i32(1));
 }
 
 TEST(MdlMesh, NativeMaterialPathsShareResolutionAndPreserveDefaults) {

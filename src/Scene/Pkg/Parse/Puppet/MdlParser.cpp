@@ -1304,6 +1304,14 @@ void MdlParser::GenMeshFromMdl(SceneMesh::Submesh& submesh, const Mdl::Mesh& src
         }));
     }
 
+    if (HasMorph(src)) {
+        // the blend shapes' alpha, white until they are weighed (BindMorph)
+        specs.push(VertexAttrSpec(VAttr::Color));
+        packers.push(VertexPacker::make([](size_t, float* dst) {
+            for (size_t component = 0; component < 4; ++component) dst[component] = 1.0f;
+        }));
+    }
+
     SceneVertexArray vertex(MakeAttrSet(specs.as_slice()), usize(vert_num));
     const auto       attrs = vertex.Attributes();
 
@@ -1345,8 +1353,7 @@ void MdlParser::GenMeshFromMdl(SceneMesh::Submesh& submesh, const Mdl::Mesh& src
 
 auto MdlParser::MakeMorph(const Mdl::Mesh& src, array<float, 3> position_offset)
     -> Option<Arc<MdlMorph>> {
-    if (src.morph_shapes.is_empty() || src.morph_indices.len() != src.positions.len())
-        return None();
+    if (! HasMorph(src)) return None();
     auto morph = Arc<MdlMorph>::make();
     for (const auto& position : src.positions) {
         morph->rest.push(array<float, 3> { position[usize(0)] + position_offset[usize(0)],
@@ -1357,8 +1364,56 @@ auto MdlParser::MakeMorph(const Mdl::Mesh& src, array<float, 3> position_offset)
         morph->index.push(index > 0.0f ? static_cast<rstd::uint32_t>(index) : 0u);
     morph->scale        = src.morph_scale;
     morph->vertex_count = src.morph_vertex_count;
-    for (const auto& shape : src.morph_shapes) morph->offsets.push(shape.offsets.clone());
+    // wallpaper64.exe writes the shapes into the morph texture (offset and alpha, signed normalized
+    // int16) only when flag_a has the alpha (0x1000); otherwise their texels stay zero
+    const bool filled = (src.flag_a & MDL_MORPH_ALPHA) != 0;
+    for (const auto& shape : src.morph_shapes) {
+        Vec<float> alpha;
+        if (filled) {
+            morph->offsets.push(shape.offsets.clone());
+            for (auto value : shape.alpha)
+                alpha.push(rstd::cmp::max(static_cast<float>(value) / 32767.0f, -1.0f));
+        } else {
+            morph->offsets.push(Vec<array<rstd::int16_t, 3>> {});
+            for (rstd::uint32_t entry = 0; entry < src.morph_vertex_count; ++entry)
+                alpha.push(0.0f);
+        }
+        morph->alpha.push(rstd::move(alpha));
+    }
     return Some(rstd::move(morph));
+}
+
+auto MdlParser::MorphAlpha(const MdlMorph& morph, slice<float> weights) -> Vec<float> {
+    Vec<float> alpha;
+    alpha.reserve(morph.rest.len());
+    for (usize vertex {}; vertex < morph.rest.len(); ++vertex) {
+        float      value = 1.0f;
+        const auto index = morph.index[vertex];
+        if (index > 0 && index <= morph.vertex_count) {
+            const usize entry(index - 1);
+            for (usize shape {}; shape < rstd::cmp::min(weights.len(), morph.alpha.len());
+                 ++shape) {
+                const auto& shape_alpha = morph.alpha[shape];
+                if (entry >= shape_alpha.len()) continue;
+                const float weight = weights[shape];
+                value *= shape_alpha[entry] * weight + (1.0f - weight);
+            }
+        }
+        alpha.push(float(value));
+    }
+    return alpha;
+}
+
+bool MdlParser::HasMorph(const Mdl::Mesh& src) {
+    return ! src.morph_shapes.is_empty() && src.morph_indices.len() == src.positions.len();
+}
+
+void MdlParser::AddMorphShaderInfo(ShaderInfo& info, const Mdl::Mesh& src) {
+    if (HasMorph(src)) (void)info.combos.insert(rstd::into(WE_CB_VERTEXCOLOR), "1"_Str);
+}
+
+void MdlParser::AddMorphMatInfo(wpscene::Material& mat, const Mdl::Mesh& src) {
+    if (HasMorph(src)) (void)mat.combos.insert(rstd::into(WE_CB_VERTEXCOLOR), i32(1));
 }
 
 // As the shaders' MORPHING does: the sum of each shape's offset (over 32767) times its weight,
@@ -1402,6 +1457,11 @@ void MdlParser::BindMorph(Scene& scene, SceneMesh& mesh, usize submesh, const Md
             auto  positions = MorphPositions(*morph, weights.as_slice());
             auto& part      = target->Submeshes()[submesh];
             (void)part.vertex_arrays[usize()].SetVertex(WE_IN_POSITION, positions.as_slice());
+            Vec<float> colors;
+            for (float alpha : MorphAlpha(*morph, weights.as_slice())) {
+                for (float value : { 1.0f, 1.0f, 1.0f, alpha }) colors.push(float(value));
+            }
+            (void)part.vertex_arrays[usize()].SetVertex(WE_IN_COLOR, colors.as_slice());
             part.PublishGeometry();
             target->SetDirty();
             last = rstd::move(weights);
