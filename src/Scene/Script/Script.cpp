@@ -141,6 +141,7 @@ struct EngineHostState {
     Option<JsRuntime::BoneCountResolver>         bone_count_resolver;
     Option<JsRuntime::BoneTransformResolver>     bone_transform_resolver;
     Option<JsRuntime::BoneSetTransformResolver>  bone_set_transform_resolver;
+    Option<JsRuntime::BoneParentsResolver>       bone_parents_resolver;
     owe::SceneNode*                              scene_root { nullptr };
 };
 
@@ -1797,6 +1798,31 @@ JSValue NodeSetBoneTransform(JSContext* ctx, JSValueConst this_val, int argc, JS
     return JS_UNDEFINED;
 }
 
+Vec<uint32_t> BoneParents(EngineHostState* host, owe::SceneNode* node) {
+    if (! node || ! host->bone_parents_resolver) return {};
+    return (*host->bone_parents_resolver)->operator()(node);
+}
+
+// getBoneParentIndex(child): the parent of a bone named or numbered as
+// getBoneIndex does, -1 for a root or a bone the layer does not have.
+JSValue NodeGetBoneParentIndex(JSContext* ctx, JSValueConst this_val, int argc,
+                               JSValueConst* argv) {
+    auto*      host    = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    auto*      n       = GetLayerNode(this_val);
+    const auto parents = BoneParents(host, n);
+    if (argc < 1) return JS_NewInt32(ctx, -1);
+    int32_t child = -1;
+    if (JS_IsString(argv[0])) {
+        JSValue index = NodeGetBoneIndex(ctx, this_val, 1, argv);
+        JS_ToInt32(ctx, &child, index);
+        JS_FreeValue(ctx, index);
+    } else {
+        JS_ToInt32(ctx, &child, argv[0]);
+    }
+    if (child < 0 || usize(uint32_t(child)) >= parents.len()) return JS_NewInt32(ctx, -1);
+    return JS_NewInt32(ctx, int32_t(parents[usize(uint32_t(child))]) - 1);
+}
+
 JSValue NodeGetChildren(JSContext* ctx, JSValueConst this_val, int, JSValueConst*) {
     auto*   n   = GetLayerNode(this_val);
     JSValue arr = JS_NewArray(ctx);
@@ -2826,6 +2852,7 @@ const JSCFunctionListEntry s_layer_proto_funcs[] = {
     JS_CFUNC_DEF("getBoneIndex", 1, NodeGetBoneIndex),
     JS_CFUNC_DEF("getBoneTransform", 1, NodeGetBoneTransform),
     JS_CFUNC_DEF("setBoneTransform", 2, NodeSetBoneTransform),
+    JS_CFUNC_DEF("getBoneParentIndex", 1, NodeGetBoneParentIndex),
     JS_CFUNC_DEF("getTextureAnimation", 0, NodeGetTextureAnimation),
     JS_CFUNC_DEF("getVideoTexture", 0, NodeGetVideoTexture),
     JS_CFUNC_DEF("emitParticles", 1, NodeEmitParticles),
@@ -3258,6 +3285,10 @@ void JsRuntime::SetBoneResolvers(BoneIndexResolver index_resolver, BoneCountReso
     m_impl->host.bone_count_resolver         = Some(rstd::move(count_resolver));
     m_impl->host.bone_transform_resolver     = Some(rstd::move(transform_resolver));
     m_impl->host.bone_set_transform_resolver = Some(rstd::move(set_transform_resolver));
+}
+
+void JsRuntime::SetBoneParentsResolver(BoneParentsResolver resolver) {
+    m_impl->host.bone_parents_resolver = Some(rstd::move(resolver));
 }
 
 void JsRuntime::SetPersistence(PathBuf path) {
