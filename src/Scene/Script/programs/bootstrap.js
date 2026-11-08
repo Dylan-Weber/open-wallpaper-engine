@@ -1655,6 +1655,10 @@ globalThis.Vec4 = Vec4;
 globalThis.Mat3 = Mat3;
 globalThis.Mat4 = Mat4;
 globalThis.IModelData = IModelData;
+// a script's model data (thisScene.createModelData): applyData changes its shapes
+globalThis.__wwNewModelData = function(id) {
+  return { __modelId: id, applyData: function(config) { __wwApplyModelData(id, config); } };
+};
 globalThis._Internal = _Internal;
 globalThis.MediaPlaybackEvent = MediaPlaybackEvent;
 

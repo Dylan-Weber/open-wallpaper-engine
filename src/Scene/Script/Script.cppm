@@ -202,6 +202,21 @@ enum class FieldScriptInitialization
     Deferred
 };
 
+// A mesh a script builds (thisScene.createModelData): shapes of interleaved vertex floats and indices, each with
+// its material asset. The vertex format lists IModelData attributes (POSITION 0, NORMAL 1, TANGENT 2, UV 3).
+struct ModelShapeData {
+    Vec<float>          vertices;
+    Vec<uint32_t>       indices;
+    Vec<i32>            format;
+    String              material;
+    bool                dynamic_vertices { false };
+};
+
+struct ModelData {
+    String              name;
+    Vec<ModelShapeData> shapes;
+};
+
 // One JsRuntime per Scene. Each field owns a separate module instance.
 // The renderer's frame tick is the single owner; the runtime is not thread-safe.
 class JsRuntime : NoCopy, NoMove {
@@ -311,6 +326,11 @@ public:
     void SetLayerFactory(LayerFactory factory);
     using LayerConfigFactory = Arc<dyn<FnMut<Option<Arc<owe::SceneNode>>(owe::SceneNode*, Json)>>>;
     void SetLayerConfigFactory(LayerConfigFactory factory);
+    // Makes the layer of a script-built mesh (createLayer({model})); its shapes become the layer's submeshes.
+    using ModelLayerFactory =
+        Arc<dyn<FnMut<Option<Arc<owe::SceneNode>>(owe::SceneNode*, const ModelData&)>>>;
+    void SetModelLayerFactory(ModelLayerFactory factory);
+    void ClearModelLayerFactory();
     void ClearLayerFactory();
     void ClearLayerConfigFactory();
 

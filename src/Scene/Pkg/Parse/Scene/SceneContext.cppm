@@ -309,6 +309,7 @@ auto InstantiateRegisteredAsset(SceneParseContext&, SceneNode*, const script::La
     -> Option<Arc<SceneNode>>;
 auto InstantiateLayerConfiguration(SceneParseContext&, SceneNode*, const Json&)
     -> Option<Arc<SceneNode>>;
+auto AttachCreatedLayer(SceneParseContext&, SceneNode*, i32) -> Option<Arc<SceneNode>>;
 void ResolveRegisteredAssets(SceneParseContext&);
 void ParseImageObj(SceneLayerBuildContext&, wpscene::ImageObject&);
 void ParseShapeObj(SceneLayerBuildContext&, wpscene::ShapeObject&);
@@ -318,6 +319,9 @@ bool ParseSoundObj(SceneLayerBuildContext&, wpscene::SoundObject&);
 void ParseModelObj(SceneParseContext&, wpscene::ModelObject&);
 void ParseModelObj(SceneLayerBuildContext&, wpscene::ModelObject&);
 bool RegisterRuntimePuppetUniformSources(Scene&, SceneLayerResources&, slice<Arc<SceneNode>>);
+// The layer of a mesh a script built (thisScene.createModelData + createLayer({model})).
+auto InstantiateScriptModel(SceneParseContext&, SceneNode*, const script::ModelData&)
+    -> Option<Arc<SceneNode>>;
 void ParseTextObj(SceneLayerBuildContext&, wpscene::TextObject&);
 
 struct ExpandedSceneObjects {
