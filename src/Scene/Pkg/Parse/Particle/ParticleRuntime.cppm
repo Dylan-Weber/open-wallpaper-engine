@@ -397,10 +397,16 @@ struct LayerImageSource {
     double          half_height {};
     Eigen::Vector3f color { 1.0f, 1.0f, 1.0f };
     float           alpha { 1.0f };
-    // the opaque pixels of the layer's image, when it has some: the emitter picks one at random (a jitter of half a pixel)
+    // the lattice of the layer's image, when it has one (LayerImageLattice): the emitter picks one of its points at random
     Vec<LayerImagePoint> points;
-    float                jitter { 0.5f };
 };
+
+// The points a layer's image emits from, as Wallpaper Engine reads it (particles-layerimage-pitch, -block): one at the centre of
+// each 4x4 texel block (texel 4i+2 from the top left, no jitter; a part block at the edge is left out, not probed), in
+// texels from the image's centre (y up), where the block's average opacity times the layer's is half or more, in the block's
+// average colour. `data` is 8-bit RGB, RGBA or BGRA by `channels` and `bgra`.
+Vec<LayerImagePoint> LayerImageLattice(const unsigned char* data, int width, int height, int channels, bool bgra,
+                                       float layer_alpha);
 
 struct ParticleLayerImageEmitterArgs {
     float                  emit_speed {};

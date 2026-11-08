@@ -1,0 +1,47 @@
+{
+  "material": "materials/particle/halo.json",
+  "maxcount": 16000,
+  "starttime": 0,
+  "flags": 0,
+  "controlpoint": [
+    {
+      "id": 0,
+      "flags": 0,
+      "offset": "0 0 0"
+    }
+  ],
+  "emitter": [
+    {
+      "id": 1,
+      "name": "layerimage",
+      "rate": 16000
+    }
+  ],
+  "initializer": [
+    {
+      "id": 2,
+      "name": "lifetimerandom",
+      "min": 100000,
+      "max": 100000
+    },
+    {
+      "id": 3,
+      "name": "sizerandom",
+      "min": 24,
+      "max": 24
+    },
+    {
+      "id": 4,
+      "name": "colorrandom",
+      "min": "128 128 128",
+      "max": "128 128 128"
+    }
+  ],
+  "operator": [],
+  "renderer": [
+    {
+      "id": 90,
+      "name": "sprite"
+    }
+  ]
+}

@@ -281,7 +281,8 @@ def input_arguments(inputs, frames, help_text, folder):
     what it can't be given. A spectrum is written to spectrum.json in `folder`."""
     arguments, env, notes = [], {}, []
     if 'pointer' in inputs and '--mouse-position' in help_text:
-        arguments += ['--mouse-position', '%.4f,%.4f' % tuple(inputs['pointer'])]
+        # one argument: a negative x would read as an option
+        arguments += ['--mouse-position=%.4f,%.4f' % tuple(inputs['pointer'])]
     if 'bands' in inputs:
         if '--audio-spectrum' in help_text:
             path = os.path.join(folder, 'spectrum.json')

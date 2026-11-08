@@ -742,6 +742,88 @@ TEST(ParticleSubSystem, LayerImageEmitterEmitsFromThePixelsOfAnImage) {
     EXPECT_GT(right, 0);
 }
 
+// A colorrandom initializer multiplies the colour the emitter gave (a layer's pixels), it does not replace it
+// (particles-layerimage-color: white keeps the rainbow, red keeps only its red).
+TEST(ParticleSubSystem, ColorRandomMultipliesAnImageEmittersColours) {
+    owe::Scene scene;
+    auto       layer = rstd::sync::Arc<owe::SceneNode>::make(Eigen::Vector3f { 100.0f, 50.0f, 0.0f },
+                                                       Eigen::Vector3f { 1.0f, 1.0f, 1.0f },
+                                                       Eigen::Vector3f::Zero());
+    owe::ParticleSubSystem subsystem(scene,
+                                     Arc<owe::SceneMesh>::make(),
+                                     u32(64),
+                                     f64(1.0),
+                                     u32(1),
+                                     f64(1.0),
+                                     owe::ParticleSubSystem::SpawnType::STATIC,
+                                     owe::ParticleAnimationSpec {});
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(64)));
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"colorrandom","min":"255 128 255","max":"255 128 255"})"_str).unwrap(), u32(64)));
+    owe::wpscene::Emitter emitter;
+    emitter.name          = String::make("layerimage"_str);
+    emitter.instantaneous = u32(40);
+    owe::LayerImageSource image {
+        .node = layer.clone(), .half_width = 20.0, .half_height = 10.0,
+        .color = Eigen::Vector3f(1.0f, 1.0f, 1.0f), .alpha = 1.0f };
+    image.points.push(owe::LayerImagePoint { .x = -10.0f, .y = 0.0f, .color = Eigen::Vector3f(0, 1, 0) });
+    image.points.push(owe::LayerImagePoint { .x = 10.0f, .y = 0.0f, .color = Eigen::Vector3f(1, 0, 1) });
+    subsystem.AddEmitter(owe::ParticleParser::GenEmitter(
+        emitter, subsystem, usize(), Some(Arc<owe::LayerImageSource>::make(rstd::move(image)))));
+    subsystem.Finalize();
+    subsystem.Tick(f64(1.0 / 60.0), false);
+    ASSERT_EQ(LiveParticleCount(subsystem), usize(40));
+    auto& storage = subsystem.System().Instance(usize()).Storage();
+    for (usize index {}; index < usize(40); ++index) {
+        particle::ParticleSlotReader value(storage, particle::ParticleSlot { .index = index });
+        auto position = Eigen::Vector3f(value.Read(subsystem.Attributes().position));
+        auto color    = Eigen::Vector3f(value.Read(subsystem.Attributes().color));
+        const Eigen::Vector3f expected =
+            position.x() < 100.0f ? Eigen::Vector3f(0, 128.0f / 255.0f, 0) : Eigen::Vector3f(1, 0, 1);
+        EXPECT_TRUE(color.isApprox(expected, 1e-3f));
+    }
+}
+
+// Wallpaper Engine reads a layer's image in 4x4 texel blocks (particles-layerimage-pitch, -block): one point at the centre of
+// each block (texel 4i+2 from the top left, no jitter) when the block's average opacity times the layer's is half or more,
+// in the block's average colour; the lattice follows the texture, whatever the scene's size.
+TEST(LayerImageLattice, OnePointPerFourByFourBlockAtItsCentre) {
+    auto image = [](int width, int height, auto texel) {
+        std::vector<unsigned char> data;
+        for (int y {}; y < height; ++y)
+            for (int x {}; x < width; ++x)
+                for (auto v : texel(x, y)) data.push_back(static_cast<unsigned char>(v));
+        return data;
+    };
+    // 8x8 white, the top right block transparent: three points, at the block centres from the image's centre (y up)
+    auto white = image(8, 8, [](int x, int y) { return rstd::array<int, 4> { 255, 255, 255, x >= 4 && y < 4 ? 0 : 255 }; });
+    auto points = owe::LayerImageLattice(white.data(), 8, 8, 4, false, 1.0f);
+    ASSERT_EQ(points.len(), usize(3));
+    EXPECT_EQ(points[usize()].x, -2.0f);
+    EXPECT_EQ(points[usize()].y, 2.0f);
+    EXPECT_EQ(points[usize(1)].x, -2.0f);
+    EXPECT_EQ(points[usize(1)].y, -2.0f);
+    EXPECT_EQ(points[usize(2)].x, 2.0f);
+    EXPECT_EQ(points[usize(2)].y, -2.0f);
+    // 40x24: 10x6 blocks
+    auto wide = image(40, 24, [](int, int) { return rstd::array<int, 4> { 255, 255, 255, 255 }; });
+    EXPECT_EQ(owe::LayerImageLattice(wide.data(), 40, 24, 4, false, 1.0f).len(), usize(60));
+    // the layer's opacity counts: half opaque still emits, below half nothing
+    EXPECT_EQ(owe::LayerImageLattice(wide.data(), 40, 24, 4, false, 0.5f).len(), usize(60));
+    EXPECT_EQ(owe::LayerImageLattice(wide.data(), 40, 24, 4, false, 0.4f).len(), usize());
+    // only one texel in sixteen opaque: the block averages 1/16 and emits nothing
+    auto sparse = image(32, 32, [](int x, int y) { return rstd::array<int, 4> { 255, 255, 255, x % 4 == 2 && y % 4 == 2 ? 255 : 0 }; });
+    EXPECT_EQ(owe::LayerImageLattice(sparse.data(), 32, 32, 4, false, 1.0f).len(), usize());
+    // a block half red, half blue is purple
+    auto halves = image(4, 4, [](int x, int) { return x < 2 ? rstd::array<int, 4> { 255, 0, 0, 255 } : rstd::array<int, 4> { 0, 0, 255, 255 }; });
+    auto purple = owe::LayerImageLattice(halves.data(), 4, 4, 4, false, 1.0f);
+    ASSERT_EQ(purple.len(), usize(1));
+    EXPECT_NEAR(purple[usize()].color.x(), 0.5f, 0.01f);
+    EXPECT_NEAR(purple[usize()].color.y(), 0.0f, 0.01f);
+    EXPECT_NEAR(purple[usize()].color.z(), 0.5f, 0.01f);
+}
+
 // A child made by eventspawn stays where its parent's particle was born; one made by eventfollow goes with the particle
 // (particles-event-children).
 TEST(ParticleSubSystem, AnEventSpawnChildStaysWhereTheParticleWasBornAndAFollowChildMoves) {
