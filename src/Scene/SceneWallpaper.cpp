@@ -52,7 +52,8 @@ class RenderMsg final {
               (BeginSceneLoad, (Arc<SceneLoadState> load;)),
               (SetScene,
                (Arc<SceneLoadState> load; Box<Scene> scene; Arc<UniformRuntimeInput> uniform_input;
-                Option<SceneLoadBenchHandle> load_bench; Option<u64> random_seed;)),
+                Option<SceneLoadBenchHandle> load_bench; Option<u64> random_seed;
+                PathBuf                                              camera_eye_log;)),
               (SetFillMode, (FillMode mode;)), (SetSpeed, (f32 speed;)),
               (SetMouseParallax, (bool enabled;)), (SetUserProperty, (String key; Json property;)),
               (SetMediaStatus, (MediaStatus status;)),
@@ -362,6 +363,8 @@ private:
     Option<RenderMsg::SetMediaStatus_payload> m_pending_media;
     bool                                      m_pending_view_config {};
     Option<RenderMsg::SwapchainReady_payload> m_pending_swapchain;
+    PathBuf                                   m_camera_eye_log;
+    String                                    m_camera_eye_lines;
 
     Atomic<array<float, 2>> m_mouse_pos { array<float, 2> { 0.5f, 0.5f } };
     Atomic<u32>             m_buttons_down {};
@@ -578,6 +581,19 @@ void SceneRenderController::onDraw() {
             frame_timer.FrameEnd();
             return;
         }
+        if (! m_camera_eye_log.is_empty()) {
+            // the whole log is rewritten each frame: a capture run may end at any frame
+            if (auto entry = CameraEyeLogEntry(*m_scene); entry.is_some()) {
+                m_camera_eye_lines.push_str(rstd::format("{} {} {} {}\n",
+                                                         (*entry)[usize()],
+                                                         (*entry)[usize(1)],
+                                                         (*entry)[usize(2)],
+                                                         (*entry)[usize(3)])
+                                                .as_str());
+                (void)rstd::fs::write(m_camera_eye_log.as_path(),
+                                      m_camera_eye_lines.as_str().as_bytes());
+            }
+        }
         if ((*m_pipeline)->acknowledgeFrameSubmitted()) m_scene->PassFrameTime(m_frame_delta);
 
         if (first_draw) {
@@ -642,6 +658,8 @@ void SceneRenderController::on(RenderMsg::SetScene_payload&& m) {
         using Seed = decltype(Random::max());
         Random::seed(static_cast<Seed>(m.random_seed->to_primitive()));
     }
+    m_camera_eye_log   = rstd::move(m.camera_eye_log);
+    m_camera_eye_lines = String::make();
     detachSceneAudioResponseDemandCallback();
     m_pipeline = None();
     m_pending_properties.clear();
@@ -1327,7 +1345,8 @@ void SceneRuntimeController::loadScene() {
                                      rstd::move(parsed.scene),
                                      rstd::move(parsed.runtime_input),
                                      m_config.load_bench.clone(),
-                                     m_config.random_seed))
+                                     m_config.random_seed,
+                                     m_config.camera_eye_log.clone()))
             .is_err()) {
         abort_load();
         return;
