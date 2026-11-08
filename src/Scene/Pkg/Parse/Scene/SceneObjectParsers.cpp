@@ -84,6 +84,7 @@ void ParseCamera(SceneParseContext& context, const wpscene::SceneMetadata& sc) {
         const Vector3d eye { cperori.x(), cperori.y(), cperori.z() };
         const Vector3d center { cori.x(), cori.y(), 0.0 };
         perspective_camera->SetLookAt(eye, center, Vector3d::UnitY());
+        perspective_camera->SetFitsProjectionHeight(static_cast<double>(projection_extent[usize(1)]));
     }
     scene.RegisterCamera("global_perspective"_Str, perspective_camera.clone());
     scene.RootMut()->AppendChild((*context.global_perspective_camera_node).clone());
