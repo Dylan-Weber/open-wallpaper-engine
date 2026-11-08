@@ -1788,6 +1788,35 @@ struct InheritValueFromEventOperator {
     }
 };
 
+// maintaindistancebetweencontrolpoints (particles-maintain-between): along the axis from control point 0 to control point 1
+// a particle is held between them (clamped to the nearer end) and drifts towards control point 0 by an exponential
+// (about 1.08 % a second); its place across the axis does not change.
+struct MaintainDistanceBetweenOperator {
+    static constexpr double kDriftPerSecond = 0.0108;
+
+    ParticleAttributes attributes;
+
+    void Compile(particle::ParticleViewCompiler& compiler) { compiler.WriteBase(attributes.position); }
+
+    void Update(particle::ParticleUpdateContext& context) {
+        auto       frame     = ParticleFrameFrom(context.frame);
+        auto       positions = context.view.PositionsMut();
+        const auto first     = frame->subsystem->SimulationControlpoint(usize()).center;
+        const auto second    = frame->subsystem->SimulationControlpoint(usize(1)).center;
+        const Eigen::Vector3d span   = second - first;
+        const double          length = span.norm();
+        if (length <= 1e-9) return;
+        const Eigen::Vector3d axis  = span / length;
+        const double          decay = f64(-kDriftPerSecond * context.delta.to_primitive()).exp().to_primitive();
+        for (auto slot : context.slots) {
+            const Eigen::Vector3d relative = positions[slot.index].cast<double>() - first;
+            const double          along    = relative.dot(axis);
+            const double          held     = rstd::cmp::min(rstd::cmp::max(along, 0.0), length) * decay;
+            positions[slot.index]          = (first + relative + axis * (held - along)).cast<float>();
+        }
+    }
+};
+
 struct NoopUpdateOperator {
     void Compile(particle::ParticleViewCompiler&) {}
     void Update(particle::ParticleUpdateContext&) {}
@@ -1892,6 +1921,9 @@ ParticleParser::GenOperator(const Json& wpj, ParticleInstanceModifiers modifiers
                 .attributes = attributes,
                 .config     = Vortex::ReadFromJson(wpj),
             });
+        } else if (name == "maintaindistancebetweencontrolpoints"_str) {
+            return Box<dyn<particle::ParticleUpdateProgram>>::make(
+                MaintainDistanceBetweenOperator { .attributes = attributes });
         } else if (name == "vortex_v2"_str) {
             return Box<dyn<particle::ParticleUpdateProgram>>::make(VortexOperator {
                 .attributes = attributes,
