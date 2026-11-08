@@ -2693,13 +2693,24 @@ TEST(SceneCameras, ALookAtCameraRefitsItsFovToTheHeightAtItsCenter) {
     camera.SetLookAt(Eigen::Vector3d(256.0, 160.0, 600.0),
                      Eigen::Vector3d(256.0, 160.0, 0.0),
                      Eigen::Vector3d::UnitY());
+    camera.SetFitsProjectionHeight(321.0);
     camera.FitFovToHeightAtCenter(288.0);
     // tan(fov / 2) = (height / 2) / distance
     const double expected = 2.0 * std::atan(144.0 / 600.0) * 180.0 / 3.14159265358979323846;
     EXPECT_NEAR(camera.Fov(), expected, 1e-9);
 
+    // the same height again leaves it
+    const double fitted = camera.Fov();
+    camera.FitFovToHeightAtCenter(288.0);
+    EXPECT_DOUBLE_EQ(camera.Fov(), fitted);
+
     // a camera that isn't looking from a distance keeps its fov
     auto flat = owe::SceneCamera::MakePerspective(1.6, 15000.0, 5.0, 30.0);
     flat.FitFovToHeightAtCenter(288.0);
     EXPECT_DOUBLE_EQ(flat.Fov(), 30.0);
+    // nor does a look-at camera of a scene without the override
+    auto authored = owe::SceneCamera::MakePerspective(1.6, 15000.0, 5.0, 30.0);
+    authored.SetLookAt(Eigen::Vector3d(0.0, 0.0, 6.0), Eigen::Vector3d::Zero(), Eigen::Vector3d::UnitY());
+    authored.FitFovToHeightAtCenter(288.0);
+    EXPECT_DOUBLE_EQ(authored.Fov(), 30.0);
 }
