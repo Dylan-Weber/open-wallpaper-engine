@@ -2925,6 +2925,26 @@ void WriteFormatTexture(const std::filesystem::path& path, std::uint32_t format)
 // Wallpaper Engine gives a shader every texture's format as TEXnFORMAT: generic4 decodes an RG88
 // normal map (g_Texture1) from .rg only when TEX1FORMAT says so, and otherwise from .wy, which is
 // 1 in an RG88 texture (LittleBigPlanet's clouds lit as if every normal leaned the same way).
+namespace
+{
+
+const std::vector<owe::testing::WorkshopProbe>& AllWorkshopProbes() {
+    static const auto v = owe::testing::EnumerateWorkshopProbes(WAYWALLEN_WORKSHOP_DIR);
+    return v;
+}
+
+const std::vector<std::string>& ObservedPkgVersionStamps() {
+    static const auto v = [] {
+        std::set<std::string> uniq;
+        for (const auto& p : AllWorkshopProbes())
+            if (! p.pkg_stamp.empty()) uniq.insert(p.pkg_stamp);
+        return std::vector<std::string>(uniq.begin(), uniq.end());
+    }();
+    return v;
+}
+
+} // namespace
+
 TEST(MaterialTextureFormats, EverySlotGetsItsFormat) {
     auto root = std::filesystem::temp_directory_path() /
                 ("owe-texture-formats-" + std::to_string(rstd::process::id().to_primitive()));
