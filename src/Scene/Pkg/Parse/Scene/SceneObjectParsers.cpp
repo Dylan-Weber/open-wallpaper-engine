@@ -377,6 +377,8 @@ void ParseLightObj(SceneParseContext& context, wpscene::LightObject& light_obj) 
     desc.cascade_distances[2] = light_obj.cascadedistance2;
     desc.cast_shadow          = light_obj.castshadow;
     desc.cast_volumetrics     = light_obj.castvolumetrics;
+    if (auto view = context.layer_resources->shadow_views.get(light_obj.id); view.is_some())
+        desc.shadow_view = **view;
 
     auto light = context.scene->RegisterLight(Box<SceneLight>::make(desc));
     light->setNode(node.as_ptr());
@@ -412,8 +414,7 @@ void ParseModelObjImpl(SceneLayerBuildContext& context, wpscene::ModelObject& mo
     node->ID()         = model_obj.id;
     node->SetPerspective(model_obj.perspective);
     node->SetReflected(model_obj.reflected);
-    node->shadow.cast =
-        context.layer_resources->shader_environment.directional_shadow && model_obj.castshadow;
+    node->shadow.cast = context.layer_resources->shader_environment.shadow_mapping && model_obj.castshadow;
     if (! model_obj.visible) {
         node->SetVisible(false);
         if (model_obj.id >= i32())
@@ -510,17 +511,27 @@ void ParseModelObjImpl(SceneLayerBuildContext& context, wpscene::ModelObject& mo
                     (void)shadow_material.combos.insert(rstd::into(combo), **value);
             }
 
-            ShaderInfo shadow_info;
-            shadow_info.baseConstSvs = context.layer_resources->global_base_uniforms.clone();
-            auto shadow_result       = BuildMaterial(vfs,
-                                                     *context.layer_resources->shader_cache,
-                                                     context.layer_resources->shader_environment,
-                                                     shadow_material,
-                                                     *context.scene,
-                                                     rstd::move(shadow_info),
-                                                     GeometryStageRequirement::None,
-                                                     context.load_bench);
-            if (shadow_result.is_ok()) {
+            // one caster for each shadowed light, drawn with that light's views
+            for (const auto& definition : context.scene->ShadowDefinitions()) {
+                auto light_material = shadow_material.clone();
+                (void)light_material.combos.insert("OWE_SHADOW_VIEW_OFFSET"_Str,
+                                                   rstd::as_cast<i32>(definition.view_offset));
+                ShaderInfo shadow_info;
+                shadow_info.baseConstSvs = context.layer_resources->global_base_uniforms.clone();
+                auto shadow_result       = BuildMaterial(vfs,
+                                                         *context.layer_resources->shader_cache,
+                                                         context.layer_resources->shader_environment,
+                                                         light_material,
+                                                         *context.scene,
+                                                         rstd::move(shadow_info),
+                                                         GeometryStageRequirement::None,
+                                                         context.load_bench);
+                if (shadow_result.is_err()) {
+                    rstd_warn("load shadow material '{}' failed for '{}'",
+                              light_material.shader,
+                              model_obj.name);
+                    break;
+                }
                 auto shadow_build         = rstd::move(shadow_result).unwrap_unchecked();
                 auto pipeline             = shadow_build.material.Pipeline();
                 pipeline.depth_clamp      = true;
@@ -530,14 +541,10 @@ void ParseModelObjImpl(SceneLayerBuildContext& context, wpscene::ModelObject& mo
                 pipeline.depth_bias_slope = -4.0f;
                 shadow_build.material.SetPipeline(rstd::move(pipeline));
                 LoadConstvalue(
-                    context, shadow_build.material, shadow_material, shadow_build.shader_info);
+                    context, shadow_build.material, light_material, shadow_build.shader_info);
                 context.scene->ResolveMaterialTextureSources(shadow_build.material);
-                scene_mat.shadow_variant =
-                    Some(Arc<SceneMaterial>::make(rstd::move(shadow_build.material)));
-            } else {
-                rstd_warn("load shadow material '{}' failed for '{}'",
-                          shadow_material.shader,
-                          model_obj.name);
+                scene_mat.shadow_variants.push(
+                    Arc<SceneMaterial>::make(rstd::move(shadow_build.material)));
             }
         }
 
@@ -661,7 +668,7 @@ SceneParseContext
 BuildContext(Scene& scene, fs::VFS& vfs, ref<str> scene_id, const wpscene::SceneMetadata& sc,
              array<i32, 2> ortho_extent, Option<ref<rstd::json::Map>> user_properties,
              Option<rstd::path::PathBuf> shader_cache_dir, GeometryShaderLimits geometry_limits,
-             bool directional_shadow, bool geometry_shader_supported,
+             slice<SceneShadowLight> shadow_lights, bool geometry_shader_supported,
              Option<ImageReadyCallback> image_ready, TextureMemoryOptions texture_memory) {
     SceneParseContext context(scene, vfs);
     PrepareAnimationBindings(context, sc.general.field_bindings);
@@ -673,8 +680,7 @@ BuildContext(Scene& scene, fs::VFS& vfs, ref<str> scene_id, const wpscene::Scene
     context.layer_resources->shader_cache = Arc<ShaderCache>::make(rstd::move(shader_cache_dir));
     context.layer_resources->geometry_shader_limits    = geometry_limits;
     context.layer_resources->geometry_shader_supported = geometry_shader_supported;
-    context.layer_resources->shader_environment.directional_shadow =
-        directional_shadow && sc.general.lightconfig.directionalshadow > u32();
+    context.layer_resources->shader_environment.shadow_mapping = ! shadow_lights.is_empty();
 
     context.scene->RegisterRenderTarget(String::make(SpecTex_Default),
                                         SceneRenderTarget {
@@ -694,14 +700,22 @@ BuildContext(Scene& scene, fs::VFS& vfs, ref<str> scene_id, const wpscene::Scene
             .initialize_transparent = true,
         });
 
-    if (context.layer_resources->shader_environment.directional_shadow) {
-        // a square of the atlas for each cascade
-        constexpr float tile = static_cast<float>(kShadowTileSize);
+    if (context.layer_resources->shader_environment.shadow_mapping) {
+        // a square of the atlas for each cascade, in rows of a near square
+        constexpr int tile       = kShadowTileSize;
+        const auto    squares_of = [](SceneLightType type) {
+            return type == SceneLightType::Directional ? 3 : 0;
+        };
+        int squares {};
+        for (const auto& light : shadow_lights) squares += squares_of(light.type);
+        const int columns =
+            static_cast<int>(f32(static_cast<float>(squares)).sqrt().ceil().to_primitive());
+        const int rows = (squares + columns - 1) / columns;
         context.scene->RegisterRenderTarget(
             String::make(WE_SHADOW_ATLAS_PREFIX),
             SceneRenderTarget {
-                .width             = i32(3 * static_cast<int>(tile)),
-                .height            = i32(static_cast<int>(tile)),
+                .width             = i32(columns * tile),
+                .height            = i32(rows * tile),
                 .kind              = SceneRenderTargetKind::DepthSampled,
                 .depth_clear_value = 0.0f,
                 .sample =
@@ -715,23 +729,50 @@ BuildContext(Scene& scene, fs::VFS& vfs, ref<str> scene_id, const wpscene::Scene
                         .border_color   = TextureBorderColor::TransparentBlack,
                     },
             });
-        auto viewports = Vec<SceneShadowViewport>::make();
-        for (u32 index {}; index < u32(3); ++index) {
-            viewports.push(SceneShadowViewport {
-                .x              = f32(tile * static_cast<float>(index.to_primitive())),
-                .y              = f32(tile),
-                .width          = f32(tile),
-                .height         = f32(-tile),
-                .scissor_x      = i32(static_cast<int>(tile)) * rstd::as_cast<i32>(index),
-                .scissor_y      = i32(),
-                .scissor_width  = u32(static_cast<unsigned>(tile)),
-                .scissor_height = u32(static_cast<unsigned>(tile)),
+        struct Corner {
+            int x;
+            int y;
+        };
+        int        next_square {};
+        const auto place = [&] {
+            const Corner corner { (next_square % columns) * tile, (next_square / columns) * tile };
+            ++next_square;
+            return corner;
+        };
+        // a region of the atlas, drawn upside down as the lookups read it
+        const auto viewport = [](int x, int y, int width, int height) {
+            return SceneShadowViewport {
+                .x              = f32(static_cast<float>(x)),
+                .y              = f32(static_cast<float>(y + height)),
+                .width          = f32(static_cast<float>(width)),
+                .height         = f32(-static_cast<float>(height)),
+                .scissor_x      = i32(x),
+                .scissor_y      = i32(y),
+                .scissor_width  = u32(static_cast<unsigned>(width)),
+                .scissor_height = u32(static_cast<unsigned>(height)),
+            };
+        };
+        int next_view {};
+        for (const auto& light : shadow_lights) {
+            auto viewports = Vec<SceneShadowViewport>::make();
+            if (light.type == SceneLightType::Directional) {
+                for (int cascade = 0; cascade < 3; ++cascade) {
+                    const auto [x, y] = place();
+                    viewports.push(viewport(x, y, tile, tile));
+                }
+            }
+            const int views = static_cast<int>(viewports.len().to_primitive());
+            if (views == 0 || next_view + views > static_cast<int>(kShadowViewCount.to_primitive()))
+                continue;
+            (void)context.layer_resources->shadow_views.insert(light.id, i32(next_view));
+            context.scene->RegisterShadowDefinition(SceneShadowDefinition {
+                .target      = String::make(WE_SHADOW_ATLAS_PREFIX),
+                .viewports   = rstd::move(viewports),
+                .light_id    = light.id,
+                .view_offset = u32(static_cast<unsigned>(next_view)),
             });
+            next_view += views;
         }
-        context.scene->RegisterShadowDefinition(SceneShadowDefinition {
-            .target    = String::make(WE_SHADOW_ATLAS_PREFIX),
-            .viewports = rstd::move(viewports),
-        });
     }
 
     context.scene->SetSceneId(String::make(scene_id));

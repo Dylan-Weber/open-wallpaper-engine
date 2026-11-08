@@ -42,6 +42,8 @@ public:
         // The old kind of light ("point"), which the old four-light arrays get; the newer
         // kinds ("lpoint", "lspot", ...) light only through Lighting V1.
         bool old_kind { false };
+        // Its first view in the scene's list of shadow views (-1: it has no shadow map).
+        i32 shadow_view { i32(-1) };
     };
 
     explicit SceneLight(const Desc& d)
