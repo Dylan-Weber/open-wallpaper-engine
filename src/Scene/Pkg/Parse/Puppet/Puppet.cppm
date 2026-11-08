@@ -268,11 +268,18 @@ public:
         bool          blendin { false };  // PKGV0021+
         bool          blendout { false }; // PKGV0021+
         double        blendtime { 0.0 };  // PKGV0021+
+        // A single play (playSingleAnimation), whatever the animation's own mode.
+        bool single { false };
 
         auto Clone() const -> AnimationLayer;
     };
 
     void prepared(slice<AnimationLayer>);
+    // Scripts' createAnimationLayer / destroyAnimationLayer. The other layers keep their playbacks and
+    // their runtime states.
+    auto AnimationIdNamed(ref<str> name) const -> Option<rstd::int32_t>;
+    auto AddAnimationLayer(AnimationLayer layer, bool single) -> Option<usize>;
+    bool RemoveAnimationLayer(const SceneAnimationPlayback& playback);
 
     // Borrowed until this instance is evaluated, prepared, or destroyed again.
     slice<Eigen::Affine3f>  genFrame(double time) noexcept;

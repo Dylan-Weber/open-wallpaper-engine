@@ -210,6 +210,47 @@ script::ScriptScene& EnsureScriptScene(SceneLayerBuildContext& context) {
         auto layers          = context.layer_resources->puppet_layers.clone();
         (*context.script_scene)
             ->runtime()
+            .SetAnimationLayerResolvers(
+                script::JsRuntime::AnimationLayerCreator::make(
+                    [layers = layers.clone()](SceneNode*                               node,
+                                              script::JsRuntime::AnimationLayerRequest request)
+                        -> Option<Arc<SceneAnimationLayer>> {
+                        auto layer = LookupPuppetLayer(layers, node);
+                        if (layer.is_none()) return None();
+                        auto id = request.animation_id.is_some()
+                                      ? request.animation_id
+                                      : (*layer)->AnimationIdNamed(request.animation.as_str());
+                        if (id.is_none()) return None();
+                        auto index = (*layer)->AddAnimationLayer(
+                            PuppetLayer::AnimationLayer {
+                                .id       = *id,
+                                .rate     = request.rate,
+                                .blend    = request.blend,
+                                .visible  = request.visible,
+                                .name     = request.name.clone(),
+                                .additive = request.additive,
+                            },
+                            request.single);
+                        if (index.is_none()) return None();
+                        auto state = Arc<SceneAnimationLayer>::make(
+                            request.name.is_empty() ? request.animation.clone() : request.name.clone());
+                        state->SetPlayback((*layer)->AnimationPlaybackAt(*index));
+                        state->SetBlend(static_cast<float>(request.blend));
+                        if (request.rate > 0.0) state->SetRate(static_cast<float>(request.rate));
+                        state->SetVisible(request.visible);
+                        (*layer)->SetRuntimeAnimationLayer(*index, state.clone());
+                        node->RegisterAnimationLayer(state.clone());
+                        return Some(rstd::move(state));
+                    }),
+                script::JsRuntime::AnimationLayerDestroyer::make(
+                    [layers = layers.clone()](SceneNode* node, const SceneAnimationLayer& state) {
+                        auto layer = LookupPuppetLayer(layers, node);
+                        if (auto playback = state.Playback(); layer.is_some() && playback.is_some())
+                            (void)(*layer)->RemoveAnimationLayer(**playback);
+                        return node->UnregisterAnimationLayer(state);
+                    }));
+        (*context.script_scene)
+            ->runtime()
             .SetBoneResolvers(
                 script::JsRuntime::BoneIndexResolver::make(
                     [layers = layers.clone()](SceneNode* node, ref<str> name) -> rstd::uint32_t {
