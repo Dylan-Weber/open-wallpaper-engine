@@ -32,6 +32,8 @@ struct SceneViewerArgs {
     Option<u64> random_seed;
     String      shadow_quality;
     Option<f64> script_clock;
+    Option<f32> script_start;
+    Option<f32> camera_path_delay;
     Resolution  resolution;
     i32         fps;
     u32         msaa_samples;
@@ -179,6 +181,18 @@ SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
             .long_name("shadow-quality"_str)
             .help("Shadows as Wallpaper Engine's setting: low, medium, high, ultra"_str)
             .default_value("medium"_str));
+    auto script_start = command.add_arg(
+        Arg<f32>::value("script-start"_str, from_str_parser<f32>())
+            .long_name("script-start"_str)
+            .help("Start scripts at SECONDS of the scene's clock (Wallpaper Engine can start them "
+                  "late, as a wallpaper loads)"_str)
+            .value_name("SECONDS"_str));
+    auto camera_path_delay = command.add_arg(
+        Arg<f32>::value("camera-path-delay"_str, from_str_parser<f32>())
+            .long_name("camera-path-delay"_str)
+            .help("Start camera paths SECONDS after the scene's clock and run them that much "
+                  "behind it (as Wallpaper Engine does after loading)"_str)
+            .value_name("SECONDS"_str));
     auto load_bench_output =
         command.add_arg(Arg<String>::value("load-bench-output"_str, string_parser())
                             .long_name("load-bench-output"_str)
@@ -240,6 +254,8 @@ SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
         .random_seed           = OptionalValue(matches, random_seed),
         .shadow_quality        = Value(matches, shadow_quality).clone(),
         .script_clock          = OptionalValue(matches, script_clock),
+        .script_start          = OptionalValue(matches, script_start),
+        .camera_path_delay     = OptionalValue(matches, camera_path_delay),
         .resolution            = Value(matches, resolution),
         .fps                   = Value(matches, fps),
         .msaa_samples          = Value(matches, msaa),

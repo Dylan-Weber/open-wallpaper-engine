@@ -88,6 +88,11 @@ struct SceneWallpaperConfig {
     // the moment (milliseconds since 1970) the scripts' Date reads when the scene starts; None: the
     // system clock
     Option<double> script_clock;
+    // Seconds of the scene's clock before scripts start (they read the scene's clock), and before
+    // camera paths start (they then run that much behind it); Wallpaper Engine starts both later in
+    // some wallpapers, as they load. 0 by default.
+    float script_start { 0.0f };
+    float camera_path_delay { 0.0f };
 };
 
 class SceneRuntimeController;

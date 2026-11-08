@@ -3178,6 +3178,13 @@ public:
     // The scene's own field of view (general.fov), what scripts read as thisScene.fov.
     void   SetSceneFov(double fov) { m_scene_fov = fov; }
     double SceneFov() const { return m_scene_fov; }
+    // Seconds of the scene's clock before scripts start (they then read the scene's clock), and
+    // before camera paths start (they then run that much behind it). Wallpaper Engine starts both
+    // later than g_Time in some wallpapers, as they load.
+    void   SetScriptStart(double seconds) { m_script_start = seconds; }
+    double ScriptStart() const { return m_script_start; }
+    void   SetCameraPathDelay(double seconds) { m_camera_path_delay = seconds; }
+    double CameraPathDelay() const { return m_camera_path_delay; }
     void RegisterCameraPathUserBinding(String key, Arc<SceneCameraPath>);
     void RegisterTexture(String name, SceneTexture texture);
     bool RemoveTexture(ref<str> name);
@@ -3542,6 +3549,8 @@ private:
     double                                   m_scene_fov { 50.0 };
     // the camera scripts see: the scene's own and what scripts set (ScriptCameraTransforms)
     Option<SceneCameraTransforms>              m_script_camera;
+    double                                   m_script_start { 0.0 };
+    double                                   m_camera_path_delay { 0.0 };
 
     void        RebuildElidableLayerIds();
     void        WriteRenderTarget(String name, SceneRenderTarget target);

@@ -175,6 +175,8 @@ void TickSceneScripts(owe::Scene& scene, const FrameInputs& fi) {
     auto script_scene = scene.ExtensionMut<ScriptScene>();
     if (script_scene.is_none()) return;
     auto events = scene.ConsumeAnimationEvents();
+    // Scripts start at the scene's script start, on the scene's clock.
+    if (static_cast<double>(fi.runtime) < scene.ScriptStart()) return;
     if (auto start = scene.ScriptClock(); start.is_some()) {
         // the scripts' clock started with the scene: Date and engine.timeOfDay read it
         auto inputs        = fi;
