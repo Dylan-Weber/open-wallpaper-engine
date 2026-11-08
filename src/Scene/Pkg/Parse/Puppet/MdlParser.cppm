@@ -116,6 +116,7 @@ struct MdlMorph {
     float                             scale { 0.0f };
     rstd::uint32_t                    vertex_count { 0 };
     Vec<Vec<array<rstd::int16_t, 3>>> offsets;
+    Vec<Vec<float>>                   alpha; // per shape, 0..1 a morphed vertex; empty: opaque
 };
 
 class MdlParser {
@@ -151,6 +152,12 @@ public:
         -> Option<Arc<MdlMorph>>;
     // The positions (three floats a vertex) with the shapes at these weights.
     static auto MorphPositions(const MdlMorph&, slice<float> weights) -> Vec<float>;
+    // Each vertex's alpha with the shapes at these weights (1 for the vertices they don't move).
+    static auto MorphAlpha(const MdlMorph&, slice<float> weights) -> Vec<float>;
+    // A mesh with blend shapes draws with a vertex colour that carries their alpha (VERTEXCOLOR).
+    static bool HasMorph(const Mdl::Mesh&);
+    static void AddMorphShaderInfo(ShaderInfo&, const Mdl::Mesh&);
+    static void AddMorphMatInfo(wpscene::Material&, const Mdl::Mesh&);
     // Moves this submesh's vertices by the mesh's blend shapes every frame, as the puppet's
     // animation layers weigh them. Nothing for a mesh without blend shapes.
     static void BindMorph(Scene& scene, SceneMesh& mesh, usize submesh, const Mdl::Mesh& src,

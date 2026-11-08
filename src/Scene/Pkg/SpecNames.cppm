@@ -51,6 +51,7 @@ inline constexpr ref<str> WE_CB_NORMALMAP            = "NORMALMAP"_str;
 inline constexpr ref<str> WE_CB_SCENE_ORTHO          = "SCENE_ORTHO"_str;
 inline constexpr ref<str> WE_CB_MORPHING             = "MORPHING"_str;
 inline constexpr ref<str> WE_CB_SKINNING             = "SKINNING"_str;
+inline constexpr ref<str> WE_CB_VERTEXCOLOR          = "VERTEXCOLOR"_str;
 inline constexpr ref<str> WE_CB_POINTEMITTER         = "POINTEMITTER"_str;
 inline constexpr ref<str> WE_CB_LINEEMITTER          = "LINEEMITTER"_str;
 inline constexpr ref<str> WE_PRENDER_ROPE            = "PRENDER_ROPE"_str;
