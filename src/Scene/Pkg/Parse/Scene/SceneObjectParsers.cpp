@@ -409,6 +409,7 @@ void ParseModelObjImpl(SceneLayerBuildContext& context, wpscene::ModelObject& mo
     context.TrackCreatedNode(node);
     const auto node_id = context.scene->RegisterNode(*node);
     node->ID()         = model_obj.id;
+    node->SetDrawsAsModel(true);
     node->SetPerspective(model_obj.perspective);
     node->SetReflected(model_obj.reflected);
     node->shadow.cast =
@@ -668,6 +669,7 @@ BuildContext(Scene& scene, fs::VFS& vfs, ref<str> scene_id, const wpscene::Scene
         context, vfs, sc, ortho_extent, rstd::move(image_ready), rstd::move(texture_memory));
     ParseCamera(context, sc);
     context.layer_resources->pkg_version  = sc.pkg_version;
+    context.scene->SetTransparentSorting(sc.general.transparentsorting);
     context.user_properties               = user_properties;
     context.layer_resources->shader_cache = Arc<ShaderCache>::make(rstd::move(shader_cache_dir));
     context.layer_resources->geometry_shader_limits    = geometry_limits;
