@@ -642,11 +642,9 @@ static Option<bool> DepthDrawKind(SceneNode& node, Scene& scene) {
 }
 
 static void FlushDepthDraws(ExtraInfo& extra) {
-    for (bool writes : { true, false }) {
-        for (const auto& draw : extra.pending_depth_draws) {
-            if (draw.writes_depth == writes) ToGraphPass(draw.node, SpecTex_Default, extra);
-        }
-    }
+    // in the scene's order: Wallpaper Engine draws a translucent model before an opaque one that
+    // comes after it, so the opaque one covers it (model-translucent-order, model-depth)
+    for (const auto& draw : extra.pending_depth_draws) ToGraphPass(draw.node, SpecTex_Default, extra);
     extra.pending_depth_draws.clear();
 }
 
