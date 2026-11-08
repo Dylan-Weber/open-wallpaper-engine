@@ -289,6 +289,7 @@ public:
     bool setLocalBoneTransform(rstd::uint32_t index, const Eigen::Affine3f& local,
                                double time) noexcept;
     Option<Eigen::Affine3f> attachmentTransform(usize index, double time) noexcept;
+    Option<usize>           attachmentIndex(ref<str> name) const noexcept;
     auto AnimationPlaybacks() const noexcept -> slice<Arc<SceneAnimationPlayback>>;
     auto AnimationPlayback(i32 layer_id) const -> Option<Arc<SceneAnimationPlayback>>;
     auto AnimationPlaybackAt(usize index) const -> Option<Arc<SceneAnimationPlayback>>;
