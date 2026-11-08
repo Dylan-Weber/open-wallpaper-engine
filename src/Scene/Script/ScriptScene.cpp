@@ -195,6 +195,15 @@ void SetSceneUserProperty(owe::Scene& scene, ref<str> key, const Json& property)
     scene.ApplyUserLightVisibilityBindings(key, property);
 }
 
+void SetSceneUserProperties(owe::Scene& scene, const rstd::json::Map& properties) {
+    auto script_scene = scene.ExtensionMut<ScriptScene>();
+    if (script_scene.is_some()) (**script_scene).runtime().SetUserProperties(properties);
+    properties.iter().for_each([&](auto entry) {
+        auto [key, property] = entry;
+        scene.ApplyUserLightVisibilityBindings(key->as_str(), *property);
+    });
+}
+
 void SetSceneMediaStatus(owe::Scene& scene, const MediaStatus& status) {
     auto script_scene = scene.ExtensionMut<ScriptScene>();
     if (script_scene.is_some()) (**script_scene).runtime().SetMediaStatus(status);

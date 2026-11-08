@@ -460,15 +460,15 @@ Option<array<float, 3>> ResolveSceneUserPropertyColor(const Json& property) {
                                   clamp01(coerced.value[usize(2)]) });
 }
 
-SceneUserPropertyMutation SceneUserPropertyApplier::Apply(Scene& scene, ref<str> raw_key,
-                                                          const Json& property) {
+namespace
+{
+// Everything a property changes but the scripts, which are told separately.
+SceneUserPropertyMutation ApplyBesidesScripts(Scene& scene, ref<str> key, const Json& property) {
     SceneUserPropertyMutation mutation;
-    auto                      key     = CanonicalSceneUserPropertyKey(raw_key);
-    auto                      payload = property.clone();
+    auto payload                 = property.clone();
     mutation.diagnostics_changed      = ! scene.ShaderComboUserBindings(key).is_empty();
 
     EnsureSceneUserPropertyState(scene).Set(key, payload);
-    script::SetSceneUserProperty(scene, key, payload);
     mutation.clear_color = ApplyClear(scene, key, payload);
     ApplyShaderUniforms(scene, key, payload);
     mutation.texture_materials = ApplyTextureProperty(scene, key, payload);
@@ -486,13 +486,31 @@ SceneUserPropertyMutation SceneUserPropertyApplier::Apply(Scene& scene, ref<str>
         scene.ApplyUserImageEffectVisibilityBindings(key, payload) || mutation.graph_changed;
     return mutation;
 }
+} // namespace
+
+SceneUserPropertyMutation SceneUserPropertyApplier::Apply(Scene& scene, ref<str> raw_key,
+                                                          const Json& property) {
+    auto key = CanonicalSceneUserPropertyKey(raw_key);
+    script::SetSceneUserProperty(scene, key, property);
+    return ApplyBesidesScripts(scene, key, property);
+}
 
 SceneUserPropertyMutation SceneUserPropertyApplier::ApplyAll(Scene&                 scene,
                                                              const rstd::json::Map& properties) {
     SceneUserPropertyMutation result;
+    // the scripts get every property in one call (their applyUserProperties reads several at once), the
+    // rest of the scene one at a time
+    auto canonical = rstd::json::Map::make();
     properties.iter().for_each([&](auto entry) {
         auto [key, property] = entry;
-        auto mutation        = Apply(scene, key->as_str(), *property);
+        canonical.insert(String::make(CanonicalSceneUserPropertyKey(key->as_str())),
+                         property->clone());
+    });
+    script::SetSceneUserProperties(scene, canonical);
+    properties.iter().for_each([&](auto entry) {
+        auto [key, property] = entry;
+        auto mutation =
+            ApplyBesidesScripts(scene, CanonicalSceneUserPropertyKey(key->as_str()), *property);
         result.graph_changed |= mutation.graph_changed;
         result.diagnostics_changed |= mutation.diagnostics_changed;
         if (mutation.clear_color.is_some()) result.clear_color = mutation.clear_color;
