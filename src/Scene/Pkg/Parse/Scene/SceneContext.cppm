@@ -154,7 +154,7 @@ struct SceneLayerResources {
     bool                              scene_has_scripts { false };
     bool                              scene_layer_text_writes { false };
     // The spot lights that project the light cookie: the first spotcookie-many with usecookie.
-    HashSet<i32>                      light_cookie_ids;
+    HashSet<i32> light_cookie_ids;
 };
 
 struct SceneLayerBuildContext {
