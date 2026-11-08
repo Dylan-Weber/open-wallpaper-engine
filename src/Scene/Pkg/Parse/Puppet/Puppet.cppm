@@ -329,9 +329,9 @@ private:
     Vec<Eigen::Affine3f>             m_final_affines;
     Vec<Option<Eigen::Affine3f>>     m_script_bone_overrides;
     // What scripts set this frame (setLocalBoneTransform), by bone, and the frame's time.
-    Vec<Option<Eigen::Affine3f>>     m_local_overrides;
-    float                            m_local_overrides_time { 0.0f };
-    Arc<Puppet>                      m_puppet;
+    Vec<Option<Eigen::Affine3f>> m_local_overrides;
+    float                        m_local_overrides_time { 0.0f };
+    Arc<Puppet>                  m_puppet;
 };
 
 } // namespace owe
