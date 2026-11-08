@@ -785,6 +785,45 @@ TEST(ParticleSubSystem, ColorRandomMultipliesAnImageEmittersColours) {
     }
 }
 
+// Wallpaper Engine reads a layer's image in 4x4 texel blocks (particles-layerimage-pitch, -block): one point at the centre of
+// each block (texel 4i+2 from the top left, no jitter) when the block's average opacity times the layer's is half or more,
+// in the block's average colour; the lattice follows the texture, whatever the scene's size.
+TEST(LayerImageLattice, OnePointPerFourByFourBlockAtItsCentre) {
+    auto image = [](int width, int height, auto texel) {
+        std::vector<unsigned char> data;
+        for (int y {}; y < height; ++y)
+            for (int x {}; x < width; ++x)
+                for (auto v : texel(x, y)) data.push_back(static_cast<unsigned char>(v));
+        return data;
+    };
+    // 8x8 white, the top right block transparent: three points, at the block centres from the image's centre (y up)
+    auto white = image(8, 8, [](int x, int y) { return rstd::array<int, 4> { 255, 255, 255, x >= 4 && y < 4 ? 0 : 255 }; });
+    auto points = owe::LayerImageLattice(white.data(), 8, 8, 4, false, 1.0f);
+    ASSERT_EQ(points.len(), usize(3));
+    EXPECT_EQ(points[usize()].x, -2.0f);
+    EXPECT_EQ(points[usize()].y, 2.0f);
+    EXPECT_EQ(points[usize(1)].x, -2.0f);
+    EXPECT_EQ(points[usize(1)].y, -2.0f);
+    EXPECT_EQ(points[usize(2)].x, 2.0f);
+    EXPECT_EQ(points[usize(2)].y, -2.0f);
+    // 40x24: 10x6 blocks
+    auto wide = image(40, 24, [](int, int) { return rstd::array<int, 4> { 255, 255, 255, 255 }; });
+    EXPECT_EQ(owe::LayerImageLattice(wide.data(), 40, 24, 4, false, 1.0f).len(), usize(60));
+    // the layer's opacity counts: half opaque still emits, below half nothing
+    EXPECT_EQ(owe::LayerImageLattice(wide.data(), 40, 24, 4, false, 0.5f).len(), usize(60));
+    EXPECT_EQ(owe::LayerImageLattice(wide.data(), 40, 24, 4, false, 0.4f).len(), usize());
+    // only one texel in sixteen opaque: the block averages 1/16 and emits nothing
+    auto sparse = image(32, 32, [](int x, int y) { return rstd::array<int, 4> { 255, 255, 255, x % 4 == 2 && y % 4 == 2 ? 255 : 0 }; });
+    EXPECT_EQ(owe::LayerImageLattice(sparse.data(), 32, 32, 4, false, 1.0f).len(), usize());
+    // a block half red, half blue is purple
+    auto halves = image(4, 4, [](int x, int) { return x < 2 ? rstd::array<int, 4> { 255, 0, 0, 255 } : rstd::array<int, 4> { 0, 0, 255, 255 }; });
+    auto purple = owe::LayerImageLattice(halves.data(), 4, 4, 4, false, 1.0f);
+    ASSERT_EQ(purple.len(), usize(1));
+    EXPECT_NEAR(purple[usize()].color.x(), 0.5f, 0.01f);
+    EXPECT_NEAR(purple[usize()].color.y(), 0.0f, 0.01f);
+    EXPECT_NEAR(purple[usize()].color.z(), 0.5f, 0.01f);
+}
+
 TEST(ParticleInstanceOverride, TracksProvidedControlpoints) {
     auto json = owe::ParseJson(R"({"size":2,"controlpoint1":"120 240 0"})"_str).unwrap();
     owe::wpscene::ParticleInstanceoverride override;
