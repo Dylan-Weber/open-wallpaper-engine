@@ -235,6 +235,7 @@ cube_mdl = binary.cube_mdl
 puppet_mdl = binary.puppet_mdl
 quad_mdl = binary.quad_mdl
 quads_mdl = binary.quads_mdl
+tex_mips = binary.tex_mips
 
 
 class Scene3D(Wallpaper):
