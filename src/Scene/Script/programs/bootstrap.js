@@ -1736,6 +1736,7 @@ function __wwCreateTexAnimStub() {
         setFrame(n){ frame = n | 0;   },
         getFrame() { return frame;    },
         isPlaying(){ return playing;  },
+        addEndedCallback(_fn) {},
     };
 }
 
@@ -1770,6 +1771,7 @@ function __wwCreateAnimationStub() {
         setFrame(n){ frame = Math.max(0, n | 0); },
         getFrame() { return frame;    },
         isPlaying(){ return playing;  },
+        addEndedCallback(_fn) {},
     };
     return o;
 }

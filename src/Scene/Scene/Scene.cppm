@@ -1408,6 +1408,8 @@ public:
     void SetRate(float rate);
 
     bool     IsPlaying() const { return m_playing; }
+    // How many times it has got to its end: every loop, or a single play's end.
+    u64      EndedCount() const { return m_ended; }
     i32      Frame() const;
     i32      FrameCount() const { return m_clip->End(); }
     float    Fps() const { return m_clip->Fps(); }
@@ -1429,6 +1431,7 @@ private:
     Option<double>          m_last_runtime;
     double                  m_position_seconds { 0.0 };
     double                  m_previous_frame { -0.5 };
+    u64                     m_ended {};
 };
 
 struct SceneAnimationTrack {
