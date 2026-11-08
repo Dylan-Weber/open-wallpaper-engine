@@ -622,6 +622,206 @@ TEST(ScriptNodeParent, DefaultLayerParentIsUndefined) {
     EXPECT_EQ(LastScalar(fs), 1.0);
 }
 
+TEST(ScriptBones, IndicesCountFromZero) {
+    // Wallpaper Engine numbers a layer's bones from 0 and gives -1 for a name it
+    // does not have (the empty name included); the resolvers count from 1, with
+    // 0 for none.
+    owe::SceneNode node;
+    JsRuntime      rt;
+    uint32_t       asked = 0;
+    rt.SetBoneResolvers(
+        JsRuntime::BoneIndexResolver::make([](owe::SceneNode*, ref<str> name) -> uint32_t {
+            if (name == "root"_str) return 1;
+            if (name == ""_str) return 1;
+            return name == "hair"_str ? 5 : 0;
+        }),
+        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t { return 5; }),
+        JsRuntime::BoneTransformResolver::make(
+            [&asked](owe::SceneNode*, uint32_t index, double) -> Option<BoneTransformData> {
+                asked = index;
+                BoneTransformData bone;
+                bone.m[12] = float(index);
+                return Some(bone);
+            }),
+        JsRuntime::BoneSetTransformResolver::make(
+            [](owe::SceneNode*, uint32_t, const BoneTransformData&) {}));
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            const results = [
+                thisLayer.getBoneIndex('root'),
+                thisLayer.getBoneIndex('hair'),
+                thisLayer.getBoneIndex('missing'),
+                thisLayer.getBoneIndex(''),
+                thisLayer.getBoneTransform(0).translation().x,
+            ];
+            export function update() { return results.join(' ') === '0 4 -1 -1 1' ? 1 : 0; }
+        )JS"_str,
+        "test/bone_indices"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+
+    rt.TickAll();
+
+    EXPECT_EQ(LastScalar(fs), 1.0);
+    EXPECT_EQ(asked, 1u);
+}
+
+TEST(ScriptBones, CountAndParents) {
+    // Measured in Wallpaper Engine: the count of a puppet's bones, and a bone's
+    // parent numbered from 0, -1 for a root, a missing name or an index past the
+    // last bone.
+    owe::SceneNode node;
+    JsRuntime      rt;
+    rt.SetBoneResolvers(
+        JsRuntime::BoneIndexResolver::make([](owe::SceneNode*, ref<str> name) -> uint32_t {
+            return name == "hair"_str ? 3 : 0;
+        }),
+        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t { return 3; }),
+        JsRuntime::BoneTransformResolver::make(
+            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTransformData> { return None(); }),
+        JsRuntime::BoneSetTransformResolver::make(
+            [](owe::SceneNode*, uint32_t, const BoneTransformData&) {}));
+    // three bones: a root, its child, and that child's child (1-based, 0 for none)
+    rt.SetBoneParentsResolver(
+        JsRuntime::BoneParentsResolver::make([](owe::SceneNode*) -> Vec<uint32_t> {
+            Vec<uint32_t> parents;
+            for (uint32_t parent : { 0u, 1u, 2u }) parents.push(uint32_t(parent));
+            return parents;
+        }));
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            const results = [
+                thisLayer.getBoneCount(),
+                thisLayer.getBoneParentIndex(0),
+                thisLayer.getBoneParentIndex(2),
+                thisLayer.getBoneParentIndex('hair'),
+                thisLayer.getBoneParentIndex('missing'),
+                thisLayer.getBoneParentIndex(3),
+            ];
+            export function update() { return results.join(' ') === '3 -1 1 1 -1 -1' ? 1 : 0; }
+        )JS"_str,
+        "test/bone_count_parents"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+
+    rt.TickAll();
+
+    EXPECT_EQ(LastScalar(fs), 1.0);
+}
+
+TEST(ScriptBones, LocalOriginAndAngles) {
+    // A bone's origin and angles (radians) relative to its parent, by name or index; setting one
+    // keeps the other.
+    owe::SceneNode node;
+    JsRuntime      rt;
+    rt.SetBoneResolvers(
+        JsRuntime::BoneIndexResolver::make([](owe::SceneNode*, ref<str> name) -> uint32_t {
+            return name == "hand"_str ? 2 : 0;
+        }),
+        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t { return 0; }),
+        JsRuntime::BoneTransformResolver::make(
+            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTransformData> { return None(); }),
+        JsRuntime::BoneSetTransformResolver::make(
+            [](owe::SceneNode*, uint32_t, const BoneTransformData&) {}));
+    BoneLocalPose pose { .origin = { 1.0f, 2.0f, 3.0f }, .angles = { 0.0f, 0.0f, 0.5f } };
+    uint32_t      asked = 0, set = 0;
+    rt.SetBoneLocalResolvers(
+        JsRuntime::BoneLocalGetter::make(
+            [&](owe::SceneNode*, uint32_t index, double) -> Option<BoneLocalPose> {
+                asked = index;
+                if (index != 2) return None();
+                return Some(pose);
+            }),
+        JsRuntime::BoneLocalSetter::make(
+            [&](owe::SceneNode*, uint32_t index, BoneLocalPose value, double) {
+                set  = index;
+                pose = value;
+            }));
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            export function update() {
+                const origin = thisLayer.getLocalBoneOrigin('hand');
+                const angles = thisLayer.getLocalBoneAngles(1);
+                thisLayer.setLocalBoneAngles('hand', new Vec3(0, 0, 1.5));
+                thisLayer.setLocalBoneOrigin(1, new Vec3(4, 5, 6));
+                const missing = thisLayer.getLocalBoneOrigin('missing');
+                const read = [origin.x, origin.y, origin.z, angles.z, missing.x].join(' ');
+                return read === '1 2 3 0.5 0' ? 1 : 0;
+            }
+        )JS"_str,
+        "test/bone_local"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+
+    rt.TickAll();
+
+    EXPECT_EQ(LastScalar(fs), 1.0);
+    EXPECT_EQ(set, 2u);
+    EXPECT_FLOAT_EQ(pose.origin.x, 4.0f);
+    EXPECT_FLOAT_EQ(pose.origin.z, 6.0f);
+    EXPECT_FLOAT_EQ(pose.angles.z, 1.5f);
+}
+
+TEST(ScriptBones, LocalBonesReadZeroAndTakeNothingInInit) {
+    // In a script's init Wallpaper Engine's bones read zero and setting them does nothing (puppet-bone-init); update sees them.
+    owe::SceneNode node;
+    JsRuntime      rt;
+    rt.SetBoneResolvers(
+        JsRuntime::BoneIndexResolver::make([](owe::SceneNode*, ref<str>) -> uint32_t { return 1; }),
+        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t { return 0; }),
+        JsRuntime::BoneTransformResolver::make(
+            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTransformData> { return None(); }),
+        JsRuntime::BoneSetTransformResolver::make(
+            [](owe::SceneNode*, uint32_t, const BoneTransformData&) {}));
+    BoneLocalPose pose { .origin = { 1.0f, 2.0f, 3.0f }, .angles = { 0.0f, 0.0f, 0.3f } };
+    int           sets = 0;
+    rt.SetBoneLocalResolvers(
+        JsRuntime::BoneLocalGetter::make(
+            [&](owe::SceneNode*, uint32_t, double) -> Option<BoneLocalPose> { return Some(pose); }),
+        JsRuntime::BoneLocalSetter::make(
+            [&](owe::SceneNode*, uint32_t, BoneLocalPose value, double) {
+                ++sets;
+                pose = value;
+            }));
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            let atInit = 'unset';
+            export function init(value) {
+                const angles = thisLayer.getLocalBoneAngles('mid');
+                const origin = thisLayer.getLocalBoneOrigin(1);
+                atInit = [angles.z, origin.x, origin.y, origin.z].join(' ');
+                thisLayer.setLocalBoneAngles('mid', new Vec3(0, 0, 1.5));
+                return value;
+            }
+            export function update() {
+                const now = thisLayer.getLocalBoneAngles('mid').z;
+                return atInit === '0 0 0 0' && Math.abs(now - 0.3) < 1e-6 ? 1 : 0;
+            }
+        )JS"_str,
+        "test/bone_init"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+
+    rt.SetSceneRoot(&node);
+    rt.TickAll();
+
+    EXPECT_EQ(LastScalar(fs), 1.0);
+    EXPECT_EQ(sets, 0);
+    EXPECT_FLOAT_EQ(pose.angles.z, 0.3f);
+}
+
 TEST(ScriptNodeSoftMutation, VisibleAndAlphaWrites) {
     owe::SceneNode node;
     JsRuntime      rt;
@@ -2569,15 +2769,13 @@ TEST(ScriptScene, CameraTransformsRoundTripThroughSceneOwner) {
     rt.SetScene(&scene);
     auto* script = rt.MakeFieldScript(
         R"JS(
-            export function init() {
+            export function update() {
                 const camera = thisScene.getCameraTransforms();
                 camera.eye = new Vec3(3, 4, 5);
                 camera.center = new Vec3(0, 0, 0);
                 thisScene.setCameraTransforms(camera);
-            }
-            export function update() {
-                const camera = thisScene.getCameraTransforms();
-                return camera.eye.x * 100 + camera.eye.y * 10 + camera.eye.z;
+                const set = thisScene.getCameraTransforms();
+                return set.eye.x * 100 + set.eye.y * 10 + set.eye.z;
             }
         )JS"_str,
         "test/camera_transforms_round_trip"_str,
@@ -2597,6 +2795,46 @@ TEST(ScriptScene, CameraTransformsRoundTripThroughSceneOwner) {
     EXPECT_DOUBLE_EQ(LastScalar(script), 345.0);
 }
 
+// Measured in Wallpaper Engine: a script that calls setCameraTransforms in init (and returns its value) leaves the
+// camera where the scene put it; the same call in update moves it.
+TEST(ScriptScene, CameraTransformsSetInInitAreIgnored) {
+    owe::Scene scene;
+    auto       camera = Arc<owe::SceneCamera>::make(
+        owe::SceneCamera::MakePerspective(16.0 / 9.0, 0.01, 1000.0, 53.0));
+    camera->SetLookAt({ 0.0, 0.0, 250.0 }, { 0.0, 1.0, 0.0 }, { 0.0, 1.0, 0.0 });
+    scene.RegisterCamera(String::make("main"_str), rstd::move(camera));
+    ASSERT_TRUE(scene.SetActiveCamera("main"_str));
+
+    JsRuntime rt;
+    rt.SetScene(&scene);
+    auto* script = rt.MakeFieldScript(
+        R"JS(
+            export function init(value) {
+                const camera = thisScene.getCameraTransforms();
+                camera.eye = new Vec3(3, 4, 5);
+                camera.center = new Vec3(0, 0, 0);
+                thisScene.setCameraTransforms(camera);
+                return value;
+            }
+            export function update(value) {
+                return thisScene.getCameraTransforms().eye.z;
+            }
+        )JS"_str,
+        "test/camera_transforms_in_init"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0));
+    ASSERT_NE(script, nullptr);
+
+    rt.SetSceneRoot(scene.RootMut().as_raw_ptr());
+    rt.TickAll();
+
+    auto transforms = scene.ActiveCameraTransforms();
+    ASSERT_TRUE(transforms.is_some());
+    EXPECT_TRUE(transforms->eye.isApprox(Eigen::Vector3d { 0.0, 0.0, 250.0 }));
+    EXPECT_DOUBLE_EQ(LastScalar(script), 250.0);
+}
+
 TEST(ScriptScene, OrthographicCameraTransformsUseAttachedNodeCoordinates) {
     owe::Scene scene;
     auto       camera_node = Arc<owe::SceneNode>::make(Eigen::Vector3f { 1920.0f, 1080.0f, 0.0f },
@@ -2612,15 +2850,13 @@ TEST(ScriptScene, OrthographicCameraTransformsUseAttachedNodeCoordinates) {
     rt.SetScene(&scene);
     auto* script = rt.MakeFieldScript(
         R"JS(
-            export function init() {
+            export function update() {
                 const camera = thisScene.getCameraTransforms();
                 camera.eye = new Vec3(10, 20, 0);
                 camera.center = new Vec3(10, 20, -1);
                 thisScene.setCameraTransforms(camera);
-            }
-            export function update() {
-                const camera = thisScene.getCameraTransforms();
-                return camera.eye.x * 100 + camera.eye.y;
+                const set = thisScene.getCameraTransforms();
+                return set.eye.x * 100 + set.eye.y;
             }
         )JS"_str,
         "test/orthographic_camera_attached_coordinates"_str,

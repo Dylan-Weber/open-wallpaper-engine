@@ -67,6 +67,19 @@ struct BoneTransformData {
 
 using BoneTranslation = BoneTransformData;
 
+// A bone's origin or angles: three numbers.
+struct BoneVector {
+    float x {};
+    float y {};
+    float z {};
+};
+
+// A bone's origin and angles (radians) relative to its parent.
+struct BoneLocalPose {
+    BoneVector origin;
+    BoneVector angles;
+};
+
 // What kind of value a FieldScript is expected to produce. Set at parse
 // time based on the field name's well-known type — see the per-field-kind
 // table in the API doc.
@@ -266,6 +279,16 @@ public:
     void SetBoneResolvers(BoneIndexResolver index_resolver, BoneCountResolver count_resolver,
                           BoneTransformResolver    transform_resolver,
                           BoneSetTransformResolver set_transform_resolver);
+    // Each bone's parent, numbered as the bone index resolver numbers bones
+    // (0 for a root); empty when the node has no bones.
+    using BoneParentsResolver = Box<dyn<FnMut<Vec<uint32_t>(owe::SceneNode*)>>>;
+    void SetBoneParentsResolver(BoneParentsResolver resolver);
+    // A bone's local pose, numbered as the bone index resolver numbers bones, at the scripts'
+    // time; the setter poses it for that frame.
+    using BoneLocalGetter =
+        Box<dyn<FnMut<Option<BoneLocalPose>(owe::SceneNode*, uint32_t, double)>>>;
+    using BoneLocalSetter = Box<dyn<FnMut<void(owe::SceneNode*, uint32_t, BoneLocalPose, double)>>>;
+    void SetBoneLocalResolvers(BoneLocalGetter getter, BoneLocalSetter setter);
 
     // createAnimationLayer / playSingleAnimation: the animation by name or id, and the new layer's
     // settings; the creator adds the layer to the node and gives it, or None.

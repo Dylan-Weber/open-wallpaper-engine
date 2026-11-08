@@ -64,6 +64,8 @@ struct ScriptLayerState {
 };
 
 struct EngineHostState {
+    // A field script's init is running: Wallpaper Engine leaves the camera alone for what it sets then.
+    bool in_field_init { false };
     FrameInputs                     inputs;
     MediaStatus                     media;
     bool                            media_initialized { false };
@@ -157,6 +159,9 @@ struct EngineHostState {
         Arc<owe::SceneAnimationLayer>  layer;
     };
     Vec<SinglePlay> single_plays;
+    Option<JsRuntime::BoneParentsResolver>       bone_parents_resolver;
+    Option<JsRuntime::BoneLocalGetter>           bone_local_getter;
+    Option<JsRuntime::BoneLocalSetter>           bone_local_setter;
     owe::SceneNode*                              scene_root { nullptr };
 };
 
@@ -1739,22 +1744,26 @@ static uint32_t ResolveBoneIndex(JSContext* ctx, owe::SceneNode* n, EngineHostSt
         if (! host->bone_index_resolver) return 0;
         const char* name = JS_ToCString(ctx, arg);
         if (! name) return 0;
-        uint32_t idx =
-            (*host->bone_index_resolver)->operator()(n, rstd::cppstd::as_str(name).unwrap());
+        const auto bone_name = rstd::cppstd::as_str(name).unwrap();
+        // the empty name finds no bone, unnamed ones included
+        uint32_t idx = bone_name.is_empty() ? 0 : (*host->bone_index_resolver)->operator()(n, bone_name);
         JS_FreeCString(ctx, name);
         return idx;
     }
-    int32_t idx = 0;
+    // a number is a script's bone index, from 0
+    int32_t idx = -1;
     JS_ToInt32(ctx, &idx, arg);
-    return idx > 0 ? static_cast<uint32_t>(idx) : 0;
+    return idx >= 0 ? static_cast<uint32_t>(idx) + 1 : 0;
 }
 
+// Scripts number a layer's bones from 0, with -1 for a name the layer does not
+// have, as Wallpaper Engine does; the bone resolvers count from 1, with 0 for none.
 JSValue NodeGetBoneIndex(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
     auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
     auto* n    = GetLayerNode(this_val);
-    if (! n || argc < 1 || ! host) return JS_NewInt32(ctx, 0);
+    if (! n || argc < 1 || ! host) return JS_NewInt32(ctx, -1);
     uint32_t index = ResolveBoneIndex(ctx, n, host, argv[0]);
-    return JS_NewInt32(ctx, static_cast<int32_t>(index));
+    return JS_NewInt32(ctx, static_cast<int32_t>(index) - 1);
 }
 
 JSValue NodeGetBoneCount(JSContext* ctx, JSValueConst this_val, int, JSValueConst*) {
@@ -1807,6 +1816,107 @@ JSValue NodeSetBoneTransform(JSContext* ctx, JSValueConst this_val, int argc, JS
 
     (*host->bone_set_transform_resolver)->operator()(n, index, data);
     return JS_UNDEFINED;
+}
+
+Vec<uint32_t> BoneParents(EngineHostState* host, owe::SceneNode* node) {
+    if (! node || ! host->bone_parents_resolver) return {};
+    return (*host->bone_parents_resolver)->operator()(node);
+}
+
+// getBoneParentIndex(child): the parent of a bone named or numbered as
+// getBoneIndex does, -1 for a root or a bone the layer does not have.
+JSValue NodeGetBoneParentIndex(JSContext* ctx, JSValueConst this_val, int argc,
+                               JSValueConst* argv) {
+    auto*      host    = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    auto*      n       = GetLayerNode(this_val);
+    const auto parents = BoneParents(host, n);
+    if (argc < 1) return JS_NewInt32(ctx, -1);
+    int32_t child = -1;
+    if (JS_IsString(argv[0])) {
+        JSValue index = NodeGetBoneIndex(ctx, this_val, 1, argv);
+        JS_ToInt32(ctx, &child, index);
+        JS_FreeValue(ctx, index);
+    } else {
+        JS_ToInt32(ctx, &child, argv[0]);
+    }
+    if (child < 0 || usize(uint32_t(child)) >= parents.len()) return JS_NewInt32(ctx, -1);
+    return JS_NewInt32(ctx, int32_t(parents[usize(uint32_t(child))]) - 1);
+}
+
+// A bone named, or numbered as getBoneIndex numbers it: -1 for none.
+int32_t ScriptBoneIndex(JSContext* ctx, JSValueConst this_val, JSValueConst bone) {
+    int32_t index = -1;
+    if (JS_IsString(bone)) {
+        JSValue found = NodeGetBoneIndex(ctx, this_val, 1, &bone);
+        JS_ToInt32(ctx, &index, found);
+        JS_FreeValue(ctx, found);
+    } else {
+        JS_ToInt32(ctx, &index, bone);
+    }
+    return index;
+}
+
+// The local pose of the bone in argv[0], and its resolver number.
+Option<owe::script::BoneLocalPose> ScriptBoneLocalPose(JSContext* ctx, JSValueConst this_val,
+                                                       int argc, JSValueConst* argv,
+                                                       uint32_t& bone) {
+    auto*         host  = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    auto*         n     = GetLayerNode(this_val);
+    const int32_t index = argc > 0 ? ScriptBoneIndex(ctx, this_val, argv[0]) : -1;
+    if (! n || index < 0 || ! host->bone_local_getter) return None();
+    bone = uint32_t(index) + 1;
+    return (*host->bone_local_getter)->operator()(n, bone, host->inputs.runtime);
+}
+
+bool InFieldInit(JSContext* ctx) {
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    return host != nullptr && host->in_field_init;
+}
+
+// get/setLocalBoneOrigin and get/setLocalBoneAngles (radians), relative to the bone's parent. A
+// bone the layer doesn't have reads as a zero vector.
+JSValue LocalBonePart(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv,
+                      bool angles) {
+    uint32_t bone = 0;
+    auto     pose = ScriptBoneLocalPose(ctx, this_val, argc, argv, bone);
+    // in a script's init, bones read zero (Wallpaper Engine's)
+    if (pose.is_none() || InFieldInit(ctx)) return MakeVec3(ctx, 0, 0, 0);
+    const auto& part = angles ? pose->angles : pose->origin;
+    return MakeVec3(ctx, part.x, part.y, part.z);
+}
+
+JSValue SetLocalBonePart(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv,
+                         bool angles) {
+    auto*    host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    // and setting them does nothing there
+    if (InFieldInit(ctx)) return JS_UNDEFINED;
+    uint32_t bone = 0;
+    auto     pose = ScriptBoneLocalPose(ctx, this_val, argc, argv, bone);
+    double   x = 0, y = 0, z = 0;
+    if (pose.is_none() || argc < 2 || ! ReadXYZ(ctx, argv[1], x, y, z) || ! host->bone_local_setter)
+        return JS_UNDEFINED;
+    auto& part = angles ? pose->angles : pose->origin;
+    part       = { float(x), float(y), float(z) };
+    (*host->bone_local_setter)
+        ->operator()(GetLayerNode(this_val), bone, *pose, host->inputs.runtime);
+    return JS_UNDEFINED;
+}
+
+JSValue NodeGetLocalBoneOrigin(JSContext* ctx, JSValueConst this_val, int argc,
+                               JSValueConst* argv) {
+    return LocalBonePart(ctx, this_val, argc, argv, false);
+}
+JSValue NodeGetLocalBoneAngles(JSContext* ctx, JSValueConst this_val, int argc,
+                               JSValueConst* argv) {
+    return LocalBonePart(ctx, this_val, argc, argv, true);
+}
+JSValue NodeSetLocalBoneOrigin(JSContext* ctx, JSValueConst this_val, int argc,
+                               JSValueConst* argv) {
+    return SetLocalBonePart(ctx, this_val, argc, argv, false);
+}
+JSValue NodeSetLocalBoneAngles(JSContext* ctx, JSValueConst this_val, int argc,
+                               JSValueConst* argv) {
+    return SetLocalBonePart(ctx, this_val, argc, argv, true);
 }
 
 JSValue NodeGetChildren(JSContext* ctx, JSValueConst this_val, int, JSValueConst*) {
@@ -2081,6 +2191,8 @@ JSValue NodeSceneSetCameraTransforms(JSContext* ctx, JSValueConst, int argc, JSV
     if (! host || ! host->scene) return JS_ThrowTypeError(ctx, "scene camera is not available");
     if (argc < 1 || ! JS_IsObject(argv[0]))
         return JS_ThrowTypeError(ctx, "camera transforms must be an object");
+    // measured in Wallpaper Engine: the camera a script sets in init is the scene's again once it has loaded
+    if (host->in_field_init) return JS_UNDEFINED;
     auto transforms = host->scene->ActiveCameraTransforms();
     if (transforms.is_none()) return JS_ThrowTypeError(ctx, "active scene camera is not available");
     if (! ReadOptionalCameraVector(ctx, argv[0], "eye", transforms->eye) ||
@@ -3022,6 +3134,11 @@ const JSCFunctionListEntry s_layer_proto_funcs[] = {
     JS_CFUNC_DEF("getBoneIndex", 1, NodeGetBoneIndex),
     JS_CFUNC_DEF("getBoneTransform", 1, NodeGetBoneTransform),
     JS_CFUNC_DEF("setBoneTransform", 2, NodeSetBoneTransform),
+    JS_CFUNC_DEF("getBoneParentIndex", 1, NodeGetBoneParentIndex),
+    JS_CFUNC_DEF("getLocalBoneOrigin", 1, NodeGetLocalBoneOrigin),
+    JS_CFUNC_DEF("getLocalBoneAngles", 1, NodeGetLocalBoneAngles),
+    JS_CFUNC_DEF("setLocalBoneOrigin", 2, NodeSetLocalBoneOrigin),
+    JS_CFUNC_DEF("setLocalBoneAngles", 2, NodeSetLocalBoneAngles),
     JS_CFUNC_DEF("getTextureAnimation", 0, NodeGetTextureAnimation),
     JS_CFUNC_DEF("getVideoTexture", 0, NodeGetVideoTexture),
     JS_CFUNC_DEF("emitParticles", 1, NodeEmitParticles),
@@ -3468,6 +3585,15 @@ void JsRuntime::SetBoneResolvers(BoneIndexResolver index_resolver, BoneCountReso
     m_impl->host.bone_set_transform_resolver = Some(rstd::move(set_transform_resolver));
 }
 
+void JsRuntime::SetBoneParentsResolver(BoneParentsResolver resolver) {
+    m_impl->host.bone_parents_resolver = Some(rstd::move(resolver));
+}
+
+void JsRuntime::SetBoneLocalResolvers(BoneLocalGetter getter, BoneLocalSetter setter) {
+    m_impl->host.bone_local_getter = Some(rstd::move(getter));
+    m_impl->host.bone_local_setter = Some(rstd::move(setter));
+}
+
 void JsRuntime::SetPersistence(PathBuf path) {
     m_impl->host.ls_path = rstd::move(path);
     m_impl->host.ls_data.clear();
@@ -3868,7 +3994,10 @@ void RunFieldScriptInit(JSContext* ctx, JsRuntime::Impl* rt, FieldScript* fs) {
     if (! JS_IsUndefined(rt->wrapped_scene)) BindThisScene(ctx, rt->wrapped_scene);
     rt->host.active_field_script = fs;
     JSValue arg                  = JS_DupValue(ctx, I->current_value);
-    JSValue r                    = JS_Call(ctx, I->init_fn, JS_UNDEFINED, 1, &arg);
+    const bool was_in_init       = rt->host.in_field_init;
+    rt->host.in_field_init       = true;
+    JSValue    r                 = JS_Call(ctx, I->init_fn, JS_UNDEFINED, 1, &arg);
+    rt->host.in_field_init       = was_in_init;
     JS_FreeValue(ctx, arg);
     if (JS_IsException(r)) rt->LogError(ctx, I->sha.as_str(), "init threw");
     JS_FreeValue(ctx, r);
