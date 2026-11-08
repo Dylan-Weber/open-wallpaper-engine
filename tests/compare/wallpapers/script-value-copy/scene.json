@@ -1,0 +1,197 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0 0 0",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "kept from init start",
+      "image": "models/util/solidlayer.json",
+      "origin": "300 200 0",
+      "size": "12 160",
+      "color": "0.3 0.3 0.3",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 1,
+      "visible": true
+    },
+    {
+      "name": "kept from init goal",
+      "image": "models/util/solidlayer.json",
+      "origin": "900 200 0",
+      "size": "12 160",
+      "color": "0.3 0.3 0.3",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 2,
+      "visible": true
+    },
+    {
+      "name": "kept from init",
+      "image": "models/util/solidlayer.json",
+      "size": "100 100",
+      "color": "1 0.6 0.1",
+      "alpha": 1,
+      "origin": {
+        "value": "300 200 0",
+        "script": "'use strict';\nlet kept;\nexport function init(value) { kept = value; return value; }\nexport function update(value) { value.x = 900; return kept; }\n",
+        "scriptproperties": {}
+      },
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 3,
+      "visible": true
+    },
+    {
+      "name": "moved, nothing returned start",
+      "image": "models/util/solidlayer.json",
+      "origin": "300 420 0",
+      "size": "12 160",
+      "color": "0.3 0.3 0.3",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 4,
+      "visible": true
+    },
+    {
+      "name": "moved, nothing returned goal",
+      "image": "models/util/solidlayer.json",
+      "origin": "900 420 0",
+      "size": "12 160",
+      "color": "0.3 0.3 0.3",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 5,
+      "visible": true
+    },
+    {
+      "name": "moved, nothing returned",
+      "image": "models/util/solidlayer.json",
+      "size": "100 100",
+      "color": "1 0.6 0.1",
+      "alpha": 1,
+      "origin": {
+        "value": "300 420 0",
+        "script": "'use strict';\nexport function update(value) { value.x = 900; }\n",
+        "scriptproperties": {}
+      },
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 6,
+      "visible": true
+    },
+    {
+      "name": "moved in init start",
+      "image": "models/util/solidlayer.json",
+      "origin": "300 640 0",
+      "size": "12 160",
+      "color": "0.3 0.3 0.3",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 7,
+      "visible": true
+    },
+    {
+      "name": "moved in init goal",
+      "image": "models/util/solidlayer.json",
+      "origin": "900 640 0",
+      "size": "12 160",
+      "color": "0.3 0.3 0.3",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 8,
+      "visible": true
+    },
+    {
+      "name": "moved in init",
+      "image": "models/util/solidlayer.json",
+      "size": "100 100",
+      "color": "1 0.6 0.1",
+      "alpha": 1,
+      "origin": {
+        "value": "300 640 0",
+        "script": "'use strict';\nexport function init(value) { value.x = 900; }\nexport function update(value) { return value; }\n",
+        "scriptproperties": {}
+      },
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 9,
+      "visible": true
+    },
+    {
+      "name": "moved and returned start",
+      "image": "models/util/solidlayer.json",
+      "origin": "300 860 0",
+      "size": "12 160",
+      "color": "0.3 0.3 0.3",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 10,
+      "visible": true
+    },
+    {
+      "name": "moved and returned goal",
+      "image": "models/util/solidlayer.json",
+      "origin": "900 860 0",
+      "size": "12 160",
+      "color": "0.3 0.3 0.3",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 11,
+      "visible": true
+    },
+    {
+      "name": "moved and returned",
+      "image": "models/util/solidlayer.json",
+      "size": "100 100",
+      "color": "1 0.6 0.1",
+      "alpha": 1,
+      "origin": {
+        "value": "300 860 0",
+        "script": "'use strict';\nexport function update(value) { value.x = 900; return value; }\n",
+        "scriptproperties": {}
+      },
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 12,
+      "visible": true
+    }
+  ],
+  "version": 1
+}
