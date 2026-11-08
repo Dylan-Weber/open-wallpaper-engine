@@ -66,16 +66,17 @@ struct SceneWallpaperConfig {
     rstd::json::Map                     user_properties;
     rstd::json::Map                     general_settings;
     uint32_t                            fps { 30 };
-    // draw as fast as frames finish, not every 1 / fps (a frame-exact capture; the scene still advances 1 / fps a frame)
-    bool                                unpaced { false };
-    float                               volume { 1.0f };
-    float                               volume_scale { 1.0f };
-    bool                                muted { false };
-    FillMode                            fill_mode { FillMode::ASPECTCROP };
-    float                               speed { 1.0f };
-    bool                                mouse_parallax { true };
-    bool                                graphviz { false };
-    Option<u64>                         random_seed;
+    // draw as fast as frames finish, not every 1 / fps (a frame-exact capture; the scene still
+    // advances 1 / fps a frame)
+    bool        unpaced { false };
+    float       volume { 1.0f };
+    float       volume_scale { 1.0f };
+    bool        muted { false };
+    FillMode    fill_mode { FillMode::ASPECTCROP };
+    float       speed { 1.0f };
+    bool        mouse_parallax { true };
+    bool        graphviz { false };
+    Option<u64> random_seed;
 };
 
 class SceneRuntimeController;
