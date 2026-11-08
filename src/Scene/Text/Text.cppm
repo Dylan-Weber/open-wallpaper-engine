@@ -63,8 +63,7 @@ public:
     auto Layout(vectext::TextRequest request) -> Result<vectext::TextLayout, vectext::TextError>;
     // `outline` > 0: the glyph grown by that many pixels, for a text outline drawn behind it
     auto Rasterize(const vectext::FontInstance& font, vectext::Index glyph, double scale = 1,
-                   double outline = 0)
-        -> Result<AtlasGlyph, vectext::TextError>;
+                   double outline = 0) -> Result<AtlasGlyph, vectext::TextError>;
     auto Pages() const -> slice<Arc<AtlasPage>>;
     auto RasterCount() const -> rstd::uint64_t;
     auto LayoutCount() const -> rstd::uint64_t;
@@ -161,7 +160,8 @@ struct TextLayoutStyle {
     array<float, 3> background_color { 0.0f, 0.0f, 0.0f };
     float           background_brightness { 1.0f };
 
-    // `outline`: the letters grown by `outline_thickness` (layer units), drawn behind them in `outline_color`
+    // `outline`: the letters grown by `outline_thickness` (layer units), drawn behind them in
+    // `outline_color`
     bool            outline { false };
     array<float, 3> outline_color { 0.0f, 0.0f, 0.0f };
     float           outline_thickness { 0.0f };
