@@ -591,8 +591,8 @@ namespace
 {
 // `count` point lights by the origin and then a sun, as Ocarina of Time's courtyard lists its torches before its sun.
 struct PointsThenSun {
-    Vec<Arc<owe::SceneNode>>  nodes;
-    Vec<Box<owe::SceneLight>> lights;
+    Vec<Arc<owe::SceneNode>> nodes;
+    owe::Scene               scene;
 
     explicit PointsThenSun(int count, bool sun_shadow = false) {
         owe::SceneLight::Desc point;
@@ -613,14 +613,11 @@ struct PointsThenSun {
     }
     void add(const owe::SceneLight::Desc& desc) {
         nodes.push(Arc<owe::SceneNode>::make());
-        lights.push(Box<owe::SceneLight>::make(desc));
-        (*lights.last_mut().unwrap())->setNode(nodes.last_mut().unwrap()->as_ptr());
+        auto light = Box<owe::SceneLight>::make(desc);
+        light->setNode(nodes.last_mut().unwrap()->as_ptr());
+        (void)scene.RegisterLight(rstd::move(light));
     }
-    auto refs() {
-        auto out = Vec<ref<owe::SceneLight>>::make();
-        for (auto& light : lights) out.push(ref<owe::SceneLight>::from_raw_parts(light.as_ptr()));
-        return out;
-    }
+    auto refs() { return ref<owe::Scene>::from_raw_parts(&scene); }
 };
 } // namespace
 
