@@ -436,10 +436,12 @@ TEST(SceneRenderGraph, GroupsPerspectiveDepthDrawsWithoutCrossingOtherDraws) {
         if (! pass->name.is_empty() && pass->name != "frame/clear"_str)
             names.push(pass->name.clone());
     }
+    // the depth draws keep the scene's order, as Wallpaper Engine's do (model-translucent-order: an
+    // opaque model after a translucent one covers it)
     ASSERT_EQ(names.len(), usize(6));
     EXPECT_EQ(names[usize(0)], "opaque-first"_str);
-    EXPECT_EQ(names[usize(1)], "opaque-second"_str);
-    EXPECT_EQ(names[usize(2)], "transparent-first"_str);
+    EXPECT_EQ(names[usize(1)], "transparent-first"_str);
+    EXPECT_EQ(names[usize(2)], "opaque-second"_str);
     EXPECT_EQ(names[usize(3)], "transparent-second"_str);
     EXPECT_EQ(names[usize(4)], "overlay"_str);
     EXPECT_EQ(names[usize(5)], "opaque-after-overlay"_str);
