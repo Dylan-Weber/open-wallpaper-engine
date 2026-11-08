@@ -278,8 +278,16 @@ public:
     slice<Eigen::Affine3f>  genFrame(double time) noexcept;
     rstd::uint32_t          boneIndex(ref<str> name) const noexcept;
     rstd::uint32_t          boneCount() const noexcept;
+    Vec<rstd::uint32_t>     boneParents() const;
     Option<Eigen::Affine3f> boneTransform(rstd::uint32_t index, double time) noexcept;
     void setBoneTransform(rstd::uint32_t index, const Eigen::Affine3f& transform) noexcept;
+    // A bone's pose relative to its parent's (to the puppet's for a root), numbered as
+    // boneTransform numbers bones.
+    Option<Eigen::Affine3f> localBoneTransform(rstd::uint32_t index, double time) noexcept;
+    // Poses a bone relative to its parent for the frame at `time` only (the scripts' clock, a
+    // float); its children move with it. False for a bone the puppet doesn't have.
+    bool setLocalBoneTransform(rstd::uint32_t index, const Eigen::Affine3f& local,
+                               double time) noexcept;
     Option<Eigen::Affine3f> attachmentTransform(usize index, double time) noexcept;
     auto AnimationPlaybacks() const noexcept -> slice<Arc<SceneAnimationPlayback>>;
     auto AnimationPlayback(i32 layer_id) const -> Option<Arc<SceneAnimationPlayback>>;
@@ -298,6 +306,8 @@ public:
     void updateInterpolation(double time) noexcept;
 
 private:
+    void applyLocalOverrides(double time) noexcept;
+
     struct Layer {
         AnimationLayer                       anim_layer;
         const Puppet::Animation*             anim { nullptr };
@@ -318,6 +328,9 @@ private:
     Vec<float>                       m_texture_channel_blend_map;
     Vec<Eigen::Affine3f>             m_final_affines;
     Vec<Option<Eigen::Affine3f>>     m_script_bone_overrides;
+    // What scripts set this frame (setLocalBoneTransform), by bone, and the frame's time.
+    Vec<Option<Eigen::Affine3f>>     m_local_overrides;
+    float                            m_local_overrides_time { 0.0f };
     Arc<Puppet>                      m_puppet;
 };
 

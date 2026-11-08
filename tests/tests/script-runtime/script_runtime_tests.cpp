@@ -622,6 +622,155 @@ TEST(ScriptNodeParent, DefaultLayerParentIsUndefined) {
     EXPECT_EQ(LastScalar(fs), 1.0);
 }
 
+TEST(ScriptBones, IndicesCountFromZero) {
+    // Wallpaper Engine numbers a layer's bones from 0 and gives -1 for a name it
+    // does not have (the empty name included); the resolvers count from 1, with
+    // 0 for none.
+    owe::SceneNode node;
+    JsRuntime      rt;
+    uint32_t       asked = 0;
+    rt.SetBoneResolvers(
+        JsRuntime::BoneIndexResolver::make([](owe::SceneNode*, ref<str> name) -> uint32_t {
+            if (name == "root"_str) return 1;
+            if (name == ""_str) return 1;
+            return name == "hair"_str ? 5 : 0;
+        }),
+        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t { return 5; }),
+        JsRuntime::BoneTransformResolver::make(
+            [&asked](owe::SceneNode*, uint32_t index, double) -> Option<BoneTransformData> {
+                asked = index;
+                BoneTransformData bone;
+                bone.m[12] = float(index);
+                return Some(bone);
+            }),
+        JsRuntime::BoneSetTransformResolver::make(
+            [](owe::SceneNode*, uint32_t, const BoneTransformData&) {}));
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            const results = [
+                thisLayer.getBoneIndex('root'),
+                thisLayer.getBoneIndex('hair'),
+                thisLayer.getBoneIndex('missing'),
+                thisLayer.getBoneIndex(''),
+                thisLayer.getBoneTransform(0).translation().x,
+            ];
+            export function update() { return results.join(' ') === '0 4 -1 -1 1' ? 1 : 0; }
+        )JS"_str,
+        "test/bone_indices"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+
+    rt.TickAll();
+
+    EXPECT_EQ(LastScalar(fs), 1.0);
+    EXPECT_EQ(asked, 1u);
+}
+
+TEST(ScriptBones, CountAndParents) {
+    // Measured in Wallpaper Engine: the count of a puppet's bones, and a bone's
+    // parent numbered from 0, -1 for a root, a missing name or an index past the
+    // last bone.
+    owe::SceneNode node;
+    JsRuntime      rt;
+    rt.SetBoneResolvers(
+        JsRuntime::BoneIndexResolver::make([](owe::SceneNode*, ref<str> name) -> uint32_t {
+            return name == "hair"_str ? 3 : 0;
+        }),
+        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t { return 3; }),
+        JsRuntime::BoneTransformResolver::make(
+            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTransformData> { return None(); }),
+        JsRuntime::BoneSetTransformResolver::make(
+            [](owe::SceneNode*, uint32_t, const BoneTransformData&) {}));
+    // three bones: a root, its child, and that child's child (1-based, 0 for none)
+    rt.SetBoneParentsResolver(
+        JsRuntime::BoneParentsResolver::make([](owe::SceneNode*) -> Vec<uint32_t> {
+            Vec<uint32_t> parents;
+            for (uint32_t parent : { 0u, 1u, 2u }) parents.push(uint32_t(parent));
+            return parents;
+        }));
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            const results = [
+                thisLayer.getBoneCount(),
+                thisLayer.getBoneParentIndex(0),
+                thisLayer.getBoneParentIndex(2),
+                thisLayer.getBoneParentIndex('hair'),
+                thisLayer.getBoneParentIndex('missing'),
+                thisLayer.getBoneParentIndex(3),
+            ];
+            export function update() { return results.join(' ') === '3 -1 1 1 -1 -1' ? 1 : 0; }
+        )JS"_str,
+        "test/bone_count_parents"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+
+    rt.TickAll();
+
+    EXPECT_EQ(LastScalar(fs), 1.0);
+}
+
+TEST(ScriptBones, LocalOriginAndAngles) {
+    // A bone's origin and angles (radians) relative to its parent, by name or index; setting one
+    // keeps the other.
+    owe::SceneNode node;
+    JsRuntime      rt;
+    rt.SetBoneResolvers(
+        JsRuntime::BoneIndexResolver::make([](owe::SceneNode*, ref<str> name) -> uint32_t {
+            return name == "hand"_str ? 2 : 0;
+        }),
+        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t { return 0; }),
+        JsRuntime::BoneTransformResolver::make(
+            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTransformData> { return None(); }),
+        JsRuntime::BoneSetTransformResolver::make(
+            [](owe::SceneNode*, uint32_t, const BoneTransformData&) {}));
+    BoneLocalPose pose { .origin = { 1.0f, 2.0f, 3.0f }, .angles = { 0.0f, 0.0f, 0.5f } };
+    uint32_t      asked = 0, set = 0;
+    rt.SetBoneLocalResolvers(
+        JsRuntime::BoneLocalGetter::make(
+            [&](owe::SceneNode*, uint32_t index, double) -> Option<BoneLocalPose> {
+                asked = index;
+                if (index != 2) return None();
+                return Some(pose);
+            }),
+        JsRuntime::BoneLocalSetter::make(
+            [&](owe::SceneNode*, uint32_t index, BoneLocalPose value, double) {
+                set  = index;
+                pose = value;
+            }));
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            export function update() {
+                const origin = thisLayer.getLocalBoneOrigin('hand');
+                const angles = thisLayer.getLocalBoneAngles(1);
+                thisLayer.setLocalBoneAngles('hand', new Vec3(0, 0, 1.5));
+                thisLayer.setLocalBoneOrigin(1, new Vec3(4, 5, 6));
+                const missing = thisLayer.getLocalBoneOrigin('missing');
+                const read = [origin.x, origin.y, origin.z, angles.z, missing.x].join(' ');
+                return read === '1 2 3 0.5 0' ? 1 : 0;
+            }
+        )JS"_str,
+        "test/bone_local"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+
+    rt.TickAll();
+
+    EXPECT_EQ(LastScalar(fs), 1.0);
+    EXPECT_EQ(set, 2u);
+    EXPECT_FLOAT_EQ(pose.origin.x, 4.0f);
+    EXPECT_FLOAT_EQ(pose.origin.z, 6.0f);
+    EXPECT_FLOAT_EQ(pose.angles.z, 1.5f);
+}
+
 TEST(ScriptNodeSoftMutation, VisibleAndAlphaWrites) {
     owe::SceneNode node;
     JsRuntime      rt;

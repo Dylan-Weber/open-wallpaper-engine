@@ -65,6 +65,58 @@ static auto MakeReplacementPuppet() -> Arc<owe::Puppet> {
     return puppet;
 }
 
+// A root bone at x 100 and its child 10 further along x.
+static auto MakeChainPuppet() -> Arc<owe::Puppet> {
+    auto puppet = Arc<owe::Puppet>::make();
+    puppet->bones.emplace_back();
+    puppet->bones.emplace_back();
+    auto& root  = puppet->bones[usize(0)];
+    auto& child = puppet->bones[usize(1)];
+
+    root.local_bind.translation().x()  = 100.0f;
+    child.local_bind.translation().x() = 10.0f;
+    child.bind_parent = child.anim_parent = child.file_parent = 0;
+    puppet->prepared();
+    return puppet;
+}
+
+// What scripts set with setLocalBone*: a bone's pose relative to its parent, which its children
+// follow, for the frame it was set in only (as Wallpaper Engine draws it).
+TEST(Puppet, LocalBoneTransformsHoldForTheirFrame) {
+    owe::PuppetLayer layer(MakeChainPuppet());
+    layer.prepared({});
+    // the scripts' clock is a float
+    const double time = 1.0 / 3.0;
+    const double set  = static_cast<float>(time);
+    EXPECT_FLOAT_EQ(layer.localBoneTransform(1, time)->translation().x(), 100.0f);
+    EXPECT_FLOAT_EQ(layer.localBoneTransform(2, time)->translation().x(), 10.0f);
+
+    Eigen::Affine3f further = Eigen::Affine3f::Identity();
+    further.translate(Eigen::Vector3f(20.0f, 0.0f, 0.0f));
+    ASSERT_TRUE(layer.setLocalBoneTransform(2, further, set));
+    Eigen::Affine3f turned = Eigen::Affine3f::Identity();
+    turned.translate(Eigen::Vector3f(100.0f, 0.0f, 0.0f));
+    turned.rotate(Eigen::AngleAxisf(1.5707964f, Eigen::Vector3f::UnitZ()));
+    ASSERT_TRUE(layer.setLocalBoneTransform(1, turned, set));
+
+    // the child keeps its own local pose and turns with its parent
+    auto child = layer.boneTransform(2, time);
+    ASSERT_TRUE(child.is_some());
+    EXPECT_NEAR(child->translation().x(), 100.0f, 1e-3f);
+    EXPECT_NEAR(child->translation().y(), 20.0f, 1e-3f);
+    EXPECT_NEAR(layer.localBoneTransform(2, time)->translation().x(), 20.0f, 1e-3f);
+
+    // the next frame starts from the animation again
+    auto next = layer.boneTransform(2, time + 1.0 / 30.0);
+    EXPECT_NEAR(next->translation().x(), 110.0f, 1e-3f);
+    EXPECT_NEAR(next->translation().y(), 0.0f, 1e-3f);
+    EXPECT_NEAR(layer.boneTransform(2, time)->translation().x(), 110.0f, 1e-3f);
+
+    EXPECT_FALSE(layer.setLocalBoneTransform(0, turned, set));
+    EXPECT_FALSE(layer.setLocalBoneTransform(3, turned, set));
+    EXPECT_TRUE(layer.localBoneTransform(3, time).is_none());
+}
+
 TEST(Puppet, VisibilityChangesKeepTheSamePlayback) {
     auto                             puppet = MakeReplacementPuppet();
     owe::PuppetLayer                 layer(puppet.clone());
@@ -1186,4 +1238,22 @@ TEST(MdlMesh, NativeMaterialPathsShareResolutionAndPreserveDefaults) {
     ASSERT_EQ(short_ref->textures.len(), usize(1));
     EXPECT_EQ(short_ref->textures[usize()], "diffuse"_str);
     EXPECT_TRUE(owe::MdlParser::ParseMaterial("missing"_str, vfs).is_none());
+}
+
+TEST(Puppet, BoneParentsUseBoneIndexNumbering) {
+    auto puppet = Arc<owe::Puppet>::make();
+    for (rstd::uint32_t parent : { owe::Puppet::NO_PARENT, 0u, 0u }) {
+        auto& bone       = puppet->bones.emplace_back();
+        bone.file_parent = parent;
+        bone.bind_parent = parent;
+        bone.anim_parent = parent;
+    }
+    puppet->prepared();
+    owe::PuppetLayer layer(puppet.clone());
+
+    const auto parents = layer.boneParents();
+    ASSERT_EQ(parents.len(), usize(3));
+    EXPECT_EQ(parents[usize(0)], 0u);
+    EXPECT_EQ(parents[usize(1)], 1u);
+    EXPECT_EQ(parents[usize(2)], 1u);
 }
