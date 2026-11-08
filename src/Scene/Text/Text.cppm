@@ -78,7 +78,8 @@ public:
     // The kerning of a font RegisterFont took, if it has any.
     auto Kerning(const vectext::FontSource& source) const -> const FontKerning*;
     auto Layout(vectext::TextRequest request) -> Result<vectext::TextLayout, vectext::TextError>;
-    // `outline` > 0: the glyph grown by that many pixels, for a text outline drawn behind it
+    // `outline` > 0: the glyph's outline stroked that many pixels to either side with mitred corners, filled, for a
+    // text outline drawn behind it
     auto Rasterize(const vectext::FontInstance& font, vectext::Index glyph, double scale = 1,
                    double outline = 0)
         -> Result<AtlasGlyph, vectext::TextError>;
