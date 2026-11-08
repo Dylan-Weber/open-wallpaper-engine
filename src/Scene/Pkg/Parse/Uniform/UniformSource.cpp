@@ -939,8 +939,12 @@ LightSlot SlotValues(const SceneLight& light) {
     values.color_radius = { color.x(), color.y(), color.z(), light.radius() };
     Eigen::Vector3d local_direction = Eigen::Vector3d::UnitX();
     if (light.type() != SceneLightType::Spot) local_direction = -local_direction;
-    const Eigen::Vector3f direction =
+    Eigen::Vector3f direction =
         (transform.block<3, 3>(0, 0) * local_direction).normalized().cast<float>();
+    // A tube light publishes its segment, scaled and turned with the light, in place of a
+    // direction.
+    if (light.type() == SceneLightType::Tube)
+        direction = (transform.block<3, 3>(0, 0) * (2.0 * Eigen::Vector3d::UnitX())).cast<float>();
     values.direction_type = { direction.x(), direction.y(), direction.z(),
                               static_cast<float>(light.type()) };
     values.cone_exponent  = { light.desc().inner_cone_cos, light.desc().outer_cone_cos,

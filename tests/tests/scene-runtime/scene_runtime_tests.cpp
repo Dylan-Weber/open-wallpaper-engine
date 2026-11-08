@@ -3532,6 +3532,37 @@ TEST(UniformSourceParallax, PerspectiveWithAuthoredParallaxDepthAppliesShift) {
                          mvp_with_parallax[rstd::usize(13)]) > 1e-5f);
 }
 
+// A tube light (ltube) runs from its origin 2 units along its x axis, scaled and turned with the
+// light (model-light-tube: scale 4 makes it 8 units long, a quarter turn about z points it up).
+TEST(LightUniformSource, PublishesTheSegmentOfATubeLight) {
+    auto node = Arc<owe::SceneNode>::make();
+    node->SetTranslate({ 1.0f, 2.0f, 3.0f });
+    node->SetScale({ 4.0f, 1.0f, 1.0f });
+    node->SetRotation({ 0.0f, 0.0f, 0.5f * 3.14159265f });
+
+    owe::SceneLight::Desc desc;
+    desc.type   = owe::SceneLightType::Tube;
+    desc.color  = { 1.0f, 1.0f, 1.0f };
+    desc.radius = 20.0f;
+    owe::Scene scene;
+    auto       light = Box<owe::SceneLight>::make(desc);
+    light->setNode(node.as_ptr());
+    (void)scene.RegisterLight(rstd::move(light));
+    owe::LightUniformSource source(ref<owe::Scene>::from_raw_parts(&scene));
+    owe::SceneFrame         frame;
+
+    auto position = scene_test::Capture(frame, source, owe::LightUniformOutput::Position);
+    EXPECT_NEAR(position[usize()], 1.0f, 1e-5f);
+    EXPECT_NEAR(position[usize(1)], 2.0f, 1e-5f);
+    EXPECT_NEAR(position[usize(2)], 3.0f, 1e-5f);
+
+    auto segment = scene_test::Capture(frame, source, owe::LightUniformOutput::DirectionType);
+    EXPECT_NEAR(segment[usize()], 0.0f, 1e-4f);
+    EXPECT_NEAR(segment[usize(1)], 8.0f, 1e-4f);
+    EXPECT_NEAR(segment[usize(2)], 0.0f, 1e-4f);
+    EXPECT_FLOAT_EQ(segment[usize(3)], static_cast<float>(owe::SceneLightType::Tube));
+}
+
 // A script can build a mesh of its own (thisScene.createModelData) and show it as a layer; it later rewrites
 // the vertices with applyData. More Physics draws its cloth this way.
 TEST(SceneParserScript, ScriptBuiltModelBecomesAMeshLayerWhoseVerticesItRewrites) {
