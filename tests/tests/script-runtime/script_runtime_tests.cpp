@@ -15,86 +15,17 @@ using namespace rstd::prelude;
 using namespace rstd::literals;
 using rstd::sync::Arc;
 
+// ---------------------------------------------------------------------------
+// Cursor event dispatch
+
 namespace
 {
-
-// Build a one-shot FieldScript whose update() returns a host-visible counter.
-// The module body schedules timers/intervals that mutate that counter, so we
-// can observe the JsRuntime's deferred-callback sweep through FieldScript's
-// last_value().
-FieldScript* MakeProbe(JsRuntime& rt, const char* sha, const char* src,
-                       owe::SceneNode* node = nullptr) {
-    return rt.MakeFieldScript(rstd::cppstd::as_str(src).unwrap(),
-                              rstd::cppstd::as_str(sha).unwrap(),
-                              FieldKind::Scalar,
-                              /*properties_config=*/owe::MakeObject(),
-                              /*initial_value=*/owe::IntoJson(0),
-                              /*node=*/node);
-}
-
-double Tick(JsRuntime& rt, double runtime) {
+FrameInputs MakeFi(float canvas_w = 1920.0f, float canvas_h = 1080.0f) {
     FrameInputs fi {};
-    fi.runtime = float(runtime);
-    rt.SetFrameInputs(fi);
-    rt.TickAll();
-    // last_value() of the last MakeFieldScript'd script — caller must own a
-    // pointer, but for this test the call site walks via ForEach.
-    return 0.0;
+    fi.canvas_w = canvas_w;
+    fi.canvas_h = canvas_h;
+    return fi;
 }
-
-double LastScalar(FieldScript* fs) {
-    EXPECT_TRUE(fs->last_value().is_Scalar());
-    if (! fs->last_value().is_Scalar()) return 0.0;
-    return fs->last_value().as_Scalar().value.v;
-}
-
-struct ParticleControlState {
-    std::array<float, 3> colorn { 1.0f, 1.0f, 1.0f };
-    bool                 playing { true };
-    int                  resets { 0 };
-};
-
-struct ParticleControlProbe {
-    Arc<ParticleControlState> state;
-
-    Vec<float> Get(ref<str> field) const {
-        Vec<float> out;
-        if (field != "colorn"_str) return out;
-        for (float value : state->colorn) out.push(float(value));
-        return out;
-    }
-    void Apply(ref<str> field, slice<float> values) {
-        if (field != "colorn"_str || values.len() < usize(3)) return;
-        state->colorn = { values[usize()], values[usize(1)], values[usize(2)] };
-    }
-    void Play() {
-        state->playing = true;
-        state->resets++;
-    }
-    void Stop() {
-        state->playing = false;
-        state->resets++;
-    }
-    void Pause() { state->playing = false; }
-    bool IsPlaying() const { return state->playing; }
-    void Emit(u32) const {}
-};
-
-struct SoundControlState {
-    float volume { 1.0f };
-    bool  playing { true };
-};
-
-struct SoundControlProbe {
-    Arc<SoundControlState> state;
-
-    void Play() { state->playing = true; }
-    void Stop() { state->playing = false; }
-    void Pause() { state->playing = false; }
-    bool IsPlaying() const { return state->playing; }
-    void SetVolume(float volume) { state->volume = volume; }
-};
-
 } // namespace
 
 TEST(ScriptInitialization, UsesSceneOwnerOrderInsteadOfRegistrationOrder) {
@@ -769,6 +700,163 @@ TEST(ScriptBones, LocalOriginAndAngles) {
     EXPECT_FLOAT_EQ(pose.origin.x, 4.0f);
     EXPECT_FLOAT_EQ(pose.origin.z, 6.0f);
     EXPECT_FLOAT_EQ(pose.angles.z, 1.5f);
+}
+
+TEST(ScriptAttachments, IndexOriginAndAnglesInTheScene) {
+    // Measured in Wallpaper Engine with an attachment ("Head") of a model layer:
+    // attachments are numbered from 0, -1 for a name the layer does not have;
+    // the origin is the attachment's place in the scene and the angles its turn
+    // in the scene, in degrees (here the layer's 58.3 about z on the head's -15.24
+    // about x).
+    owe::SceneNode node;
+    JsRuntime      rt;
+    rt.SetAttachmentResolvers(
+        JsRuntime::AttachmentIndexResolver::make(
+            [](owe::SceneNode*, ref<str> name) -> Option<uint32_t> {
+                if (name == "Head"_str) return Some(uint32_t(0));
+                return None();
+            }),
+        JsRuntime::AttachmentTransformResolver::make(
+            [](owe::SceneNode*, uint32_t index, double) -> Option<AttachmentTransform> {
+                if (index != 0) return None();
+                const Eigen::Matrix3f rotation =
+                    (Eigen::AngleAxisf(58.3f * 3.14159265f / 180.0f, Eigen::Vector3f::UnitZ()) *
+                     Eigen::AngleAxisf(-15.24f * 3.14159265f / 180.0f, Eigen::Vector3f::UnitX()))
+                        .toRotationMatrix();
+                AttachmentTransform transform { .origin = { 960.0f, 415.0f, 0.0f } };
+                for (usize i {}; i < usize(9); ++i) {
+                    transform.rotation[i] = rotation.data()[i.to_primitive()];
+                }
+                return Some(rstd::move(transform));
+            }));
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            const near = (a, b) => Math.abs(a - b) < 0.01;
+            const origin = thisLayer.getAttachmentOrigin('Head');
+            const angles = thisLayer.getAttachmentAngles(0);
+            const checks = [
+                thisLayer.getAttachmentIndex('Head') === 0,
+                thisLayer.getAttachmentIndex('missing') === -1,
+                near(origin.x, 960) && near(origin.y, 415) && near(origin.z, 0),
+                near(angles.x, -15.24) && near(angles.y, 0) && near(angles.z, 58.3),
+                thisLayer.getAttachmentOrigin(0).x === origin.x,
+            ];
+            export function update() { return checks.every((ok) => ok) ? 1 : 0; }
+        )JS"_str,
+        "test/attachments"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+
+    rt.TickAll();
+
+    EXPECT_EQ(LastScalar(fs), 1.0);
+    EXPECT_EQ(set, 2u);
+    EXPECT_FLOAT_EQ(pose.origin.x, 4.0f);
+    EXPECT_FLOAT_EQ(pose.origin.z, 6.0f);
+    EXPECT_FLOAT_EQ(pose.angles.z, 1.5f);
+}
+
+// Wallpaper Engine's getTransformMatrix, getBoneTransform, getLocalBoneTransform and
+// getAttachmentMatrix give Mat4s (column-major, the translation in m[12..14]), and
+// setBoneTransform and setLocalBoneTransform take them.
+TEST(ScriptBones, MatricesAreMat4s) {
+    owe::SceneNode node;
+    node.SetTranslate({ 5.0f, 0.0f, 0.0f });
+    JsRuntime   rt;
+    FrameInputs fi {};
+    rt.SetFrameInputs(fi);
+    uint32_t          world_bone = 0;
+    BoneTransformData set_world;
+    rt.SetBoneResolvers(
+        JsRuntime::BoneIndexResolver::make([](owe::SceneNode*, ref<str> name) -> uint32_t {
+            return name == "hand"_str ? 2 : 0;
+        }),
+        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t { return 2; }),
+        // the bone in the scene (upstream's getBoneTransform)
+        JsRuntime::BoneTransformResolver::make(
+            [](owe::SceneNode*, uint32_t bone, double) -> Option<BoneTransformData> {
+                if (bone != 2) return None();
+                BoneTransformData world;
+                world.m[12] = 10.0f;
+                world.m[13] = 20.0f;
+                world.m[14] = 30.0f;
+                return Some(world);
+            }),
+        JsRuntime::BoneSetTransformResolver::make(
+            [&](owe::SceneNode*, uint32_t bone, const BoneTransformData& matrix) {
+                world_bone = bone;
+                set_world  = matrix;
+            }));
+    auto translated = [](float x, float y, float z) {
+        JsRuntime::BoneMatrix matrix {};
+        for (usize i {}; i < usize(4); ++i) matrix[i * usize(5)] = 1.0f;
+        matrix[usize(12)] = x;
+        matrix[usize(13)] = y;
+        matrix[usize(14)] = z;
+        return matrix;
+    };
+    const auto            local      = translated(1.0f, 2.0f, 3.0f);
+    uint32_t              local_bone = 0;
+    JsRuntime::BoneMatrix set_local {};
+    rt.SetBoneMatrixResolvers(
+        JsRuntime::BoneMatrixGetter::make(
+            [&](owe::SceneNode*, uint32_t, double) -> Option<JsRuntime::BoneMatrix> { return None(); }),
+        JsRuntime::BoneMatrixGetter::make(
+            [&](owe::SceneNode*, uint32_t bone, double) -> Option<JsRuntime::BoneMatrix> {
+                if (bone != 2) return None();
+                return Some(JsRuntime::BoneMatrix(local));
+            }),
+        JsRuntime::BoneMatrixSetter::make([&](owe::SceneNode*, uint32_t, JsRuntime::BoneMatrix, double) {}),
+        JsRuntime::BoneMatrixSetter::make(
+            [&](owe::SceneNode*, uint32_t bone, JsRuntime::BoneMatrix matrix, double) {
+                local_bone = bone;
+                set_local  = matrix;
+            }));
+    rt.SetAttachmentResolvers(
+        JsRuntime::AttachmentIndexResolver::make(
+            [](owe::SceneNode*, ref<str> name) -> Option<uint32_t> {
+                if (name != "Head"_str) return None();
+                return Some(uint32_t(0));
+            }),
+        JsRuntime::AttachmentTransformResolver::make(
+            [](owe::SceneNode*, uint32_t, double) -> Option<AttachmentTransform> {
+                return Some(AttachmentTransform { .origin = { 7.0f, 8.0f, 9.0f } });
+            }));
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            export function update() {
+                const world = thisLayer.getBoneTransform('hand');
+                const local = thisLayer.getLocalBoneTransform(1);
+                const layer = thisLayer.getTransformMatrix();
+                const head = thisLayer.getAttachmentMatrix('Head');
+                thisLayer.setBoneTransform('hand', Mat4.fromTranslation(new Vec3(4, 5, 6)));
+                thisLayer.setLocalBoneTransform(1, Mat4.fromTranslation(new Vec3(-1, 0, 0)));
+                const checks = [
+                    world instanceof Mat4, local instanceof Mat4, layer instanceof Mat4,
+                    head instanceof Mat4, world.translation().x === 10, local.m[13] === 2,
+                    layer.m[12] === 5, head.translation().z === 9,
+                ];
+                return checks.every((ok) => ok) ? 1 : 0;
+            }
+        )JS"_str,
+        "test/bone_matrices"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+
+    rt.TickAll();
+
+    EXPECT_EQ(LastScalar(fs), 1.0);
+    EXPECT_EQ(world_bone, 2u);
+    EXPECT_FLOAT_EQ(set_world.m[12], 4.0f);
+    EXPECT_FLOAT_EQ(set_world.m[14], 6.0f);
+    EXPECT_EQ(local_bone, 2u);
+    EXPECT_FLOAT_EQ(set_local[usize(12)], -1.0f);
 }
 
 TEST(ScriptBones, LocalBonesReadZeroAndTakeNothingInInit) {
@@ -4756,6 +4844,75 @@ TEST(ScriptScene, CreatedLayerIsQueryableDuringNestedScriptInitialization) {
     scene.rt.TickAll();
     EXPECT_EQ(LastScalar(nested), 1.0);
     EXPECT_EQ(created.len(), usize(1));
+}
+
+TEST(ScriptMatrices, Mat3AndMat4FollowTheSceneScriptReference) {
+    JsRuntime rt;
+    auto*     script = rt.MakeFieldScript(
+        R"JS(
+            function near(a, b, e) { return Math.abs(a - b) < (e === undefined ? 1e-4 : e); }
+            function nearV(v, ...c) {
+                const k = [v.x, v.y, v.z, v.w];
+                return c.every((x, i) => near(k[i], x));
+            }
+            function nearM(m, ...c) {
+                return c.length === m.m.length && c.every((x, i) => near(m.m[i], x));
+            }
+            const checks = [
+                ["Mat4.identity", () => { return (nearM(new Mat4(), 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1) && nearM(Mat4.identity(), 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1)); }],
+                ["Mat4.fromTranslation", () => { return (nearV(Mat4.fromTranslation(new Vec3(1, 2, 3)).transformPoint(new Vec3(1, 1, 1)), 2, 3, 4) && nearV(Mat4.fromTranslation(new Vec2(1, 2)).translation(), 1, 2, 0)); }],
+                ["Mat4.fromScale", () => { return (nearV(Mat4.fromScale(2).transformPoint(new Vec3(1, 2, 3)), 2, 4, 6) && nearV(Mat4.fromScale(new Vec3(1, 2, 3)).transformPoint(new Vec3(1, 1, 1)), 1, 2, 3)); }],
+                ["Mat4.fromRotation", () => { return (nearV(Mat4.fromRotation(90, new Vec3(0, 0, 1)).transformDirection(new Vec3(1, 0, 0)), 0, 1, 0)); }],
+                ["Mat4.fromEuler", () => { return (nearV(Mat4.fromEuler(0, 0, 90).transformDirection(new Vec3(1, 0, 0)), 0, 1, 0) && nearV(Mat4.fromEuler(new Vec3(0, 90, 0)).transformDirection(new Vec3(0, 0, 1)), 1, 0, 0) && nearV(Mat4.fromEuler(90, 0, 0).transformDirection(new Vec3(0, 1, 0)), 0, 0, 1)); }],
+                ["Mat4.fromBasis", () => { return (nearV(Mat4.fromBasis(new Vec3(0, 1, 0), new Vec3(-1, 0, 0), new Vec3(0, 0, 1)).transformDirection(new Vec3(1, 0, 0)), 0, 1, 0)); }],
+                ["Mat4.lookAt", () => { const v = Mat4.lookAt(new Vec3(0, 0, 5), new Vec3(0, 0, 0), new Vec3(0, 1, 0)); return nearV(v.transformPoint(new Vec3(0, 0, 5)), 0, 0, 0) && nearV(v.transformPoint(new Vec3(0, 0, 0)), 0, 0, -5); }],
+                ["Mat4.compose", () => { return (nearV(Mat4.compose(new Vec3(10, 0, 0), new Vec3(0, 0, 90), new Vec3(2, 2, 2)).transformPoint(new Vec3(1, 0, 0)), 10, 2, 0)); }],
+                ["Mat4.decompose", () => { const d = Mat4.compose(new Vec3(1, 2, 3), new Vec3(10, 20, 30), new Vec3(2, 3, 4)).decompose(); return nearV(d.translation, 1, 2, 3) && nearV(d.rotation, 10, 20, 30) && nearV(d.scale, 2, 3, 4); }],
+                ["Mat4.extractEuler", () => { return (nearV(Mat4.fromEuler(10, 20, 30).extractEuler(), 10, 20, 30)); }],
+                ["Mat4.translation.set", () => { const m = new Mat4(); m.translation(new Vec3(4, 5, 6)); return nearV(m.translation(), 4, 5, 6); }],
+                ["Mat4.axes", () => { const m = Mat4.fromEuler(0, 0, 90); return nearV(m.right(), 0, 1, 0) && nearV(m.up(), -1, 0, 0) && nearV(m.forward(), 0, 0, 1); }],
+                ["Mat4.multiply.matrix", () => { return (nearV(Mat4.fromTranslation(new Vec3(1, 0, 0)).multiply(Mat4.fromScale(2)).transformPoint(new Vec3(1, 0, 0)), 3, 0, 0)); }],
+                ["Mat4.multiply.vec4", () => { const r = Mat4.fromTranslation(new Vec3(1, 2, 3)).multiply(new Vec4(1, 1, 1, 1)); return nearV(r, 2, 3, 4, 1); }],
+                ["Mat4.multiply.scalar", () => { return (nearM(Mat4.identity().multiply(2), 2,0,0,0, 0,2,0,0, 0,0,2,0, 0,0,0,2)); }],
+                ["Mat4.addSubtract", () => { return (nearM(Mat4.identity().add(Mat4.identity()), 2,0,0,0, 0,2,0,0, 0,0,2,0, 0,0,0,2) && nearM(Mat4.identity().subtract(Mat4.identity()), 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0)); }],
+                ["Mat4.rightMultiplies", () => { return (nearV(Mat4.fromScale(2).translate(new Vec3(1, 0, 0)).translation(), 2, 0, 0) && nearV(Mat4.fromTranslation(new Vec3(1, 0, 0)).scale(2).transformPoint(new Vec3(1, 0, 0)), 3, 0, 0) && nearV(new Mat4().rotate(90, new Vec3(0, 0, 1)).transformDirection(new Vec3(1, 0, 0)), 0, 1, 0)); }],
+                ["Mat4.transpose", () => { return (nearM(Mat4.fromTranslation(new Vec3(1, 2, 3)).transpose(), 1,0,0,1, 0,1,0,2, 0,0,1,3, 0,0,0,1)); }],
+                ["Mat4.inverse", () => { const m = Mat4.compose(new Vec3(1, 2, 3), new Vec3(10, 20, 30), new Vec3(2, 3, 4)); return m.multiply(m.inverse()).equals(Mat4.identity()); }],
+                ["Mat4.determinant", () => { return (near(Mat4.fromScale(new Vec3(2, 3, 4)).determinant(), 24)); }],
+                ["Mat4.normalMatrix", () => { const n = Mat4.fromScale(new Vec3(2, 1, 1)).normalMatrix(); return n.m.length === 9 && near(n.m[0], 0.5) && near(n.m[4], 1); }],
+                ["Mat4.copyEquals", () => { const a = Mat4.fromScale(2); const b = a.copy(); b.m[0] = 5; return a.m[0] === 2 && !a.equals(b) && a.equals(a.copy()); }],
+                ["Mat4.toString", () => { return (typeof Mat4.identity().toString() === 'string' && Mat4.identity().toString().split(' ').length === 16); }],
+                ["Mat3.identity", () => { return (nearM(new Mat3(), 1,0,0, 0,1,0, 0,0,1) && nearM(Mat3.identity(), 1,0,0, 0,1,0, 0,0,1)); }],
+                ["Mat3.fromTranslation", () => { return (nearV(Mat3.fromTranslation(new Vec2(1, 2)).transformPoint(new Vec2(1, 1)), 2, 3) && nearV(Mat3.fromTranslation(new Vec2(1, 2)).transformDirection(new Vec2(1, 1)), 1, 1)); }],
+                ["Mat3.fromScale", () => { return (nearV(Mat3.fromScale(2).transformPoint(new Vec2(1, 2)), 2, 4) && nearV(Mat3.fromScale(new Vec2(2, 3)).transformPoint(new Vec2(1, 1)), 2, 3)); }],
+                ["Mat3.fromRotation", () => { return (nearV(Mat3.fromRotation(90).transformDirection(new Vec2(1, 0)), 0, 1) && near(Mat3.fromRotation(90).angle(), 90)); }],
+                ["Mat3.fromBasis", () => { return (nearV(Mat3.fromBasis(new Vec2(0, 1), new Vec2(-1, 0)).transformDirection(new Vec2(1, 0)), 0, 1)); }],
+                ["Mat3.fromMat4", () => { return (nearV(Mat3.fromMat4(Mat4.fromEuler(0, 0, 90)).transformDirection(new Vec2(1, 0)), 0, 1)); }],
+                ["Mat3.compose", () => { return (nearV(Mat3.compose(new Vec2(10, 0), 90, new Vec2(2, 2)).transformPoint(new Vec2(1, 0)), 10, 2)); }],
+                ["Mat3.decompose", () => { const d = Mat3.compose(new Vec2(1, 2), 30, new Vec2(2, 3)).decompose(); return nearV(d.translation, 1, 2) && near(d.rotation, 30) && nearV(d.scale, 2, 3); }],
+                ["Mat3.translation.set", () => { const m = new Mat3(); m.translation(new Vec2(4, 5)); return nearV(m.translation(), 4, 5); }],
+                ["Mat3.multiply", () => { return (nearV(Mat3.fromTranslation(new Vec2(1, 0)).multiply(Mat3.fromScale(2)).transformPoint(new Vec2(1, 0)), 3, 0) && nearV(Mat3.fromTranslation(new Vec2(1, 2)).multiply(new Vec3(1, 1, 1)), 2, 3, 1) && nearM(Mat3.identity().multiply(2), 2,0,0, 0,2,0, 0,0,2)); }],
+                ["Mat3.rightMultiplies", () => { return (nearV(Mat3.fromScale(2).translate(new Vec2(1, 0)).translation(), 2, 0) && nearV(new Mat3().rotate(90).transformDirection(new Vec2(1, 0)), 0, 1) && nearV(Mat3.fromTranslation(new Vec2(1, 0)).scale(2).transformPoint(new Vec2(1, 0)), 3, 0)); }],
+                ["Mat3.inverseTranspose", () => { const m = Mat3.compose(new Vec2(1, 2), 30, new Vec2(2, 3)); return m.multiply(m.inverse()).equals(Mat3.identity()) && near(Mat3.fromScale(new Vec2(2, 3)).determinant(), 6) && nearM(Mat3.fromTranslation(new Vec2(1, 2)).transpose(), 1,0,1, 0,1,2, 0,0,1); }],
+                ["Mat3.addSubtractCopy", () => { return (nearM(Mat3.identity().add(Mat3.identity()), 2,0,0, 0,2,0, 0,0,2) && nearM(Mat3.identity().subtract(Mat3.identity()), 0,0,0, 0,0,0, 0,0,0) && Mat3.identity().copy().equals(Mat3.identity())); }],
+                ["Mat3.toString", () => { return (Mat3.identity().toString().split(' ').length === 9); }],
+            ];
+            const failed = checks.filter(([name, check]) => {
+                try { return check() !== true; } catch (e) { return true; }
+            }).map(([name]) => name);
+            export function update() { return failed.join(' '); }
+        )JS"_str,
+        "test/matrices"_str,
+        FieldKind::String,
+        owe::MakeObject(),
+        owe::IntoJson(""));
+    ASSERT_NE(script, nullptr);
+
+    rt.TickAll();
+
+    ASSERT_TRUE(script->last_value().is_String());
+    const auto failed = script->last_value().as_String().value.s.as_str();
+    EXPECT_EQ(failed, ""_str) << "failed: " << rstd::cppstd::as_string_view(failed);
 }
 
 // getAnimationLayer takes an index as well as a name, below getAnimationLayerCount (measured in

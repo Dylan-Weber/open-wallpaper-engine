@@ -628,6 +628,21 @@ Option<Eigen::Affine3f> PuppetLayer::localBoneTransform(uint32_t index, double t
     return Some(rstd::move(local));
 }
 
+bool PuppetLayer::setBoneTransform(uint32_t index, const Eigen::Affine3f& pose,
+                                   double time) noexcept {
+    if (index == 0) return false;
+    const usize zero_based(index - 1);
+    const auto& bones = m_puppet->bones;
+    if (zero_based >= bones.len()) return false;
+    Affine3f local = pose;
+    if (! bones[zero_based].noAnimParent()) {
+        auto        frame = genFrame(time);
+        const usize parent(bones[zero_based].anim_parent);
+        local = (frame[parent] * bones[parent].world_bind).inverse() * pose;
+    }
+    return setLocalBoneTransform(index, local, time);
+}
+
 bool PuppetLayer::setLocalBoneTransform(uint32_t index, const Eigen::Affine3f& local,
                                         double time) noexcept {
     if (index == 0 || usize(index - 1) >= m_puppet->bones.len()) return false;
@@ -639,6 +654,10 @@ bool PuppetLayer::setLocalBoneTransform(uint32_t index, const Eigen::Affine3f& l
     }
     (void)m_local_overrides[usize(index - 1)].insert(local);
     return true;
+}
+
+Option<usize> PuppetLayer::attachmentIndex(ref<str> name) const noexcept {
+    return m_puppet->attachmentIndex(name);
 }
 
 Option<Eigen::Affine3f> PuppetLayer::attachmentTransform(usize index, double time) noexcept {

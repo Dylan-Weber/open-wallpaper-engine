@@ -117,6 +117,22 @@ TEST(Puppet, LocalBoneTransformsHoldForTheirFrame) {
     EXPECT_TRUE(layer.localBoneTransform(3, time).is_none());
 }
 
+// setBoneTransform: a bone's place in the puppet's space, for this frame; its parent stays put.
+TEST(Puppet, BoneTransformsSetInThePuppetsSpace) {
+    owe::PuppetLayer layer(MakeChainPuppet());
+    layer.prepared({});
+    const double    time   = 0.25;
+    Eigen::Affine3f target = Eigen::Affine3f::Identity();
+    target.translate(Eigen::Vector3f(50.0f, 60.0f, 0.0f));
+    ASSERT_TRUE(layer.setBoneTransform(2, target, time));
+    auto pose = layer.boneTransform(2, time);
+    ASSERT_TRUE(pose.is_some());
+    EXPECT_NEAR(pose->translation().x(), 50.0f, 1e-3f);
+    EXPECT_NEAR(pose->translation().y(), 60.0f, 1e-3f);
+    EXPECT_NEAR(layer.boneTransform(1, time)->translation().x(), 100.0f, 1e-3f);
+    EXPECT_FALSE(layer.setBoneTransform(3, target, time));
+}
+
 TEST(Puppet, VisibilityChangesKeepTheSamePlayback) {
     auto                             puppet = MakeReplacementPuppet();
     owe::PuppetLayer                 layer(puppet.clone());
@@ -1256,6 +1272,20 @@ TEST(Puppet, BoneParentsUseBoneIndexNumbering) {
     EXPECT_EQ(parents[usize(0)], 0u);
     EXPECT_EQ(parents[usize(1)], 1u);
     EXPECT_EQ(parents[usize(2)], 1u);
+}
+
+TEST(Puppet, LayerFindsAttachmentsByName) {
+    auto  puppet     = Arc<owe::Puppet>::make();
+    auto& bone       = puppet->bones.emplace_back();
+    bone.local_bind  = Eigen::Affine3f(Eigen::Translation3f(0.0f, 10.0f, 0.0f));
+    auto& attachment = puppet->attachments.emplace_back();
+    attachment.name  = String::make("Head"_str);
+    puppet->prepared();
+    owe::PuppetLayer layer(puppet.clone());
+
+    ASSERT_TRUE(layer.attachmentIndex("Head"_str).is_some());
+    EXPECT_EQ(layer.attachmentIndex("Head"_str)->to_primitive(), 0u);
+    EXPECT_TRUE(layer.attachmentIndex("missing"_str).is_none());
 }
 
 // Scripts' createAnimationLayer, playSingleAnimation and destroyAnimationLayer: the other layers

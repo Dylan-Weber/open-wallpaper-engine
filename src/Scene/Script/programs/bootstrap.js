@@ -994,589 +994,467 @@ class Vec4 {
 	}
 }
 
-class Mat3 {
-	constructor(arg){
-		if(arg instanceof Mat3){
-			this.m = arg.m.slice();
-		}else if(Array.isArray(arg) && arg.length === 9){
-			this.m = arg.slice();
-		}else if(typeof arg === 'string'){
-			const p = arg.split(' ').map(parseFloat);
-			this.m = (p.length === 9) ? p : [1,0,0, 0,1,0, 0,0,1];
-		}else{
-			this.m = [1, 0, 0,
-					0, 1, 0,
-					0, 0, 1];
-		}
-	}
-	static identity(){
-		return new Mat3();
-	}
-	static fromTranslation(v){
-		const r = new Mat3();
-		r.m[6] = v.x;
-		r.m[7] = v.y;
-		return r;
-	}
-	static fromScale(v){
-		const r = new Mat3();
-		if(typeof v === 'number'){
-			r.m[0] = v; r.m[4] = v;
-		}else{
-			r.m[0] = v.x; r.m[4] = v.y;
-		}
-		return r;
-	}
-	static fromRotation(angle){
-		const a = angle * deg2rad;
-		const c = Math.cos(a), s = Math.sin(a);
-		const r = new Mat3();
-		r.m[0] = c; r.m[1] = s;
-		r.m[3] = -s; r.m[4] = c;
-		return r;
-	}
-	static fromBasis(right, up){
-		const r = new Mat3();
-		r.m[0] = right.x; r.m[1] = right.y; r.m[2] = 0;
-		r.m[3] = up.x;    r.m[4] = up.y;    r.m[5] = 0;
-		r.m[6] = 0;       r.m[7] = 0;       r.m[8] = 1;
-		return r;
-	}
-	static fromMat4(m){
-		const a = m.m;
-		const r = new Mat3();
-		r.m[0] = a[0]; r.m[1] = a[1]; r.m[2] = a[2];
-		r.m[3] = a[4]; r.m[4] = a[5]; r.m[5] = a[6];
-		r.m[6] = a[8]; r.m[7] = a[9]; r.m[8] = a[10];
-		return r;
-	}
-	static compose(translation, rotation, scale){
-		return Mat3.fromTranslation(translation).rotate(rotation).scale(scale);
-	}
-	right(){
-		return new Vec3(this.m[0], this.m[1], this.m[2]);
-	}
-	up(){
-		return new Vec3(this.m[3], this.m[4], this.m[5]);
-	}
-	forward(){
-		return new Vec3(this.m[6], this.m[7], this.m[8]);
-	}
-	translation(v){
-		if(v instanceof Vec2){
-			this.m[6]=v.x;
-			this.m[7]=v.y;
-			return this;
-		}else{
-			return new Vec2(this.m[6], this.m[7]);
-		}
-	}
-	angle(){
-		return Math.atan2(this.m[0], -this.m[1]) * rad2deg;
-	}
-	add(f){
-		const r = new Mat3();
-		for(let i = 0; i < 9; i++){ r.m[i] = this.m[i] + f.m[i]; }
-		return r;
-	}
-	subtract(f){
-		const r = new Mat3();
-		for(let i = 0; i < 9; i++){ r.m[i] = this.m[i] - f.m[i]; }
-		return r;
-	}
-	multiply(f){
-		if(f instanceof Mat3){
-			const a = this.m, b = f.m;
-			const r = new Mat3();
-			for(let col = 0; col < 3; col++){
-				for(let row = 0; row < 3; row++){
-					let s = 0;
-					for(let k = 0; k < 3; k++){
-						s += a[k*3 + row] * b[col*3 + k];
-					}
-					r.m[col*3 + row] = s;
-				}
-			}
-			return r;
-		}else if(f instanceof Vec3){
-			const m = this.m;
-			return new Vec3(
-				m[0]*f.x + m[3]*f.y + m[6]*f.z,
-				m[1]*f.x + m[4]*f.y + m[7]*f.z,
-				m[2]*f.x + m[5]*f.y + m[8]*f.z
-			);
-		}else if(typeof f === 'number'){
-			const r = new Mat3();
-			for(let i = 0; i < 9; i++){ r.m[i] = this.m[i] * f; }
-			return r;
-		}
-	}
-	translate(v){
-		const m = this.m;
-		const r = new Mat3();
-		r.m[0] = m[0]; r.m[1] = m[1]; r.m[2] = m[2];
-		r.m[3] = m[3]; r.m[4] = m[4]; r.m[5] = m[5];
-		r.m[6] = m[0]*v.x + m[3]*v.y + m[6];
-		r.m[7] = m[1]*v.x + m[4]*v.y + m[7];
-		r.m[8] = m[2]*v.x + m[5]*v.y + m[8];
-		return r;
-	}
-	rotate(angle){
-		const a = angle * deg2rad;
-		const c = Math.cos(a), s = Math.sin(a);
-		const m = this.m;
-		const r = new Mat3();
-		r.m[0] =  c*m[0] + s*m[3];
-		r.m[1] =  c*m[1] + s*m[4];
-		r.m[2] =  c*m[2] + s*m[5];
-		r.m[3] = -s*m[0] + c*m[3];
-		r.m[4] = -s*m[1] + c*m[4];
-		r.m[5] = -s*m[2] + c*m[5];
-		r.m[6] = m[6]; r.m[7] = m[7]; r.m[8] = m[8];
-		return r;
-	}
-	scale(v){
-		const m = this.m;
-		const sx = (typeof v === 'number') ? v : v.x;
-		const sy = (typeof v === 'number') ? v : v.y;
-		const r = new Mat3();
-		r.m[0] = m[0]*sx; r.m[1] = m[1]*sx; r.m[2] = m[2]*sx;
-		r.m[3] = m[3]*sy; r.m[4] = m[4]*sy; r.m[5] = m[5]*sy;
-		r.m[6] = m[6];    r.m[7] = m[7];    r.m[8] = m[8];
-		return r;
-	}
-	transformPoint(v){
-		const m = this.m;
-		return new Vec2(
-			m[0]*v.x + m[3]*v.y + m[6],
-			m[1]*v.x + m[4]*v.y + m[7]
-		);
-	}
-	transformDirection(v){
-		const m = this.m;
-		return new Vec2(
-			m[0]*v.x + m[3]*v.y,
-			m[1]*v.x + m[4]*v.y
-		);
-	}
-	transpose(){
-		const m = this.m;
-		const r = new Mat3();
-		r.m[0] = m[0]; r.m[1] = m[3]; r.m[2] = m[6];
-		r.m[3] = m[1]; r.m[4] = m[4]; r.m[5] = m[7];
-		r.m[6] = m[2]; r.m[7] = m[5]; r.m[8] = m[8];
-		return r;
-	}
-	determinant(){
-		const m = this.m;
-		return m[0] * (m[4]*m[8] - m[7]*m[5])
-			- m[3] * (m[1]*m[8] - m[7]*m[2])
-			+ m[6] * (m[1]*m[5] - m[4]*m[2]);
-	}
-	inverse(){
-		const m = this.m;
-		const c00 =  (m[4]*m[8] - m[7]*m[5]);
-		const c01 = -(m[1]*m[8] - m[7]*m[2]);
-		const c02 =  (m[1]*m[5] - m[4]*m[2]);
-		const c10 = -(m[3]*m[8] - m[6]*m[5]);
-		const c11 =  (m[0]*m[8] - m[6]*m[2]);
-		const c12 = -(m[0]*m[5] - m[3]*m[2]);
-		const c20 =  (m[3]*m[7] - m[6]*m[4]);
-		const c21 = -(m[0]*m[7] - m[6]*m[1]);
-		const c22 =  (m[0]*m[4] - m[3]*m[1]);
-		const det = m[0]*c00 + m[3]*c01 + m[6]*c02;
-		const inv = 1 / det;
-		const r = new Mat3();
-		r.m[0] = c00*inv; r.m[1] = c01*inv; r.m[2] = c02*inv;
-		r.m[3] = c10*inv; r.m[4] = c11*inv; r.m[5] = c12*inv;
-		r.m[6] = c20*inv; r.m[7] = c21*inv; r.m[8] = c22*inv;
-		return r;
-	}
-	decompose(){
-		const m = this.m;
-		const translation = new Vec2(m[6], m[7]);
-		const sx = Math.sqrt(m[0]*m[0] + m[1]*m[1]);
-		const sy = Math.sqrt(m[3]*m[3] + m[4]*m[4]);
-		const det2 = m[0]*m[4] - m[3]*m[1];
-		const sxSigned = (det2 < 0) ? -sx : sx;
-		const rotation = (sxSigned !== 0) ? Math.atan2(m[1]/sxSigned, m[0]/sxSigned) * rad2deg : 0;
-		return { translation: translation, rotation: rotation, scale: new Vec2(sxSigned, sy) };
-	}
-	copy(){
-		return new Mat3(this);
-	}
-	clone(){
-		return this.copy();
-	}
-	equals(f){
-		if(!(f instanceof Mat3)){ return false; }
-		for(let i = 0; i < 9; i++){
-			if(Math.abs(this.m[i] - f.m[i]) >= _Epsilon){ return false; }
-		}
-		return true;
-	}
-	toString(){
-		return this.m[0]+' '+this.m[1]+' '+this.m[2]+' '+
-			this.m[3]+' '+this.m[4]+' '+this.m[5]+' '+
-			this.m[6]+' '+this.m[7]+' '+this.m[8];
-	}
-	toConfigString(){
-		return this.toString();
-	}
-}
+// Mat3 and Mat4 (https://docs.wallpaperengine.io/en/scene/scenescript/reference/class/Mat4).
+// Both keep their elements column-major in `m`, so m[12], m[13], m[14] of a Mat4 and m[6], m[7] of a
+// Mat3 are the translation. Angles are in degrees; Euler angles turn z, then y, then x, which is how
+// layer `angles` are applied (rotation = Rz * Ry * Rx).
+(function () {
+  const RAD = Math.PI / 180;
+  const DEG = 180 / Math.PI;
+  const EPSILON = 1e-4;
 
-class Mat4 {
-	constructor(arg){
-		if(arg instanceof Mat4){
-			this.m = arg.m.slice();
-		}else if(Array.isArray(arg) && arg.length === 16){
-			this.m = arg.slice();
-		}else if(typeof arg === 'string'){
-			const p = arg.split(' ').map(parseFloat);
-			this.m = (p.length === 16) ? p : [
-				1, 0, 0, 0,
-				0, 1, 0, 0,
-				0, 0, 1, 0,
-				0, 0, 0, 1
-			];
-		}else{
-			this.m = [1, 0, 0, 0,
-					0, 1, 0, 0,
-					0, 0, 1, 0,
-					0, 0, 0, 1];
-		}
-	}
-	static identity(){
-		return new Mat4();
-	}
-	static fromTranslation(v){
-		const r = new Mat4();
-		if(v instanceof Vec3){
-			r.m[12] = v.x; r.m[13] = v.y; r.m[14] = v.z;
-		}else if(v instanceof Vec2){
-			r.m[12] = v.x; r.m[13] = v.y;
-		}
-		return r;
-	}
-	static fromScale(v){
-		const r = new Mat4();
-		if(typeof v === 'number'){
-			r.m[0] = v; r.m[5] = v; r.m[10] = v;
-		}else{
-			r.m[0] = v.x; r.m[5] = v.y; r.m[10] = v.z;
-		}
-		return r;
-	}
-	static fromRotation(angle, axis){
-		const ang = angle * deg2rad;
-		const a = axis.normalize();
-		const c = Math.cos(ang);
-		const s = Math.sin(ang);
-		const t = 1 - c;
-		const x = a.x, y = a.y, z = a.z;
-		const r = new Mat4();
-		r.m[0] = c + x*x*t;
-		r.m[1] = x*y*t + z*s;
-		r.m[2] = x*z*t - y*s;
-		r.m[3] = 0;
-		r.m[4] = y*x*t - z*s;
-		r.m[5] = c + y*y*t;
-		r.m[6] = y*z*t + x*s;
-		r.m[7] = 0;
-		r.m[8] = z*x*t + y*s;
-		r.m[9] = z*y*t - x*s;
-		r.m[10] = c + z*z*t;
-		r.m[11] = 0;
-		r.m[12] = 0; r.m[13] = 0; r.m[14] = 0; r.m[15] = 1;
-		return r;
-	}
-	static fromEuler(x, y, z){
-		if(x instanceof Vec3){
-			z = x.z; y = x.y; x = x.x;
-		}
-		const rx = x * deg2rad;
-		const ry = y * deg2rad;
-		const rz = z * deg2rad;
-		const c1 = Math.cos(-rz), s1 = Math.sin(-rz);
-		const c2 = Math.cos(-ry), s2 = Math.sin(-ry);
-		const c3 = Math.cos(-rx), s3 = Math.sin(-rx);
-		const r = new Mat4();
-		r.m[0] = c1*c2;
-		r.m[1] = -c2*s1;
-		r.m[2] = s2;
-		r.m[3] = 0;
-		r.m[4] = c3*s1 + c1*s2*s3;
-		r.m[5] = c1*c3 - s1*s2*s3;
-		r.m[6] = -c2*s3;
-		r.m[7] = 0;
-		r.m[8] = s1*s3 - c1*c3*s2;
-		r.m[9] = c1*s3 + c3*s1*s2;
-		r.m[10] = c2*c3;
-		r.m[11] = 0;
-		r.m[12] = 0; r.m[13] = 0; r.m[14] = 0; r.m[15] = 1;
-		return r;
-	}
-	static fromBasis(right, up, forward){
-		const r = new Mat4();
-		r.m[0] = right.x;   r.m[1] = right.y;   r.m[2] = right.z;   r.m[3] = 0;
-		r.m[4] = up.x;      r.m[5] = up.y;      r.m[6] = up.z;      r.m[7] = 0;
-		r.m[8] = forward.x; r.m[9] = forward.y; r.m[10] = forward.z; r.m[11] = 0;
-		r.m[12] = 0; r.m[13] = 0; r.m[14] = 0; r.m[15] = 1;
-		return r;
-	}
-	static lookAt(eye, center, up){
-		const f = center.subtract(eye).normalize();
-		const s = f.cross(up).normalize();
-		const u = s.cross(f);
-		const r = new Mat4();
-		r.m[0] = s.x;  r.m[1] = u.x;  r.m[2] = -f.x;  r.m[3] = 0;
-		r.m[4] = s.y;  r.m[5] = u.y;  r.m[6] = -f.y;  r.m[7] = 0;
-		r.m[8] = s.z;  r.m[9] = u.z;  r.m[10] = -f.z; r.m[11] = 0;
-		r.m[12] = -s.dot(eye);
-		r.m[13] = -u.dot(eye);
-		r.m[14] = f.dot(eye);
-		r.m[15] = 1;
-		return r;
-	}
-	static compose(translation, rotation, scale){
-		return Mat4.fromTranslation(translation).multiply(Mat4.fromEuler(rotation)).scale(scale);
-	}
-	translation(v){
-		if(v instanceof Vec3){
-			this.m[12]=v.x;
-			this.m[13]=v.y;
-			this.m[14]=v.z;
-			return this;
-		}else if(v instanceof Vec2){
-			this.m[12]=v.x;
-			this.m[13]=v.y;
-			this.m[14]=0;
-			return this;
-		}else{
-			return new Vec3(this.m[12], this.m[13], this.m[14]);
-		}
-	}
-	right(){
-		return new Vec3(this.m[0], this.m[1], this.m[2]);
-	}
-	up(){
-		return new Vec3(this.m[4], this.m[5], this.m[6]);
-	}
-	forward(){
-		return new Vec3(this.m[8], this.m[9], this.m[10]);
-	}
-	add(f){
-		const r = new Mat4();
-		for(let i = 0; i < 16; i++){ r.m[i] = this.m[i] + f.m[i]; }
-		return r;
-	}
-	subtract(f){
-		const r = new Mat4();
-		for(let i = 0; i < 16; i++){ r.m[i] = this.m[i] - f.m[i]; }
-		return r;
-	}
-	multiply(f){
-		if(f instanceof Mat4){
-			const a = this.m, b = f.m;
-			const r = new Mat4();
-			for(let col = 0; col < 4; col++){
-				for(let row = 0; row < 4; row++){
-					let s = 0;
-					for(let k = 0; k < 4; k++){
-						s += a[k*4 + row] * b[col*4 + k];
-					}
-					r.m[col*4 + row] = s;
-				}
-			}
-			return r;
-		}else if(f instanceof Vec4){
-			const m = this.m;
-			return new Vec4(
-				m[0]*f.x + m[4]*f.y + m[8]*f.z + m[12]*f.w,
-				m[1]*f.x + m[5]*f.y + m[9]*f.z + m[13]*f.w,
-				m[2]*f.x + m[6]*f.y + m[10]*f.z + m[14]*f.w,
-				m[3]*f.x + m[7]*f.y + m[11]*f.z + m[15]*f.w
-			);
-		}else if(typeof f === 'number'){
-			const r = new Mat4();
-			for(let i = 0; i < 16; i++){ r.m[i] = this.m[i] * f; }
-			return r;
-		}
-	}
-	translate(v){
-		const m = this.m;
-		const x = (v instanceof Vec2) ? v.x : v.x;
-		const y = (v instanceof Vec2) ? v.y : v.y;
-		const z = (v instanceof Vec2) ? 0   : v.z;
-		const r = new Mat4(this);
-		r.m[12] = m[0]*x + m[4]*y + m[8]*z  + m[12];
-		r.m[13] = m[1]*x + m[5]*y + m[9]*z  + m[13];
-		r.m[14] = m[2]*x + m[6]*y + m[10]*z + m[14];
-		r.m[15] = m[3]*x + m[7]*y + m[11]*z + m[15];
-		return r;
-	}
-	rotate(angle, axis){
-		return this.multiply(Mat4.fromRotation(angle, axis));
-	}
-	scale(v){
-		const m = this.m;
-		const sx = (typeof v === 'number') ? v : v.x;
-		const sy = (typeof v === 'number') ? v : v.y;
-		const sz = (typeof v === 'number') ? v : v.z;
-		const r = new Mat4();
-		r.m[0]  = m[0]*sx;  r.m[1]  = m[1]*sx;  r.m[2]  = m[2]*sx;  r.m[3]  = m[3]*sx;
-		r.m[4]  = m[4]*sy;  r.m[5]  = m[5]*sy;  r.m[6]  = m[6]*sy;  r.m[7]  = m[7]*sy;
-		r.m[8]  = m[8]*sz;  r.m[9]  = m[9]*sz;  r.m[10] = m[10]*sz; r.m[11] = m[11]*sz;
-		r.m[12] = m[12];    r.m[13] = m[13];    r.m[14] = m[14];    r.m[15] = m[15];
-		return r;
-	}
-	transformPoint(v){
-		const m = this.m;
-		return new Vec3(
-			m[0]*v.x + m[4]*v.y + m[8]*v.z  + m[12],
-			m[1]*v.x + m[5]*v.y + m[9]*v.z  + m[13],
-			m[2]*v.x + m[6]*v.y + m[10]*v.z + m[14]
-		);
-	}
-	transformDirection(v){
-		const m = this.m;
-		return new Vec3(
-			m[0]*v.x + m[4]*v.y + m[8]*v.z,
-			m[1]*v.x + m[5]*v.y + m[9]*v.z,
-			m[2]*v.x + m[6]*v.y + m[10]*v.z
-		);
-	}
-	transpose(){
-		const m = this.m;
-		const r = new Mat4();
-		for(let i = 0; i < 4; i++){
-			for(let j = 0; j < 4; j++){
-				r.m[i*4 + j] = m[j*4 + i];
-			}
-		}
-		return r;
-	}
-	inverse(){
-		const m = this.m;
-		const c00 = m[10]*m[15] - m[14]*m[11];
-		const c02 = m[6]*m[15]  - m[14]*m[7];
-		const c03 = m[6]*m[11]  - m[10]*m[7];
- 
-		const c04 = m[9]*m[15]  - m[13]*m[11];
-		const c06 = m[5]*m[15]  - m[13]*m[7];
-		const c07 = m[5]*m[11]  - m[9]*m[7];
- 
-		const c08 = m[9]*m[14]  - m[13]*m[10];
-		const c10 = m[5]*m[14]  - m[13]*m[6];
-		const c11 = m[5]*m[10]  - m[9]*m[6];
- 
-		const c12 = m[8]*m[15]  - m[12]*m[11];
-		const c14 = m[4]*m[15]  - m[12]*m[7];
-		const c15 = m[4]*m[11]  - m[8]*m[7];
- 
-		const c16 = m[8]*m[14]  - m[12]*m[10];
-		const c18 = m[4]*m[14]  - m[12]*m[6];
-		const c19 = m[4]*m[10]  - m[8]*m[6];
- 
-		const c20 = m[8]*m[13]  - m[12]*m[9];
-		const c22 = m[4]*m[13]  - m[12]*m[5];
-		const c23 = m[4]*m[9]   - m[8]*m[5];
- 
-		const r = new Mat4();
-		r.m[0]  =  (m[5]*c00 - m[6]*c04 + m[7]*c08);
-		r.m[1]  = -(m[1]*c00 - m[2]*c04 + m[3]*c08);
-		r.m[2]  =  (m[1]*c02 - m[2]*c06 + m[3]*c10);
-		r.m[3]  = -(m[1]*c03 - m[2]*c07 + m[3]*c11);
- 
-		r.m[4]  = -(m[4]*c00 - m[6]*c12 + m[7]*c16);
-		r.m[5]  =  (m[0]*c00 - m[2]*c12 + m[3]*c16);
-		r.m[6]  = -(m[0]*c02 - m[2]*c14 + m[3]*c18);
-		r.m[7]  =  (m[0]*c03 - m[2]*c15 + m[3]*c19);
- 
-		r.m[8]  =  (m[4]*c04 - m[5]*c12 + m[7]*c20);
-		r.m[9]  = -(m[0]*c04 - m[1]*c12 + m[3]*c20);
-		r.m[10] =  (m[0]*c06 - m[1]*c14 + m[3]*c22);
-		r.m[11] = -(m[0]*c07 - m[1]*c15 + m[3]*c23);
- 
-		r.m[12] = -(m[4]*c08 - m[5]*c16 + m[6]*c20);
-		r.m[13] =  (m[0]*c08 - m[1]*c16 + m[2]*c20);
-		r.m[14] = -(m[0]*c10 - m[1]*c18 + m[2]*c22);
-		r.m[15] =  (m[0]*c11 - m[1]*c19 + m[2]*c23);
- 
-		const det = m[0]*r.m[0] + m[1]*r.m[4] + m[2]*r.m[8] + m[3]*r.m[12];
-		const inv = 1 / det;
-		for(let i = 0; i < 16; i++){ r.m[i] *= inv; }
-		return r;
-	}
-	determinant(){
-		const m = this.m;
-		const c00 = m[10]*m[15] - m[14]*m[11];
-		const c04 = m[9]*m[15]  - m[13]*m[11];
-		const c08 = m[9]*m[14]  - m[13]*m[10];
-		const c12 = m[8]*m[15]  - m[12]*m[11];
-		const c16 = m[8]*m[14]  - m[12]*m[10];
-		const c20 = m[8]*m[13]  - m[12]*m[9];
-		const i0 =  (m[5]*c00 - m[6]*c04 + m[7]*c08);
-		const i1 = -(m[4]*c00 - m[6]*c12 + m[7]*c16);
-		const i2 =  (m[4]*c04 - m[5]*c12 + m[7]*c20);
-		const i3 = -(m[4]*c08 - m[5]*c16 + m[6]*c20);
-		return m[0]*i0 + m[1]*i1 + m[2]*i2 + m[3]*i3;
-	}
-	extractEuler(){
-		const m = this.m;
-		const z = Math.atan2(m[1], m[0]);
-		const c2 = Math.sqrt(m[6]*m[6] + m[10]*m[10]);
-		const y = Math.atan2(-m[2], c2);
-		const s1 = Math.sin(z), c1 = Math.cos(z);
-		const x = Math.atan2(s1*m[8] - c1*m[9], c1*m[5] - s1*m[4]);
-		return new Vec3(x * rad2deg, y * rad2deg, z * rad2deg);
-	}
-	normalMatrix(){
-		return Mat3.fromMat4(this).inverse().transpose();
-	}
-	decompose(){
-		const m = this.m;
-		const translation = new Vec3(m[12], m[13], m[14]);
-		let sx = Math.sqrt(m[0]*m[0] + m[1]*m[1] + m[2]*m[2]);
-		const sy = Math.sqrt(m[4]*m[4] + m[5]*m[5] + m[6]*m[6]);
-		const sz = Math.sqrt(m[8]*m[8] + m[9]*m[9] + m[10]*m[10]);
-		const det3 =
-			m[0]*(m[5]*m[10] - m[9]*m[6]) -
-			m[4]*(m[1]*m[10] - m[9]*m[2]) +
-			m[8]*(m[1]*m[6]  - m[5]*m[2]);
-		if(det3 < 0){ sx = -sx; }
-		const scale = new Vec3(sx, sy, sz);
-		const rot = new Mat4(this);
-		if(sx !== 0){ rot.m[0] /= sx; rot.m[1] /= sx; rot.m[2] /= sx; }
-		if(sy !== 0){ rot.m[4] /= sy; rot.m[5] /= sy; rot.m[6] /= sy; }
-		if(sz !== 0){ rot.m[8] /= sz; rot.m[9] /= sz; rot.m[10] /= sz; }
-		rot.m[12] = 0; rot.m[13] = 0; rot.m[14] = 0;
-		const rotation = rot.extractEuler();
-		return { translation: translation, rotation: rotation, scale: scale };
-	}
-	copy(){
-		return new Mat4(this);
-	}
-	clone(){
-		return this.copy();
-	}
-	equals(f){
-		if(!(f instanceof Mat4)){ return false; }
-		for(let i = 0; i < 16; i++){
-			if(Math.abs(this.m[i] - f.m[i]) >= _Epsilon){ return false; }
-		}
-		return true;
-	}
-	toString(){
-		return this.m[0]+' '+this.m[1]+' '+this.m[2]+' '+this.m[3]+' '+
-				this.m[4]+' '+this.m[5]+' '+this.m[6]+' '+this.m[7]+' '+
-				this.m[8]+' '+this.m[9]+' '+this.m[10]+' '+this.m[11]+' '+
-				this.m[12]+' '+this.m[13]+' '+this.m[14]+' '+this.m[15];
-	}
-	toConfigString(){
-		return this.toString();
-	}
-}
+  function cross(a, b) {
+    return new Vec3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x);
+  }
+
+  function dot(a, b) {
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+  }
+
+  function same(a, b) {
+    return a.length === b.length && a.every((x, i) => Math.abs(x - b[i]) < EPSILON);
+  }
+
+  // column-major n x n product: result = a * b
+  function multiply(a, b, n) {
+    const result = new Array(n * n).fill(0);
+    for (let column = 0; column < n; column++) {
+      for (let row = 0; row < n; row++) {
+        let sum = 0;
+        for (let k = 0; k < n; k++) sum += a[k * n + row] * b[column * n + k];
+        result[column * n + row] = sum;
+      }
+    }
+    return result;
+  }
+
+  function transpose(a, n) {
+    const result = new Array(n * n);
+    for (let column = 0; column < n; column++) {
+      for (let row = 0; row < n; row++) result[row * n + column] = a[column * n + row];
+    }
+    return result;
+  }
+
+  function scalarOrMatrix(m, value, n, name) {
+    if (typeof value === 'number') return m.map((x) => x * value);
+    if (value && value.m && value.m.length === n * n) return multiply(m, value.m, n);
+    throw new TypeError(name + ': expected a matrix or a number');
+  }
+
+  // ---- Mat4 ----
+
+  function determinant3(a, b, c, d, e, f, g, h, i) {
+    return a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+  }
+
+  function inverse4(m) {
+    // cofactor expansion; m is column-major but the inverse of the transpose is the transpose of the inverse
+    const cofactors = new Array(16);
+    for (let column = 0; column < 4; column++) {
+      for (let row = 0; row < 4; row++) {
+        const minor = [];
+        for (let c = 0; c < 4; c++) {
+          if (c === column) continue;
+          for (let r = 0; r < 4; r++) {
+            if (r !== row) minor.push(m[c * 4 + r]);
+          }
+        }
+        // minor is column-major 3x3
+        const det = determinant3(minor[0], minor[3], minor[6], minor[1], minor[4], minor[7], minor[2], minor[5], minor[8]);
+        cofactors[column * 4 + row] = ((row + column) % 2 === 0 ? 1 : -1) * det;
+      }
+    }
+    let det = 0;
+    for (let row = 0; row < 4; row++) det += m[row] * cofactors[row];
+    if (det === 0) return null;
+    // adjugate = transpose of the cofactor matrix
+    return transpose(cofactors, 4).map((x) => x / det);
+  }
+
+  class Mat4 {
+    // new Mat4(), or new Mat4(m) with its sixteen elements, column-major (as owe's bones give them)
+    constructor(m) {
+      this.m = Array.isArray(m) && m.length === 16 ? m.map(Number)
+                                                    : [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+    }
+
+    static __from(numbers) {
+      const result = new Mat4();
+      result.m = numbers.slice();
+      return result;
+    }
+
+    static identity() {
+      return new Mat4();
+    }
+
+    static fromTranslation(v) {
+      const result = new Mat4();
+      result.m[12] = v.x;
+      result.m[13] = v.y;
+      result.m[14] = v.z === undefined ? 0 : v.z;
+      return result;
+    }
+
+    static fromScale(v) {
+      const result = new Mat4();
+      const s = typeof v === 'number' ? [v, v, v] : [v.x, v.y, v.z];
+      result.m[0] = s[0];
+      result.m[5] = s[1];
+      result.m[10] = s[2];
+      return result;
+    }
+
+    static fromRotation(angle, axis) {
+      const length = Math.hypot(axis.x, axis.y, axis.z);
+      const x = axis.x / length;
+      const y = axis.y / length;
+      const z = axis.z / length;
+      const c = Math.cos(angle * RAD);
+      const s = Math.sin(angle * RAD);
+      const t = 1 - c;
+      const result = new Mat4();
+      result.m = [
+        t * x * x + c, t * x * y + s * z, t * x * z - s * y, 0,
+        t * x * y - s * z, t * y * y + c, t * y * z + s * x, 0,
+        t * x * z + s * y, t * y * z - s * x, t * z * z + c, 0,
+        0, 0, 0, 1,
+      ];
+      return result;
+    }
+
+    static fromEuler(x, y, z) {
+      if (typeof x === 'object') {
+        z = x.z;
+        y = x.y;
+        x = x.x;
+      }
+      return Mat4.fromRotation(z, new Vec3(0, 0, 1))
+        .multiply(Mat4.fromRotation(y, new Vec3(0, 1, 0)))
+        .multiply(Mat4.fromRotation(x, new Vec3(1, 0, 0)));
+    }
+
+    static fromBasis(right, up, forward) {
+      const result = new Mat4();
+      result.m = [right.x, right.y, right.z, 0, up.x, up.y, up.z, 0, forward.x, forward.y, forward.z, 0, 0, 0, 0, 1];
+      return result;
+    }
+
+    static lookAt(eye, center, up) {
+      const f = new Vec3(center.x - eye.x, center.y - eye.y, center.z - eye.z).normalize();
+      const s = cross(f, up).normalize();
+      const u = cross(s, f);
+      const result = new Mat4();
+      result.m = [
+        s.x, u.x, -f.x, 0,
+        s.y, u.y, -f.y, 0,
+        s.z, u.z, -f.z, 0,
+        -dot(s, eye), -dot(u, eye), dot(f, eye), 1,
+      ];
+      return result;
+    }
+
+    static compose(translation, rotation, scale) {
+      return Mat4.fromTranslation(translation).multiply(Mat4.fromEuler(rotation)).multiply(Mat4.fromScale(scale));
+    }
+
+    translation(position) {
+      if (position === undefined) return new Vec3(this.m[12], this.m[13], this.m[14]);
+      this.m[12] = position.x;
+      this.m[13] = position.y;
+      this.m[14] = position.z === undefined ? 0 : position.z;
+    }
+
+    right() {
+      return new Vec3(this.m[0], this.m[1], this.m[2]);
+    }
+
+    up() {
+      return new Vec3(this.m[4], this.m[5], this.m[6]);
+    }
+
+    forward() {
+      return new Vec3(this.m[8], this.m[9], this.m[10]);
+    }
+
+    add(other) {
+      return Mat4.__from(this.m.map((x, i) => x + other.m[i]));
+    }
+
+    subtract(other) {
+      return Mat4.__from(this.m.map((x, i) => x - other.m[i]));
+    }
+
+    multiply(value) {
+      if (value instanceof Vec4) {
+        const m = this.m;
+        return new Vec4(
+          m[0] * value.x + m[4] * value.y + m[8] * value.z + m[12] * value.w,
+          m[1] * value.x + m[5] * value.y + m[9] * value.z + m[13] * value.w,
+          m[2] * value.x + m[6] * value.y + m[10] * value.z + m[14] * value.w,
+          m[3] * value.x + m[7] * value.y + m[11] * value.z + m[15] * value.w
+        );
+      }
+      return Mat4.__from(scalarOrMatrix(this.m, value, 4, 'Mat4.multiply'));
+    }
+
+    translate(v) {
+      return this.multiply(Mat4.fromTranslation(v));
+    }
+
+    rotate(angle, axis) {
+      return this.multiply(Mat4.fromRotation(angle, axis));
+    }
+
+    scale(v) {
+      return this.multiply(Mat4.fromScale(v));
+    }
+
+    transformPoint(v) {
+      const m = this.m;
+      return new Vec3(
+        m[0] * v.x + m[4] * v.y + m[8] * v.z + m[12],
+        m[1] * v.x + m[5] * v.y + m[9] * v.z + m[13],
+        m[2] * v.x + m[6] * v.y + m[10] * v.z + m[14]
+      );
+    }
+
+    transformDirection(v) {
+      const m = this.m;
+      return new Vec3(
+        m[0] * v.x + m[4] * v.y + m[8] * v.z,
+        m[1] * v.x + m[5] * v.y + m[9] * v.z,
+        m[2] * v.x + m[6] * v.y + m[10] * v.z
+      );
+    }
+
+    transpose() {
+      return Mat4.__from(transpose(this.m, 4));
+    }
+
+    inverse() {
+      const result = inverse4(this.m);
+      return result ? Mat4.__from(result) : Mat4.identity();
+    }
+
+    determinant() {
+      const m = this.m;
+      let det = 0;
+      for (let row = 0; row < 4; row++) {
+        const minor = [];
+        for (let c = 1; c < 4; c++) {
+          for (let r = 0; r < 4; r++) {
+            if (r !== row) minor.push(m[c * 4 + r]);
+          }
+        }
+        const d = determinant3(minor[0], minor[3], minor[6], minor[1], minor[4], minor[7], minor[2], minor[5], minor[8]);
+        det += (row % 2 === 0 ? 1 : -1) * m[row] * d;
+      }
+      return det;
+    }
+
+    extractEuler() {
+      const m = this.m;
+      // remove the scale from the columns first
+      const sx = Math.hypot(m[0], m[1], m[2]) || 1;
+      const sy = Math.hypot(m[4], m[5], m[6]) || 1;
+      const sz = Math.hypot(m[8], m[9], m[10]) || 1;
+      const r20 = m[2] / sx;
+      const y = Math.asin(Math.min(Math.max(-r20, -1), 1));
+      if (Math.abs(r20) < 0.999999) {
+        return new Vec3(Math.atan2(m[6] / sy, m[10] / sz) * DEG, y * DEG, Math.atan2(m[1] / sx, m[0] / sx) * DEG);
+      }
+      // looking straight up or down: x and z turn the same axis, so put it all in x
+      return new Vec3(Math.atan2(-m[9] / sz, m[5] / sy) * DEG, y * DEG, 0);
+    }
+
+    normalMatrix() {
+      const upper = Mat3.fromMat4(this);
+      return upper.inverse().transpose();
+    }
+
+    decompose() {
+      const m = this.m;
+      let sx = Math.hypot(m[0], m[1], m[2]);
+      const sy = Math.hypot(m[4], m[5], m[6]);
+      const sz = Math.hypot(m[8], m[9], m[10]);
+      // a mirrored matrix has its handedness in the x scale
+      if (this.determinant() < 0) sx = -sx;
+      return {
+        translation: new Vec3(m[12], m[13], m[14]),
+        rotation: this.extractEuler(),
+        scale: new Vec3(sx, sy, sz),
+      };
+    }
+
+    copy() {
+      return Mat4.__from(this.m);
+    }
+
+    equals(other) {
+      return same(this.m, other.m);
+    }
+
+    toString() {
+      return this.m.join(' ');
+    }
+  }
+
+  // ---- Mat3 (2D transforms) ----
+
+  function inverse3(m) {
+    const det = determinant3(m[0], m[3], m[6], m[1], m[4], m[7], m[2], m[5], m[8]);
+    if (det === 0) return null;
+    const c = (column, row) => m[column * 3 + row];
+    // adjugate / det, column-major
+    return [
+      (c(1, 1) * c(2, 2) - c(2, 1) * c(1, 2)) / det, (c(2, 1) * c(0, 2) - c(0, 1) * c(2, 2)) / det, (c(0, 1) * c(1, 2) - c(1, 1) * c(0, 2)) / det,
+      (c(2, 0) * c(1, 2) - c(1, 0) * c(2, 2)) / det, (c(0, 0) * c(2, 2) - c(2, 0) * c(0, 2)) / det, (c(1, 0) * c(0, 2) - c(0, 0) * c(1, 2)) / det,
+      (c(1, 0) * c(2, 1) - c(2, 0) * c(1, 1)) / det, (c(2, 0) * c(0, 1) - c(0, 0) * c(2, 1)) / det, (c(0, 0) * c(1, 1) - c(1, 0) * c(0, 1)) / det,
+    ];
+  }
+
+  class Mat3 {
+    // new Mat3(), or new Mat3(m) with its nine elements, column-major
+    constructor(m) {
+      this.m = Array.isArray(m) && m.length === 9 ? m.map(Number) : [1, 0, 0, 0, 1, 0, 0, 0, 1];
+    }
+
+    static __from(numbers) {
+      const result = new Mat3();
+      result.m = numbers.slice();
+      return result;
+    }
+
+    static identity() {
+      return new Mat3();
+    }
+
+    static fromTranslation(v) {
+      const result = new Mat3();
+      result.m[6] = v.x;
+      result.m[7] = v.y;
+      return result;
+    }
+
+    static fromScale(v) {
+      const result = new Mat3();
+      const s = typeof v === 'number' ? [v, v] : [v.x, v.y];
+      result.m[0] = s[0];
+      result.m[4] = s[1];
+      return result;
+    }
+
+    static fromRotation(angle) {
+      const c = Math.cos(angle * RAD);
+      const s = Math.sin(angle * RAD);
+      return Mat3.__from([c, s, 0, -s, c, 0, 0, 0, 1]);
+    }
+
+    static fromBasis(right, up) {
+      return Mat3.__from([right.x, right.y, 0, up.x, up.y, 0, 0, 0, 1]);
+    }
+
+    static fromMat4(matrix) {
+      const m = matrix.m;
+      return Mat3.__from([m[0], m[1], m[2], m[4], m[5], m[6], m[8], m[9], m[10]]);
+    }
+
+    static compose(translation, rotation, scale) {
+      return Mat3.fromTranslation(translation).multiply(Mat3.fromRotation(rotation)).multiply(Mat3.fromScale(scale));
+    }
+
+    translation(position) {
+      if (position === undefined) return new Vec2(this.m[6], this.m[7]);
+      this.m[6] = position.x;
+      this.m[7] = position.y;
+    }
+
+    angle() {
+      return Math.atan2(this.m[1], this.m[0]) * DEG;
+    }
+
+    add(other) {
+      return Mat3.__from(this.m.map((x, i) => x + other.m[i]));
+    }
+
+    subtract(other) {
+      return Mat3.__from(this.m.map((x, i) => x - other.m[i]));
+    }
+
+    multiply(value) {
+      if (value instanceof Vec3) {
+        const m = this.m;
+        return new Vec3(
+          m[0] * value.x + m[3] * value.y + m[6] * value.z,
+          m[1] * value.x + m[4] * value.y + m[7] * value.z,
+          m[2] * value.x + m[5] * value.y + m[8] * value.z
+        );
+      }
+      return Mat3.__from(scalarOrMatrix(this.m, value, 3, 'Mat3.multiply'));
+    }
+
+    translate(v) {
+      return this.multiply(Mat3.fromTranslation(v));
+    }
+
+    rotate(angle) {
+      return this.multiply(Mat3.fromRotation(angle));
+    }
+
+    scale(v) {
+      return this.multiply(Mat3.fromScale(v));
+    }
+
+    transformPoint(v) {
+      const m = this.m;
+      return new Vec2(m[0] * v.x + m[3] * v.y + m[6], m[1] * v.x + m[4] * v.y + m[7]);
+    }
+
+    transformDirection(v) {
+      const m = this.m;
+      return new Vec2(m[0] * v.x + m[3] * v.y, m[1] * v.x + m[4] * v.y);
+    }
+
+    transpose() {
+      return Mat3.__from(transpose(this.m, 3));
+    }
+
+    determinant() {
+      const m = this.m;
+      return determinant3(m[0], m[3], m[6], m[1], m[4], m[7], m[2], m[5], m[8]);
+    }
+
+    inverse() {
+      const result = inverse3(this.m);
+      return result ? Mat3.__from(result) : Mat3.identity();
+    }
+
+    decompose() {
+      const m = this.m;
+      let sx = Math.hypot(m[0], m[1]);
+      const sy = Math.hypot(m[3], m[4]);
+      if (this.determinant() < 0) sx = -sx;
+      return { translation: new Vec2(m[6], m[7]), rotation: this.angle(), scale: new Vec2(sx, sy) };
+    }
+
+    copy() {
+      return Mat3.__from(this.m);
+    }
+
+    equals(other) {
+      return same(this.m, other.m);
+    }
+
+    toString() {
+      return this.m.join(' ');
+    }
+  }
+
+  globalThis.Mat4 = Mat4;
+  globalThis.Mat3 = Mat3;
+})();
 
 class MediaPlaybackEvent {
 	static PLAYBACK_STOPPED = 0;

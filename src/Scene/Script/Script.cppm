@@ -80,6 +80,13 @@ struct BoneLocalPose {
     BoneVector angles;
 };
 
+// Where an attachment of a layer's model or puppet is in the scene: its place,
+// and its turn as a column-major 3x3 rotation.
+struct AttachmentTransform {
+    array<float, 3> origin {};
+    array<float, 9> rotation { 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f };
+};
+
 // What kind of value a FieldScript is expected to produce. Set at parse
 // time based on the field name's well-known type — see the per-field-kind
 // table in the API doc.
@@ -289,6 +296,22 @@ public:
         Box<dyn<FnMut<Option<BoneLocalPose>(owe::SceneNode*, uint32_t, double)>>>;
     using BoneLocalSetter = Box<dyn<FnMut<void(owe::SceneNode*, uint32_t, BoneLocalPose, double)>>>;
     void SetBoneLocalResolvers(BoneLocalGetter getter, BoneLocalSetter setter);
+    // A bone's place as a column-major 4x4 matrix, numbered as the bone index resolver numbers
+    // bones: in the scene (world), or relative to its parent (local). The setters place it for
+    // the frame at the scripts' time.
+    using BoneMatrix       = array<float, 16>;
+    using BoneMatrixGetter = Box<dyn<FnMut<Option<BoneMatrix>(owe::SceneNode*, uint32_t, double)>>>;
+    using BoneMatrixSetter = Box<dyn<FnMut<void(owe::SceneNode*, uint32_t, BoneMatrix, double)>>>;
+    void SetBoneMatrixResolvers(BoneMatrixGetter world, BoneMatrixGetter local,
+                                BoneMatrixSetter set_world, BoneMatrixSetter set_local);
+
+    // A node's attachments, numbered from 0: the index of a name, and an
+    // attachment's transform in the scene at a time.
+    using AttachmentIndexResolver = Box<dyn<FnMut<Option<uint32_t>(owe::SceneNode*, ref<str>)>>>;
+    using AttachmentTransformResolver =
+        Box<dyn<FnMut<Option<AttachmentTransform>(owe::SceneNode*, uint32_t, double)>>>;
+    void SetAttachmentResolvers(AttachmentIndexResolver     index_resolver,
+                                AttachmentTransformResolver transform_resolver);
 
     // createAnimationLayer / playSingleAnimation: the animation by name or id, and the new layer's
     // settings; the creator adds the layer to the node and gives it, or None.

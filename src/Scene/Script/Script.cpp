@@ -2,6 +2,7 @@ module;
 
 #include <rstd/macro.hpp>
 #include <rstd/enum.hpp>
+#include <cmath>
 #include "quickjs.h"
 
 module wescene.script;
@@ -162,6 +163,12 @@ struct EngineHostState {
     Option<JsRuntime::BoneParentsResolver>       bone_parents_resolver;
     Option<JsRuntime::BoneLocalGetter>           bone_local_getter;
     Option<JsRuntime::BoneLocalSetter>           bone_local_setter;
+    Option<JsRuntime::BoneMatrixGetter>            bone_world_matrix;
+    Option<JsRuntime::BoneMatrixGetter>            bone_local_matrix;
+    Option<JsRuntime::BoneMatrixSetter>            set_bone_world_matrix;
+    Option<JsRuntime::BoneMatrixSetter>            set_bone_local_matrix;
+    Option<JsRuntime::AttachmentIndexResolver>     attachment_index_resolver;
+    Option<JsRuntime::AttachmentTransformResolver> attachment_transform_resolver;
     owe::SceneNode*                              scene_root { nullptr };
 };
 
@@ -1691,25 +1698,18 @@ JSValue NodeGetParent(JSContext* ctx, JSValueConst this_val, int, JSValueConst*)
     return JS_UNDEFINED;
 }
 
+JSValue MakeMat4(JSContext* ctx, const float* elements);
+
+// getTransformMatrix: the layer in the scene, as a Mat4.
 JSValue NodeGetTransformMatrix(JSContext* ctx, JSValueConst this_val, int, JSValueConst*) {
-    auto*   n   = GetLayerNode(this_val);
-    JSValue m   = JS_NewArray(ctx);
-    JSValue obj = JS_NewObject(ctx);
+    auto* n          = GetLayerNode(this_val);
+    float elements[] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
     if (n) {
         n->UpdateTrans();
         const auto& mat = n->ModelTrans(); // Eigen Matrix4d column-major
-        for (int i = 0; i < 16; ++i) {
-            JS_DefinePropertyValueUint32(
-                ctx, m, i, JS_NewFloat64(ctx, mat.data()[i]), JS_PROP_C_W_E);
-        }
-    } else {
-        constexpr double id[16] { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
-        for (int i = 0; i < 16; ++i) {
-            JS_DefinePropertyValueUint32(ctx, m, i, JS_NewFloat64(ctx, id[i]), JS_PROP_C_W_E);
-        }
+        for (int i = 0; i < 16; ++i) elements[i] = static_cast<float>(mat.data()[i]);
     }
-    JS_DefinePropertyValueStr(ctx, obj, "m", m, JS_PROP_C_W_E);
-    return obj;
+    return MakeMat4(ctx, elements);
 }
 
 JSValue NodeRotateObjectSpace(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
@@ -1917,6 +1917,163 @@ JSValue NodeSetLocalBoneOrigin(JSContext* ctx, JSValueConst this_val, int argc,
 JSValue NodeSetLocalBoneAngles(JSContext* ctx, JSValueConst this_val, int argc,
                                JSValueConst* argv) {
     return SetLocalBonePart(ctx, this_val, argc, argv, true);
+}
+
+// The attachment a script names, by name or by index.
+Option<uint32_t> AttachmentArgument(JSContext* ctx, EngineHostState* host, owe::SceneNode* node,
+                                    JSValueConst value) {
+    if (JS_IsString(value)) {
+        if (! host->attachment_index_resolver) return None();
+        const char* name = JS_ToCString(ctx, value);
+        if (! name) return None();
+        const auto label = rstd::cppstd::as_str(name).unwrap();
+        auto       index = (*host->attachment_index_resolver)->operator()(node, label);
+        JS_FreeCString(ctx, name);
+        return index;
+    }
+    int32_t index = -1;
+    if (JS_ToInt32(ctx, &index, value) != 0 || index < 0) return None();
+    return Some(uint32_t(index));
+}
+
+Option<AttachmentTransform> AttachmentOf(JSContext* ctx, JSValueConst this_val, int argc,
+                                         JSValueConst* argv) {
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    auto* n    = GetLayerNode(this_val);
+    if (! n || argc < 1 || ! host->attachment_transform_resolver) return None();
+    const auto index = AttachmentArgument(ctx, host, n, argv[0]);
+    if (index.is_none()) return None();
+    return (*host->attachment_transform_resolver)->operator()(n, *index, host->inputs.runtime);
+}
+
+// getAttachmentIndex(name): the attachment's index, -1 for a name the layer
+// does not have.
+JSValue NodeGetAttachmentIndex(JSContext* ctx, JSValueConst this_val, int argc,
+                               JSValueConst* argv) {
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    auto* n    = GetLayerNode(this_val);
+    if (! n || argc < 1 || ! JS_IsString(argv[0])) return JS_NewInt32(ctx, -1);
+    const auto index = AttachmentArgument(ctx, host, n, argv[0]);
+    return JS_NewInt32(ctx, index.is_some() ? int32_t(*index) : -1);
+}
+
+// getAttachmentOrigin(attachment): its place in the scene.
+JSValue NodeGetAttachmentOrigin(JSContext* ctx, JSValueConst this_val, int argc,
+                                JSValueConst* argv) {
+    const auto attachment = AttachmentOf(ctx, this_val, argc, argv);
+    if (attachment.is_none()) return MakeVec3(ctx, 0.0, 0.0, 0.0);
+    const auto& o = attachment->origin;
+    return MakeVec3(ctx, o[usize(0)], o[usize(1)], o[usize(2)]);
+}
+
+// getAttachmentAngles(attachment): its turn in the scene in degrees, turned
+// about x, then y, then z as layer angles are.
+JSValue NodeGetAttachmentAngles(JSContext* ctx, JSValueConst this_val, int argc,
+                                JSValueConst* argv) {
+    const auto attachment = AttachmentOf(ctx, this_val, argc, argv);
+    if (attachment.is_none()) return MakeVec3(ctx, 0.0, 0.0, 0.0);
+    Eigen::Matrix3f m;
+    for (usize i {}; i < usize(9); ++i) m.data()[i.to_primitive()] = attachment->rotation[i];
+    const double z = std::atan2(m(1, 0), m(0, 0));
+    const double s = std::sin(z);
+    const double c = std::cos(z);
+    const double y = std::atan2(-m(2, 0), m(0, 0) * c + m(1, 0) * s);
+    const double x = std::atan2(s * m(0, 2) - c * m(1, 2), c * m(1, 1) - s * m(0, 1));
+
+    constexpr double kDegrees = 180.0 / 3.14159265358979;
+    return MakeVec3(ctx, x * kDegrees, y * kDegrees, z * kDegrees);
+}
+
+// A Mat4 of the scripts (#Mat4.__from) from its column-major elements.
+JSValue MakeMat4(JSContext* ctx, const float* elements) {
+    JSValue global  = JS_GetGlobalObject(ctx);
+    JSValue mat4    = JS_GetPropertyStr(ctx, global, "Mat4");
+    JSValue from    = JS_GetPropertyStr(ctx, mat4, "__from");
+    JSValue numbers = JS_NewArray(ctx);
+    for (int i = 0; i < 16; ++i)
+        JS_DefinePropertyValueUint32(
+            ctx, numbers, i, JS_NewFloat64(ctx, elements[i]), JS_PROP_C_W_E);
+    JSValue result =
+        JS_IsFunction(ctx, from) ? JS_Call(ctx, from, mat4, 1, &numbers) : JS_UNDEFINED;
+    JS_FreeValue(ctx, numbers);
+    JS_FreeValue(ctx, from);
+    JS_FreeValue(ctx, mat4);
+    JS_FreeValue(ctx, global);
+    return result;
+}
+
+JsRuntime::BoneMatrix IdentityMatrix() {
+    JsRuntime::BoneMatrix matrix {};
+    for (usize i {}; i < usize(4); ++i) matrix[i * usize(5)] = 1.0f;
+    return matrix;
+}
+
+// A Mat4's (or any object's `m`) sixteen column-major elements.
+bool ReadMat4(JSContext* ctx, JSValueConst value, JsRuntime::BoneMatrix& out) {
+    JSValue m  = JS_GetPropertyStr(ctx, value, "m");
+    bool    ok = JS_IsObject(m);
+    for (uint32_t i = 0; ok && i < 16; ++i) {
+        JSValue element = JS_GetPropertyUint32(ctx, m, i);
+        double  number {};
+        ok            = JS_ToFloat64(ctx, &number, element) == 0;
+        out[usize(i)] = static_cast<float>(number);
+        JS_FreeValue(ctx, element);
+    }
+    JS_FreeValue(ctx, m);
+    return ok;
+}
+
+JSValue BoneMatrixOf(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv,
+                     Option<JsRuntime::BoneMatrixGetter>& getter) {
+    auto*         host   = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    auto*         n      = GetLayerNode(this_val);
+    const int32_t index  = argc > 0 ? ScriptBoneIndex(ctx, this_val, argv[0]) : -1;
+    auto          matrix = IdentityMatrix();
+    if (n && index >= 0 && getter) {
+        auto found = (*getter)->operator()(n, uint32_t(index) + 1, host->inputs.runtime);
+        if (found.is_some()) matrix = *found;
+    }
+    return MakeMat4(ctx, &matrix[usize()]);
+}
+
+JSValue SetBoneMatrix(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv,
+                      Option<JsRuntime::BoneMatrixSetter>& setter) {
+    auto*                 host  = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    auto*                 n     = GetLayerNode(this_val);
+    const int32_t         index = argc > 0 ? ScriptBoneIndex(ctx, this_val, argv[0]) : -1;
+    JsRuntime::BoneMatrix matrix {};
+    if (! n || index < 0 || argc < 2 || ! setter || ! ReadMat4(ctx, argv[1], matrix))
+        return JS_UNDEFINED;
+    (*setter)->operator()(n, uint32_t(index) + 1, matrix, host->inputs.runtime);
+    return JS_UNDEFINED;
+}
+
+JSValue NodeGetLocalBoneTransform(JSContext* ctx, JSValueConst this_val, int argc,
+                                  JSValueConst* argv) {
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    return BoneMatrixOf(ctx, this_val, argc, argv, host->bone_local_matrix);
+}
+
+JSValue NodeSetLocalBoneTransform(JSContext* ctx, JSValueConst this_val, int argc,
+                                  JSValueConst* argv) {
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    return SetBoneMatrix(ctx, this_val, argc, argv, host->set_bone_local_matrix);
+}
+
+// getAttachmentMatrix: the attachment in the scene, as a Mat4 (the identity for one the layer
+// doesn't have).
+JSValue NodeGetAttachmentMatrix(JSContext* ctx, JSValueConst this_val, int argc,
+                                JSValueConst* argv) {
+    auto       matrix     = IdentityMatrix();
+    const auto attachment = AttachmentOf(ctx, this_val, argc, argv);
+    if (attachment.is_some()) {
+        for (usize column {}; column < usize(3); ++column) {
+            for (usize row {}; row < usize(3); ++row)
+                matrix[column * usize(4) + row] = attachment->rotation[column * usize(3) + row];
+            matrix[usize(12) + column] = attachment->origin[column];
+        }
+    }
+    return MakeMat4(ctx, &matrix[usize()]);
 }
 
 JSValue NodeGetChildren(JSContext* ctx, JSValueConst this_val, int, JSValueConst*) {
@@ -3134,11 +3291,17 @@ const JSCFunctionListEntry s_layer_proto_funcs[] = {
     JS_CFUNC_DEF("getBoneIndex", 1, NodeGetBoneIndex),
     JS_CFUNC_DEF("getBoneTransform", 1, NodeGetBoneTransform),
     JS_CFUNC_DEF("setBoneTransform", 2, NodeSetBoneTransform),
+    JS_CFUNC_DEF("getLocalBoneTransform", 1, NodeGetLocalBoneTransform),
+    JS_CFUNC_DEF("setLocalBoneTransform", 2, NodeSetLocalBoneTransform),
+    JS_CFUNC_DEF("getAttachmentMatrix", 1, NodeGetAttachmentMatrix),
     JS_CFUNC_DEF("getBoneParentIndex", 1, NodeGetBoneParentIndex),
     JS_CFUNC_DEF("getLocalBoneOrigin", 1, NodeGetLocalBoneOrigin),
     JS_CFUNC_DEF("getLocalBoneAngles", 1, NodeGetLocalBoneAngles),
     JS_CFUNC_DEF("setLocalBoneOrigin", 2, NodeSetLocalBoneOrigin),
     JS_CFUNC_DEF("setLocalBoneAngles", 2, NodeSetLocalBoneAngles),
+    JS_CFUNC_DEF("getAttachmentIndex", 1, NodeGetAttachmentIndex),
+    JS_CFUNC_DEF("getAttachmentOrigin", 1, NodeGetAttachmentOrigin),
+    JS_CFUNC_DEF("getAttachmentAngles", 1, NodeGetAttachmentAngles),
     JS_CFUNC_DEF("getTextureAnimation", 0, NodeGetTextureAnimation),
     JS_CFUNC_DEF("getVideoTexture", 0, NodeGetVideoTexture),
     JS_CFUNC_DEF("emitParticles", 1, NodeEmitParticles),
@@ -3589,9 +3752,23 @@ void JsRuntime::SetBoneParentsResolver(BoneParentsResolver resolver) {
     m_impl->host.bone_parents_resolver = Some(rstd::move(resolver));
 }
 
+void JsRuntime::SetBoneMatrixResolvers(BoneMatrixGetter world, BoneMatrixGetter local,
+                                       BoneMatrixSetter set_world, BoneMatrixSetter set_local) {
+    m_impl->host.bone_world_matrix     = Some(rstd::move(world));
+    m_impl->host.bone_local_matrix     = Some(rstd::move(local));
+    m_impl->host.set_bone_world_matrix = Some(rstd::move(set_world));
+    m_impl->host.set_bone_local_matrix = Some(rstd::move(set_local));
+}
+
 void JsRuntime::SetBoneLocalResolvers(BoneLocalGetter getter, BoneLocalSetter setter) {
     m_impl->host.bone_local_getter = Some(rstd::move(getter));
     m_impl->host.bone_local_setter = Some(rstd::move(setter));
+}
+
+void JsRuntime::SetAttachmentResolvers(AttachmentIndexResolver     index_resolver,
+                                       AttachmentTransformResolver transform_resolver) {
+    m_impl->host.attachment_index_resolver     = Some(rstd::move(index_resolver));
+    m_impl->host.attachment_transform_resolver = Some(rstd::move(transform_resolver));
 }
 
 void JsRuntime::SetPersistence(PathBuf path) {
