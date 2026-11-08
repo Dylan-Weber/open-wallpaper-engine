@@ -1,0 +1,10 @@
+{
+  "title": "wpe-test pink noise in both channels",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {},
+    "supportsaudioprocessing": true
+  }
+}
