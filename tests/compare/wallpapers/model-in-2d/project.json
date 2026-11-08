@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test a model in a 2D scene",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}

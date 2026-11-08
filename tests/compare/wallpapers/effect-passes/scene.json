@@ -1,0 +1,86 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0.1 0.1 0.1",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "bar",
+      "image": "models/util/solidlayer.json",
+      "origin": "400 700 0",
+      "size": "20 300",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 1,
+      "visible": true
+    },
+    {
+      "name": "blurred rainbow",
+      "image": "models/rainbow.json",
+      "origin": "1100 700 0",
+      "size": "64 2",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "8 100 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/boxblur/effect.json",
+          "id": 10,
+          "name": "boxblur",
+          "visible": true,
+          "passes": [
+            {
+              "id": 110,
+              "constantshadervalues": {
+                "radius": 3
+              }
+            },
+            {
+              "id": 111,
+              "constantshadervalues": {
+                "radius": 3
+              }
+            }
+          ]
+        }
+      ],
+      "id": 2,
+      "visible": true
+    },
+    {
+      "name": "sharp rainbow",
+      "image": "models/rainbow.json",
+      "origin": "1100 400 0",
+      "size": "64 2",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "8 100 1",
+      "alignment": "center",
+      "id": 3,
+      "visible": true
+    }
+  ],
+  "version": 1
+}

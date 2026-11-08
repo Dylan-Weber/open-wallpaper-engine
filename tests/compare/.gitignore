@@ -3,3 +3,5 @@
 /output-owe/
 /wallpapers/_scratch/
 __pycache__/
+# compiled shader caches that Wallpaper Engine writes next to a wallpaper when it opens it
+**/shaders/blobsSM*/
