@@ -3091,6 +3091,13 @@ public:
     usize RemoveNodeMaterialBindings(SceneNodeId owner);
 
     void RegisterCameraPath(Arc<SceneCameraPath>);
+    // Seconds of the scene's clock before scripts start (they then read the scene's clock), and
+    // before camera paths start (they then run that much behind it). Wallpaper Engine starts both
+    // later than g_Time in some wallpapers, as they load.
+    void   SetScriptStart(double seconds) { m_script_start = seconds; }
+    double ScriptStart() const { return m_script_start; }
+    void   SetCameraPathDelay(double seconds) { m_camera_path_delay = seconds; }
+    double CameraPathDelay() const { return m_camera_path_delay; }
     void RegisterCameraPathUserBinding(String key, Arc<SceneCameraPath>);
     void RegisterTexture(String name, SceneTexture texture);
     bool RemoveTexture(ref<str> name);
@@ -3430,6 +3437,8 @@ private:
     Vec<Arc<SceneCameraPath>>                m_camera_paths;
     HashSet<String>                          m_active_camera_paths;
     MaterialBindingIndex<Arc<SceneCameraPath>> m_camera_path_user_index;
+    double                                   m_script_start { 0.0 };
+    double                                   m_camera_path_delay { 0.0 };
 
     void        RebuildElidableLayerIds();
     void        WriteRenderTarget(String name, SceneRenderTarget target);
