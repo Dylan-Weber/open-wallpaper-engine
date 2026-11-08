@@ -93,6 +93,8 @@ public:
     u32  pointshadow { 0 };
     u32  spot { 0 };
     u32  spotshadow { 0 };
+    // Spot lights that may project their cookie (usecookie).
+    u32 spotcookie { 0 };
 };
 
 class SceneGeneral {

@@ -37,6 +37,8 @@ bool LightObject::FromJson(const owe::Json& json, fs::VFS&, SceneVersion /*v*/) 
     owe::GetJsonValue(json, "density"_str, density, false);
     owe::GetJsonValue(json, "volumetricsexponent"_str, volumetricsexponent, false);
     owe::GetJsonValue(json, "lightsourcesize"_str, lightsourcesize, false);
+    owe::GetJsonValue(json, "usecookie"_str, usecookie, false);
+    owe::GetJsonValue(json, "cookie"_str, cookie, false);
     owe::GetJsonValue(json, "mindistance"_str, mindistance, false);
     owe::GetJsonValue(json, "cascadedistance0"_str, cascadedistance0, false);
     owe::GetJsonValue(json, "cascadedistance1"_str, cascadedistance1, false);

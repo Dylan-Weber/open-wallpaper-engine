@@ -369,6 +369,9 @@ auto BuildMaterial(fs::VFS& vfs, ShaderCache& shader_cache,
                 textures.resize(index + usize(1), String {});
             }
             textures[index] = t.texture.clone();
+            // The cookie the scene's cookie spot lights project.
+            if (t.texture == "_alias_lightCookie"_str && scene.LightCookieTexture().is_some())
+                textures[index] = String::make(*scene.LightCookieTexture());
         }
     }
 
@@ -481,6 +484,9 @@ auto BuildMaterial(fs::VFS& vfs, ShaderCache& shader_cache,
             (void)shader_info_ref.combos.insert("LIGHTS_SHADOW_MAPPING"_Str, "1"_Str);
             (void)shader_info_ref.combos.insert("LIGHTS_SHADOW_MAPPING_QUALITY"_Str, "2"_Str);
         }
+        if (scene.LightCookieTexture().is_some() &&
+            (**shader_info_ref.combos.get(WE_CB_LIGHTING)).as_str() != "0"_str)
+            (void)shader_info_ref.combos.insert("LIGHTS_COOKIE"_Str, "1"_Str);
     }
 
     (void)texture_span.finish();

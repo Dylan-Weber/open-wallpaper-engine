@@ -157,6 +157,8 @@ struct SceneLayerResources {
     Option<HashSet<String>>           authored_layer_names;
     // The scene's first layer of each image asset (createLayer copies its bindings).
     HashMap<String, Arc<SceneNode>>   asset_layers;
+    // The spot lights that project the light cookie: the first spotcookie-many with usecookie.
+    HashSet<i32>                      light_cookie_ids;
 };
 
 struct SceneLayerBuildContext {

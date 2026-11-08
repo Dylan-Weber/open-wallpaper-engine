@@ -2943,6 +2943,22 @@ TEST(UniformSourceParallax, PerspectiveWithAuthoredParallaxDepthAppliesShift) {
                          mvp_with_parallax[rstd::usize(13)]) > 1e-5f);
 }
 
+// A spot light projecting its cookie tells Lighting V1 so in its cone's w.
+TEST(LightUniformSource, MarksCookieSpotLights) {
+    auto                  node = Arc<owe::SceneNode>::make();
+    owe::SceneLight::Desc desc;
+    desc.type   = owe::SceneLightType::Spot;
+    desc.cookie = true;
+    owe::Scene scene;
+    auto       light = Box<owe::SceneLight>::make(desc);
+    light->setNode(node.as_ptr());
+    (void)scene.RegisterLight(rstd::move(light));
+    owe::LightUniformSource source(ref<owe::Scene>::from_raw_parts(&scene));
+    owe::SceneFrame         frame;
+    auto cones = scene_test::Capture(frame, source, owe::LightUniformOutput::ConeExponent);
+    EXPECT_FLOAT_EQ(cones[usize(3)], 1.0f);
+}
+
 // Wallpaper Engine's getLayer returns nothing for a name no layer has, so scripts can test for a
 // layer; a layer that exists but was left out of the tree (hidden) still gets a handle.
 TEST(SceneParserScriptLookup, GetLayerOfAMissingNameReturnsNull) {
