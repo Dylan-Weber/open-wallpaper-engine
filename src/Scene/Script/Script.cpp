@@ -3201,6 +3201,59 @@ void JsRuntime::SetUserProperty(ref<str> key, const Json& property) {
     JS_FreeValue(ctx, global);
 }
 
+void JsRuntime::SetUserProperties(const rstd::json::Map& properties) {
+    if (! m_impl->ctx) return;
+    JSContext* ctx    = m_impl->ctx;
+    JSValue    global = JS_GetGlobalObject(ctx);
+    JSValue    engine = JS_GetPropertyStr(ctx, global, "engine");
+    JSValue    props  = JS_GetPropertyStr(ctx, engine, "userProperties");
+    if (! JS_IsObject(props)) {
+        JS_FreeValue(ctx, props);
+        props = JS_NewObject(ctx);
+        JS_DefinePropertyValueStr(
+            ctx, engine, "userProperties", JS_DupValue(ctx, props), JS_PROP_C_W_E);
+    }
+    JSValue changed = JS_NewObject(ctx);
+    bool    any     = false;
+    properties.iter().for_each([&](auto entry) {
+        auto [entry_key, entry_value] = entry;
+        auto key_bytes                = Vec<u8>::from(entry_key->as_str().as_bytes());
+        key_bytes.push(u8());
+        const char* key_str =
+            reinterpret_cast<const char*>(rstd::as_bytes(key_bytes.as_slice()).as_raw_ptr());
+        JS_DefinePropertyValueStr(
+            ctx, props, key_str, UserPropertyValueToJs(ctx, *entry_value), JS_PROP_C_W_E);
+        JS_DefinePropertyValueStr(
+            ctx, changed, key_str, UserPropertyValueToJs(ctx, *entry_value), JS_PROP_C_W_E);
+        any = true;
+    });
+    if (any) {
+        const auto script_count = m_impl->scripts.len();
+        for (usize index {}; index < script_count; ++index) {
+            auto* fs = m_impl->scripts[index].get();
+            auto* I  = fs->m_impl.get();
+            if (! I->alive || I->init_deferred) continue;
+            JSValue fn = JS_GetPropertyStr(ctx, I->module_ns, "applyUserProperties");
+            if (JS_IsFunction(ctx, fn)) {
+                BindFieldScriptContext(ctx, *I, m_impl->host.default_layer);
+                m_impl->host.active_field_script = fs;
+                JSValue arg                      = JS_DupValue(ctx, changed);
+                JSValue r                        = JS_Call(ctx, fn, JS_UNDEFINED, 1, &arg);
+                JS_FreeValue(ctx, arg);
+                if (JS_IsException(r))
+                    m_impl->LogError(ctx, I->sha.as_str(), "applyUserProperties threw");
+                JS_FreeValue(ctx, r);
+            }
+            JS_FreeValue(ctx, fn);
+        }
+        m_impl->host.active_field_script = nullptr;
+    }
+    JS_FreeValue(ctx, changed);
+    JS_FreeValue(ctx, props);
+    JS_FreeValue(ctx, engine);
+    JS_FreeValue(ctx, global);
+}
+
 void JsRuntime::SetMediaStatus(const MediaStatus& status) {
     if (! m_impl->ctx) return;
     JSContext* ctx         = m_impl->ctx;

@@ -249,6 +249,9 @@ public:
     // `property` should be the descriptor object shape used by project.json
     // (`{value: ...}` plus optional metadata).
     void SetUserProperty(ref<str> key, const Json& property);
+    // The scene's user properties as it starts: every script's applyUserProperties gets them all in one call
+    // (afterwards SetUserProperty passes only the changed one).
+    void SetUserProperties(const rstd::json::Map& properties);
 
     // Merge changed general settings and notify initialized scripts.
     void SetGeneralSettings(const Json& changes);
@@ -420,6 +423,7 @@ void TickSceneScripts(owe::Scene& scene, const FrameInputs& fi);
 // Patch `engine.userProperties` on the ScriptScene attached to `scene`.
 // No-op when the scene has no script runtime.
 void SetSceneUserProperty(owe::Scene& scene, ref<str> key, const Json& property);
+void SetSceneUserProperties(owe::Scene& scene, const rstd::json::Map& properties);
 
 void SetSceneMediaStatus(owe::Scene& scene, const MediaStatus& status);
 
