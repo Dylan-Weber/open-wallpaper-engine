@@ -1640,6 +1640,28 @@ JSValue NodeSetHAlign(JSContext* ctx, JSValueConst this_val, JSValueConst val) {
 }
 JSValue NodeSetIgnore(JSContext*, JSValueConst, JSValueConst) { return JS_UNDEFINED; }
 
+// thisScene.fov is the scene's field of view; a camera layer's is the one it drives the camera with.
+JSValue NodeGetFov(JSContext* ctx, JSValueConst this_val) {
+    auto* node = GetLayerNode(this_val);
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    if (node == nullptr || host == nullptr || host->scene == nullptr) return JS_UNDEFINED;
+    if (node == host->scene_root) return JS_NewFloat64(ctx, host->scene->SceneFov());
+    auto path = host->scene->CameraPathOfNode(node);
+    if (path.is_none()) return JS_UNDEFINED;
+    return JS_NewFloat64(ctx, static_cast<double>((*path)->fov_base));
+}
+
+JSValue NodeSetFov(JSContext* ctx, JSValueConst this_val, JSValueConst value) {
+    auto* node = GetLayerNode(this_val);
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    if (node == nullptr || host == nullptr || host->scene == nullptr) return JS_UNDEFINED;
+    auto path = host->scene->CameraPathOfNode(node);
+    double fov {};
+    if (path.is_none() || JS_ToFloat64(ctx, &fov, value) != 0 || ! (fov > 0.0)) return JS_UNDEFINED;
+    (*path)->fov_base = static_cast<float>(fov);
+    return JS_UNDEFINED;
+}
+
 // `text` is the string-valued property on WWLayer.
 JSValue NodeGetText(JSContext* ctx, JSValueConst this_val) {
     auto* n = GetLayerNode(this_val);
@@ -3396,6 +3418,7 @@ const JSCFunctionListEntry s_layer_proto_funcs[] = {
     JS_CGETSET_DEF("volume", NodeGetVolume, NodeSetVolume),
     JS_CGETSET_DEF("instance", NodeGetParticleInstance, NodeSetIgnore),
     JS_CGETSET_DEF("perspective", NodeGetPerspective, NodeSetPerspective),
+    JS_CGETSET_DEF("fov", NodeGetFov, NodeSetFov),
     JS_CGETSET_DEF("alignment", NodeGetAlignment, NodeSetAlignment),
     JS_CGETSET_DEF("text", NodeGetText, NodeSetText),
     JS_CGETSET_DEF("name", NodeGetNameValue, NodeSetIgnore),
