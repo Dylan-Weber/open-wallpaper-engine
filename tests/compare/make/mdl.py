@@ -1,5 +1,6 @@
 """Test wallpapers' binary files: a cube in Wallpaper Engine's static mesh format (MDLV0017), and textures (TEXV0005).
 """
+import math
 import struct
 
 
@@ -57,7 +58,7 @@ def puppet_mdl(material, vertices, indices, bones, animations=(), shading=False,
     """A skinned mesh with its skeleton (MDLV0013, MDLS0001) and animations (MDLA0001).
 
     vertices: (x, y, z, u, v, [4 bone numbers], [4 weights]) each; indices: triangles' vertex numbers;
-    bones: (name, parent bone number or None, (x, y, z) the bone's place in its parent[, the bone's physics as
+    bones: (name, parent bone number or None, (x, y, z[, angle about z in radians]) the bone's place in its parent[, the bone's physics as
     Wallpaper Engine writes it, a JSON string]) each;
     animations: (name, fps, [per bone: [per frame: (position, angle in radians, scale)]]) each, every bone with the
     same number of frames."""
@@ -79,8 +80,10 @@ def puppet_mdl(material, vertices, indices, bones, animations=(), shading=False,
         data += struct.pack('<3H', *triangle)
 
     skeleton = b''
-    for name, parent, (x, y, z), *simulation in bones:
-        matrix = (1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1)  # columns, the translation last
+    for name, parent, place, *simulation in bones:
+        x, y, z = place[:3]
+        c, s = (math.cos(place[3]), math.sin(place[3])) if len(place) > 3 else (1, 0)  # the bone's own angle, if given
+        matrix = (c, s, 0, 0, -s, c, 0, 0, 0, 0, 1, 0, x, y, z, 1)  # columns, the translation last
         # a bone with physics has simulation type 1 (as in Wallpaper Engine's own files)
         kind = 1 if simulation and simulation[0] else sim_type
         skeleton += name.encode() + b'\0' + struct.pack('<iII', kind, 0xFFFFFFFF if parent is None else parent, 64)

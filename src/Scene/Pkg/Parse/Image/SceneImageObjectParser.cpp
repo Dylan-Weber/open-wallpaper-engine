@@ -196,7 +196,7 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
     if (puppet.is_some() && has_bones) {
         auto span = SceneLoadSpan(context.load_bench, &SceneLoadProbeIds::image_puppet_layer);
         image_puppet_layer =
-            Some(MakePuppetLayer((*(*puppet)->puppet).clone(), wpimgobj.puppet_layers.as_slice()));
+            Some(MakePuppetLayer((*(*puppet)->puppet).clone(), wpimgobj.puppet_layers.as_slice(), wpimgobj.scale));
         RegisterPuppetLayer(context, spImgNode.as_ptr(), (*image_puppet_layer).clone());
     }
 
@@ -895,7 +895,7 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
                             image_puppet_layer.is_some()
                                 ? (*image_puppet_layer).clone()
                                 : MakePuppetLayer((*(*puppet)->puppet).clone(),
-                                                  wpimgobj.puppet_layers.as_slice());
+                                                  wpimgobj.puppet_layers.as_slice(), wpimgobj.scale);
                         RegisterPuppetLayer(
                             context, spEffNode.as_ptr(), rstd::move(effect_puppet_layer));
                     }

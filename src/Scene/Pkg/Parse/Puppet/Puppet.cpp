@@ -285,7 +285,7 @@ slice<Eigen::Affine3f> PuppetLayer::genFrame(double time) noexcept {
         affine.rotate(quat.cast<float>());
         affine.scale(scale);
         if (bone.simulation.is_some()) {
-            affine = m_physics.Apply(i, *bone.simulation, parent, affine, physics_dt);
+            affine = m_physics.Apply(i, *bone.simulation, parent, affine, physics_dt, m_object_scale);
         }
         affine = parent * affine;
     }
