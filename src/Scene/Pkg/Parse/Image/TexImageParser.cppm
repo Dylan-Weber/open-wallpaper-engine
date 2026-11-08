@@ -16,6 +16,17 @@ export namespace owe
 
 {
 
+// Wallpaper Engine draws an image layer's texture 0.15 texel in from the quad's edges at each end, counted in the
+// texture's own texels whatever the layer's size, scale or filtering (probes texture-uv-inset, -big and -size: a
+// 4-texel texture's texel edges at 0.919, 2.000 and 3.081 of the quad, a 32-texel one 0.94 % wide). Invisible on a
+// full-size texture, whole screen pixels on upscaled pixel art. The inset in texture coordinates for a texture of
+// `width` x `height` texels (texture coordinate size), none for an empty one.
+inline constexpr float kLayerTexelInset { 0.15f };
+
+inline auto LayerTexCoordInset(float width, float height) -> array<float, 2> {
+    return { width > 0.0f ? kLayerTexelInset / width : 0.0f, height > 0.0f ? kLayerTexelInset / height : 0.0f };
+}
+
 // Sub-version stamps embedded in a `.tex` file. All four are read from
 // independent "TEXX0000" stamps interleaved with the header / sprite
 // payload (see `LoadHeader` and the sprite branch of `ParseHeader`).
