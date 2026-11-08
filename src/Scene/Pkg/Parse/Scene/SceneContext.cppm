@@ -155,6 +155,8 @@ struct SceneLayerResources {
     bool                              scene_layer_text_writes { false };
     // Every layer name the document authors, for the script runtime's getLayer.
     Option<HashSet<String>>           authored_layer_names;
+    // The scene's first layer of each image asset (createLayer copies its bindings).
+    HashMap<String, Arc<SceneNode>>   asset_layers;
 };
 
 struct SceneLayerBuildContext {

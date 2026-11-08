@@ -299,6 +299,7 @@ Option<ImageAssetInfo> owe::wpscene::LoadImageAssetInfo(fs::VFS& vfs, ref<str> i
 
     ImageAssetInfo info;
     owe::GetJsonValue(*j_image, "solidlayer"_str, info.solid_layer, false);
+    owe::GetJsonValue(*j_image, "autosize"_str, info.autosize, false);
     i32 w {}, h {};
     if (j_image->get("width"_str).is_some() && j_image->get("height"_str).is_some()) {
         owe::GetJsonValue(*j_image, "width"_str, w, false);
@@ -417,7 +418,14 @@ bool ImageObject::FromAsset(rstd::ref<rstd::str> asset, fs::VFS& vfs, SceneVersi
         size = { static_cast<float>(width.to_primitive()),
                  static_cast<float>(height.to_primitive()) };
     } else {
-        size_from_texture = true;
+        // Wallpaper Engine makes a layer created by its path 1 x 1 (a solid layer, or a model that doesn't say
+        // "autosize"), and an autosize model's its texture's size
+        bool autosize { false };
+        owe::GetJsonValue(*json, "autosize"_str, autosize, false);
+        if (solid_layer || ! autosize)
+            size = { 1.0f, 1.0f };
+        else
+            size_from_texture = true;
     }
     return true;
 }

@@ -2049,6 +2049,21 @@ void Scene::RegisterShaderUserBinding(String key, Arc<SceneMaterial> material, S
         rstd::move(key), ShaderUserBinding { rstd::move(material), rstd::move(uniform) }, owner);
 }
 
+void Scene::CopyShaderUserBindings(const SceneMaterial& from, const Arc<SceneMaterial>& to,
+                                   SceneNodeId owner) {
+    struct Copy {
+        String key;
+        String uniform;
+    };
+    Vec<Copy> copies;
+    m_shader_user_index.ForEach([&](ref<str> key, const ShaderUserBinding& binding) {
+        if (binding.material.as_ptr().as_raw_ptr() == rstd::addressof(from))
+            copies.push(Copy { .key = String::make(key), .uniform = binding.uniform.clone() });
+    });
+    for (auto& copy : copies)
+        RegisterShaderUserBinding(rstd::move(copy.key), to.clone(), rstd::move(copy.uniform), owner);
+}
+
 auto Scene::ShaderUserBindings(ref<str> key) const -> Vec<ShaderUserBinding> {
     return m_shader_user_index.Snapshot(key);
 }
