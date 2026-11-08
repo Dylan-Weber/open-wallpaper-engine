@@ -484,6 +484,11 @@ auto TextAnchorOffset(ref<str> horizontal, ref<str> vertical, float width, float
     return offset;
 }
 
+auto PointsToPixels(double points) -> double {
+    if (! (points > 0.0)) return 1.0; // (and NaN)
+    return rstd::cmp::min(1024.0, rstd::cmp::max(1.0, points * 4.0 * 25.0 / 24.0));
+}
+
 TextGeometry ResolveTextGeometry(const TextGeometryPolicy& policy,
                                  const TextLayoutMetrics&  metrics) {
     auto positive = [](float value, float fallback) {
