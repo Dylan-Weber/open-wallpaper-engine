@@ -893,6 +893,17 @@ auto LightUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
     array<float, 4>  cast_shadow {};
     for (usize index {}; index < max_lights; ++index)
         directions_type[index * usize(4) + usize(3)] = -1.0f;
+    // what is left of each kind's count; hidden lights take none
+    auto left = m_limits;
+    auto lit  = [&](SceneLightType type) {
+        if (left.is_none()) return true;
+        u32* count = type == SceneLightType::Spot          ? &left->spot
+                     : type == SceneLightType::Directional ? &left->directional
+                                                           : &left->point;
+        if (*count == u32()) return false;
+        *count = *count - u32(1);
+        return true;
+    };
     usize index {};
     for (const auto& light_ref : m_scene->Lights()) {
         const auto& light = *light_ref;
@@ -906,6 +917,7 @@ auto LightUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
         }
         if (! visible) continue;
         if (index >= max_lights) break;
+        const bool lighting_v1 = lit(light.type());
         auto& node = *light.node();
         node.UpdateTrans();
         const auto transform = node.ModelTrans();
@@ -918,6 +930,8 @@ auto LightUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
         for (auto* colors : { &lighting_v1_colors_radius, &colors_radius }) {
             // The old arrays get the old kind of light only.
             if (colors == &colors_radius && ! light.desc().old_kind) continue;
+            // The newer interface gets as many of each kind as the light config counts.
+            if (colors == &lighting_v1_colors_radius && ! lighting_v1) continue;
             (*colors)[index * usize(4)]            = color.x();
             (*colors)[index * usize(4) + usize(1)] = color.y();
             (*colors)[index * usize(4) + usize(2)] = color.z();
@@ -930,7 +944,8 @@ auto LightUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
         directions_type[index * usize(4)]            = direction.x();
         directions_type[index * usize(4) + usize(1)] = direction.y();
         directions_type[index * usize(4) + usize(2)] = direction.z();
-        directions_type[index * usize(4) + usize(3)] = static_cast<float>(light.type());
+        directions_type[index * usize(4) + usize(3)] =
+            lighting_v1 ? static_cast<float>(light.type()) : -1.0f;
         cones_exponent[index * usize(4)]             = light.desc().inner_cone_cos;
         cones_exponent[index * usize(4) + usize(1)]  = light.desc().outer_cone_cos;
         cones_exponent[index * usize(4) + usize(2)]  = light.desc().exponent;

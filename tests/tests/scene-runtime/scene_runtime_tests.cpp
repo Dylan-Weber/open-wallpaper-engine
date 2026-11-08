@@ -512,6 +512,48 @@ TEST(LightUniformSource, HiddenAncestorsDoNotConsumeLightSlots) {
     EXPECT_FLOAT_EQ(color[usize(1)], 0.0f);
 }
 
+// As in Wallpaper Engine: the newer light interface gets as many lights of each kind as the light
+// config counts (none without a config), and a hidden light takes no slot. The old arrays get
+// their lights whatever the config counts.
+TEST(LightUniformSource, LightConfigCountsEachKind) {
+    owe::SceneNode node;
+    owe::Scene     scene;
+    auto           add = [&](owe::SceneLightType type, bool old_kind, bool visible) {
+        owe::SceneLight::Desc desc;
+        desc.type     = type;
+        desc.color    = { 1.0f, 1.0f, 1.0f };
+        desc.old_kind = old_kind;
+        auto light    = Box<owe::SceneLight>::make(desc);
+        light->setNode(&node);
+        light->setRuntimeVisible(visible);
+        (void)scene.RegisterLight(rstd::move(light));
+    };
+    add(owe::SceneLightType::Point, false, false);
+    add(owe::SceneLightType::Point, false, true);
+    add(owe::SceneLightType::Point, true, true);
+    add(owe::SceneLightType::Spot, false, true);
+    owe::SceneFrame frame;
+
+    owe::LightUniformSource counted(ref<owe::Scene>::from_raw_parts(&scene),
+                                    Some(owe::LightKindLimits { .point = u32(1), .spot = u32(1) }));
+    auto v1   = scene_test::Capture(frame, counted, owe::LightUniformOutput::LightingV1ColorRadius);
+    auto type = scene_test::Capture(frame, counted, owe::LightUniformOutput::DirectionType);
+    auto old  = scene_test::Capture(frame, counted, owe::LightUniformOutput::ColorRadius);
+    ASSERT_EQ(v1.size(), usize(16));
+    EXPECT_FLOAT_EQ(v1[usize(0)], 1.0f); // the one point light (the hidden one took no slot)
+    EXPECT_FLOAT_EQ(v1[usize(4)], 0.0f); // a second point light
+    EXPECT_FLOAT_EQ(v1[usize(8)], 1.0f); // the spot light
+    EXPECT_FLOAT_EQ(type[usize(7)], -1.0f);
+    EXPECT_FLOAT_EQ(type[usize(11)], static_cast<float>(owe::SceneLightType::Spot));
+    EXPECT_FLOAT_EQ(old[usize(4)], 1.0f);
+
+    owe::LightUniformSource unconfigured(ref<owe::Scene>::from_raw_parts(&scene),
+                                         Some(owe::LightKindLimits {}));
+    auto                    none =
+        scene_test::Capture(frame, unconfigured, owe::LightUniformOutput::LightingV1ColorRadius);
+    for (usize index {}; index < none.size(); ++index) EXPECT_FLOAT_EQ(none[index], 0.0f);
+}
+
 TEST(ShadowUniformSource, UsesAuthoredCascadeExtentAndLightObjectFrame) {
     auto camera =
         Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000.0, 50.0));
