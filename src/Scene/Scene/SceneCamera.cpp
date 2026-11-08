@@ -85,6 +85,13 @@ bool SceneCamera::SetTransforms(const SceneCameraTransforms& transforms) {
     return true;
 }
 
+void SceneCamera::FitFovToHeightAtCenter(double height) {
+    if (! m_lookat) return;
+    const double distance = (m_center - m_eye).norm();
+    if (! (distance > 0.0) || ! (height > 0.0)) return;
+    m_fov = algorism::CalculatePersperctiveFov(distance, height);
+}
+
 auto SceneCamera::AuthoredTransforms() const -> SceneCameraTransforms {
     auto transforms = Transforms();
     if (m_perspective || ! m_node) return transforms;
@@ -204,8 +211,17 @@ void Scene::UpdateCameraFillMode(u32 width, u32 height, FillMode fillmode) {
         pcam.SetAspect(output_aspect);
         break;
     }
-    if (pcam.FovPolicy() == SceneCameraFovPolicy::OrthographicProjection)
+    if (pcam.FovPolicy() == SceneCameraFovPolicy::OrthographicProjection) {
         pcam.SetFov(algorism::CalculatePersperctiveFov(1000.0f, gcam.Height()));
+    } else if (pcam.IsLookAt()) {
+        // An orthographic scene that overrides the perspective fov looks from a distance: its perspective camera
+        // follows the cropped projection at its look-at distance. A perspective scene's own camera (the active one)
+        // is left as authored.
+        auto active = ActiveCamera();
+        auto own    = Camera("global_perspective"_str);
+        if (active.is_none() || own.is_none() || (*active).as_raw_ptr() != (*own).as_raw_ptr())
+            pcam.FitFovToHeightAtCenter(gcam.Height());
+    }
     gcam.Update();
     pcam.Update();
     UpdateLinkedCamera("global"_str);
