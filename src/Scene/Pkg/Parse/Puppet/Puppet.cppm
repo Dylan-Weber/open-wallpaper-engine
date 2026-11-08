@@ -290,6 +290,11 @@ public:
     auto AnimationPlaybackAt(usize index) const -> Option<Arc<SceneAnimationPlayback>>;
     void SetRuntimeAnimationLayer(usize index, Arc<SceneAnimationLayer> state);
     void SetAnimationVisible(i32 layer_id, bool visible);
+    // applyBonePhysicsImpulse and resetBonePhysicsSimulation; `bone` as
+    // boneIndex numbers it, None for every bone with physics
+    void ApplyBoneImpulse(Option<rstd::uint32_t> bone, const Eigen::Vector3f& directional,
+                          const Eigen::Vector3f& angular);
+    void ResetBonePhysics(Option<rstd::uint32_t> bone);
     auto TextureChannelBlendMap(double time) noexcept -> slice<float>;
 
     struct PartOrder {
