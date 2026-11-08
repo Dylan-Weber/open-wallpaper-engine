@@ -108,6 +108,16 @@ struct Mdl {
     // uniform mat4x3 g_Bones[BONECOUNT]
 };
 
+// What a mesh's blend shapes move: each vertex's rest position (with the submesh's offset), its
+// morph index (0 for none), and each shape's offsets.
+struct MdlMorph {
+    Vec<array<float, 3>>              rest;
+    Vec<rstd::uint32_t>               index;
+    float                             scale { 0.0f };
+    rstd::uint32_t                    vertex_count { 0 };
+    Vec<Vec<array<rstd::int16_t, 3>>> offsets;
+};
+
 class MdlParser {
 public:
     // Reads only the bytes preceding mat_json_files. Cheap; safe to call
@@ -136,6 +146,15 @@ public:
                                       slice<rstd::uint32_t> clip_part_ids,
                                       array<float, 2>       texcoord_scale = { 1.0f, 1.0f });
     static void BindDrawOrder(SceneMesh::Submesh&, const Mdl::Mesh&, Arc<PuppetLayer>);
+    // A mesh's blend shapes, or None without any.
+    static auto MakeMorph(const Mdl::Mesh&, array<float, 3> position_offset)
+        -> Option<Arc<MdlMorph>>;
+    // The positions (three floats a vertex) with the shapes at these weights.
+    static auto MorphPositions(const MdlMorph&, slice<float> weights) -> Vec<float>;
+    // Moves this submesh's vertices by the mesh's blend shapes every frame, as the puppet's
+    // animation layers weigh them. Nothing for a mesh without blend shapes.
+    static void BindMorph(Scene& scene, SceneMesh& mesh, usize submesh, const Mdl::Mesh& src,
+                          Arc<PuppetLayer> layer, array<float, 3> position_offset = {});
 };
 
 } // namespace owe
