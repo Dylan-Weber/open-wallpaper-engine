@@ -232,8 +232,9 @@ script::ScriptScene& EnsureScriptScene(SceneLayerBuildContext& context) {
                             },
                             request.single);
                         if (index.is_none()) return None();
-                        auto state = Arc<SceneAnimationLayer>::make(
-                            request.name.is_empty() ? request.animation.clone() : request.name.clone());
+                        auto state = Arc<SceneAnimationLayer>::make(request.name.is_empty()
+                                                                        ? request.animation.clone()
+                                                                        : request.name.clone());
                         state->SetPlayback((*layer)->AnimationPlaybackAt(*index));
                         state->SetBlend(static_cast<float>(request.blend));
                         if (request.rate > 0.0) state->SetRate(static_cast<float>(request.rate));

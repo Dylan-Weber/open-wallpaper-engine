@@ -275,8 +275,8 @@ public:
     };
 
     void prepared(slice<AnimationLayer>);
-    // Scripts' createAnimationLayer / destroyAnimationLayer. The other layers keep their playbacks and
-    // their runtime states.
+    // Scripts' createAnimationLayer / destroyAnimationLayer. The other layers keep their playbacks
+    // and their runtime states.
     auto AnimationIdNamed(ref<str> name) const -> Option<rstd::int32_t>;
     auto AddAnimationLayer(AnimationLayer layer, bool single) -> Option<usize>;
     bool RemoveAnimationLayer(const SceneAnimationPlayback& playback);
