@@ -61,6 +61,49 @@ auto InkWidth(const vectext::TextLayout& layout) -> float {
     }
     return right - left;
 }
+// Glyphs drawn from shapes at any scale (1 unit = 1 pixel at scale 1), their coverage sampled 8 x 8 a pixel:
+// 1 a 10 x 10 square, 2 an equilateral triangle of side 20 pointing up, 3 a 20 x 20 square with a 10 x 10 hole.
+// The origin is the shape's top-left in raster pixels, its bottom on the baseline.
+auto ShapeFont() -> vectext::FontInstance {
+    struct Raster final : vectext::FontRasterizer {
+        auto rasterize(vectext::Index glyph, double scale) const
+            -> Result<vectext::GlyphBitmap, vectext::TextError> override {
+            const double size   = glyph == 1 ? 10 : 20;
+            const double height = glyph == 2 ? size * 0.8660254037844386 : size;
+            const int    w = int(size * scale + 0.999), h = int(height * scale + 0.999);
+            auto         inside = [&](double x, double y) {
+                if (glyph == 2) return y >= height - (size / 2 - (x < size / 2 ? size / 2 - x : x - size / 2)) *
+                                                          1.7320508075688772 &&
+                                       y <= height;
+                if (glyph == 3 && x > 5 && x < 15 && y > 5 && y < 15) return false;
+                return x >= 0 && x <= size && y >= 0 && y <= height;
+            };
+            Vec<unsigned char> pixels;
+            pixels.resize(usize(w * h), static_cast<unsigned char>(0));
+            for (int y = 0; y < h; ++y)
+                for (int x = 0; x < w; ++x) {
+                    int hits {};
+                    for (int sy = 0; sy < 8; ++sy)
+                        for (int sx = 0; sx < 8; ++sx)
+                            hits += inside((x + (sx + 0.5) / 8) / scale, (y + (sy + 0.5) / 8) / scale);
+                    pixels[usize(y * w + x)] = static_cast<unsigned char>((hits * 255 + 32) / 64);
+                }
+            return Ok(vectext::GlyphBitmap { rstd::uint32_t(w), rstd::uint32_t(h), { 0, -double(h) }, scale,
+                                             rstd::move(pixels) });
+        }
+    };
+    auto raster = Box<Raster>::make();
+    return vectext::FontInstance(
+        "shape-test"_Str,
+        Box<vectext::FontRasterizer>::from_raw(
+            rstd::move(raster).into_raw().cast<vectext::FontRasterizer>()));
+}
+// A pixel of an atlas glyph
+auto AtlasPixel(owe::text::TextResources& resources, const owe::text::AtlasGlyph& glyph, int x, int y) -> int {
+    auto& page = *resources.Pages()[usize(glyph.page)];
+    return int(page.AtlasPixels()[usize(glyph.y + rstd::uint32_t(y)) * usize(page.Extent()) +
+                                  usize(glyph.x + rstd::uint32_t(x))]);
+}
 } // namespace
 TEST(TextAtlas, ImageRetainsLivePixelsAfterCacheDestruction) {
     Option<Arc<owe::Image>> image;
