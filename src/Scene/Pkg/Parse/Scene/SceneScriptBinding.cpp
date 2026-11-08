@@ -111,7 +111,7 @@ bool AppendLayerCompositePassthroughEffect(fs::VFS& vfs, wpscene::ImageObject& i
 
 Arc<PuppetLayer> MakePuppetLayer(Arc<Puppet> puppet, slice<wpscene::PuppetAnimationLayer> layers,
                                  const array<float, 3>& scale) {
-    auto                             out = Arc<PuppetLayer>::make(rstd::move(puppet));
+    auto out = Arc<PuppetLayer>::make(rstd::move(puppet));
     out->SetObjectScale({ scale[usize(0)], scale[usize(1)], scale[usize(2)] });
     Vec<PuppetLayer::AnimationLayer> playback_layers;
     for (const auto& layer : layers) playback_layers.push(layer.playback.Clone());
@@ -252,7 +252,7 @@ script::ScriptScene& EnsureScriptScene(SceneLayerBuildContext& context) {
             (*context.script_scene)
                 ->runtime()
                 .SetAuthoredLayerNames(context.layer_resources->authored_layer_names->clone());
-        auto layers          = context.layer_resources->puppet_layers.clone();
+        auto layers = context.layer_resources->puppet_layers.clone();
         (*context.script_scene)
             ->runtime()
             .SetAnimationLayerResolvers(
@@ -277,8 +277,9 @@ script::ScriptScene& EnsureScriptScene(SceneLayerBuildContext& context) {
                             },
                             request.single);
                         if (index.is_none()) return None();
-                        auto state = Arc<SceneAnimationLayer>::make(
-                            request.name.is_empty() ? request.animation.clone() : request.name.clone());
+                        auto state = Arc<SceneAnimationLayer>::make(request.name.is_empty()
+                                                                        ? request.animation.clone()
+                                                                        : request.name.clone());
                         state->SetPlayback((*layer)->AnimationPlaybackAt(*index));
                         state->SetBlend(static_cast<float>(request.blend));
                         if (request.rate > 0.0) state->SetRate(static_cast<float>(request.rate));
@@ -756,19 +757,20 @@ void WireFieldScripts(SceneLayerBuildContext& context, const Arc<SceneNode>& nod
         TrackFieldScript(context, fs);
         if (! has_actuator) continue;
         if (field == "visible"_str) {
-            // What the script returns shows or hides the node. Only a change of the returned value does: a script
-            // that returns the value it is given doesn't undo another script's `layer.visible = ...`.
-            ss.AddActuator({ fs,
-                             [scene = context.scene, node,
-                              last  = sb.initial_value.as_bool().unwrap_or(true)](
-                                 const script::ScriptValue& value) mutable {
-                                 auto shown = ScriptValueAsFloat(value);
-                                 if (! shown) return;
-                                 const bool visible = *shown != 0.0f;
-                                 if (visible == last) return;
-                                 last = visible;
-                                 scene->SetNodeVisible(*node, visible);
-                             } });
+            // What the script returns shows or hides the node. Only a change of the returned value
+            // does: a script that returns the value it is given doesn't undo another script's
+            // `layer.visible = ...`.
+            ss.AddActuator(
+                { fs,
+                  [scene = context.scene, node, last = sb.initial_value.as_bool().unwrap_or(true)](
+                      const script::ScriptValue& value) mutable {
+                      auto shown = ScriptValueAsFloat(value);
+                      if (! shown) return;
+                      const bool visible = *shown != 0.0f;
+                      if (visible == last) return;
+                      last = visible;
+                      scene->SetNodeVisible(*node, visible);
+                  } });
             continue;
         }
         if (is_alpha)

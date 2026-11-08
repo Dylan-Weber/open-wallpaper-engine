@@ -167,13 +167,13 @@ struct SceneLayerResources {
     bool                              scene_has_scripts { false };
     bool                              scene_layer_text_writes { false };
     // Every layer name the document authors, for the script runtime's getLayer.
-    Option<HashSet<String>>           authored_layer_names;
+    Option<HashSet<String>> authored_layer_names;
     // The scene's first layer of each image asset (createLayer copies its bindings).
-    HashMap<String, Arc<SceneNode>>   asset_layers;
+    HashMap<String, Arc<SceneNode>> asset_layers;
     // The spot lights that project the light cookie: the first spotcookie-many with usecookie.
-    HashSet<i32>                      light_cookie_ids;
+    HashSet<i32> light_cookie_ids;
     // each shadowed light's first view in the scene's list of shadow views, by its object id
-    HashMap<i32, i32>                 shadow_views;
+    HashMap<i32, i32> shadow_views;
 };
 
 struct SceneLayerBuildContext {
@@ -257,8 +257,8 @@ bool ResolveVisibleUserBinding(bool&, const wpscene::VisibleUserBinding&,
                                Option<ref<rstd::json::Map>>);
 bool AppendLayerCompositePassthroughEffect(fs::VFS&, wpscene::ImageObject&);
 // `scale`: the object's, for its bone physics (PuppetLayer::SetObjectScale)
-auto MakePuppetLayer(Arc<Puppet>, slice<wpscene::PuppetAnimationLayer>, const array<float, 3>& scale)
-    -> Arc<PuppetLayer>;
+auto MakePuppetLayer(Arc<Puppet>, slice<wpscene::PuppetAnimationLayer>,
+                     const array<float, 3>& scale) -> Arc<PuppetLayer>;
 void WirePuppetAnimationScripts(SceneLayerBuildContext&, SceneNode*, Arc<PuppetLayer>,
                                 slice<wpscene::PuppetAnimationLayer>);
 void RegisterPuppetLayer(SceneLayerBuildContext&, SceneNode*, Arc<PuppetLayer>);

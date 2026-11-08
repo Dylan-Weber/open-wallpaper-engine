@@ -55,11 +55,11 @@ public:
 // Letter-pair kerning read from a font file: the pair adjustments of its GPOS 'kern' feature, or
 // its legacy 'kern' table when it has no such feature, in font units.
 class FontKerning {
-    Vec<unsigned char>    m_bytes;
-    Vec<rstd::uint32_t>   m_subtables;   // GPOS pair adjustment subtables, from the file's start
-    Vec<rstd::uint32_t>   m_lookup_ends; // where each kern lookup's subtables end in m_subtables
-    Vec<rstd::uint32_t>   m_kern_tables; // legacy format 0 subtables, from the file's start
-    rstd::uint32_t        m_units_per_em { 1000 };
+    Vec<unsigned char>  m_bytes;
+    Vec<rstd::uint32_t> m_subtables;   // GPOS pair adjustment subtables, from the file's start
+    Vec<rstd::uint32_t> m_lookup_ends; // where each kern lookup's subtables end in m_subtables
+    Vec<rstd::uint32_t> m_kern_tables; // legacy format 0 subtables, from the file's start
+    rstd::uint32_t      m_units_per_em { 1000 };
 
 public:
     static auto Read(slice<u8> font) -> FontKerning;
@@ -79,11 +79,10 @@ public:
     // The kerning of a font RegisterFont took, if it has any.
     auto Kerning(const vectext::FontSource& source) const -> const FontKerning*;
     auto Layout(vectext::TextRequest request) -> Result<vectext::TextLayout, vectext::TextError>;
-    // `outline` > 0: the glyph's outline stroked that many pixels to either side with mitred corners, filled, for a
-    // text outline drawn behind it
+    // `outline` > 0: the glyph's outline stroked that many pixels to either side with mitred
+    // corners, filled, for a text outline drawn behind it
     auto Rasterize(const vectext::FontInstance& font, vectext::Index glyph, double scale = 1,
-                   double outline = 0)
-        -> Result<AtlasGlyph, vectext::TextError>;
+                   double outline = 0) -> Result<AtlasGlyph, vectext::TextError>;
     auto Pages() const -> slice<Arc<AtlasPage>>;
     auto RasterCount() const -> rstd::uint64_t;
     auto LayoutCount() const -> rstd::uint64_t;
@@ -185,7 +184,8 @@ struct TextLayoutStyle {
     array<float, 3> background_color { 0.0f, 0.0f, 0.0f };
     float           background_brightness { 1.0f };
 
-    // `outline`: the letters grown by `outline_thickness` (layer units), drawn behind them in `outline_color`
+    // `outline`: the letters grown by `outline_thickness` (layer units), drawn behind them in
+    // `outline_color`
     bool            outline { false };
     array<float, 3> outline_color { 0.0f, 0.0f, 0.0f };
     float           outline_thickness { 0.0f };

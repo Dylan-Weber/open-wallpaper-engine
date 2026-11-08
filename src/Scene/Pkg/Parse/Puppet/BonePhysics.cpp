@@ -45,7 +45,8 @@ float Wrap(float angle) {
 }
 
 // The shorter turn taking direction `from` to `to`.
-// Directions whose dot product is at least 0.99999988 (Wallpaper Engine's constant, 1 - 2^-23) turn not at all.
+// Directions whose dot product is at least 0.99999988 (Wallpaper Engine's constant, 1 - 2^-23) turn
+// not at all.
 Quaternionf TurnBetween(const Vector3f& from, const Vector3f& to) {
     if (from.dot(to) >= 0.99999988f) return Quaternionf::Identity();
     return Quaternionf::FromTwoVectors(from, to);
@@ -55,8 +56,8 @@ Quaternionf Towards(const Quaternionf& from, const Quaternionf& to, float amount
     return from.slerp(rstd::cmp::min(rstd::cmp::max(amount, 0.0f), 1.0f), to).normalized();
 }
 
-// A negative amount turns away from `to`: a negative rotation stiffness pushes the bone further from its pose
-// (puppet-physics-gun: Gun Girl's gun bone has -5).
+// A negative amount turns away from `to`: a negative rotation stiffness pushes the bone further
+// from its pose (puppet-physics-gun: Gun Girl's gun bone has -5).
 Quaternionf TowardsOrAway(const Quaternionf& from, const Quaternionf& to, float amount) {
     return from.slerp(rstd::cmp::min(amount, 1.0f), to).normalized();
 }
@@ -152,7 +153,8 @@ auto BonePhysics::Apply(usize bone, const BoneSimulation& simulation, const Affi
             // pulled by gravity and back by its spring, along the axes it may
             // move along, no further than its largest distance, and its
             // movement dies down.
-            state.offset -= (place - state.last_place).cwiseProduct(scale) * simulation.translation_inertia;
+            state.offset -=
+                (place - state.last_place).cwiseProduct(scale) * simulation.translation_inertia;
             if (simulation.gravity) {
                 state.velocity += simulation.mass * dt * 1000.0f * simulation.gravity_direction;
             }
@@ -190,22 +192,24 @@ auto BonePhysics::Apply(usize bone, const BoneSimulation& simulation, const Affi
                 state.spin = state.spin * Towards(Quaternionf::Identity(), own, inertia);
             }
             if (simulation.gravity) {
-                // Gravity turns the bone: its tip, as turned now, is moved against the part of gravity across it (the mass,
-                // times the object scale: no frame time) and turned back, blended in by how far it moved x the inertia x
-                // pi / 180, so the turn goes with the mass squared and a tiny one is none (see TurnBetween).
+                // Gravity turns the bone: its tip, as turned now, is moved against the part of
+                // gravity across it (the mass, times the object scale: no frame time) and turned
+                // back, blended in by how far it moved x the inertia x pi / 180, so the turn goes
+                // with the mass squared and a tiny one is none (see TurnBetween).
                 const Vector3f turned = state.rotation_offset * simulation.tip;
                 if (turned.norm() > 1e-6f) {
                     const Vector3f along = turned.normalized();
-                    const Vector3f pull =
-                        animated.linear().inverse() * simulation.gravity_direction * simulation.mass;
+                    const Vector3f pull  = animated.linear().inverse() *
+                                          simulation.gravity_direction * simulation.mass;
                     const Vector3f across = pull - pull.dot(along) * along;
                     const float    moved  = across.norm();
                     if (moved > 0.0f) {
                         const Vector3f    moved_tip = turned - across;
                         const Quaternionf back      = TurnBetween(moved_tip.normalized(), along);
-                        state.spin                  = state.spin * Towards(Quaternionf::Identity(),
-                                                          back,
-                                                          moved * simulation.rotation_inertia * kDegrees);
+                        state.spin =
+                            state.spin * Towards(Quaternionf::Identity(),
+                                                 back,
+                                                 moved * simulation.rotation_inertia * kDegrees);
                     }
                 }
             }

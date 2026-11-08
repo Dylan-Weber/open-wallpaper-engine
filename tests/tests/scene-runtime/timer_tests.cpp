@@ -67,8 +67,9 @@ TEST(FrameTimer, OwnsMutableCallbackAndPreservesBackpressure) {
     EXPECT_EQ(calls.load(), stopped);
 }
 
-// A capture's clock is frame-exact (each frame advances the scene by the required fps' frame time), so it need not wait that
-// long between frames: an unpaced timer fires as soon as the last frame is done, and its frame time stays the required fps'.
+// A capture's clock is frame-exact (each frame advances the scene by the required fps' frame time),
+// so it need not wait that long between frames: an unpaced timer fires as soon as the last frame is
+// done, and its frame time stays the required fps'.
 TEST(FrameTimer, UnpacedRunsAsFastAsFramesFinishButKeepsItsFrameTime) {
     Atomic<u32>     calls {};
     owe::FrameTimer timer;

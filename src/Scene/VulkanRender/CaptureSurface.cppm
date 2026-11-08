@@ -195,7 +195,7 @@ bool CaptureSurface::create(VkPhysicalDevice) {
     image.samples     = VK_SAMPLE_COUNT_1_BIT;
     image.tiling      = VK_IMAGE_TILING_OPTIMAL;
     image.usage       = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-                        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+                  VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     if (m_vk.create_image(m_device, &image, nullptr, &m_image) != VK_SUCCESS) return false;
     VkMemoryRequirements image_needs {};
     m_vk.image_requirements(m_device, m_image, &image_needs);

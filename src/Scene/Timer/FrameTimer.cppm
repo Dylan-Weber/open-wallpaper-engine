@@ -22,12 +22,13 @@ public:
     double FrameTime() const;
     double TargetFrameTime() const;
     void   SetRequiredFps(u16);
-    // Fire as soon as the last frame is done instead of every 1 / fps (frames are still 1 / fps long to the scene): a
-    // capture's clock is frame-exact, so it can run as fast as the machine draws.
-    void   SetUnpaced(bool);
-    bool   Unpaced() const;
-    void   FrameBegin();
-    void   FrameEnd();
+    // Fire as soon as the last frame is done instead of every 1 / fps (frames are still 1 / fps
+    // long to the scene): a capture's clock is frame-exact, so it can run as fast as the machine
+    // draws.
+    void SetUnpaced(bool);
+    bool Unpaced() const;
+    void FrameBegin();
+    void FrameEnd();
 
 private:
     struct Samples {

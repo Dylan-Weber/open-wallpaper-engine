@@ -29,7 +29,7 @@ enum class ParticleAnimationMode
 
 // A colour from hue (0 to 1 around the circle, wrapping), saturation and value.
 inline auto HsvToRgb(double hue, double saturation, double value) -> Eigen::Vector3d {
-    hue          = hue - static_cast<double>(static_cast<long long>(hue));
+    hue = hue - static_cast<double>(static_cast<long long>(hue));
     if (hue < 0.0) hue += 1.0;
     const double h = hue * 6.0;
     const int    i = static_cast<int>(h) % 6;
@@ -56,20 +56,23 @@ struct ParticleRemap {
     enum class Input
     {
         DistanceToControlPoint,
-        // from the particle to a control point (a vector), its direction (unit length), and how far along the line from one
-        // control point to another the particle is, by its shadow on the line (0 at the first, 1 at the second)
+        // from the particle to a control point (a vector), its direction (unit length), and how far
+        // along the line from one control point to another the particle is, by its shadow on the
+        // line (0 at the first, 1 at the second)
         DeltaToControlPoint,
         DirectionToControlPoint,
         PositionBetweenControlPoints,
         Lifetime,
-        // the particle's speed along each axis, its opacity, rotation (about z) and angular speed (about z)
+        // the particle's speed along each axis, its opacity, rotation (about z) and angular speed
+        // (about z)
         Velocity,
         Opacity,
         Rotation,
         AngularSpeed,
         // the object's position
         LayerOrigin,
-        // seconds: the particle system's, the layer's, the engine's; and the local time of day as a fraction
+        // seconds: the particle system's, the layer's, the engine's; and the local time of day as a
+        // fraction
         SystemTime,
         LayerTime,
         Runtime,
@@ -89,8 +92,8 @@ struct ParticleRemap {
         Add,
         Subtract,
     };
-    // the shape the fraction of the input range goes through (particles-remap-transform): triangle and square repeat
-    // twice over the range, sine once
+    // the shape the fraction of the input range goes through (particles-remap-transform): triangle
+    // and square repeat twice over the range, sine once
     enum class Transform
     {
         Linear,
@@ -206,8 +209,8 @@ struct ParticleRemap {
     // how far along the input range a value is, 0 to 1, through the transform
     auto Fraction(double value) const -> double {
         const double span = input_max - input_min;
-        double       t    = span != 0.0 ? (value - input_min) / span : (value >= input_max ? 1.0 : 0.0);
-        t                 = t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t);
+        double t = span != 0.0 ? (value - input_min) / span : (value >= input_max ? 1.0 : 0.0);
+        t        = t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t);
         switch (transform) {
         case Transform::Linear: return t;
         case Transform::Sine: return 0.5 - 0.5 * std::cos(2.0 * 3.14159265358979323846 * t);
@@ -239,7 +242,8 @@ struct ParticleRemap {
         return Apply(current, Eigen::Vector3d::Constant(value));
     }
 
-    auto Apply(const Eigen::Vector3d& current, const Eigen::Vector3d& value) const -> Eigen::Vector3d {
+    auto Apply(const Eigen::Vector3d& current, const Eigen::Vector3d& value) const
+        -> Eigen::Vector3d {
         Eigen::Vector3d mapped = Map(value);
         if (output == Output::Size && operation != Operation::Multiply) mapped *= 2.0;
         switch (operation) {
@@ -477,12 +481,12 @@ struct ParticleFrame {
     Eigen::Vector2d          scene_extent { Eigen::Vector2d::Zero() };
     // each control point's velocity in the particles' space (per second), measured between frames
     Eigen::Matrix<double, 3, 8> controlpoint_velocity { Eigen::Matrix<double, 3, 8>::Zero() };
-    f64                      time {};
-    f64                      delta {};
-    f64                      emitter_delta {};
-    usize                    trail_sample_steps {};
-    f64                      trail_sample_remainder {};
-    bool                     world_space { false };
+    f64                         time {};
+    f64                         delta {};
+    f64                         emitter_delta {};
+    usize                       trail_sample_steps {};
+    f64                         trail_sample_remainder {};
+    bool                        world_space { false };
 };
 
 auto ParticleFrameFrom(ref<dyn<rstd::any::Any>>) -> ref<ParticleFrame>;
@@ -534,8 +538,10 @@ public:
     explicit ParticleSpawnPipeline(ParticleAttributes attributes): m_attributes(attributes) {}
 
     void Add(ParticleSpawnInstruction instruction) {
-        if (instruction.RunsLast()) m_last_instructions.push(rstd::move(instruction));
-        else m_instructions.push(rstd::move(instruction));
+        if (instruction.RunsLast())
+            m_last_instructions.push(rstd::move(instruction));
+        else
+            m_instructions.push(rstd::move(instruction));
     }
     void EnableWorldSpace() noexcept { m_world_space = true; }
     void Compile(particle::ParticleViewCompiler&);
@@ -594,10 +600,11 @@ struct ParticleSphereEmitterArgs {
     ParticleAudioResponse audio_response;
 };
 
-// An image layer a layerimage emitter emits from (particles-layerimage): the layer's rectangle, its size's half-extents before
-// the layer's scale, turned and moved by the layer's node; the particles take the layer's colour; a layer less than half
-// opaque emits nothing (a pixel counts with its opacity times the layer's).
-// a pixel of a layer's image that emits: its place in layer units from the centre, and its colour
+// An image layer a layerimage emitter emits from (particles-layerimage): the layer's rectangle, its
+// size's half-extents before the layer's scale, turned and moved by the layer's node; the particles
+// take the layer's colour; a layer less than half opaque emits nothing (a pixel counts with its
+// opacity times the layer's). a pixel of a layer's image that emits: its place in layer units from
+// the centre, and its colour
 struct LayerImagePoint {
     float           x {}, y {};
     Eigen::Vector3f color { 1.0f, 1.0f, 1.0f };
@@ -609,30 +616,33 @@ struct LayerImageSource {
     double          half_height {};
     Eigen::Vector3f color { 1.0f, 1.0f, 1.0f };
     float           alpha { 1.0f };
-    // the lattice of the layer's image, when it has one (LayerImageLattice): the emitter picks one of its points at random
+    // the lattice of the layer's image, when it has one (LayerImageLattice): the emitter picks one
+    // of its points at random
     Vec<LayerImagePoint> points;
 };
 
-// The points a layer's image emits from, as Wallpaper Engine reads it (particles-layerimage-pitch, -block): one at the centre of
-// each 4x4 texel block (texel 4i+2 from the top left, no jitter; a part block at the edge is left out, not probed), in
-// texels from the image's centre (y up), where the block's average opacity times the layer's is half or more, in the block's
-// average colour. `data` is 8-bit RGB, RGBA or BGRA by `channels` and `bgra`.
-Vec<LayerImagePoint> LayerImageLattice(const unsigned char* data, int width, int height, int channels, bool bgra,
-                                       float layer_alpha);
+// The points a layer's image emits from, as Wallpaper Engine reads it (particles-layerimage-pitch,
+// -block): one at the centre of each 4x4 texel block (texel 4i+2 from the top left, no jitter; a
+// part block at the edge is left out, not probed), in texels from the image's centre (y up), where
+// the block's average opacity times the layer's is half or more, in the block's average colour.
+// `data` is 8-bit RGB, RGBA or BGRA by `channels` and `bgra`.
+Vec<LayerImagePoint> LayerImageLattice(const unsigned char* data, int width, int height,
+                                       int channels, bool bgra, float layer_alpha);
 
 struct ParticleLayerImageEmitterArgs {
-    float                  emit_speed {};
-    bool                   one_per_frame { false };
-    u32                    instantaneous {};
-    float                  duration {};
-    i32                    controlpoint {};
-    ParticleAudioResponse  audio_response;
+    float                         emit_speed {};
+    bool                          one_per_frame { false };
+    u32                           instantaneous {};
+    float                         duration {};
+    i32                           controlpoint {};
+    ParticleAudioResponse         audio_response;
     Option<Arc<LayerImageSource>> source;
 };
 
 class LayerImageEmitterProgram {
 public:
-    LayerImageEmitterProgram(ParticleSpawnPipeline& pipeline, ParticleLayerImageEmitterArgs args, usize index)
+    LayerImageEmitterProgram(ParticleSpawnPipeline& pipeline, ParticleLayerImageEmitterArgs args,
+                             usize index)
         : m_pipeline(rstd::addressof(pipeline)), m_args(rstd::move(args)), m_index(index) {}
 
     void Compile(particle::ParticleViewCompiler&);
@@ -841,14 +851,14 @@ private:
     void SpawnChild(ParticleInstanceRef, ParticleSubSystem&, particle::ParticleSlot,
                     Eigen::Vector3f position = Eigen::Vector3f::Zero(), bool fixed = false);
 
-    Scene&                                                        m_scene;
-    Eigen::Matrix<double, 3, 8>                                   m_controlpoint_previous { Eigen::Matrix<double, 3, 8>::Zero() };
-    bool                                                          m_has_controlpoint_previous { false };
-    Arc<SceneMesh>                                                m_mesh;
-    SceneNode*                                                    m_owner_node { nullptr };
-    particle::ParticleSchemaBuilder                               m_schema_builder;
-    ParticleAttributes                                            m_attributes;
-    ParticleSpawnPipeline                                         m_spawn_pipeline;
+    Scene&                          m_scene;
+    Eigen::Matrix<double, 3, 8>     m_controlpoint_previous { Eigen::Matrix<double, 3, 8>::Zero() };
+    bool                            m_has_controlpoint_previous { false };
+    Arc<SceneMesh>                  m_mesh;
+    SceneNode*                      m_owner_node { nullptr };
+    particle::ParticleSchemaBuilder m_schema_builder;
+    ParticleAttributes              m_attributes;
+    ParticleSpawnPipeline           m_spawn_pipeline;
     Option<particle::ParticleAttributeKey<TrailHistoryAttribute>> m_trail_key;
     Option<u32>                                                   m_rope_sequence_count;
     particle::ParticleProgram                                     m_program;

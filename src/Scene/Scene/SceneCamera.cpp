@@ -23,8 +23,8 @@ Matrix4d NodeCameraFrame(SceneNode& node) {
     if (! frame.allFinite()) return Matrix4d::Identity();
 
     constexpr double kAxisEps = 1e-10;
-    // a layer scaled to no area still has its frame: a collapsed x or y axis counts as scale 1 (the sky's
-    // gradient layer is 0 x 0)
+    // a layer scaled to no area still has its frame: a collapsed x or y axis counts as scale 1 (the
+    // sky's gradient layer is 0 x 0)
     for (int column = 0; column < 2; ++column) {
         if (frame.block<3, 1>(0, column).squaredNorm() <= kAxisEps)
             frame.block<3, 1>(0, column) = Vector3d::Unit(column);
@@ -224,8 +224,9 @@ void Scene::UpdateCameraFillMode(u32 width, u32 height, FillMode fillmode) {
     if (pcam.FovPolicy() == SceneCameraFovPolicy::OrthographicProjection) {
         pcam.SetFov(algorism::CalculatePersperctiveFov(1000.0f, gcam.Height()));
     } else {
-        // An orthographic scene that overrides the perspective fov looks from a distance: its perspective camera
-        // follows the cropped projection at its look-at distance. Other cameras keep their fov.
+        // An orthographic scene that overrides the perspective fov looks from a distance: its
+        // perspective camera follows the cropped projection at its look-at distance. Other cameras
+        // keep their fov.
         pcam.FitFovToHeightAtCenter(gcam.Height());
     }
     gcam.Update();

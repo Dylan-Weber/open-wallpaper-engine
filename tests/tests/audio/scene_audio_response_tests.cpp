@@ -181,14 +181,14 @@ TEST(SceneAudioResponse, FixedSpectrumPoolsTheFinestGiven) {
     // a reference's recorded 64 bands: the 32 and 16 are pooled from them, as the live spectrum's
     // are, and each average is the two sides' mean
     auto json   = Braced(SpectrumEntry(
-                             64,
-                             [](int index) {
+                           64,
+                           [](int index) {
                                return index / 64.0;
-                             },
-                             [](int index) {
+                           },
+                           [](int index) {
                                return 1.0 - index / 64.0;
-                             })
-                             .as_str());
+                           })
+                           .as_str());
     auto parsed = scene_audio::ParseFixedSpectrum(json.as_str());
     ASSERT_TRUE(parsed.is_ok());
     const auto& buffers = *parsed;
@@ -203,14 +203,14 @@ TEST(SceneAudioResponse, FixedSpectrumPoolsTheFinestGiven) {
 TEST(SceneAudioResponse, FixedSpectrumRepeatsACoarserOne) {
     // only 16 bands recorded (all a wallpaper reads): the finer ones repeat them
     auto json   = Braced(SpectrumEntry(
-                             16,
-                             [](int index) {
+                           16,
+                           [](int index) {
                                return index / 16.0;
-                             },
-                             [](int) {
+                           },
+                           [](int) {
                                return 0.25;
-                             })
-                             .as_str());
+                           })
+                           .as_str());
     auto parsed = scene_audio::ParseFixedSpectrum(json.as_str());
     ASSERT_TRUE(parsed.is_ok());
     const auto& buffers = *parsed;

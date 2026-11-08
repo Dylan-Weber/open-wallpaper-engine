@@ -279,8 +279,8 @@ public:
     };
 
     void prepared(slice<AnimationLayer>);
-    // Scripts' createAnimationLayer / destroyAnimationLayer. The other layers keep their playbacks and
-    // their runtime states.
+    // Scripts' createAnimationLayer / destroyAnimationLayer. The other layers keep their playbacks
+    // and their runtime states.
     auto AnimationIdNamed(ref<str> name) const -> Option<rstd::int32_t>;
     auto AddAnimationLayer(AnimationLayer layer, bool single) -> Option<usize>;
     bool RemoveAnimationLayer(const SceneAnimationPlayback& playback);
@@ -352,11 +352,11 @@ private:
     Vec<Eigen::Affine3f>             m_final_affines;
     Vec<Option<Eigen::Affine3f>>     m_script_bone_overrides;
     // What scripts set this frame (setLocalBoneTransform), by bone, and the frame's time.
-    Vec<Option<Eigen::Affine3f>>     m_local_overrides;
-    float                            m_local_overrides_time { 0.0f };
-    BonePhysics                      m_physics;
-    Eigen::Vector3f                  m_object_scale { Eigen::Vector3f::Ones() };
-    Arc<Puppet>                      m_puppet;
+    Vec<Option<Eigen::Affine3f>> m_local_overrides;
+    float                        m_local_overrides_time { 0.0f };
+    BonePhysics                  m_physics;
+    Eigen::Vector3f              m_object_scale { Eigen::Vector3f::Ones() };
+    Arc<Puppet>                  m_puppet;
 };
 
 } // namespace owe

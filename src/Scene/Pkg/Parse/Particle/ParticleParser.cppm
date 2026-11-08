@@ -28,9 +28,9 @@ public:
     static Box<dyn<particle::ParticleUpdateProgram>>
     GenOperator(const Json&, ParticleInstanceModifiers, ParticleSubSystem&, usize operator_index);
     static Box<dyn<particle::ParticleEmitterProgram>>
-    GenEmitter(const wpscene::Emitter&, ParticleSubSystem&, usize,
-               Option<Arc<LayerImageSource>> layer_image = None());
-    static ParticleSpawnInstruction                   GenOverride(ParticleInstanceModifiers);
+                                    GenEmitter(const wpscene::Emitter&, ParticleSubSystem&, usize,
+                                               Option<Arc<LayerImageSource>> layer_image = None());
+    static ParticleSpawnInstruction GenOverride(ParticleInstanceModifiers);
 };
 
 // Whether a particle shader is drawn with a geometry stage: only when the device has one and the

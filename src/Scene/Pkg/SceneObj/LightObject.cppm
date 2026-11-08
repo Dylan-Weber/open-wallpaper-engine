@@ -44,12 +44,12 @@ public:
     FieldBindings field_bindings;
 
     // Light-kind specifics.
-    bool  ledsource { false };          // PKGV0006+
-    bool  castshadow { false };         // PKGV0019+
-    bool  castvolumetrics { false };    // PKGV0019+
-    float outercone { 0.0f };           // PKGV0019+
-    float innercone { 0.0f };           // PKGV0019+
-    float attenuation { 0.0f };         // PKGV0023+
+    bool  ledsource { false };       // PKGV0006+
+    bool  castshadow { false };      // PKGV0019+
+    bool  castvolumetrics { false }; // PKGV0019+
+    float outercone { 0.0f };        // PKGV0019+
+    float innercone { 0.0f };        // PKGV0019+
+    float attenuation { 0.0f };      // PKGV0023+
     // Without one, Wallpaper Engine's light falls off as (1 - distance / radius) squared.
     float exponent { 2.0f };            // PKGV0021+
     float density { 1.0f };             // PKGV0021+
@@ -58,10 +58,10 @@ public:
     // A spot light's usecookie projects the cookie texture over its cone.
     bool   usecookie { false };
     String cookie { "cookie/flashlight1"_Str };
-    float mindistance { 0.0f };         // PKGV0023+
-    float cascadedistance0 { 0.0f };    // PKGV0021+
-    float cascadedistance1 { 0.0f };
-    float cascadedistance2 { 0.0f };
+    float  mindistance { 0.0f };      // PKGV0023+
+    float  cascadedistance0 { 0.0f }; // PKGV0021+
+    float  cascadedistance1 { 0.0f };
+    float  cascadedistance2 { 0.0f };
 };
 
 } // namespace wpscene

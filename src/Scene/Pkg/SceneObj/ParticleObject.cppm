@@ -213,13 +213,13 @@ public:
     ParticleInstanceoverride instanceoverride;
 
     // Common cross-kind metadata.
-    bool            locktransforms { false };
-    bool            muteineditor { false };
-    bool            nointerpolation { false };
-    bool            reflected { true };
-    u32             parent { 0 };
-    String          attachment;
-    Vec<i32>        dependencies;
+    bool     locktransforms { false };
+    bool     muteineditor { false };
+    bool     nointerpolation { false };
+    bool     reflected { true };
+    u32      parent { 0 };
+    String   attachment;
+    Vec<i32> dependencies;
     // the image layer a layerimage emitter emits from (a dependency of type emitterimage)
     Option<i32>     emitterimage_layer;
     owe::Json       instance;

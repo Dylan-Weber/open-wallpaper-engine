@@ -61,9 +61,10 @@ auto InkWidth(const vectext::TextLayout& layout) -> float {
     }
     return right - left;
 }
-// Glyphs drawn from shapes at any scale (1 unit = 1 pixel at scale 1), their coverage sampled 8 x 8 a pixel:
-// 1 a 10 x 10 square, 2 an equilateral triangle of side 20 pointing up, 3 a 20 x 20 square with a 10 x 10 hole.
-// The origin is the shape's top-left in raster pixels, its bottom on the baseline.
+// Glyphs drawn from shapes at any scale (1 unit = 1 pixel at scale 1), their coverage sampled 8 x 8
+// a pixel: 1 a 10 x 10 square, 2 an equilateral triangle of side 20 pointing up, 3 a 20 x 20 square
+// with a 10 x 10 hole. The origin is the shape's top-left in raster pixels, its bottom on the
+// baseline.
 auto ShapeFont() -> vectext::FontInstance {
     struct Raster final : vectext::FontRasterizer {
         auto rasterize(vectext::Index glyph, double scale) const
@@ -72,9 +73,10 @@ auto ShapeFont() -> vectext::FontInstance {
             const double height = glyph == 2 ? size * 0.8660254037844386 : size;
             const int    w = int(size * scale + 0.999), h = int(height * scale + 0.999);
             auto         inside = [&](double x, double y) {
-                if (glyph == 2) return y >= height - (size / 2 - (x < size / 2 ? size / 2 - x : x - size / 2)) *
-                                                          1.7320508075688772 &&
-                                       y <= height;
+                if (glyph == 2)
+                    return y >= height - (size / 2 - (x < size / 2 ? size / 2 - x : x - size / 2)) *
+                                             1.7320508075688772 &&
+                           y <= height;
                 if (glyph == 3 && x > 5 && x < 15 && y > 5 && y < 15) return false;
                 return x >= 0 && x <= size && y >= 0 && y <= height;
             };
@@ -85,10 +87,14 @@ auto ShapeFont() -> vectext::FontInstance {
                     int hits {};
                     for (int sy = 0; sy < 8; ++sy)
                         for (int sx = 0; sx < 8; ++sx)
-                            hits += inside((x + (sx + 0.5) / 8) / scale, (y + (sy + 0.5) / 8) / scale);
+                            hits +=
+                                inside((x + (sx + 0.5) / 8) / scale, (y + (sy + 0.5) / 8) / scale);
                     pixels[usize(y * w + x)] = static_cast<unsigned char>((hits * 255 + 32) / 64);
                 }
-            return Ok(vectext::GlyphBitmap { rstd::uint32_t(w), rstd::uint32_t(h), { 0, -double(h) }, scale,
+            return Ok(vectext::GlyphBitmap { rstd::uint32_t(w),
+                                             rstd::uint32_t(h),
+                                             { 0, -double(h) },
+                                             scale,
                                              rstd::move(pixels) });
         }
     };
@@ -99,7 +105,8 @@ auto ShapeFont() -> vectext::FontInstance {
             rstd::move(raster).into_raw().cast<vectext::FontRasterizer>()));
 }
 // A pixel of an atlas glyph
-auto AtlasPixel(owe::text::TextResources& resources, const owe::text::AtlasGlyph& glyph, int x, int y) -> int {
+auto AtlasPixel(owe::text::TextResources& resources, const owe::text::AtlasGlyph& glyph, int x,
+                int y) -> int {
     auto& page = *resources.Pages()[usize(glyph.page)];
     return int(page.AtlasPixels()[usize(glyph.y + rstd::uint32_t(y)) * usize(page.Extent()) +
                                   usize(glyph.x + rstd::uint32_t(x))]);
@@ -942,16 +949,16 @@ TEST(TextAtlas, AnOutlinedGlyphIsTheGlyphGrownByTheThickness) {
     EXPECT_EQ(grown.height, 10u + 6u);
     EXPECT_DOUBLE_EQ(grown.origin.x, plain.origin.x - 3);
     EXPECT_DOUBLE_EQ(grown.origin.y, plain.origin.y - 3);
-    EXPECT_EQ(AtlasPixel(resources, grown, 8, 8), 255);  // the glyph itself
-    EXPECT_EQ(AtlasPixel(resources, grown, 0, 8), 255);  // 3 left of it
-    EXPECT_EQ(AtlasPixel(resources, grown, 8, 0), 255);  // 3 above it
-    EXPECT_EQ(AtlasPixel(resources, grown, 15, 8), 255); // 3 right of it
+    EXPECT_EQ(AtlasPixel(resources, grown, 8, 8), 255);                  // the glyph itself
+    EXPECT_EQ(AtlasPixel(resources, grown, 0, 8), 255);                  // 3 left of it
+    EXPECT_EQ(AtlasPixel(resources, grown, 8, 0), 255);                  // 3 above it
+    EXPECT_EQ(AtlasPixel(resources, grown, 15, 8), 255);                 // 3 right of it
     EXPECT_EQ(resources.Rasterize(font, 1, 1, 3.0).unwrap().x, grown.x); // cached
 }
 
 TEST(TextAtlas, AnOutlineKeepsASquareGlyphsCornersSquare) {
-    // Wallpaper Engine strokes the glyph's outline with mitred joins (text-outline-stroke): a square letter's
-    // outline is a square, not one with rounded corners
+    // Wallpaper Engine strokes the glyph's outline with mitred joins (text-outline-stroke): a
+    // square letter's outline is a square, not one with rounded corners
     owe::text::TextResources resources;
     auto                     font  = ShapeFont();
     auto                     grown = resources.Rasterize(font, 1, 1, 6.0).unwrap();
@@ -964,16 +971,18 @@ TEST(TextAtlas, AnOutlineKeepsASquareGlyphsCornersSquare) {
 }
 
 TEST(TextAtlas, AnOutlineMitresAPointedGlyph) {
-    // an equilateral triangle's corners are 60 degrees: the mitre reaches twice the thickness past each
+    // an equilateral triangle's corners are 60 degrees: the mitre reaches twice the thickness past
+    // each
     owe::text::TextResources resources;
     auto                     font  = ShapeFont();
     auto                     plain = resources.Rasterize(font, 2).unwrap();
     auto                     grown = resources.Rasterize(font, 2, 1, 4.0).unwrap();
     // the apex (10, 0 in the glyph) reaches 8 up; a round outline would reach 4
-    const double apex_x = plain.origin.x + 10 - grown.origin.x, apex_y = plain.origin.y - grown.origin.y;
+    const double apex_x = plain.origin.x + 10 - grown.origin.x,
+                 apex_y = plain.origin.y - grown.origin.y;
     EXPECT_NEAR(apex_y, 8.0, 1.0);
     EXPECT_GE(AtlasPixel(resources, grown, int(apex_x), int(apex_y) - 6), 128); // 6 above the apex
-    EXPECT_LT(AtlasPixel(resources, grown, int(apex_x), 0), 128);                  // 8 above: the mitre's tip
+    EXPECT_LT(AtlasPixel(resources, grown, int(apex_x), 0), 128); // 8 above: the mitre's tip
     // the base's corners mitre out 2 x 4 along the base too: 4 * sqrt(3) to the side, 4 below
     EXPECT_NEAR(double(grown.width), 20 + 2 * 4 * 1.7320508075688772, 1.0);
 }
@@ -983,7 +992,8 @@ TEST(TextAtlas, AnOutlineGrowsIntoALettersHole) {
     auto                     font  = ShapeFont();
     auto                     grown = resources.Rasterize(font, 3, 1, 2.0).unwrap();
     ASSERT_EQ(grown.width, 24u);
-    // the hole spans 7..17 in the outline's bitmap: its outer 2 pixels are outline, its middle is empty
+    // the hole spans 7..17 in the outline's bitmap: its outer 2 pixels are outline, its middle is
+    // empty
     EXPECT_EQ(AtlasPixel(resources, grown, 7, 12), 255);
     EXPECT_EQ(AtlasPixel(resources, grown, 8, 12), 255);
     EXPECT_EQ(AtlasPixel(resources, grown, 12, 12), 0);
@@ -1002,20 +1012,24 @@ TEST(TextLayouter, AnOutlineDrawsTheGrownGlyphsBehindTheText) {
     style.outline           = true;
     style.outline_color     = { 0.6f, 0.05f, 0.05f };
     style.outline_thickness = 4.0f;
-    owe::text::TextLayouter layouter(resources.clone(), TextFont(), mesh.clone(), rstd::move(style), 8);
+    owe::text::TextLayouter layouter(
+        resources.clone(), TextFont(), mesh.clone(), rstd::move(style), 8);
     ASSERT_TRUE(layouter.SetText("H"_str).is_ok());
     const auto& vertices = mesh->GetVertexArray(usize());
     // two quads: the outline, then the letter
     ASSERT_GE(vertices.VertexCount(), usize(8));
-    const float* data   = vertices.Data();
+    const float* data = vertices.Data();
     // position, texcoord and colour, each padded to the same width
-    const auto   stride = vertices.OneSize().to_primitive();
-    const auto   colour = stride / 3 * 2;
-    auto         at     = [&](rstd::size_t vertex, rstd::size_t offset) { return data[vertex * stride + offset]; };
+    const auto stride = vertices.OneSize().to_primitive();
+    const auto colour = stride / 3 * 2;
+    auto       at     = [&](rstd::size_t vertex, rstd::size_t offset) {
+        return data[vertex * stride + offset];
+    };
     EXPECT_FLOAT_EQ(at(0, colour), 0.6f);
     EXPECT_FLOAT_EQ(at(0, colour + 3), 0.5f);
     EXPECT_FLOAT_EQ(at(4, colour), 1.0f);
-    // the outline quad is 2 * 4 wider than the letter (H's corners are square, so nothing mitres past that)
+    // the outline quad is 2 * 4 wider than the letter (H's corners are square, so nothing mitres
+    // past that)
     const float outline_width = at(1, 0) - at(0, 0);
     const float letter_width  = at(5, 0) - at(4, 0);
     EXPECT_NEAR(outline_width - letter_width, 8.0f, 2.0f);
@@ -1027,12 +1041,13 @@ TEST(TextLayouter, AnOutlineDrawsTheGrownGlyphsBehindTheText) {
 TEST(TextLayouter, LettersAreKernedFromGposOrTheKernTable) {
     auto source = rstd::path::PathBuf::from(__FILE__ ""_str);
     auto root   = source.as_path().parent().unwrap().parent().unwrap().parent().unwrap();
-    for (const auto name : { "fixtures/fonts/KerningGpos.ttf"_str, "fixtures/fonts/KerningKern.ttf"_str }) {
-        auto path        = rstd::path::PathBuf::from(root).join(name);
-        auto bytes       = rstd::fs::read(path.as_path()).unwrap();
-        auto resources   = TextResources();
-        auto font_source = resources->RegisterFont(bytes.as_slice()).unwrap();
-        constexpr std::size_t                                                     peak_quads = 8;
+    for (const auto name :
+         { "fixtures/fonts/KerningGpos.ttf"_str, "fixtures/fonts/KerningKern.ttf"_str }) {
+        auto                  path        = rstd::path::PathBuf::from(root).join(name);
+        auto                  bytes       = rstd::fs::read(path.as_path()).unwrap();
+        auto                  resources   = TextResources();
+        auto                  font_source = resources->RegisterFont(bytes.as_slice()).unwrap();
+        constexpr std::size_t peak_quads  = 8;
         const rstd::initializer_list<owe::SceneVertexArray::SceneVertexAttribute> attributes {
             { .name = "a_Position"_Str, .type = owe::VertexType::FLOAT3 },
             { .name = "a_TexCoord"_Str, .type = owe::VertexType::FLOAT2 },
@@ -1049,15 +1064,16 @@ TEST(TextLayouter, LettersAreKernedFromGposOrTheKernTable) {
                                          mesh.clone(),
                                          rstd::move(style),
                                          peak_quads);
-        // each letter advances 60 pixels, its ink 10..50; A V kerns -10 and T o -15, o T not at all:
-        // the pens are 0, 50, 110, 155, 215
+        // each letter advances 60 pixels, its ink 10..50; A V kerns -10 and T o -15, o T not at
+        // all: the pens are 0, 50, 110, 155, 215
         ASSERT_TRUE(layouter.SetText("AVToT"_str).is_ok());
         EXPECT_NEAR(layouter.TextWidth(), 215.0f + 50.0f, 0.01f) << name;
         const auto& vertices = mesh->GetVertexArray(rstd::usize());
         const auto  stride   = vertices.OneSize().to_primitive();
         const float pens[5] { 0, 50, 110, 155, 215 };
         for (std::size_t glyph = 0; glyph < 5; ++glyph)
-            EXPECT_NEAR(vertices.Data()[glyph * 4 * stride], pens[glyph] + 10.0f - 265.0f / 2, 1.01f)
+            EXPECT_NEAR(
+                vertices.Data()[glyph * 4 * stride], pens[glyph] + 10.0f - 265.0f / 2, 1.01f)
                 << name << " " << glyph;
     }
 }

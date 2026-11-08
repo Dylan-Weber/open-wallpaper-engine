@@ -247,8 +247,9 @@ int main(int argc, char** argv) {
     config.graphviz        = args.graphviz;
     config.load_bench      = load_bench.clone();
     config.fps             = static_cast<uint32_t>(args.fps.to_primitive());
-    // a capture's clock is frame-exact: no need to wait 1 / fps between frames (--capture-realtime does)
-    config.unpaced         = capture && ! args.capture_realtime;
+    // a capture's clock is frame-exact: no need to wait 1 / fps between frames (--capture-realtime
+    // does)
+    config.unpaced = capture && ! args.capture_realtime;
     {
         const auto quality    = args.shadow_quality.as_str();
         config.shadow_quality = quality == "low"_str     ? owe::ShadowQuality::Low

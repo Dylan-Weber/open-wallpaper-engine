@@ -132,12 +132,13 @@ public:
     ObjectInstance instance;                  // PKGV0018+; instance binding
 
     // Image-kind specifics (gates listed for reference; reads are unconditional via _NOWARN).
-    bool            perspective { false }; // PKGV0002+
-    bool            reflected { true };
-    bool            copybackground { false }; // PKGV0001+
-    bool            solid { false };          // PKGV0002+
-    bool            solid_layer { false };
-    // an autosize model whose first texture is a sprite sheet: drawn at one frame's size, which the image parser reads
+    bool perspective { false }; // PKGV0002+
+    bool reflected { true };
+    bool copybackground { false }; // PKGV0001+
+    bool solid { false };          // PKGV0002+
+    bool solid_layer { false };
+    // an autosize model whose first texture is a sprite sheet: drawn at one frame's size, which the
+    // image parser reads
     bool            autosize_sprite_sheet { false };
     bool            opaquebackground { false };           // PKGV0005+
     bool            clampuvs { false };                   // PKGV0022+
