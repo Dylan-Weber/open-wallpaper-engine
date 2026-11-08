@@ -414,38 +414,6 @@ TEST(ParticleSubSystem, DerivesMeshCapacityFromItsOwnInstancePool) {
         SubSystem::MaxParticleCapacity(u32::MAX, u32(2), SpawnType::EVENT_FOLLOW).is_none());
 }
 
-TEST(ParticleRuntime, RemovesOnlyTheRequestedOwner) {
-    owe::Scene           scene;
-    owe::ParticleRuntime runtime;
-    auto                 first       = Arc<owe::SceneNode>::make();
-    auto                 second      = Arc<owe::SceneNode>::make();
-    auto                 first_mesh  = rstd::sync::Weak<owe::SceneMesh>::make();
-    auto                 second_mesh = rstd::sync::Weak<owe::SceneMesh>::make();
-    auto add = [&](const Arc<owe::SceneNode>& owner, rstd::sync::Weak<owe::SceneMesh>& weak) {
-        auto mesh = Arc<owe::SceneMesh>::make();
-        weak      = mesh.downgrade();
-        auto subsystem =
-            Box<owe::ParticleSubSystem>::make(scene,
-                                              mesh.clone(),
-                                              u32(4),
-                                              f64(1.0),
-                                              u32(1),
-                                              f64(1.0),
-                                              owe::ParticleSubSystem::SpawnType::STATIC,
-                                              owe::ParticleAnimationSpec {});
-        subsystem->SetOwnerNode(owner.as_ptr());
-        runtime.Add(rstd::move(subsystem));
-    };
-    add(first, first_mesh);
-    add(second, second_mesh);
-    runtime.RemoveOwner(*first);
-    EXPECT_FALSE(first_mesh.upgrade());
-    EXPECT_TRUE(second_mesh.upgrade());
-    runtime.RemoveOwner(*first);
-    runtime.RemoveOwner(*second);
-    EXPECT_FALSE(second_mesh.upgrade());
-}
-
 TEST(ParticleSubSystem, PlaybackResetClearsAndRestartsIndependentStorage) {
     owe::Scene             scene;
     auto                   mesh = Arc<owe::SceneMesh>::make();
@@ -626,6 +594,129 @@ TEST(ParticleSubSystem, ConvertsWorldSpaceFollowAnchorsIntoChildLocalSpace) {
         child_node->ModelTrans() *
         Eigen::Vector4d(child_anchor.x(), child_anchor.y(), child_anchor.z(), 1.0);
     EXPECT_TRUE(resolved.head<3>().cast<float>().isApprox(parent_position));
+}
+
+// A child made by eventspawn stays where its parent's particle was born; one made by eventfollow goes with the particle
+// (particles-event-children).
+TEST(ParticleSubSystem, AnEventSpawnChildStaysWhereTheParticleWasBornAndAFollowChildMoves) {
+    auto child_position = [](owe::ParticleSubSystem::SpawnType type) {
+        owe::Scene scene;
+        auto       parent_node = rstd::sync::Arc<owe::SceneNode>::make();
+        auto       child_node  = rstd::sync::Arc<owe::SceneNode>::make();
+        parent_node->AppendChild(child_node.clone());
+        owe::ParticleSubSystem parent(scene,
+                                      Arc<owe::SceneMesh>::make(),
+                                      u32(1),
+                                      f64(1.0),
+                                      u32(1),
+                                      f64(1.0),
+                                      owe::ParticleSubSystem::SpawnType::STATIC,
+                                      owe::ParticleAnimationSpec {});
+        parent.SetOwnerNode(parent_node.as_ptr());
+        parent.AddInitializer(owe::ParticleParser::GenInitializer(
+            owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(1)));
+        parent.AddInitializer(owe::ParticleParser::GenInitializer(
+            owe::ParseJson(R"({"name":"velocityrandom","min":"30 0 0","max":"30 0 0"})"_str).unwrap(), u32(1)));
+        parent.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+            owe::BoxEmitterProgram(parent.SpawnPipeline(),
+                                   owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) },
+                                   usize())));
+        owe::ParticleInstanceModifiers modifiers(Arc<owe::wpscene::ParticleInstanceoverride>::make(),
+                                                 owe::wpscene::Particle::EFlags { 0 },
+                                                 false);
+        parent.AddOperator(owe::ParticleParser::GenOperator(
+            owe::ParseJson(R"({"name":"movement"})"_str).unwrap(), modifiers.Clone(), parent, usize()));
+        auto child = Box<owe::ParticleSubSystem>::make(scene,
+                                                       Arc<owe::SceneMesh>::make(),
+                                                       u32(1),
+                                                       f64(),
+                                                       u32(1),
+                                                       f64(1.0),
+                                                       type,
+                                                       owe::ParticleAnimationSpec {});
+        child->SetOwnerNode(child_node.as_ptr());
+        child->Finalize();
+        auto* child_system = child.get();
+        parent.AddChild(rstd::move(child));
+        parent.Finalize();
+        for (int tick = 0; tick < 12; ++tick) parent.Tick(f64(1.0 / 4.0), false);
+        EXPECT_EQ(child_system->System().InstanceCount(), usize(1));
+        EXPECT_GT(parent.System().Instance(usize()).Binding().Read().Positions()[usize()].x(), 60.0f);
+        return child_system->InstanceState(usize()).bounded.position;
+    };
+    // the particle has gone 30 a second for 3 seconds by the end
+    EXPECT_NEAR(child_position(owe::ParticleSubSystem::SpawnType::EVENT_SPAWN).x(), 0.0f, 1.0f);
+    EXPECT_GT(child_position(owe::ParticleSubSystem::SpawnType::EVENT_FOLLOW).x(), 60.0f);
+}
+
+// inheritinitialvaluefromevent and inheritvaluefromevent give a child's particle its parent particle's colour, and nothing
+// else (particles-inherit-event).
+TEST(ParticleSubSystem, ChildParticlesInheritTheirParentsColourFromTheEvent) {
+    auto child_color = [](owe::ParticleSubSystem::SpawnType type, ref<str> initializer, ref<str> operator_json) {
+        owe::Scene scene;
+        auto       parent_node = rstd::sync::Arc<owe::SceneNode>::make();
+        auto       child_node  = rstd::sync::Arc<owe::SceneNode>::make();
+        parent_node->AppendChild(child_node.clone());
+        owe::ParticleSubSystem parent(scene,
+                                      Arc<owe::SceneMesh>::make(),
+                                      u32(1),
+                                      f64(),
+                                      u32(1),
+                                      f64(1.0),
+                                      owe::ParticleSubSystem::SpawnType::STATIC,
+                                      owe::ParticleAnimationSpec {});
+        parent.SetOwnerNode(parent_node.as_ptr());
+        parent.AddInitializer(owe::ParticleParser::GenInitializer(
+            owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(1)));
+        parent.AddInitializer(owe::ParticleParser::GenInitializer(
+            owe::ParseJson(R"({"name":"colorrandom","min":"255 128 0","max":"255 128 0"})"_str).unwrap(), u32(1)));
+        parent.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+            owe::BoxEmitterProgram(parent.SpawnPipeline(),
+                                   owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) },
+                                   usize())));
+        auto child = Box<owe::ParticleSubSystem>::make(scene,
+                                                       Arc<owe::SceneMesh>::make(),
+                                                       u32(1),
+                                                       f64(),
+                                                       u32(1),
+                                                       f64(1.0),
+                                                       type,
+                                                       owe::ParticleAnimationSpec {});
+        child->SetOwnerNode(child_node.as_ptr());
+        child->AddInitializer(owe::ParticleParser::GenInitializer(
+            owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(1)));
+        child->AddInitializer(owe::ParticleParser::GenInitializer(
+            owe::ParseJson(R"({"name":"colorrandom","min":"255 255 255","max":"255 255 255"})"_str).unwrap(), u32(1)));
+        if (initializer.len() != usize())
+            child->AddInitializer(
+                owe::ParticleParser::GenInitializer(owe::ParseJson(initializer).unwrap(), u32(1)));
+        child->AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+            owe::BoxEmitterProgram(child->SpawnPipeline(),
+                                   owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) },
+                                   usize())));
+        if (operator_json.len() != usize()) {
+            owe::ParticleInstanceModifiers modifiers(Arc<owe::wpscene::ParticleInstanceoverride>::make(),
+                                                     owe::wpscene::Particle::EFlags { 0 },
+                                                     false);
+            child->AddOperator(owe::ParticleParser::GenOperator(
+                owe::ParseJson(operator_json).unwrap(), modifiers.Clone(), *child, usize()));
+        }
+        child->Finalize();
+        auto* child_system = child.get();
+        parent.AddChild(rstd::move(child));
+        parent.Finalize();
+        for (int tick = 0; tick < 4; ++tick) parent.Tick(f64(1.0 / 60.0), false);
+        auto&                        storage = child_system->System().Instance(usize()).Storage();
+        particle::ParticleSlotReader value(storage, particle::ParticleSlot {});
+        return Eigen::Vector3f(value.Read(child_system->Attributes().color));
+    };
+    const auto spawn  = owe::ParticleSubSystem::SpawnType::EVENT_SPAWN;
+    const auto follow = owe::ParticleSubSystem::SpawnType::EVENT_FOLLOW;
+    EXPECT_TRUE(child_color(spawn, ""_str, ""_str).isApprox(Eigen::Vector3f(1, 1, 1)));
+    EXPECT_TRUE(child_color(spawn, R"({"name":"inheritinitialvaluefromevent"})"_str, ""_str)
+                    .isApprox(Eigen::Vector3f(1, 128.0f / 255.0f, 0)));
+    EXPECT_TRUE(child_color(follow, ""_str, R"({"name":"inheritvaluefromevent"})"_str)
+                    .isApprox(Eigen::Vector3f(1, 128.0f / 255.0f, 0)));
 }
 
 // The layerimage emitter (particles-layerimage) emits from the shape of an image layer: a solid layer's rectangle (its size,
@@ -826,138 +917,6 @@ TEST(LayerImageLattice, OnePointPerFourByFourBlockAtItsCentre) {
     EXPECT_NEAR(purple[usize()].color.z(), 0.5f, 0.01f);
 }
 
-// A child made by eventspawn stays where its parent's particle was born; one made by eventfollow goes with the particle
-// (particles-event-children).
-TEST(ParticleSubSystem, AnEventSpawnChildStaysWhereTheParticleWasBornAndAFollowChildMoves) {
-    auto child_position = [](owe::ParticleSubSystem::SpawnType type) {
-        owe::Scene scene;
-        auto       parent_node = rstd::sync::Arc<owe::SceneNode>::make();
-        auto       child_node  = rstd::sync::Arc<owe::SceneNode>::make();
-        parent_node->AppendChild(child_node.clone());
-        owe::ParticleSubSystem parent(scene,
-                                      Arc<owe::SceneMesh>::make(),
-                                      u32(1),
-                                      f64(1.0),
-                                      u32(1),
-                                      f64(1.0),
-                                      owe::ParticleSubSystem::SpawnType::STATIC,
-                                      owe::ParticleAnimationSpec {});
-        parent.SetOwnerNode(parent_node.as_ptr());
-        parent.AddInitializer(owe::ParticleParser::GenInitializer(
-            owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(1)));
-        parent.AddInitializer(owe::ParticleParser::GenInitializer(
-            owe::ParseJson(R"({"name":"velocityrandom","min":"30 0 0","max":"30 0 0"})"_str).unwrap(), u32(1)));
-        parent.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
-            owe::BoxEmitterProgram(parent.SpawnPipeline(),
-                                   owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) },
-                                   usize())));
-        owe::ParticleInstanceModifiers modifiers(Arc<owe::wpscene::ParticleInstanceoverride>::make(),
-                                                 owe::wpscene::Particle::EFlags { 0 },
-                                                 false);
-        parent.AddOperator(owe::ParticleParser::GenOperator(
-            owe::ParseJson(R"({"name":"movement"})"_str).unwrap(), modifiers.Clone(), parent, usize()));
-        auto child = Box<owe::ParticleSubSystem>::make(scene,
-                                                       Arc<owe::SceneMesh>::make(),
-                                                       u32(1),
-                                                       f64(),
-                                                       u32(1),
-                                                       f64(1.0),
-                                                       type,
-                                                       owe::ParticleAnimationSpec {});
-        child->SetOwnerNode(child_node.as_ptr());
-        child->Finalize();
-        auto* child_system = child.get();
-        parent.AddChild(rstd::move(child));
-        parent.Finalize();
-        for (int tick = 0; tick < 12; ++tick) parent.Tick(f64(1.0 / 4.0), false);
-        EXPECT_EQ(child_system->System().InstanceCount(), usize(1));
-        EXPECT_GT(parent.System().Instance(usize()).Binding().Read().Positions()[usize()].x(), 60.0f);
-        return child_system->InstanceState(usize()).bounded.position;
-    };
-    // the particle has gone 30 a second for 3 seconds by the end
-    EXPECT_NEAR(child_position(owe::ParticleSubSystem::SpawnType::EVENT_SPAWN).x(), 0.0f, 1.0f);
-    EXPECT_GT(child_position(owe::ParticleSubSystem::SpawnType::EVENT_FOLLOW).x(), 60.0f);
-}
-
-// inheritinitialvaluefromevent and inheritvaluefromevent give a child's particle its parent particle's colour, and nothing
-// else (particles-inherit-event).
-TEST(ParticleSubSystem, ChildParticlesInheritTheirParentsColourFromTheEvent) {
-    auto child_look = [](owe::ParticleSubSystem::SpawnType type, ref<str> initializer, ref<str> operator_json) {
-        owe::Scene scene;
-        auto       parent_node = rstd::sync::Arc<owe::SceneNode>::make();
-        auto       child_node  = rstd::sync::Arc<owe::SceneNode>::make();
-        parent_node->AppendChild(child_node.clone());
-        owe::ParticleSubSystem parent(scene,
-                                      Arc<owe::SceneMesh>::make(),
-                                      u32(1),
-                                      f64(),
-                                      u32(1),
-                                      f64(1.0),
-                                      owe::ParticleSubSystem::SpawnType::STATIC,
-                                      owe::ParticleAnimationSpec {});
-        parent.SetOwnerNode(parent_node.as_ptr());
-        parent.AddInitializer(owe::ParticleParser::GenInitializer(
-            owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(1)));
-        parent.AddInitializer(owe::ParticleParser::GenInitializer(
-            owe::ParseJson(R"({"name":"colorrandom","min":"255 128 0","max":"255 128 0"})"_str).unwrap(), u32(1)));
-        parent.AddInitializer(owe::ParticleParser::GenInitializer(
-            owe::ParseJson(R"({"name":"alpharandom","min":0.5,"max":0.5})"_str).unwrap(), u32(1)));
-        parent.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
-            owe::BoxEmitterProgram(parent.SpawnPipeline(),
-                                   owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) },
-                                   usize())));
-        auto child = Box<owe::ParticleSubSystem>::make(scene,
-                                                       Arc<owe::SceneMesh>::make(),
-                                                       u32(1),
-                                                       f64(),
-                                                       u32(1),
-                                                       f64(1.0),
-                                                       type,
-                                                       owe::ParticleAnimationSpec {});
-        child->SetOwnerNode(child_node.as_ptr());
-        child->AddInitializer(owe::ParticleParser::GenInitializer(
-            owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(1)));
-        child->AddInitializer(owe::ParticleParser::GenInitializer(
-            owe::ParseJson(R"({"name":"colorrandom","min":"255 255 255","max":"255 255 255"})"_str).unwrap(), u32(1)));
-        if (initializer.len() != usize())
-            child->AddInitializer(
-                owe::ParticleParser::GenInitializer(owe::ParseJson(initializer).unwrap(), u32(1)));
-        child->AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
-            owe::BoxEmitterProgram(child->SpawnPipeline(),
-                                   owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) },
-                                   usize())));
-        if (operator_json.len() != usize()) {
-            owe::ParticleInstanceModifiers modifiers(Arc<owe::wpscene::ParticleInstanceoverride>::make(),
-                                                     owe::wpscene::Particle::EFlags { 0 },
-                                                     false);
-            child->AddOperator(owe::ParticleParser::GenOperator(
-                owe::ParseJson(operator_json).unwrap(), modifiers.Clone(), *child, usize()));
-        }
-        child->Finalize();
-        auto* child_system = child.get();
-        parent.AddChild(rstd::move(child));
-        parent.Finalize();
-        for (int tick = 0; tick < 4; ++tick) parent.Tick(f64(1.0 / 60.0), false);
-        auto&                        storage = child_system->System().Instance(usize()).Storage();
-        particle::ParticleSlotReader value(storage, particle::ParticleSlot {});
-        return std::pair<Eigen::Vector3f, float>(Eigen::Vector3f(value.Read(child_system->Attributes().color)),
-                                                 float(value.Read(child_system->Attributes().alpha)));
-    };
-    const auto spawn  = owe::ParticleSubSystem::SpawnType::EVENT_SPAWN;
-    const auto follow = owe::ParticleSubSystem::SpawnType::EVENT_FOLLOW;
-    auto alone = child_look(spawn, ""_str, ""_str);
-    EXPECT_TRUE(alone.first.isApprox(Eigen::Vector3f(1, 1, 1)));
-    EXPECT_NEAR(alone.second, 1.0f, 1e-5f);
-    // the initializer takes the colour only
-    auto initial = child_look(spawn, R"({"name":"inheritinitialvaluefromevent"})"_str, ""_str);
-    EXPECT_TRUE(initial.first.isApprox(Eigen::Vector3f(1, 128.0f / 255.0f, 0)));
-    EXPECT_NEAR(initial.second, 1.0f, 1e-5f);
-    // the operator the colour and the opacity
-    auto each_frame = child_look(follow, ""_str, R"({"name":"inheritvaluefromevent"})"_str);
-    EXPECT_TRUE(each_frame.first.isApprox(Eigen::Vector3f(1, 128.0f / 255.0f, 0)));
-    EXPECT_NEAR(each_frame.second, 0.5f, 1e-5f);
-}
-
 TEST(ParticleInstanceOverride, TracksProvidedControlpoints) {
     auto json = owe::ParseJson(R"({"size":2,"controlpoint1":"120 240 0"})"_str).unwrap();
     owe::wpscene::ParticleInstanceoverride override;
@@ -1124,6 +1083,241 @@ TEST(ParticleSubSystem, AppliesVortexAroundWorldSpaceOwner) {
     EXPECT_GT(std::abs(positions[usize()].z()), 0.01f);
 }
 
+// A frame of Wallpaper Engine's drag takes drag dt / (1 + (dt / 0.065)^2) of a particle's speed
+// (particles-drag-rest at 15, 30 and 60 frames a second: a particle thrown at drag/2 x D stops at
+// 0.51, 0.80 and 0.95 x D for drag 0.5 to 2, where a drag of exactly drag a second would say 1):
+// at 60 frames a second and drag 0.5 a frame takes 0.78%, so in 2 s a particle thrown at 200
+// has gone 200/60 (1 - r^120) / (1 - r) = 260 units and stops at 200/60 / 0.0078 = 426.
+TEST(ParticleSubSystem, DragSlowsEachFrameByItsLoss) {
+    owe::Scene             scene;
+    auto                   mesh = Arc<owe::SceneMesh>::make();
+    owe::ParticleSubSystem subsystem(scene,
+                                     mesh.clone(),
+                                     u32(1),
+                                     f64(),
+                                     u32(1),
+                                     f64(1.0),
+                                     owe::ParticleSubSystem::SpawnType::STATIC,
+                                     owe::ParticleAnimationSpec {},
+                                     {},
+                                     u32(),
+                                     f64(),
+                                     f64(),
+                                     true);
+    auto owner    = rstd::sync::Arc<owe::SceneNode>::make(
+        Eigen::Vector3f::Zero(), Eigen::Vector3f::Ones(), Eigen::Vector3f::Zero());
+    auto override = rstd::sync::Arc<owe::wpscene::ParticleInstanceoverride>::make();
+    subsystem.SetOwnerNode(owner.as_ptr());
+    auto modifiers = owe::ParticleInstanceModifiers(
+        override.clone(), owe::wpscene::Particle::EFlags { 0 }, true);
+    subsystem.SetInstanceModifiers(modifiers.Clone());
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"lifetimerandom","min":1000,"max":1000})"_str).unwrap(), u32(1)));
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"velocityrandom","min":"200 0 0","max":"200 0 0"})"_str).unwrap(),
+        u32(2)));
+    subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+        owe::BoxEmitterProgram(subsystem.SpawnPipeline(),
+                               owe::ParticleBoxEmitterArgs {
+                                   .instantaneous = u32(1),
+                               },
+                               usize())));
+    subsystem.AddOperator(owe::ParticleParser::GenOperator(
+        owe::ParseJson(R"({"name":"movement","drag":0.5,"gravity":"0 0 0"})"_str).unwrap(),
+        modifiers.Clone(),
+        subsystem,
+        usize()));
+    subsystem.Finalize();
+    for (int frame = 0; frame < 120; ++frame) subsystem.Tick(f64(1.0 / 60.0), false);
+
+    auto positions = subsystem.System().Instance(usize()).Binding().Read().Positions();
+    ASSERT_EQ(positions.len(), usize(1));
+    EXPECT_NEAR(positions[usize()].x(), 260.1f, 4.0f);
+    // ...and it stops at its speed over a frame's loss from the move before the slowing
+    for (int frame = 0; frame < 3000; ++frame) subsystem.Tick(f64(1.0 / 60.0), false);
+    const auto rest = subsystem.System().Instance(usize()).Binding().Read().Positions();
+    EXPECT_NEAR(rest[usize()].x(), 426.3f, 3.0f);
+}
+
+// capvelocity keeps a particle at or under maxspeed (particles-capvelocity: a stream thrown at 200
+// units/s and capped at 100 is spaced 25 units at 4 a second; owe ignored the operator).
+TEST(ParticleSubSystem, CapVelocityLimitsTheSpeed) {
+    owe::Scene             scene;
+    auto                   mesh = Arc<owe::SceneMesh>::make();
+    owe::ParticleSubSystem subsystem(scene,
+                                     mesh.clone(),
+                                     u32(1),
+                                     f64(),
+                                     u32(1),
+                                     f64(1.0),
+                                     owe::ParticleSubSystem::SpawnType::STATIC,
+                                     owe::ParticleAnimationSpec {},
+                                     {},
+                                     u32(),
+                                     f64(),
+                                     f64(),
+                                     true);
+    auto owner    = rstd::sync::Arc<owe::SceneNode>::make(
+        Eigen::Vector3f::Zero(), Eigen::Vector3f::Ones(), Eigen::Vector3f::Zero());
+    auto override = rstd::sync::Arc<owe::wpscene::ParticleInstanceoverride>::make();
+    subsystem.SetOwnerNode(owner.as_ptr());
+    auto modifiers = owe::ParticleInstanceModifiers(
+        override.clone(), owe::wpscene::Particle::EFlags { 0 }, true);
+    subsystem.SetInstanceModifiers(modifiers.Clone());
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"lifetimerandom","min":1000,"max":1000})"_str).unwrap(), u32(1)));
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"velocityrandom","min":"200 0 0","max":"200 0 0"})"_str).unwrap(),
+        u32(2)));
+    subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+        owe::BoxEmitterProgram(subsystem.SpawnPipeline(),
+                               owe::ParticleBoxEmitterArgs {
+                                   .instantaneous = u32(1),
+                               },
+                               usize())));
+    subsystem.AddOperator(owe::ParticleParser::GenOperator(
+        owe::ParseJson(R"({"name":"movement","drag":0,"gravity":"0 0 0"})"_str).unwrap(),
+        modifiers.Clone(),
+        subsystem,
+        usize()));
+    subsystem.AddOperator(owe::ParticleParser::GenOperator(
+        owe::ParseJson(R"({"name":"capvelocity","maxspeed":100})"_str).unwrap(),
+        modifiers.Clone(),
+        subsystem,
+        usize(1)));
+    subsystem.Finalize();
+    for (int frame = 0; frame < 120; ++frame) subsystem.Tick(f64(1.0 / 60.0), false);
+
+    // the first frame moves at 200, the rest at 100
+    auto positions = subsystem.System().Instance(usize()).Binding().Read().Positions();
+    ASSERT_EQ(positions.len(), usize(1));
+    EXPECT_NEAR(positions[usize()].x(), 200.0f / 60.0f + 100.0f * 119.0f / 60.0f, 0.5f);
+}
+
+// reducemovementnearcontrolpoint slows particles near a control point like a drag: its full
+// reductioninner within distanceinner, falling to reductionouter at distanceouter by the squared
+// distance (particles-reduce-near: streams at 200 units/s through a control point, inner 50, outer
+// 150, reduction 1, 3 and 10; owe ignored the operator). A particle that stays within distanceinner
+// at reduction 10 goes 200/60 (1 - r^60) / (1 - r) = 23.3 units in a second of 60 frames,
+// r = 1 / (1 + 10/60).
+TEST(ParticleSubSystem, ReduceMovementNearControlPointSlowsLikeADrag) {
+    owe::Scene             scene;
+    auto                   mesh = Arc<owe::SceneMesh>::make();
+    owe::ParticleSubSystem subsystem(scene,
+                                     mesh.clone(),
+                                     u32(1),
+                                     f64(),
+                                     u32(1),
+                                     f64(1.0),
+                                     owe::ParticleSubSystem::SpawnType::STATIC,
+                                     owe::ParticleAnimationSpec {},
+                                     {},
+                                     u32(),
+                                     f64(),
+                                     f64(),
+                                     true);
+    auto owner    = rstd::sync::Arc<owe::SceneNode>::make(
+        Eigen::Vector3f::Zero(), Eigen::Vector3f::Ones(), Eigen::Vector3f::Zero());
+    auto override = rstd::sync::Arc<owe::wpscene::ParticleInstanceoverride>::make();
+    subsystem.SetOwnerNode(owner.as_ptr());
+    auto modifiers = owe::ParticleInstanceModifiers(
+        override.clone(), owe::wpscene::Particle::EFlags { 0 }, true);
+    subsystem.SetInstanceModifiers(modifiers.Clone());
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"lifetimerandom","min":1000,"max":1000})"_str).unwrap(), u32(1)));
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"velocityrandom","min":"200 0 0","max":"200 0 0"})"_str).unwrap(),
+        u32(2)));
+    subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+        owe::BoxEmitterProgram(subsystem.SpawnPipeline(),
+                               owe::ParticleBoxEmitterArgs {
+                                   .instantaneous = u32(1),
+                               },
+                               usize())));
+    subsystem.AddOperator(owe::ParticleParser::GenOperator(
+        owe::ParseJson(R"({"name":"movement","drag":0,"gravity":"0 0 0"})"_str).unwrap(),
+        modifiers.Clone(),
+        subsystem,
+        usize()));
+    subsystem.AddOperator(owe::ParticleParser::GenOperator(
+        owe::ParseJson(
+            R"({"name":"reducemovementnearcontrolpoint","controlpoint":0,"distanceinner":50,"distanceouter":150,"reductioninner":10,"reductionouter":0})"_str)
+            .unwrap(),
+        modifiers.Clone(),
+        subsystem,
+        usize(1)));
+    subsystem.Finalize();
+    for (int frame = 0; frame < 60; ++frame) subsystem.Tick(f64(1.0 / 60.0), false);
+
+    auto positions = subsystem.System().Instance(usize()).Binding().Read().Positions();
+    ASSERT_EQ(positions.len(), usize(1));
+    EXPECT_NEAR(positions[usize()].x(), 23.33f, 0.5f);
+}
+
+// remapvalue maps the distance to a control point, clamped to its input range, linearly onto its
+// output range (particles-remapvalue: rows 0 to 400 units out remap colour red to blue, size 10 to
+// 80 - drawn 20 to 160, a radius - and opacity 1 to 0.1, and multiply size 40 by 0.2 to 2).
+TEST(ParticleRemap, MapsTheDistanceOntoTheOutputRange) {
+    auto color = owe::ParticleRemap::FromJson(
+                     owe::ParseJson(
+                         R"({"name":"remapvalue","input":"distancetocontrolpoint","inputcontrolpoint0":1,"inputrangemin":0,"inputrangemax":400,"operation":"remap","output":"color","outputrangemin":"1 0 0","outputrangemax":"0 0 1"})"_str)
+                         .unwrap())
+                     .unwrap();
+    EXPECT_EQ(color.controlpoint, i32(1));
+    EXPECT_TRUE(color.Apply(Eigen::Vector3d::Ones(), 100).isApprox(Eigen::Vector3d(0.75, 0, 0.25)));
+    EXPECT_TRUE(color.Apply(Eigen::Vector3d::Ones(), 900).isApprox(Eigen::Vector3d(0, 0, 1)));
+    EXPECT_TRUE(color.Apply(Eigen::Vector3d::Ones(), -5).isApprox(Eigen::Vector3d(1, 0, 0)));
+
+    auto size = owe::ParticleRemap::FromJson(
+                    owe::ParseJson(
+                        R"({"name":"remapvalue","input":"distancetocontrolpoint","inputrangemax":400,"output":"size","outputrangemin":10,"outputrangemax":80})"_str)
+                        .unwrap())
+                    .unwrap();
+    EXPECT_NEAR(size.Apply(Eigen::Vector3d::Constant(40), 200).x(), 90.0, 1e-4);
+
+    auto multiply = owe::ParticleRemap::FromJson(
+                        owe::ParseJson(
+                            R"({"name":"remapvalue","input":"distancetocontrolpoint","inputrangemax":400,"operation":"multiply","output":"size","outputrangemin":0.2,"outputrangemax":2})"_str)
+                            .unwrap())
+                        .unwrap();
+    EXPECT_NEAR(multiply.Apply(Eigen::Vector3d::Constant(40), 400).x(), 80.0, 1e-4);
+    EXPECT_NEAR(multiply.Apply(Eigen::Vector3d::Constant(40), 0).x(), 8.0, 1e-4);
+
+    // noise and sine transforms aren't read
+    EXPECT_TRUE(owe::ParticleRemap::FromJson(
+                    owe::ParseJson(
+                        R"({"name":"remapvalue","output":"velocity","transformfunction":"simplexnoise"})"_str)
+                        .unwrap())
+                    .is_none());
+}
+
+// remapinitialvalue reads the same settings as remapvalue (particles-remapinitialvalue); one
+// without an output it can set (thunderbolt_beam_child's, distance to control point 1 with no
+// output) does nothing.
+TEST(ParticleRemap, TheInitialValueFormReadsTheSameSettings) {
+    auto size = owe::ParticleRemap::FromJson(
+                    owe::ParseJson(
+                        R"({"name":"remapinitialvalue","input":"distancetocontrolpoint","inputcontrolpoint0":0,"inputrangemin":0,"inputrangemax":400,"operation":"remap","output":"size","outputrangemin":10,"outputrangemax":80})"_str)
+                        .unwrap())
+                    .unwrap();
+    EXPECT_NEAR(size.Apply(Eigen::Vector3d::Constant(40), 400).x(), 160.0, 1e-4);
+    EXPECT_TRUE(owe::ParticleRemap::FromJson(
+                    owe::ParseJson(
+                        R"({"name":"remapinitialvalue","input":"distancetocontrolpoint","inputcontrolpoint0":1,"inputrangemax":50,"operation":"multiply"})"_str)
+                        .unwrap())
+                    .is_none());
+}
+
+// hsvcolorrandom's colours: hue around the circle, saturation and value (particles-hsvcolor:
+// Wallpaper Engine draws hue 0.6 at saturation 0.5, value 0.5 as 0.25 0.35 0.5).
+TEST(ParticleColor, HsvToRgbGoesAroundTheHueCircle) {
+    EXPECT_TRUE(owe::HsvToRgb(0, 1, 1).isApprox(Eigen::Vector3d(1, 0, 0)));
+    EXPECT_TRUE(owe::HsvToRgb(1.0 / 3.0, 1, 1).isApprox(Eigen::Vector3d(0, 1, 0)));
+    EXPECT_TRUE(owe::HsvToRgb(2.0 / 3.0, 1, 1).isApprox(Eigen::Vector3d(0, 0, 1)));
+    EXPECT_TRUE(owe::HsvToRgb(1.0, 1, 1).isApprox(Eigen::Vector3d(1, 0, 0)));
+    EXPECT_TRUE(owe::HsvToRgb(0.6, 0.5, 0.5).isApprox(Eigen::Vector3d(0.25, 0.35, 0.5)));
+}
+
 // A plain rope's vertex shader takes the length of the rope, in points, from the fourth component of
 // each segment's end point, and spreads its texture over length - 1 segments: a rope of n particles
 // has n - 1 segments and says n (particles-rope-count: owe said n - 1, so the last segment's
@@ -1181,60 +1375,6 @@ TEST(ParticleSubSystem, ARopeSaysItsLengthInPoints) {
     ASSERT_EQ(vertices.OneSize(), usize(19));
     ASSERT_EQ(vertices.VertexCount(), usize(3));
     for (std::size_t v = 0; v < 3; ++v) EXPECT_FLOAT_EQ(vertices.Data()[v * 19 + 7], 4.0f) << v;
-}
-
-// remapvalue maps the distance to a control point, clamped to its input range, linearly onto its
-// output range (particles-remapvalue: rows 0 to 400 units out remap colour red to blue, size 10 to
-// 80 - drawn 20 to 160, a radius - and opacity 1 to 0.1, and multiply size 40 by 0.2 to 2).
-TEST(ParticleRemap, MapsTheDistanceOntoTheOutputRange) {
-    auto color = owe::ParticleRemap::FromJson(
-                     owe::ParseJson(
-                         R"({"name":"remapvalue","input":"distancetocontrolpoint","inputcontrolpoint0":1,"inputrangemin":0,"inputrangemax":400,"operation":"remap","output":"color","outputrangemin":"1 0 0","outputrangemax":"0 0 1"})"_str)
-                         .unwrap())
-                     .unwrap();
-    EXPECT_EQ(color.controlpoint, i32(1));
-    EXPECT_TRUE(color.Apply(Eigen::Vector3d::Ones(), 100).isApprox(Eigen::Vector3d(0.75, 0, 0.25)));
-    EXPECT_TRUE(color.Apply(Eigen::Vector3d::Ones(), 900).isApprox(Eigen::Vector3d(0, 0, 1)));
-    EXPECT_TRUE(color.Apply(Eigen::Vector3d::Ones(), -5).isApprox(Eigen::Vector3d(1, 0, 0)));
-
-    auto size = owe::ParticleRemap::FromJson(
-                    owe::ParseJson(
-                        R"({"name":"remapvalue","input":"distancetocontrolpoint","inputrangemax":400,"output":"size","outputrangemin":10,"outputrangemax":80})"_str)
-                        .unwrap())
-                    .unwrap();
-    EXPECT_NEAR(size.Apply(Eigen::Vector3d::Constant(40), 200).x(), 90.0, 1e-4);
-
-    auto multiply = owe::ParticleRemap::FromJson(
-                        owe::ParseJson(
-                            R"({"name":"remapvalue","input":"distancetocontrolpoint","inputrangemax":400,"operation":"multiply","output":"size","outputrangemin":0.2,"outputrangemax":2})"_str)
-                            .unwrap())
-                        .unwrap();
-    EXPECT_NEAR(multiply.Apply(Eigen::Vector3d::Constant(40), 400).x(), 80.0, 1e-4);
-    EXPECT_NEAR(multiply.Apply(Eigen::Vector3d::Constant(40), 0).x(), 8.0, 1e-4);
-
-    // noise and sine transforms aren't read
-    EXPECT_TRUE(owe::ParticleRemap::FromJson(
-                    owe::ParseJson(
-                        R"({"name":"remapvalue","output":"velocity","transformfunction":"simplexnoise"})"_str)
-                        .unwrap())
-                    .is_none());
-}
-
-// remapinitialvalue reads the same settings as remapvalue (particles-remapinitialvalue); one
-// without an output it can set (thunderbolt_beam_child's, distance to control point 1 with no
-// output) does nothing.
-TEST(ParticleRemap, TheInitialValueFormReadsTheSameSettings) {
-    auto size = owe::ParticleRemap::FromJson(
-                    owe::ParseJson(
-                        R"({"name":"remapinitialvalue","input":"distancetocontrolpoint","inputcontrolpoint0":0,"inputrangemin":0,"inputrangemax":400,"operation":"remap","output":"size","outputrangemin":10,"outputrangemax":80})"_str)
-                        .unwrap())
-                    .unwrap();
-    EXPECT_NEAR(size.Apply(Eigen::Vector3d::Constant(40), 400).x(), 160.0, 1e-4);
-    EXPECT_TRUE(owe::ParticleRemap::FromJson(
-                    owe::ParseJson(
-                        R"({"name":"remapinitialvalue","input":"distancetocontrolpoint","inputcontrolpoint0":1,"inputrangemax":50,"operation":"multiply"})"_str)
-                        .unwrap())
-                    .is_none());
 }
 
 // remapvalue's other inputs (particles-remap-inputs, grey = the input over its range): the particle's speed per axis
@@ -1372,187 +1512,6 @@ TEST(ParticleSubSystem, RemapValueMapsTheParticlesVelocityOpacityAndRotation) {
     EXPECT_NEAR(spin.x(), 0.25f, 1e-4f);
 }
 
-// reducemovementnearcontrolpoint slows particles near a control point like a drag: its full
-// reductioninner within distanceinner, falling to reductionouter at distanceouter by the squared
-// distance (particles-reduce-near: streams at 200 units/s through a control point, inner 50, outer
-// 150, reduction 1, 3 and 10; owe ignored the operator). A particle that stays within distanceinner
-// at reduction 10 goes 200/60 (1 - r^60) / (1 - r) = 23.3 units in a second of 60 frames,
-// r = 1 / (1 + 10/60).
-TEST(ParticleSubSystem, ReduceMovementNearControlPointSlowsLikeADrag) {
-    owe::Scene             scene;
-    auto                   mesh = Arc<owe::SceneMesh>::make();
-    owe::ParticleSubSystem subsystem(scene,
-                                     mesh.clone(),
-                                     u32(1),
-                                     f64(),
-                                     u32(1),
-                                     f64(1.0),
-                                     owe::ParticleSubSystem::SpawnType::STATIC,
-                                     owe::ParticleAnimationSpec {},
-                                     {},
-                                     u32(),
-                                     f64(),
-                                     f64(),
-                                     true);
-    auto owner    = rstd::sync::Arc<owe::SceneNode>::make(
-        Eigen::Vector3f::Zero(), Eigen::Vector3f::Ones(), Eigen::Vector3f::Zero());
-    auto override = rstd::sync::Arc<owe::wpscene::ParticleInstanceoverride>::make();
-    subsystem.SetOwnerNode(owner.as_ptr());
-    auto modifiers = owe::ParticleInstanceModifiers(
-        override.clone(), owe::wpscene::Particle::EFlags { 0 }, true);
-    subsystem.SetInstanceModifiers(modifiers.Clone());
-    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
-        owe::ParseJson(R"({"name":"lifetimerandom","min":1000,"max":1000})"_str).unwrap(), u32(1)));
-    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
-        owe::ParseJson(R"({"name":"velocityrandom","min":"200 0 0","max":"200 0 0"})"_str).unwrap(),
-        u32(2)));
-    subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
-        owe::BoxEmitterProgram(subsystem.SpawnPipeline(),
-                               owe::ParticleBoxEmitterArgs {
-                                   .instantaneous = u32(1),
-                               },
-                               usize())));
-    subsystem.AddOperator(owe::ParticleParser::GenOperator(
-        owe::ParseJson(R"({"name":"movement","drag":0,"gravity":"0 0 0"})"_str).unwrap(),
-        modifiers.Clone(),
-        subsystem,
-        usize()));
-    subsystem.AddOperator(owe::ParticleParser::GenOperator(
-        owe::ParseJson(
-            R"({"name":"reducemovementnearcontrolpoint","controlpoint":0,"distanceinner":50,"distanceouter":150,"reductioninner":10,"reductionouter":0})"_str)
-            .unwrap(),
-        modifiers.Clone(),
-        subsystem,
-        usize(1)));
-    subsystem.Finalize();
-    for (int frame = 0; frame < 60; ++frame) subsystem.Tick(f64(1.0 / 60.0), false);
-
-    auto positions = subsystem.System().Instance(usize()).Binding().Read().Positions();
-    ASSERT_EQ(positions.len(), usize(1));
-    EXPECT_NEAR(positions[usize()].x(), 23.33f, 0.5f);
-}
-
-// hsvcolorrandom's colours: hue around the circle, saturation and value (particles-hsvcolor:
-// Wallpaper Engine draws hue 0.6 at saturation 0.5, value 0.5 as 0.25 0.35 0.5).
-TEST(ParticleColor, HsvToRgbGoesAroundTheHueCircle) {
-    EXPECT_TRUE(owe::HsvToRgb(0, 1, 1).isApprox(Eigen::Vector3d(1, 0, 0)));
-    EXPECT_TRUE(owe::HsvToRgb(1.0 / 3.0, 1, 1).isApprox(Eigen::Vector3d(0, 1, 0)));
-    EXPECT_TRUE(owe::HsvToRgb(2.0 / 3.0, 1, 1).isApprox(Eigen::Vector3d(0, 0, 1)));
-    EXPECT_TRUE(owe::HsvToRgb(1.0, 1, 1).isApprox(Eigen::Vector3d(1, 0, 0)));
-    EXPECT_TRUE(owe::HsvToRgb(0.6, 0.5, 0.5).isApprox(Eigen::Vector3d(0.25, 0.35, 0.5)));
-}
-
-// A frame of Wallpaper Engine's drag takes drag dt / (1 + (dt / 0.065)^2) of a particle's speed
-// (particles-drag-rest at 15, 30 and 60 frames a second: a particle thrown at drag/2 x D stops at
-// 0.51, 0.80 and 0.95 x D for drag 0.5 to 2, where a drag of exactly drag a second would say 1):
-// at 60 frames a second and drag 0.5 a frame takes 0.78%, so in 2 s a particle thrown at 200
-// has gone 200/60 (1 - r^120) / (1 - r) = 260 units and stops at 200/60 / 0.0078 = 426.
-TEST(ParticleSubSystem, DragSlowsEachFrameByItsLoss) {
-    owe::Scene             scene;
-    auto                   mesh = Arc<owe::SceneMesh>::make();
-    owe::ParticleSubSystem subsystem(scene,
-                                     mesh.clone(),
-                                     u32(1),
-                                     f64(),
-                                     u32(1),
-                                     f64(1.0),
-                                     owe::ParticleSubSystem::SpawnType::STATIC,
-                                     owe::ParticleAnimationSpec {},
-                                     {},
-                                     u32(),
-                                     f64(),
-                                     f64(),
-                                     true);
-    auto owner    = rstd::sync::Arc<owe::SceneNode>::make(
-        Eigen::Vector3f::Zero(), Eigen::Vector3f::Ones(), Eigen::Vector3f::Zero());
-    auto override = rstd::sync::Arc<owe::wpscene::ParticleInstanceoverride>::make();
-    subsystem.SetOwnerNode(owner.as_ptr());
-    auto modifiers = owe::ParticleInstanceModifiers(
-        override.clone(), owe::wpscene::Particle::EFlags { 0 }, true);
-    subsystem.SetInstanceModifiers(modifiers.Clone());
-    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
-        owe::ParseJson(R"({"name":"lifetimerandom","min":1000,"max":1000})"_str).unwrap(), u32(1)));
-    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
-        owe::ParseJson(R"({"name":"velocityrandom","min":"200 0 0","max":"200 0 0"})"_str).unwrap(),
-        u32(2)));
-    subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
-        owe::BoxEmitterProgram(subsystem.SpawnPipeline(),
-                               owe::ParticleBoxEmitterArgs {
-                                   .instantaneous = u32(1),
-                               },
-                               usize())));
-    subsystem.AddOperator(owe::ParticleParser::GenOperator(
-        owe::ParseJson(R"({"name":"movement","drag":0.5,"gravity":"0 0 0"})"_str).unwrap(),
-        modifiers.Clone(),
-        subsystem,
-        usize()));
-    subsystem.Finalize();
-    for (int frame = 0; frame < 120; ++frame) subsystem.Tick(f64(1.0 / 60.0), false);
-
-    auto positions = subsystem.System().Instance(usize()).Binding().Read().Positions();
-    ASSERT_EQ(positions.len(), usize(1));
-    EXPECT_NEAR(positions[usize()].x(), 260.1f, 4.0f);
-    // ...and it stops at its speed over a frame's loss from the move before the slowing
-    for (int frame = 0; frame < 3000; ++frame) subsystem.Tick(f64(1.0 / 60.0), false);
-    const auto rest = subsystem.System().Instance(usize()).Binding().Read().Positions();
-    EXPECT_NEAR(rest[usize()].x(), 426.3f, 3.0f);
-}
-
-// capvelocity keeps a particle at or under maxspeed (particles-capvelocity: a stream thrown at 200
-// units/s and capped at 100 is spaced 25 units at 4 a second; owe ignored the operator).
-TEST(ParticleSubSystem, CapVelocityLimitsTheSpeed) {
-    owe::Scene             scene;
-    auto                   mesh = Arc<owe::SceneMesh>::make();
-    owe::ParticleSubSystem subsystem(scene,
-                                     mesh.clone(),
-                                     u32(1),
-                                     f64(),
-                                     u32(1),
-                                     f64(1.0),
-                                     owe::ParticleSubSystem::SpawnType::STATIC,
-                                     owe::ParticleAnimationSpec {},
-                                     {},
-                                     u32(),
-                                     f64(),
-                                     f64(),
-                                     true);
-    auto owner    = rstd::sync::Arc<owe::SceneNode>::make(
-        Eigen::Vector3f::Zero(), Eigen::Vector3f::Ones(), Eigen::Vector3f::Zero());
-    auto override = rstd::sync::Arc<owe::wpscene::ParticleInstanceoverride>::make();
-    subsystem.SetOwnerNode(owner.as_ptr());
-    auto modifiers = owe::ParticleInstanceModifiers(
-        override.clone(), owe::wpscene::Particle::EFlags { 0 }, true);
-    subsystem.SetInstanceModifiers(modifiers.Clone());
-    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
-        owe::ParseJson(R"({"name":"lifetimerandom","min":1000,"max":1000})"_str).unwrap(), u32(1)));
-    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
-        owe::ParseJson(R"({"name":"velocityrandom","min":"200 0 0","max":"200 0 0"})"_str).unwrap(),
-        u32(2)));
-    subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
-        owe::BoxEmitterProgram(subsystem.SpawnPipeline(),
-                               owe::ParticleBoxEmitterArgs {
-                                   .instantaneous = u32(1),
-                               },
-                               usize())));
-    subsystem.AddOperator(owe::ParticleParser::GenOperator(
-        owe::ParseJson(R"({"name":"movement","drag":0,"gravity":"0 0 0"})"_str).unwrap(),
-        modifiers.Clone(),
-        subsystem,
-        usize()));
-    subsystem.AddOperator(owe::ParticleParser::GenOperator(
-        owe::ParseJson(R"({"name":"capvelocity","maxspeed":100})"_str).unwrap(),
-        modifiers.Clone(),
-        subsystem,
-        usize(1)));
-    subsystem.Finalize();
-    for (int frame = 0; frame < 120; ++frame) subsystem.Tick(f64(1.0 / 60.0), false);
-
-    // the first frame moves at 200, the rest at 100
-    auto positions = subsystem.System().Instance(usize()).Binding().Read().Positions();
-    ASSERT_EQ(positions.len(), usize(1));
-    EXPECT_NEAR(positions[usize()].x(), 200.0f / 60.0f + 100.0f * 119.0f / 60.0f, 0.5f);
-}
-
 TEST(ParticleSubSystem, AppliesTurbulenceMaskAsAxisWeights) {
     auto simulate = [](ref<str> config) -> Eigen::Vector3f {
         owe::Scene             scene;
@@ -1606,54 +1565,6 @@ TEST(ParticleSubSystem, AppliesTurbulenceMaskAsAxisWeights) {
     EXPECT_FLOAT_EQ(defaults.x(), full.x());
     EXPECT_FLOAT_EQ(defaults.y(), full.y());
     EXPECT_FLOAT_EQ(defaults.z(), 0.0f);
-}
-
-// inheritcontrolpointvelocity (particles-controlpoint-velocity): a particle starts with its control point's velocity
-// (how fast the object moves, per second) times a factor between min and max. The first frame has no earlier position
-// to measure from, so a particle born then gets none.
-TEST(ParticleSubSystem, InheritControlpointVelocityTakesTheObjectsVelocity) {
-    auto last_velocity = [](bool world_space) {
-        owe::Scene scene;
-        owe::ParticleSubSystem subsystem(scene,
-                                         Arc<owe::SceneMesh>::make(),
-                                         u32(64),
-                                         f64(1.0),
-                                         u32(1),
-                                         f64(1.0),
-                                         owe::ParticleSubSystem::SpawnType::STATIC,
-                                         owe::ParticleAnimationSpec {},
-                                         {},
-                                         u32(),
-                                         f64(),
-                                         f64(),
-                                         world_space);
-        subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
-            owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(64)));
-        subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
-            owe::ParseJson(R"({"name":"inheritcontrolpointvelocity","controlpoint":0,"min":0.5,"max":0.5})"_str)
-                .unwrap(),
-            u32(64)));
-        owe::wpscene::Emitter emitter;
-        emitter.name = String::make("boxrandom"_str);
-        emitter.rate = 64.0f;
-        subsystem.AddEmitter(owe::ParticleParser::GenEmitter(emitter, subsystem, usize()));
-        subsystem.Finalize();
-        auto owner = rstd::sync::Arc<owe::SceneNode>::make();
-        subsystem.SetOwnerNode(owner.as_ptr());
-        for (int tick = 0; tick < 4; ++tick) {
-            owner->SetTranslate({ static_cast<float>(tick), 0.0f, 0.0f });
-            subsystem.Tick(f64(1.0 / 64.0), false);
-        }
-        auto&                        storage = subsystem.System().Instance(usize()).Storage();
-        particle::ParticleSlotReader first(storage, particle::ParticleSlot { .index = usize() });
-        particle::ParticleSlotReader last(storage, particle::ParticleSlot { .index = usize(3) });
-        EXPECT_NEAR(first.Read(subsystem.Attributes().velocity).x(), 0.0f, 1e-3f);
-        return last.Read(subsystem.Attributes().velocity).x();
-    };
-    // in the world, 1 unit a 1/64 s tick is 64 a second; half of it
-    EXPECT_NEAR(last_velocity(true), 32.0f, 1e-2f);
-    // in the object's own space the control point doesn't move
-    EXPECT_NEAR(last_velocity(false), 0.0f, 1e-3f);
 }
 
 // colorlist (particles-colorlist): the particle's colour is multiplied by a colour picked from the list, whatever
@@ -1851,6 +1762,54 @@ TEST(ParticleSubSystem, CollisionQuadCatchesAParticleFallingOnItButNotOneRisingT
         R"({"name":"collisionquad","origin":"0 -100 0","size":"200 100","angles":"0 0 30","bouncefactor":0.5})"_str,
         { 50, -100, 0 }, R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
     EXPECT_NEAR(angled.velocity.y(), 30.0f, 1e-3f);
+}
+
+// inheritcontrolpointvelocity (particles-controlpoint-velocity): a particle starts with its control point's velocity
+// (how fast the object moves, per second) times a factor between min and max. The first frame has no earlier position
+// to measure from, so a particle born then gets none.
+TEST(ParticleSubSystem, InheritControlpointVelocityTakesTheObjectsVelocity) {
+    auto last_velocity = [](bool world_space) {
+        owe::Scene scene;
+        owe::ParticleSubSystem subsystem(scene,
+                                         Arc<owe::SceneMesh>::make(),
+                                         u32(64),
+                                         f64(1.0),
+                                         u32(1),
+                                         f64(1.0),
+                                         owe::ParticleSubSystem::SpawnType::STATIC,
+                                         owe::ParticleAnimationSpec {},
+                                         {},
+                                         u32(),
+                                         f64(),
+                                         f64(),
+                                         world_space);
+        subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+            owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(64)));
+        subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+            owe::ParseJson(R"({"name":"inheritcontrolpointvelocity","controlpoint":0,"min":0.5,"max":0.5})"_str)
+                .unwrap(),
+            u32(64)));
+        owe::wpscene::Emitter emitter;
+        emitter.name = String::make("boxrandom"_str);
+        emitter.rate = 64.0f;
+        subsystem.AddEmitter(owe::ParticleParser::GenEmitter(emitter, subsystem, usize()));
+        subsystem.Finalize();
+        auto owner = rstd::sync::Arc<owe::SceneNode>::make();
+        subsystem.SetOwnerNode(owner.as_ptr());
+        for (int tick = 0; tick < 4; ++tick) {
+            owner->SetTranslate({ static_cast<float>(tick), 0.0f, 0.0f });
+            subsystem.Tick(f64(1.0 / 64.0), false);
+        }
+        auto&                        storage = subsystem.System().Instance(usize()).Storage();
+        particle::ParticleSlotReader first(storage, particle::ParticleSlot { .index = usize() });
+        particle::ParticleSlotReader last(storage, particle::ParticleSlot { .index = usize(3) });
+        EXPECT_NEAR(first.Read(subsystem.Attributes().velocity).x(), 0.0f, 1e-3f);
+        return last.Read(subsystem.Attributes().velocity).x();
+    };
+    // in the world, 1 unit a 1/64 s tick is 64 a second; half of it
+    EXPECT_NEAR(last_velocity(true), 32.0f, 1e-2f);
+    // in the object's own space the control point doesn't move
+    EXPECT_NEAR(last_velocity(false), 0.0f, 1e-3f);
 }
 
 TEST(ParticleSubSystem, UsesEmitterPeriodLimitForImplicitControlpointSequenceCount) {
@@ -2053,32 +2012,6 @@ TEST(ParticleShaders, ShadersWithoutAGeometryStageExpandTheirQuadsInTheVertexSha
     EXPECT_FALSE(owe::ParticleShaderUsesGeometryStage(vfs, "with_geometry"_str, false));
 
     std::filesystem::remove_all(root);
-}
-
-// A rotationrandom given as numbers turns sprites in their plane only, as a vector's z
-// (particles-sprite: -0.35 tilts the sprite in Wallpaper Engine; on every axis it foreshortened
-// it).
-TEST(ParticleInitializers, RotationRandomNumbersTurnInThePlane) {
-    auto numbers = owe::ReadRotationRandom(
-        owe::ParseJson(R"({"name":"rotationrandom","min":-0.35,"max":0.5})"_str).unwrap());
-    EXPECT_FLOAT_EQ(numbers.min[usize(0)], 0.0f);
-    EXPECT_FLOAT_EQ(numbers.min[usize(1)], 0.0f);
-    EXPECT_FLOAT_EQ(numbers.min[usize(2)], -0.35f);
-    EXPECT_FLOAT_EQ(numbers.max[usize(0)], 0.0f);
-    EXPECT_FLOAT_EQ(numbers.max[usize(1)], 0.0f);
-    EXPECT_FLOAT_EQ(numbers.max[usize(2)], 0.5f);
-
-    auto vectors = owe::ReadRotationRandom(
-        owe::ParseJson(R"({"name":"rotationrandom","min":"0.1 0.2 0.3","max":"0.4 0.5 0.6"})"_str)
-            .unwrap());
-    EXPECT_FLOAT_EQ(vectors.min[usize(0)], 0.1f);
-    EXPECT_FLOAT_EQ(vectors.max[usize(2)], 0.6f);
-
-    // without a range, any turn in the plane
-    auto defaults =
-        owe::ReadRotationRandom(owe::ParseJson(R"({"name":"rotationrandom"})"_str).unwrap());
-    EXPECT_FLOAT_EQ(defaults.min[usize(2)], 0.0f);
-    EXPECT_GT(defaults.max[usize(2)], 6.28f);
 }
 
 // maintaindistancebetweencontrolpoints (particles-maintain-between): a particle stays between control points 0 and 1
