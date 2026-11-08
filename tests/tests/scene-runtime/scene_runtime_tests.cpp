@@ -1511,7 +1511,6 @@ TEST(SceneParserScript, CreatedLayerIsOneByOneUnlessAutosize) {
                     "name": "Controller",
                     "visible": {
                         "value": true,
-                        "script": "engine.registerAsset('models/faded.json'); export function init(value) { thisScene.createLayer('models/faded.json'); return value; } export function update(value) { return value; }"
                         "script": "export function init(value) { thisScene.createLayer('models/plain.json'); thisScene.createLayer('models/autosized.json'); return value; } export function update(value) { return value; }"
                     }
                 }
@@ -1532,7 +1531,6 @@ TEST(SceneParserScript, CreatedLayerIsOneByOneUnlessAutosize) {
     wavsen::audio::SoundManager sound_manager;
     owe::SceneParser            parser;
     auto                        parsed = parser.Parse(
-        "created-user-binding"_str,
         "created-size"_str,
         ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
         mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
@@ -1540,15 +1538,6 @@ TEST(SceneParserScript, CreatedLayerIsOneByOneUnlessAutosize) {
     ASSERT_TRUE(parsed.is_ok());
     auto scene = rstd::move(parsed).unwrap();
 
-    auto property = rstd::json::from_str(R"({"type": "slider", "value": 0})"_str).unwrap();
-    (void)owe::SceneUserPropertyApplier::Apply(*scene.scene, "opacity"_str, property);
-
-    auto created = scene.scene->RootMut()->FindByName("models/faded.json"_str);
-    ASSERT_NE(created, nullptr);
-    ASSERT_NE(created->Mesh(), nullptr);
-    auto alpha = created->Mesh()->Material()->customShader.constValues.get("g_UserAlpha"_str);
-    ASSERT_TRUE(alpha.is_some());
-    EXPECT_FLOAT_EQ((**alpha)[rstd::usize()], 0.0f);
     auto plain = scene.scene->RootMut()->FindByName("models/plain.json"_str);
     ASSERT_NE(plain, nullptr);
     EXPECT_FLOAT_EQ(plain->Size().x(), 1.0f);
