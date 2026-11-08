@@ -1804,3 +1804,23 @@ if (! globalThis.shared) globalThis.shared = {};
 
 // localStorage is installed from C++ in InstallEngineGlobal so it can
 // optionally persist to a JSON file under cache_path keyed by scene_id.
+// As in Wallpaper Engine, arithmetic of a Vec4 with a shorter vector leaves the components it lacks
+// as they are (a number applies to every component).
+(function () {
+  function operand(o, key, keep) { return typeof o === 'number' ? o : (o[key] ?? keep); }
+  const operations = [
+    ['add', (a, b) => a + b, 0],
+    ['subtract', (a, b) => a - b, 0],
+    ['multiply', (a, b) => a * b, 1],
+    ['divide', (a, b) => a / b, 1],
+  ];
+  for (const [name, apply, keep] of operations) {
+    Object.defineProperty(Vec4.prototype, name, {
+      value: function (o) {
+        return new Vec4(apply(this.x, operand(o, 'x', keep)), apply(this.y, operand(o, 'y', keep)),
+                        apply(this.z, operand(o, 'z', keep)), apply(this.w, operand(o, 'w', keep)));
+      },
+      writable: true, configurable: true, enumerable: false,
+    });
+  }
+})();
