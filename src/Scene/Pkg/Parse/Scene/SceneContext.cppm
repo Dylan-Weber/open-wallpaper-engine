@@ -154,7 +154,7 @@ struct SceneLayerResources {
     bool                              scene_has_scripts { false };
     bool                              scene_layer_text_writes { false };
     // Every layer name the document authors, for the script runtime's getLayer.
-    Option<HashSet<String>>           authored_layer_names;
+    Option<HashSet<String>> authored_layer_names;
 };
 
 struct SceneLayerBuildContext {
