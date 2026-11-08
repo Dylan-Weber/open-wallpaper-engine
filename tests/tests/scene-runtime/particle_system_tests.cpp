@@ -924,6 +924,16 @@ TEST(ParticleSubSystem, AppliesVortexAroundWorldSpaceOwner) {
     EXPECT_GT(std::abs(positions[usize()].z()), 0.01f);
 }
 
+// hsvcolorrandom's colours: hue around the circle, saturation and value (particles-hsvcolor:
+// Wallpaper Engine draws hue 0.6 at saturation 0.5, value 0.5 as 0.25 0.35 0.5).
+TEST(ParticleColor, HsvToRgbGoesAroundTheHueCircle) {
+    EXPECT_TRUE(owe::HsvToRgb(0, 1, 1).isApprox(Eigen::Vector3d(1, 0, 0)));
+    EXPECT_TRUE(owe::HsvToRgb(1.0 / 3.0, 1, 1).isApprox(Eigen::Vector3d(0, 1, 0)));
+    EXPECT_TRUE(owe::HsvToRgb(2.0 / 3.0, 1, 1).isApprox(Eigen::Vector3d(0, 0, 1)));
+    EXPECT_TRUE(owe::HsvToRgb(1.0, 1, 1).isApprox(Eigen::Vector3d(1, 0, 0)));
+    EXPECT_TRUE(owe::HsvToRgb(0.6, 0.5, 0.5).isApprox(Eigen::Vector3d(0.25, 0.35, 0.5)));
+}
+
 // A frame of Wallpaper Engine's drag takes drag dt / (1 + (dt / 0.065)^2) of a particle's speed
 // (particles-drag-rest at 15, 30 and 60 frames a second: a particle thrown at drag/2 x D stops at
 // 0.51, 0.80 and 0.95 x D for drag 0.5 to 2, where a drag of exactly drag a second would say 1):

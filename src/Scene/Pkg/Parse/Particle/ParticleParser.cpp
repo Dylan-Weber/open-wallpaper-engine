@@ -199,6 +199,26 @@ struct ColorListProgram {
     }
 };
 
+// hsvcolorrandom: a random colour from hue, saturation and value ranges (particles-hsvrange: the
+// hues Wallpaper Engine picks stay within huemin..huemax; equal ends give any hue at all).
+struct HsvColorRandomProgram {
+    double hue_min { 0.0 }, hue_max { 1.0 };
+    double saturation_min { 1.0 }, saturation_max { 1.0 };
+    double value_min { 1.0 }, value_max { 1.0 };
+
+    void Initialize(ParticleSpawnColumns& columns, particle::ParticleSpawnRequest request,
+                    ref<dyn<rstd::any::Any>>) {
+        const double hue = hue_min == hue_max ? Random::get(0.0, 1.0)
+                                              : algorism::lerp(Random::get(0.0, 1.0), hue_min, hue_max);
+        const double saturation =
+            algorism::lerp(Random::get(0.0, 1.0), saturation_min, saturation_max);
+        const double    value = algorism::lerp(Random::get(0.0, 1.0), value_min, value_max);
+        Eigen::Vector3f color = HsvToRgb(hue, saturation, value).cast<float>();
+        columns.colors[request.slot.index]         = color;
+        columns.initial_colors[request.slot.index] = color;
+    }
+};
+
 inline float UiColorToLinear(float value) { return value * value; }
 
 inline float UiScalarToLinear(float value) { return value; }
@@ -456,7 +476,9 @@ class ParticleSpawnInstructionValue {
               (Override, (OverrideSpawnProgram value;)),
               (ColorList, (ColorListProgram value;)),
               (InheritControlpointVelocity, (InheritControlpointVelocityProgram value;)),
-              (InheritInitialValueFromEvent, (InheritInitialValueFromEventProgram value;)))
+              (InheritInitialValueFromEvent, (InheritInitialValueFromEventProgram value;)),
+              (HsvColorRandom, (HsvColorRandomProgram value;)),
+              (Override, (OverrideSpawnProgram value;)))
 };
 
 template<typename T>
@@ -485,6 +507,8 @@ auto MakeParticleSpawnInstructionValue(T value) -> ParticleSpawnInstructionValue
         return ParticleSpawnInstructionValue::InheritControlpointVelocity(rstd::move(value));
     else if constexpr (same_as<T, InheritInitialValueFromEventProgram>)
         return ParticleSpawnInstructionValue::InheritInitialValueFromEvent(rstd::move(value));
+    else if constexpr (same_as<T, HsvColorRandomProgram>)
+        return ParticleSpawnInstructionValue::HsvColorRandom(rstd::move(value));
     else {
         static_assert(same_as<T, OverrideSpawnProgram>);
         return ParticleSpawnInstructionValue::Override(rstd::move(value));
@@ -517,6 +541,7 @@ auto ParticleSpawnInstruction::SequenceCount() const -> Option<u32> {
         RSTD_CASE(MapSequenceBetweenControlPoints, instruction) {
             return Some(rstd::as_cast<u32>(instruction.config.count));
         }
+        RSTD_CASE(HsvColorRandom) { return None(); }
         RSTD_CASE(Override) { return None(); }
         RSTD_CASE(ColorList) { return None(); }
         RSTD_CASE(InheritControlpointVelocity) { return None(); }
@@ -549,6 +574,7 @@ void ParticleSpawnInstruction::Initialize(ParticleSpawnColumns&          columns
         RSTD_CASE(MapSequenceBetweenControlPoints, instruction) {
             instruction.Initialize(columns, request, frame);
         }
+        RSTD_CASE(HsvColorRandom, instruction) { instruction.Initialize(columns, request, frame); }
         RSTD_CASE(Override, instruction) { instruction.Initialize(columns, request, frame); }
         RSTD_CASE(ColorList, instruction) { instruction.Initialize(columns, request, frame); }
         RSTD_CASE(InheritControlpointVelocity, instruction) {
@@ -621,6 +647,23 @@ ParticleSpawnInstruction ParticleParser::GenInitializer(const Json& wpj,
                 .controlpoint = controlpoint, .min = double(min), .max = double(max) });
         } else if (name == "inheritinitialvaluefromevent"_str) {
             return ParticleSpawnInstruction::Make(InheritInitialValueFromEventProgram {});
+        } else if (name == "hsvcolorrandom"_str) {
+            float hue_min { 0.0f }, hue_max { 1.0f }, saturation_min { 1.0f }, saturation_max { 1.0f },
+                value_min { 1.0f }, value_max { 1.0f };
+            owe::GetJsonValue(wpj, "huemin"_str, hue_min, false);
+            owe::GetJsonValue(wpj, "huemax"_str, hue_max, false);
+            owe::GetJsonValue(wpj, "saturationmin"_str, saturation_min, false);
+            owe::GetJsonValue(wpj, "saturationmax"_str, saturation_max, false);
+            owe::GetJsonValue(wpj, "valuemin"_str, value_min, false);
+            owe::GetJsonValue(wpj, "valuemax"_str, value_max, false);
+            return ParticleSpawnInstruction::Make(HsvColorRandomProgram {
+                .hue_min        = hue_min,
+                .hue_max        = hue_max,
+                .saturation_min = saturation_min,
+                .saturation_max = rstd::cmp::max(saturation_max, saturation_min),
+                .value_min      = value_min,
+                .value_max      = rstd::cmp::max(value_max, value_min),
+            });
         } else if (name == "lifetimerandom"_str) {
             SingleRandom r = { 0.0f, 1.0f };
             SingleRandom::ReadFromJson(wpj, r);
