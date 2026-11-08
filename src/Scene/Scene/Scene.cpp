@@ -3138,6 +3138,14 @@ void Scene::SetActiveCameraViewOffset(const Eigen::Vector3d& offset) {
     if (camera.is_none()) return;
     (**camera).SetViewOffset(offset);
     UpdateLinkedCamera(name.as_str());
+    // an orthographic scene's layers with "perspective": true are drawn through the perspective camera, which the shake
+    // moves too
+    if (name.as_str() == "global"_str) {
+        if (auto perspective = CameraMut("global_perspective"_str); perspective.is_some()) {
+            (**perspective).SetViewOffset(offset);
+            (**perspective).Update();
+        }
+    }
 }
 
 bool Scene::ResizeRenderTarget(ref<str> name, i32 width, i32 height) {
