@@ -215,8 +215,9 @@ void Scene::UpdateCameraFillMode(u32 width, u32 height, FillMode fillmode) {
     if (pcam.FovPolicy() == SceneCameraFovPolicy::OrthographicProjection) {
         pcam.SetFov(algorism::CalculatePersperctiveFov(1000.0f, gcam.Height()));
     } else {
-        // An orthographic scene that overrides the perspective fov looks from a distance: its perspective camera
-        // follows the cropped projection at its look-at distance. Other cameras keep their fov.
+        // An orthographic scene that overrides the perspective fov looks from a distance: its
+        // perspective camera follows the cropped projection at its look-at distance. Other cameras
+        // keep their fov.
         pcam.FitFovToHeightAtCenter(gcam.Height());
     }
     gcam.Update();
