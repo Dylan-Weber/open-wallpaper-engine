@@ -1,6 +1,7 @@
 module;
 
 export module wescene.pkg.puppet;
+export import :bone_physics;
 import eigen;
 import wescene.core;
 import wescene.scene;
@@ -48,12 +49,15 @@ public:
         rstd::uint32_t file_parent { NO_PARENT };
 
         // Per-bone WE bone_simulation JSON (spring/damping/gravity for
-        // hair/cloth). Captured raw; evaluation hook is TBD.
+        // hair/cloth).
         String simulation_json;
 
         // prepared
         Eigen::Affine3f world_bind { Eigen::Affine3f::Identity() };
         Eigen::Affine3f inv_bind { Eigen::Affine3f::Identity() };
+
+        // prepared from simulation_json; None when the bone has no physics
+        Option<BoneSimulation> simulation;
 
         // Mean position of vertices weighted to this bone, expressed as an
         // offset from local_bind.translation(). Used to bake frame.scale into
@@ -304,6 +308,13 @@ public:
     auto AnimationPlaybackAt(usize index) const -> Option<Arc<SceneAnimationPlayback>>;
     void SetRuntimeAnimationLayer(usize index, Arc<SceneAnimationLayer> state);
     void SetAnimationVisible(i32 layer_id, bool visible);
+    // applyBonePhysicsImpulse and resetBonePhysicsSimulation; `bone` as
+    // boneIndex numbers it, None for every bone with physics
+    void ApplyBoneImpulse(Option<rstd::uint32_t> bone, const Eigen::Vector3f& directional,
+                          const Eigen::Vector3f& angular);
+    void ResetBonePhysics(Option<rstd::uint32_t> bone);
+    // the object's scale, for the bone physics (BonePhysics::Apply)
+    void SetObjectScale(const Eigen::Vector3f& scale) { m_object_scale = scale; }
     auto TextureChannelBlendMap(double time) noexcept -> slice<float>;
 
     struct PartOrder {
@@ -341,6 +352,8 @@ private:
     // What scripts set this frame (setLocalBoneTransform), by bone, and the frame's time.
     Vec<Option<Eigen::Affine3f>>     m_local_overrides;
     float                            m_local_overrides_time { 0.0f };
+    BonePhysics                      m_physics;
+    Eigen::Vector3f                  m_object_scale { Eigen::Vector3f::Ones() };
     Arc<Puppet>                      m_puppet;
 };
 

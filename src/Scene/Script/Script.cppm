@@ -66,6 +66,17 @@ struct BoneTransformData {
 };
 
 using BoneTranslation = BoneTransformData;
+// A layer script's applyBonePhysicsImpulse or resetBonePhysicsSimulation.
+struct BonePhysicsRequest {
+    // the bone as the bone index resolver numbers it; None for every bone
+    // with physics
+    Option<uint32_t> bone;
+    bool             reset { false };
+    // the impulse: a movement (units a second) and a turn (degrees a sixtieth
+    // of a second)
+    array<float, 3> directional {};
+    array<float, 3> angular {};
+};
 
 // A bone's origin or angles: three numbers.
 struct BoneVector {
@@ -332,6 +343,8 @@ public:
         Box<dyn<FnMut<bool(owe::SceneNode*, const owe::SceneAnimationLayer&)>>>;
     void SetAnimationLayerResolvers(AnimationLayerCreator   creator,
                                     AnimationLayerDestroyer destroyer);
+    using BonePhysicsHandler = Box<dyn<FnMut<void(owe::SceneNode*, const BonePhysicsRequest&)>>>;
+    void SetBonePhysicsHandler(BonePhysicsHandler handler);
 
     // Drive every alive FieldScript once. Invokes their cached `update`
     // export and stores the coerced return into FieldScript::last_value().

@@ -109,8 +109,10 @@ bool AppendLayerCompositePassthroughEffect(fs::VFS& vfs, wpscene::ImageObject& i
     return true;
 }
 
-Arc<PuppetLayer> MakePuppetLayer(Arc<Puppet> puppet, slice<wpscene::PuppetAnimationLayer> layers) {
+Arc<PuppetLayer> MakePuppetLayer(Arc<Puppet> puppet, slice<wpscene::PuppetAnimationLayer> layers,
+                                 const array<float, 3>& scale) {
     auto                             out = Arc<PuppetLayer>::make(rstd::move(puppet));
+    out->SetObjectScale({ scale[usize(0)], scale[usize(1)], scale[usize(2)] });
     Vec<PuppetLayer::AnimationLayer> playback_layers;
     for (const auto& layer : layers) playback_layers.push(layer.playback.Clone());
     out->prepared(playback_layers.as_slice());
@@ -473,6 +475,21 @@ script::ScriptScene& EnsureScriptScene(SceneLayerBuildContext& context) {
                         if (layer.is_none()) return;
                         (void)(*layer)->setLocalBoneTransform(index, from_matrix(local), time);
                     }));
+            .SetBonePhysicsHandler(script::JsRuntime::BonePhysicsHandler::make(
+                [layers = layers.clone()](SceneNode*                        node,
+                                          const script::BonePhysicsRequest& request) {
+                    auto layer = LookupPuppetLayer(layers, node);
+                    if (layer.is_none()) return;
+                    if (request.reset) {
+                        (*layer)->ResetBonePhysics(request.bone);
+                        return;
+                    }
+                    const auto&           d = request.directional;
+                    const auto&           a = request.angular;
+                    const Eigen::Vector3f directional(d[usize(0)], d[usize(1)], d[usize(2)]);
+                    const Eigen::Vector3f angular(a[usize(0)], a[usize(1)], a[usize(2)]);
+                    (*layer)->ApplyBoneImpulse(request.bone, directional, angular);
+                }));
         if (context.user_properties.is_some())
             (*context.user_properties)->iter().for_each([&](auto entry) {
                 auto [entry_key, entry_value] = entry;
