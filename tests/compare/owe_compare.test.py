@@ -170,5 +170,21 @@ class Render(unittest.TestCase):
         self.assertEqual(command[command.index('--shadow-quality') + 1], 'medium')
 
 
+class Presets(unittest.TestCase):
+    def write(self, folder, project):
+        os.makedirs(folder)
+        with open(os.path.join(folder, 'project.json'), 'w') as f:
+            json.dump(project, f)
+
+    def test_a_preset_plays_its_parent_with_its_values(self):
+        with tempfile.TemporaryDirectory() as root:
+            parent, preset = os.path.join(root, 'parent'), os.path.join(root, 'values')
+            self.write(parent, {'type': 'scene', 'file': 'scene.json'})
+            self.write(preset, {'dependency': 'parent', 'preset': {'boxcolor': '1 0 0', 'boxalpha': 0.5, '_d0': None}})
+            self.assertEqual(owe_compare.preset_of(preset), (parent, {'boxcolor': '1 0 0', 'boxalpha': 0.5}))
+            self.assertEqual(owe_compare.scene_package(preset), os.path.join(parent, 'scene.pkg'))
+            self.assertIsNone(owe_compare.preset_of(parent))
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -1,0 +1,60 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0.1 0.1 0.15",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "box",
+      "image": "models/util/solidlayer.json",
+      "origin": "600 540 0",
+      "size": "500 500",
+      "color": {
+        "user": "boxcolor",
+        "value": "0.2 0.4 1"
+      },
+      "alpha": {
+        "user": "boxalpha",
+        "value": 1
+      },
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "id": 1,
+      "visible": true
+    },
+    {
+      "name": "second",
+      "image": "models/util/solidlayer.json",
+      "origin": "1320 540 0",
+      "size": "500 500",
+      "color": "1 0.8 0.1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": {
+        "user": "showsecond",
+        "value": false
+      },
+      "id": 2
+    }
+  ],
+  "version": 1
+}

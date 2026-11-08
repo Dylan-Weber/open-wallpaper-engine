@@ -92,9 +92,26 @@ def probe_boxes(size, inputs=None, bands=(), mirrored=False):
     return boxes
 
 
+def preset_of(folder):
+    """For a Workshop preset (a project.json with no type, naming the item it is made from in "dependency", a folder
+    beside it, and the values it sets in "preset"): that item's folder and the values. Else None."""
+    if not os.path.exists(os.path.join(folder, 'project.json')):
+        return None
+    with open(os.path.join(folder, 'project.json')) as f:
+        project = json.load(f)
+    if 'type' in project or 'dependency' not in project:
+        return None
+    parent = os.path.join(os.path.dirname(folder), str(project['dependency']))
+    values = {key: value for key, value in (project.get('preset') or {}).items() if value is not None}
+    return parent, values
+
+
 def skipped(name):
     """Why the wallpaper is left out, or None."""
-    with open(os.path.join(WALLPAPERS, name, 'project.json')) as f:
+    folder = os.path.join(WALLPAPERS, name)
+    while preset_of(folder):
+        folder = preset_of(folder)[0]
+    with open(os.path.join(folder, 'project.json')) as f:
         kind = json.load(f).get('type', 'scene').lower()
     if kind != 'scene':
         return 'a %s wallpaper' % kind
@@ -117,7 +134,10 @@ def has_capture(viewer):
 
 def scene_package(folder):
     """The package the viewer is given: named after project.json's "file" (X.json: X.pkg), which it reads as the
-    scene; without the package it mounts the folder itself."""
+    scene; without the package it mounts the folder itself. A preset is its parent's package."""
+    preset = preset_of(folder)
+    if preset:
+        return scene_package(preset[0])
     with open(os.path.join(folder, 'project.json')) as f:
         scene_file = json.load(f).get('file', 'scene.json')
     return os.path.join(folder, os.path.splitext(scene_file)[0] + '.pkg')
@@ -149,6 +169,13 @@ def render(name, size, viewer, frames=None, script_start=0.0, camera_path_delay=
     # the "shadows" setting the reference was taken at (medium by default), for a viewer that has the setting
     shadows = ['--shadow-quality', settings_of(name)['shadow_quality']] \
         if 'shadow_quality' in settings_of(name) and '--shadow-quality' in viewer_help(viewer) else []
+    # a preset plays its parent with the preset's values (as the Waywallen plugin hands them to the renderer)
+    preset = preset_of(os.path.join(WALLPAPERS, name))
+    if preset:
+        values = os.path.join(out, 'preset-values.json')
+        with open(values, 'w') as f:
+            json.dump(preset[1], f)
+        inputs = list(inputs) + ['--user-properties', values]
     command = capped + ['timeout', '900', viewer, '-C', shader_cache(viewer), '--resolution', '%dx%d' % size,
                         '--fps', '30', '--capture', frame, '--capture-frame', str(frames)] + (
                            ['--script-start', '%.4f' % script_start] if script_start > 0 else []) + (
