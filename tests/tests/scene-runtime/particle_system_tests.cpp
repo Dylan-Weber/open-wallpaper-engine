@@ -1,5 +1,9 @@
 #include <rstd/test/gtest.hpp>
 
+#if defined(__SSE__)
+#    include <xmmintrin.h>
+#endif
+
 import rstd;
 import rstd.cppstd;
 import eigen;
@@ -1022,7 +1026,9 @@ TEST(ParticleInstanceModifiers, CloneRetainsReadOnlyBindingsAfterSourceReplaceme
 // maintaindistancebetweencontrolpoints (particles-maintain-between): a particle stays between control points 0 and 1
 // along the axis joining them (clamped to the nearer end), drifts a little towards control point 0 (about 1.1 % a
 // second), and keeps its sideways place.
-static Eigen::Vector3f KeepBetweenControlpoints(Eigen::Vector3f origin, int ticks = 1) {
+static Eigen::Vector3f KeepBetweenControlpoints(Eigen::Vector3f origin, int ticks = 1,
+                                                Eigen::Vector3d second = { 200.0, 0.0, 0.0 },
+                                                double          tick   = 1.0 / 60.0) {
     owe::Scene             scene;
     auto                   mesh = Arc<owe::SceneMesh>::make();
     owe::ParticleSubSystem subsystem(scene,
@@ -1033,9 +1039,9 @@ static Eigen::Vector3f KeepBetweenControlpoints(Eigen::Vector3f origin, int tick
                                      f64(1.0),
                                      owe::ParticleSubSystem::SpawnType::STATIC,
                                      owe::ParticleAnimationSpec {});
-    subsystem.ControlpointsMut()[usize(1)].base_offset = Eigen::Vector3d { 200.0, 0.0, 0.0 };
+    subsystem.ControlpointsMut()[usize(1)].base_offset = second;
     subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
-        owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(1)));
+        owe::ParseJson(R"({"name":"lifetimerandom","min":100,"max":100})"_str).unwrap(), u32(1)));
     subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
         owe::BoxEmitterProgram(subsystem.SpawnPipeline(),
                                owe::ParticleBoxEmitterArgs {
@@ -1050,7 +1056,7 @@ static Eigen::Vector3f KeepBetweenControlpoints(Eigen::Vector3f origin, int tick
         owe::ParseJson(R"({"name":"maintaindistancebetweencontrolpoints"})"_str).unwrap(), modifiers.Clone(),
         subsystem, usize()));
     subsystem.Finalize();
-    for (int tick = 0; tick < ticks; ++tick) subsystem.Tick(f64(1.0 / 60.0), false);
+    for (int count = 0; count < ticks; ++count) subsystem.Tick(f64(tick), false);
     auto&                        storage = subsystem.System().Instance(usize()).Storage();
     particle::ParticleSlotReader value(storage, particle::ParticleSlot {});
     return value.Read(subsystem.Attributes().position);
@@ -1063,8 +1069,32 @@ TEST(ParticleSubSystem, MaintainDistanceBetweenControlpointsClampsAlongTheAxis) 
     EXPECT_NEAR(KeepBetweenControlpoints({ 100, 100, 0 }).y(), 100.0f, 1e-4f); // sideways place kept
 }
 
-TEST(ParticleSubSystem, MaintainDistanceBetweenControlpointsDriftsTowardsTheFirst) {
-    // 1.08 % a second: after 6 s at 60 ticks a second, 100 becomes about 93.7
-    auto after = KeepBetweenControlpoints({ 100, 0, 0 }, 360);
-    EXPECT_NEAR(after.x(), 100.0f * 0.93733f, 0.2f);
+// Wallpaper Engine normalises the axis with the CPU's approximate reciprocal square root (rsqrtps), so every frame a
+// particle's place along the axis is scaled by |axis|^2, a little under or over 1 depending on the control points'
+// distance (particles-maintain-drift: 1 - 3.36e-4 for 100, 200 and 400 apart, 1 - 1.45e-4 for 150 and 300, and
+// 1 + 4.22e-4 for a 45 degree axis of length 200, which pushes particles away from control point 0).
+static float AxisScalePerFrame(Eigen::Vector3f span) {
+#if defined(__SSE__)
+    float inverse = _mm_cvtss_f32(_mm_rsqrt_ss(_mm_set_ss(span.squaredNorm())));
+#else
+    float inverse = 1.0f / span.norm();
+#endif
+    return (span * inverse).squaredNorm();
+}
+
+TEST(ParticleSubSystem, MaintainDistanceBetweenControlpointsDriftsByFramesNotSeconds) {
+    // the same number of frames moves a particle as far at 30 and at 60 frames a second
+    auto at30 = KeepBetweenControlpoints({ 100, 0, 0 }, 360, { 200.0, 0.0, 0.0 }, 1.0 / 30.0);
+    auto at60 = KeepBetweenControlpoints({ 100, 0, 0 }, 360, { 200.0, 0.0, 0.0 }, 1.0 / 60.0);
+    EXPECT_NEAR(at30.x(), at60.x(), 1e-3f);
+}
+
+TEST(ParticleSubSystem, MaintainDistanceBetweenControlpointsScalesByTheApproximateAxis) {
+    for (Eigen::Vector3f second : { Eigen::Vector3f { 200, 0, 0 }, Eigen::Vector3f { 150, 0, 0 },
+                                    Eigen::Vector3f { 141.421f, 141.421f, 0 } }) {
+        double expected = 100.0;
+        for (int frame = 0; frame < 600; ++frame) expected *= AxisScalePerFrame(second);
+        auto  after    = KeepBetweenControlpoints(second.normalized() * 100.0f, 600, second.cast<double>());
+        EXPECT_NEAR(after.norm(), expected, 0.02) << second.transpose();
+    }
 }
