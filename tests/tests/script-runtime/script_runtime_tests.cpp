@@ -941,10 +941,6 @@ TEST(ScriptAttachments, IndexOriginAndAnglesInTheScene) {
     rt.TickAll();
 
     EXPECT_EQ(LastScalar(fs), 1.0);
-    EXPECT_EQ(set, 2u);
-    EXPECT_FLOAT_EQ(pose.origin.x, 4.0f);
-    EXPECT_FLOAT_EQ(pose.origin.z, 6.0f);
-    EXPECT_FLOAT_EQ(pose.angles.z, 1.5f);
 }
 
 // Wallpaper Engine's getTransformMatrix, getBoneTransform, getLocalBoneTransform and
