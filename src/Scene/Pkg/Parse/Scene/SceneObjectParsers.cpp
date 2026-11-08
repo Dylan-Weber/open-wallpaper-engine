@@ -663,8 +663,9 @@ SceneParseContext
 BuildContext(Scene& scene, fs::VFS& vfs, ref<str> scene_id, const wpscene::SceneMetadata& sc,
              array<i32, 2> ortho_extent, Option<ref<rstd::json::Map>> user_properties,
              Option<rstd::path::PathBuf> shader_cache_dir, GeometryShaderLimits geometry_limits,
-             slice<SceneShadowLight> shadow_lights, bool geometry_shader_supported,
-             Option<ImageReadyCallback> image_ready, TextureMemoryOptions texture_memory) {
+             slice<SceneShadowLight> shadow_lights, ShadowQuality shadow_quality,
+             bool geometry_shader_supported, Option<ImageReadyCallback> image_ready,
+             TextureMemoryOptions texture_memory) {
     SceneParseContext context(scene, vfs);
     PrepareAnimationBindings(context, sc.general.field_bindings);
     InitContext(
@@ -676,6 +677,7 @@ BuildContext(Scene& scene, fs::VFS& vfs, ref<str> scene_id, const wpscene::Scene
     context.layer_resources->geometry_shader_limits    = geometry_limits;
     context.layer_resources->geometry_shader_supported = geometry_shader_supported;
     context.layer_resources->shader_environment.shadow_mapping = ! shadow_lights.is_empty();
+    context.layer_resources->shader_environment.shadow_quality = shadow_quality;
 
     context.scene->RegisterRenderTarget(String::make(SpecTex_Default),
                                         SceneRenderTarget {
@@ -698,7 +700,7 @@ BuildContext(Scene& scene, fs::VFS& vfs, ref<str> scene_id, const wpscene::Scene
     if (context.layer_resources->shader_environment.shadow_mapping) {
         // a square of the atlas for each spot light, each cascade and each point light, in rows
         // of a near square: the spots' first, the points' last
-        constexpr int tile       = kShadowTileSize;
+        const int     tile       = ShadowTileSize(shadow_quality);
         const auto    squares_of = [](SceneLightType type) {
             return type == SceneLightType::Directional ? 3 : 1;
         };
