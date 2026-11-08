@@ -953,6 +953,23 @@ TEST_F(ConditionalTextureTest, SpriteHeaderSkipsConditionalPatches) {
     EXPECT_TRUE(parser.Parse("conditional"_str).is_ok());
 }
 
+TEST_F(ConditionalTextureTest, ASpriteSheetsFrameSizeIsItsFirstFrames) {
+    // an autosize model of a sprite sheet is drawn at one frame's size (texture-animation-created)
+    WriteTexture(true, 1);
+    owe::TexImageParser parser(&vfs);
+    auto                header = parser.ParseHeader("conditional"_str);
+    ASSERT_TRUE(header.is_ok());
+    auto size = owe::SpriteFrameSize(*header);
+    ASSERT_TRUE(size.is_some());
+    EXPECT_FLOAT_EQ((*size)[usize()], 2.0f);
+    EXPECT_FLOAT_EQ((*size)[usize(1)], 2.0f);
+    WriteTexture(false, 0);
+    owe::TexImageParser fresh(&vfs); // headers are cached by name
+    auto                plain = fresh.ParseHeader("conditional"_str);
+    ASSERT_TRUE(plain.is_ok());
+    EXPECT_TRUE(owe::SpriteFrameSize(*plain).is_none());
+}
+
 TEST_F(ConditionalTextureTest, FullLoadReusesPreparedHeaderAndOpenSource) {
     WriteTexture(true, 1);
     owe::TexImageParser parser(&vfs);

@@ -156,4 +156,7 @@ private:
     Arc<fs::VFS>            m_vfs;
     Arc<Mutex<HeaderCache>> m_headers { Arc<Mutex<HeaderCache>>::make(HeaderCache {}) };
 };
+
+// A sprite sheet's first frame's size (its image holds every frame); None for a texture that isn't one.
+auto SpriteFrameSize(const ImageHeader& header) -> Option<array<float, 2>>;
 } // namespace owe

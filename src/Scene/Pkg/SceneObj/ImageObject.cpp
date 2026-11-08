@@ -24,6 +24,30 @@ auto LoadJsonFile(owe::fs::VFS& vfs, ref<str> path) -> Option<owe::Json> {
     return Some(rstd::move(parsed).unwrap_unchecked());
 }
 
+// The image size a texture's header gives (TEXV, TEXI, then format, flags, texture width and height, image width and
+// height), or None, also for a sprite sheet.
+auto TextureImageSize(owe::fs::VFS& vfs, ref<str> texture, bool* sprite_sheet = nullptr)
+    -> Option<array<float, 2>> {
+    auto file =
+        owe::fs::OpenBinary(vfs, owe::fs::Path(rstd::format("/assets/materials/{}.tex", texture).as_str()));
+    if (file.is_err()) return None();
+    auto f = rstd::move(file).unwrap_unchecked();
+    (void)f.ReadStr();
+    (void)f.ReadStr();
+    (void)f.ReadUint32();
+    // a sprite sheet (flag 4) holds every frame in its image: not one frame's size
+    if ((f.ReadUint32() & 4u) != 0u) {
+        if (sprite_sheet != nullptr) *sprite_sheet = true;
+        return None();
+    }
+    (void)f.ReadUint32();
+    (void)f.ReadUint32();
+    const auto width  = f.ReadUint32();
+    const auto height = f.ReadUint32();
+    if (width == 0 || height == 0) return None();
+    return Some(array<float, 2> { static_cast<float>(width), static_cast<float>(height) });
+}
+
 constexpr ref<str>     kFoliageSwayEffect = "effects/foliagesway/effect.json"_str;
 constexpr SceneVersion kNormalizedFoliageSwayStrengthVersion = 9;
 
@@ -328,6 +352,14 @@ bool ImageObject::FromJson(const owe::Json& json, fs::VFS& vfs, SceneVersion v) 
         } else {
             size = { origin[usize(0)] * 2, origin[usize(1)] * 2 };
             owe::GetJsonValue(*jImage, "autosize"_str, size_from_texture, false);
+        }
+        // a model that says "autosize" is drawn at its first texture's size, whatever the layer's
+        bool autosize { false };
+        owe::GetJsonValue(*jImage, "autosize"_str, autosize, false);
+        if (autosize && ! material.textures.is_empty()) {
+            if (auto texture = TextureImageSize(vfs, material.textures[usize()].as_str(), &autosize_sprite_sheet);
+                texture.is_some())
+                size = *texture;
         }
     }
     owe::GetJsonValue(json, "color"_str, color, false);
