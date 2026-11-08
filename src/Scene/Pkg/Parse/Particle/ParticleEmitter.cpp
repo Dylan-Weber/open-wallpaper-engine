@@ -312,8 +312,8 @@ void LayerImageEmitterProgram::Emit(particle::ParticleEmitterContext& context) {
             auto pick   = static_cast<usize>(Random::get(0.0, 1.0) * static_cast<double>(source.points.len().to_primitive()));
             if (pick >= source.points.len()) pick = source.points.len() - usize(1);
             const auto& pixel = source.points[pick];
-            point.x() = pixel.x + algorism::lerp(Random::get(0.0, 1.0), -source.jitter, source.jitter);
-            point.y() = pixel.y + algorism::lerp(Random::get(0.0, 1.0), -source.jitter, source.jitter);
+            point.x() = pixel.x;
+            point.y() = pixel.y;
             color     = pixel.color.cwiseProduct(source.color);
         } else {
             point.x() = algorism::lerp(Random::get(0.0, 1.0), -source.half_width, source.half_width);
