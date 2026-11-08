@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test layerimage lattice: texels or units",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}
