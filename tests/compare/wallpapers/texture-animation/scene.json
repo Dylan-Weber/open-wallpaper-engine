@@ -1,0 +1,110 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0.1 0.1 0.2",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "frame 0",
+      "image": "models/petals.json",
+      "size": "205 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "origin": {
+        "value": "250 600 0",
+        "script": "'use strict';\nexport function init(value) {\n    const animation = thisLayer.getTextureAnimation();\n    if (animation !== undefined) {\n        animation.pause();\n        animation.setFrame(0);\n    }\n    return value;\n}\nexport function update(value) { return value; }\n",
+        "scriptproperties": {}
+      },
+      "id": 1
+    },
+    {
+      "name": "frame 1",
+      "image": "models/petals.json",
+      "size": "205 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "origin": {
+        "value": "600 600 0",
+        "script": "'use strict';\nexport function init(value) {\n    const animation = thisLayer.getTextureAnimation();\n    if (animation !== undefined) {\n        animation.pause();\n        animation.setFrame(1);\n    }\n    return value;\n}\nexport function update(value) { return value; }\n",
+        "scriptproperties": {}
+      },
+      "id": 2
+    },
+    {
+      "name": "frame 2",
+      "image": "models/petals.json",
+      "size": "205 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "origin": {
+        "value": "950 600 0",
+        "script": "'use strict';\nexport function init(value) {\n    const animation = thisLayer.getTextureAnimation();\n    if (animation !== undefined) {\n        animation.pause();\n        animation.setFrame(2);\n    }\n    return value;\n}\nexport function update(value) { return value; }\n",
+        "scriptproperties": {}
+      },
+      "id": 3
+    },
+    {
+      "name": "frame 3",
+      "image": "models/petals.json",
+      "size": "205 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "origin": {
+        "value": "1300 600 0",
+        "script": "'use strict';\nexport function init(value) {\n    const animation = thisLayer.getTextureAnimation();\n    if (animation !== undefined) {\n        animation.pause();\n        animation.setFrame(3);\n    }\n    return value;\n}\nexport function update(value) { return value; }\n",
+        "scriptproperties": {}
+      },
+      "id": 4
+    },
+    {
+      "name": "frame 4",
+      "image": "models/petals.json",
+      "size": "205 256",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": true,
+      "origin": {
+        "value": "1650 600 0",
+        "script": "'use strict';\nexport function init(value) {\n    const animation = thisLayer.getTextureAnimation();\n    if (animation !== undefined) {\n        animation.pause();\n        animation.setFrame(4);\n    }\n    return value;\n}\nexport function update(value) { return value; }\n",
+        "scriptproperties": {}
+      },
+      "id": 5
+    }
+  ],
+  "version": 1
+}

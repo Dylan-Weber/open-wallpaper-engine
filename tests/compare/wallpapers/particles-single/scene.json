@@ -1,0 +1,52 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0 0 0",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "single",
+      "particle": "particles/single.json",
+      "origin": "400 540 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "id": 1
+    },
+    {
+      "name": "single big",
+      "particle": "particles/single.json",
+      "origin": "960 540 0",
+      "scale": "2 2 1",
+      "angles": "0.5 0 0.5",
+      "visible": true,
+      "id": 2
+    },
+    {
+      "name": "single rotated",
+      "particle": "particles/single.json",
+      "origin": "1500 540 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0.7854",
+      "visible": true,
+      "id": 3
+    }
+  ],
+  "version": 1
+}

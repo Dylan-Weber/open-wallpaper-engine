@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "translucent",
+  "passes": [
+    {
+      "material": "materials/effects/blend_translucent.json"
+    }
+  ]
+}

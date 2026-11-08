@@ -1,0 +1,11 @@
+{
+  "passes": [
+    {
+      "shader": "effects/halfalpha",
+      "blending": "normal",
+      "depthtest": "disabled",
+      "depthwrite": "disabled",
+      "cullmode": "nocull"
+    }
+  ]
+}
