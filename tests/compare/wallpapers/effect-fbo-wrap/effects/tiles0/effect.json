@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "name": "tiles0",
+  "passes": [
+    {
+      "material": "materials/effects/tiles_paint.json",
+      "target": "_rt_Tiles"
+    },
+    {
+      "material": "materials/effects/tiles_lay.json",
+      "bind": [
+        {
+          "name": "previous",
+          "index": 0
+        },
+        {
+          "name": "_rt_Tiles",
+          "index": 1
+        }
+      ]
+    }
+  ],
+  "fbos": [
+    {
+      "name": "_rt_Tiles",
+      "format": "rgba8888",
+      "width": 4,
+      "height": 4,
+      "uvs": "repeat"
+    }
+  ]
+}

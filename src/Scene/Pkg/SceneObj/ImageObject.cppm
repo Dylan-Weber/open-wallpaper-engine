@@ -41,6 +41,11 @@ public:
     u32    scale { 1 };
     u32    fit { 0 };
     bool   unique { false };
+    // a size of its own (0: the layer's, over scale), and how its texture coordinates wrap
+    // ("clamp"; anything else, or nothing: repeat)
+    u32    width { 0 };
+    u32    height { 0 };
+    String uvs;
 };
 
 // objects[].instance — PKGV0018+. Embedded WE-format material binding

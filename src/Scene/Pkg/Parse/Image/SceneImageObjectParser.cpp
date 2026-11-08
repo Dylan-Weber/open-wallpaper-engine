@@ -747,7 +747,22 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
                     // prefix so IsSpecTex / render-target lookups treat them
                     // as render targets instead of disk textures.
                     auto rtname = scene.EffectResourceKey(effect_id, wpfbo.name.as_str());
-                    if (wpimgobj.fullscreen) {
+                    // how the target's texture coordinates wrap where an effect samples it past
+                    // [0, 1]: Wallpaper Engine repeats them unless the target says "uvs": "clamp"
+                    // (effect-fbo-wrap: targets with no "uvs" tile as ones with "repeat" do)
+                    const auto wrap = wpfbo.uvs == "clamp"_str ? TextureWrap::CLAMP_TO_EDGE
+                                                               : TextureWrap::REPEAT;
+                    const TextureSample sample { wrap, wrap, TextureFilter::LINEAR, TextureFilter::LINEAR };
+                    if (wpfbo.width > u32() && wpfbo.height > u32()) {
+                        // a target of a size of its own
+                        (void)scene.RegisterNodeRenderTarget(
+                            image_node_id,
+                            String::make(rtname),
+                            SceneRenderTarget { .width      = i32(wpfbo.width.to_primitive()),
+                                                .height     = i32(wpfbo.height.to_primitive()),
+                                                .allowReuse = ! wpfbo.unique,
+                                                .sample     = sample });
+                    } else if (wpimgobj.fullscreen) {
                         SceneRenderTarget target {
                             .width      = i32(2),
                             .height     = i32(2),
@@ -758,6 +773,7 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
                             .screen = true,
                             .scale  = 1.0 / static_cast<double>(wpfbo.scale.to_primitive()),
                         };
+                        target.sample = sample;
                         (void)scene.RegisterNodeRenderTarget(
                             image_node_id, String::make(rtname), rstd::move(target));
                     } else {
@@ -790,7 +806,8 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
                             String::make(rtname),
                             SceneRenderTarget { .width      = fbo_size[usize()],
                                                 .height     = fbo_size[usize(1)],
-                                                .allowReuse = ! wpfbo.unique });
+                                                .allowReuse = ! wpfbo.unique,
+                                                .sample     = sample });
                     }
                     (void)render_targets.insert(String::make(wpfbo.name.as_str()),
                                                 String::make(rtname));
