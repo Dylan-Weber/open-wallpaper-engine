@@ -2228,6 +2228,11 @@ auto Scene::ActiveCameraTransforms() const -> Option<SceneCameraTransforms> {
     return Some((**camera).AuthoredTransforms());
 }
 
+auto Scene::ScriptCameraTransforms() const -> Option<SceneCameraTransforms> {
+    if (m_script_camera.is_some()) return Some(SceneCameraTransforms(*m_script_camera));
+    return ActiveCameraTransforms();
+}
+
 bool Scene::SetActiveCameraTransforms(const SceneCameraTransforms& transforms) {
     auto active = m_camera_registry->ActiveName();
     if (active.is_none()) return false;
