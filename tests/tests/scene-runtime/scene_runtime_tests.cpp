@@ -1724,9 +1724,11 @@ TEST(ShadowUniformSource, CascadesDefaultToThreeTenAndAHundredInWholeTexels) {
     owe::SceneLight::Desc desc;
     desc.type        = owe::SceneLightType::Directional;
     desc.cast_shadow = true;
-    owe::SceneLight light(desc);
-    light.setNode(light_node.as_ptr());
-    owe::ShadowUniformSource source(camera.clone(), ref<owe::SceneLight>::from_raw_parts(&light));
+    owe::Scene scene;
+    auto       light = Box<owe::SceneLight>::make(desc);
+    light->setNode(light_node.as_ptr());
+    (void)scene.RegisterLight(rstd::move(light));
+    owe::ShadowUniformSource source(camera.clone(), ref<owe::Scene>::from_raw_parts(&scene));
 
     auto matrices = scene_test::Capture(
         owe::SceneFrame {}, source, owe::ShadowUniformOutput::ViewProjectionMatrices);
