@@ -617,9 +617,9 @@ TEST(ShadowUniformSource, SpotLightSeesItsConeFromNearToRadius) {
         Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000.0, 50.0));
     camera->SetLookAt(Eigen::Vector3d::Zero(), -Eigen::Vector3d::UnitZ(), Eigen::Vector3d::UnitY());
     auto                  spot_node = Arc<owe::SceneNode>::make(Eigen::Vector3f(1.0f, 2.0f, 5.0f),
-                                                                Eigen::Vector3f::Ones(),
-                                                                Eigen::Vector3f(0.3f, 1.2f, 0.0f),
-                                                                "spot"_str);
+                                               Eigen::Vector3f::Ones(),
+                                               Eigen::Vector3f(0.3f, 1.2f, 0.0f),
+                                               "spot"_str);
     owe::SceneLight::Desc desc;
     desc.type           = owe::SceneLightType::Spot;
     desc.cast_shadow    = true;
