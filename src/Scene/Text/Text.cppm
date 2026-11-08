@@ -54,11 +54,11 @@ public:
 // Letter-pair kerning read from a font file: the pair adjustments of its GPOS 'kern' feature, or
 // its legacy 'kern' table when it has no such feature, in font units.
 class FontKerning {
-    Vec<unsigned char>    m_bytes;
-    Vec<rstd::uint32_t>   m_subtables;   // GPOS pair adjustment subtables, from the file's start
-    Vec<rstd::uint32_t>   m_lookup_ends; // where each kern lookup's subtables end in m_subtables
-    Vec<rstd::uint32_t>   m_kern_tables; // legacy format 0 subtables, from the file's start
-    rstd::uint32_t        m_units_per_em { 1000 };
+    Vec<unsigned char>  m_bytes;
+    Vec<rstd::uint32_t> m_subtables;   // GPOS pair adjustment subtables, from the file's start
+    Vec<rstd::uint32_t> m_lookup_ends; // where each kern lookup's subtables end in m_subtables
+    Vec<rstd::uint32_t> m_kern_tables; // legacy format 0 subtables, from the file's start
+    rstd::uint32_t      m_units_per_em { 1000 };
 
 public:
     static auto Read(slice<u8> font) -> FontKerning;
