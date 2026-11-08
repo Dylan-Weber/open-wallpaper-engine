@@ -115,8 +115,8 @@ struct ParticleRemap {
     // the output value for an input
     auto Map(double value) const -> Eigen::Vector3d {
         const double span = input_max - input_min;
-        double       t    = span != 0.0 ? (value - input_min) / span : (value >= input_max ? 1.0 : 0.0);
-        t                 = t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t);
+        double t = span != 0.0 ? (value - input_min) / span : (value >= input_max ? 1.0 : 0.0);
+        t        = t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t);
         return output_min + (output_max - output_min) * t;
     }
 
