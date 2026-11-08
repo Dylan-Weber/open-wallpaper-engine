@@ -61,8 +61,8 @@ public:
     ~TextResources();
     auto RegisterFont(slice<u8> bytes) -> Result<vectext::FontSource, vectext::TextError>;
     auto Layout(vectext::TextRequest request) -> Result<vectext::TextLayout, vectext::TextError>;
-    // `outline` > 0: the glyph's outline stroked that many pixels to either side with mitred corners, filled, for a
-    // text outline drawn behind it
+    // `outline` > 0: the glyph's outline stroked that many pixels to either side with mitred
+    // corners, filled, for a text outline drawn behind it
     auto Rasterize(const vectext::FontInstance& font, vectext::Index glyph, double scale = 1,
                    double outline = 0) -> Result<AtlasGlyph, vectext::TextError>;
     auto Pages() const -> slice<Arc<AtlasPage>>;
