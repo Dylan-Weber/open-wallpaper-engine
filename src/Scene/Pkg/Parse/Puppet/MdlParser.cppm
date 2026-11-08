@@ -48,7 +48,7 @@ struct Mdl {
         Vec<array<float, 4>> tangents; // tangent[3] + tangent_sign
         // The fourth position float (vertex flag 0x10000): the vertex's blend shape index, 1..V
         // for the vertices the mesh's blend shapes move, 0 for the others.
-        Vec<float>                    morph_indices;
+        Vec<float> morph_indices;
 
         // Blend shapes (MDMP): each moves the `morph_vertex_count` vertices whose morph index is
         // set, by its offsets (over 32767) times `morph_scale` times its weight.
