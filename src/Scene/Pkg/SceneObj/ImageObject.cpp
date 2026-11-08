@@ -24,12 +24,12 @@ auto LoadJsonFile(owe::fs::VFS& vfs, ref<str> path) -> Option<owe::Json> {
     return Some(rstd::move(parsed).unwrap_unchecked());
 }
 
-// The image size a texture's header gives (TEXV, TEXI, then format, flags, texture width and height, image width and
-// height), or None, also for a sprite sheet.
+// The image size a texture's header gives (TEXV, TEXI, then format, flags, texture width and
+// height, image width and height), or None, also for a sprite sheet.
 auto TextureImageSize(owe::fs::VFS& vfs, ref<str> texture, bool* sprite_sheet = nullptr)
     -> Option<array<float, 2>> {
-    auto file =
-        owe::fs::OpenBinary(vfs, owe::fs::Path(rstd::format("/assets/materials/{}.tex", texture).as_str()));
+    auto file = owe::fs::OpenBinary(
+        vfs, owe::fs::Path(rstd::format("/assets/materials/{}.tex", texture).as_str()));
     if (file.is_err()) return None();
     auto f = rstd::move(file).unwrap_unchecked();
     (void)f.ReadStr();
@@ -357,7 +357,8 @@ bool ImageObject::FromJson(const owe::Json& json, fs::VFS& vfs, SceneVersion v) 
         bool autosize { false };
         owe::GetJsonValue(*jImage, "autosize"_str, autosize, false);
         if (autosize && ! material.textures.is_empty()) {
-            if (auto texture = TextureImageSize(vfs, material.textures[usize()].as_str(), &autosize_sprite_sheet);
+            if (auto texture = TextureImageSize(
+                    vfs, material.textures[usize()].as_str(), &autosize_sprite_sheet);
                 texture.is_some())
                 size = *texture;
         }
