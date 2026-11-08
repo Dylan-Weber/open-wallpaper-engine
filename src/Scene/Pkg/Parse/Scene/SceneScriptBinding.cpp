@@ -530,7 +530,7 @@ void WireFieldScripts(SceneLayerBuildContext& context, const Arc<SceneNode>& nod
             // What the script returns shows or hides the node. Only a change of the returned value does: a script
             // that returns the value it is given doesn't undo another script's `layer.visible = ...`.
             ss.AddActuator({ fs,
-                             [scene = context.scene->get(), node,
+                             [scene = context.scene, node,
                               last  = sb.initial_value.as_bool().unwrap_or(true)](
                                  const script::ScriptValue& value) mutable {
                                  auto shown = ScriptValueAsFloat(value);
