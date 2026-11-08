@@ -879,6 +879,8 @@ public:
     SceneMaterialCustomShader  customShader;
     // its shadow casters, one for each of the scene's shadow definitions
     Vec<Arc<SceneMaterial>> shadow_variants;
+    // a translucent or additive material: its casters draw no pixels (Wallpaper Engine casts no shadow from it)
+    bool shadow_silent { false };
 
 private:
     ShaderValue ShapeShaderValue(ref<str> uniform_name, const ShaderValue& value) const {
@@ -915,6 +917,7 @@ private:
         customShader     = other.customShader.Clone();
         (void)SetPipeline(other.Pipeline());
         shadow_variants = other.shadow_variants.clone();
+        shadow_silent   = other.shadow_silent;
         m_dirty_flags.fetch_or(other.m_dirty_flags.load());
     }
     void moveFrom(SceneMaterial&& other) {
@@ -927,6 +930,7 @@ private:
         customShader     = rstd::move(other.customShader);
         (void)SetPipeline(other.Pipeline());
         shadow_variants = rstd::move(other.shadow_variants);
+        shadow_silent   = other.shadow_silent;
         m_dirty_flags.fetch_or(other.m_dirty_flags.load());
     }
 
@@ -2697,6 +2701,8 @@ struct RenderShadowCasterRecord {
     RenderItemId       render_item;
     Arc<SceneMaterial> material;
     u32                instance_count { 1 };
+    // drawn through an empty scissor: it only keeps the atlas written
+    bool silent { false };
     // the shadow definition it is drawn into
     usize definition {};
 };
