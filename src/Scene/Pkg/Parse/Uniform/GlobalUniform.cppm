@@ -48,10 +48,10 @@ inline constexpr u32      kDrawUniformBinding { u32(0) };
 inline constexpr u64      kGlobalUniformSetIdentity { u64(0x5745474c4f424c03ULL) };
 inline constexpr u64      kFrameUniformSchemaIdentity { u64(0x57454652414d4501ULL) };
 inline constexpr u64      kAudioUniformSchemaIdentity { u64(0x5745415544494f01ULL) };
-inline constexpr u64      kLightingUniformSchemaIdentity { u64(0x57454c4947485401ULL) };
+inline constexpr u64      kLightingUniformSchemaIdentity { u64(0x57454c4947485406ULL) };
 inline constexpr usize    kFrameUniformBlockSize { usize(48) };
 inline constexpr usize    kAudioUniformBlockSize { usize(3584) };
-inline constexpr usize    kLightingUniformBlockSize { usize(800) };
+inline constexpr usize    kLightingUniformBlockSize { usize(3760) };
 inline constexpr ref<str> kGlobalUniformBlockName { "ww_GlobalUniforms"_str };
 inline constexpr ref<str> kAudioUniformBlockName { "ww_AudioUniforms"_str };
 inline constexpr ref<str> kLightingUniformBlockName { "ww_LightingUniforms"_str };
@@ -108,7 +108,7 @@ inline auto FindGlobalUniformBlock(ref<str> name) -> Option<ref<GlobalUniformBlo
 }
 
 inline auto GlobalUniformFields() -> slice<GlobalUniformField> {
-    static const array<GlobalUniformField, 20> fields {
+    static const array<GlobalUniformField, 29> fields {
         GlobalUniformField { G_TIME,
                              {},
                              "float"_str,
@@ -249,6 +249,70 @@ inline auto GlobalUniformFields() -> slice<GlobalUniformField> {
                              UniformOutputId { u32(1) },
                              UniformValueShape::Float(u32(12)),
                              u32(752) },
+        GlobalUniformField { G_OWESHADOWVIEWPROJECTIONS,
+                             {},
+                             "mat4[24]"_str,
+                             GlobalUniformProducer::Shadow,
+                             UniformOutputId { u32(2) },
+                             UniformValueShape::MatrixArray(u32(4), u32(4), usize(24), usize(24)),
+                             u32(864) },
+        GlobalUniformField { G_OWESHADOWATLASTRANSFORMS,
+                             {},
+                             "vec4[24]"_str,
+                             GlobalUniformProducer::Shadow,
+                             UniformOutputId { u32(3) },
+                             UniformValueShape::Float(u32(96)),
+                             u32(2400) },
+        // Lighting V1's eight light slots, and each slot's shadow views
+        GlobalUniformField { G_LIGHTINGV1POSITION,
+                             {},
+                             "vec3[8]"_str,
+                             GlobalUniformProducer::Light,
+                             UniformOutputId { u32(7) },
+                             UniformValueShape::Float(u32(24)),
+                             u32(2864) },
+        GlobalUniformField { G_LIGHTINGV1COLORRADIUS,
+                             {},
+                             "vec4[8]"_str,
+                             GlobalUniformProducer::Light,
+                             UniformOutputId { u32(6) },
+                             UniformValueShape::Float(u32(32)),
+                             u32(2992) },
+        GlobalUniformField { G_LIGHTINGV1DIRECTIONTYPE,
+                             {},
+                             "vec4[8]"_str,
+                             GlobalUniformProducer::Light,
+                             UniformOutputId { u32(8) },
+                             UniformValueShape::Float(u32(32)),
+                             u32(3120) },
+        GlobalUniformField { G_LIGHTINGV1CONEEXPONENT,
+                             {},
+                             "vec4[8]"_str,
+                             GlobalUniformProducer::Light,
+                             UniformOutputId { u32(9) },
+                             UniformValueShape::Float(u32(32)),
+                             u32(3248) },
+        GlobalUniformField { G_LIGHTINGV1CASTSHADOW,
+                             {},
+                             "float[8]"_str,
+                             GlobalUniformProducer::Light,
+                             UniformOutputId { u32(10) },
+                             UniformValueShape::Float(u32(8)),
+                             u32(3376) },
+        GlobalUniformField { G_OWELIGHTSSHADOWVIEW,
+                             {},
+                             "float[8]"_str,
+                             GlobalUniformProducer::Shadow,
+                             UniformOutputId { u32(4) },
+                             UniformValueShape::Float(u32(8)),
+                             u32(3504) },
+        GlobalUniformField { G_OWELIGHTSSHADOWPROJECTION,
+                             {},
+                             "vec4[8]"_str,
+                             GlobalUniformProducer::Shadow,
+                             UniformOutputId { u32(5) },
+                             UniformValueShape::Float(u32(32)),
+                             u32(3632) },
     };
     return fields.as_slice();
 }

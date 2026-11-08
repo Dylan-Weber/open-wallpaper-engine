@@ -249,6 +249,16 @@ int main(int argc, char** argv) {
     config.fps             = static_cast<uint32_t>(args.fps.to_primitive());
     // a capture's clock is frame-exact: no need to wait 1 / fps between frames (--capture-realtime does)
     config.unpaced         = capture && ! args.capture_realtime;
+    {
+        const auto quality    = args.shadow_quality.as_str();
+        config.shadow_quality = quality == "low"_str     ? owe::ShadowQuality::Low
+                                : quality == "high"_str  ? owe::ShadowQuality::High
+                                : quality == "ultra"_str ? owe::ShadowQuality::Ultra
+                                                         : owe::ShadowQuality::Medium;
+        if (quality != "low"_str && quality != "medium"_str && quality != "high"_str &&
+            quality != "ultra"_str)
+            eprintln("--shadow-quality: '{}' isn't low, medium, high or ultra; medium", quality);
+    }
     if (args.random_seed.is_some()) {
         config.random_seed = Some(*args.random_seed);
     }

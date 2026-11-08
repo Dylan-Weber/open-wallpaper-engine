@@ -41,7 +41,19 @@ struct PuppetLayerRegistry {
 struct SceneShaderEnvironment {
     bool fog_distance { false };
     bool fog_height { false };
-    bool directional_shadow { false };
+    // some light casts a shadow map, and models cast their shadows into it
+    bool          shadow_mapping { false };
+    ShadowQuality shadow_quality { ShadowQuality::Medium };
+    // The scene's light config: how many lights of each kind the newer light interface gets.
+    u32 point_lights {};
+    u32 spot_lights {};
+    u32 directional_lights {};
+};
+
+// A light that casts a shadow map (by its object id).
+struct SceneShadowLight {
+    i32            id;
+    SceneLightType type;
 };
 
 struct GeometryShaderLimits {
@@ -159,6 +171,8 @@ struct SceneLayerResources {
     HashMap<String, Arc<SceneNode>>   asset_layers;
     // The spot lights that project the light cookie: the first spotcookie-many with usecookie.
     HashSet<i32>                      light_cookie_ids;
+    // each shadowed light's first view in the scene's list of shadow views, by its object id
+    HashMap<i32, i32>                 shadow_views;
 };
 
 struct SceneLayerBuildContext {
@@ -375,7 +389,8 @@ SceneParseContext
 BuildContext(Scene&, fs::VFS&, ref<str> scene_id, const wpscene::SceneMetadata&,
              array<i32, 2> ortho_extent, Option<ref<rstd::json::Map>> user_properties = None(),
              Option<rstd::path::PathBuf> shader_cache_dir = None(),
-             GeometryShaderLimits geometry_limits = {}, bool directional_shadow = false,
+             GeometryShaderLimits geometry_limits = {}, slice<SceneShadowLight> shadow_lights = {},
+             ShadowQuality shadow_quality   = ShadowQuality::Medium,
              bool geometry_shader_supported = true, Option<ImageReadyCallback> image_ready = None(),
              TextureMemoryOptions texture_memory = {});
 

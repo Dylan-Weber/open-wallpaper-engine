@@ -62,13 +62,55 @@ enum class LightUniformOutput : rstd::uint32_t
     DirectionType,
     ConeExponent,
     CastShadow,
+    // Lighting V1's own slots (kLightingV1Slots), for the lights the light config counts
+    LightingV1ColorRadius,
+    LightingV1Position,
+    LightingV1DirectionType,
+    LightingV1ConeExponent,
+    LightingV1CastShadow,
 };
+
+// How many lights Lighting V1 lights: Wallpaper Engine's lights every light its light config counts, not only the
+// first four (the old arrays' four).
+inline constexpr usize kLightingV1Slots { 8 };
 
 enum class ShadowUniformOutput : rstd::uint32_t
 {
+    // the first shadowed directional light's cascades, as Wallpaper Engine's casters read them
     ViewProjectionMatrices,
     AtlasTransforms,
+    // every shadowed light's views (kShadowViewCount), their atlas squares, and each light slot's
+    // first view (-1 without a shadow map), for Lighting V1's slots
+    Views,
+    ViewAtlasTransforms,
+    LightViews,
+    // each Lighting V1 slot's point light depth terms for the stock point lookup
+    PointProjections,
 };
+
+inline constexpr usize kShadowViewCount { 24 };
+
+// Wallpaper Engine's shadow quality setting, numbered as its shaders number it
+// (LIGHTS_SHADOW_MAPPING_QUALITY). Medium is owe's default.
+enum class ShadowQuality : rstd::uint8_t
+{
+    Low    = 1,
+    Medium = 2,
+    High   = 3,
+    Ultra  = 4,
+};
+
+// Each shadow view's square of the atlas: 256 pixels at low and medium shadows, 512 at high, 1024
+// at ultra.
+constexpr int ShadowTileSize(ShadowQuality quality) {
+    return quality == ShadowQuality::Ultra ? 1024 : quality == ShadowQuality::High ? 512 : 256;
+}
+
+// How wide a point light's six views are, in degrees: wider than a cube's faces by what the stock
+// lookup's compensation (0.47 at low and medium, 0.48 at high, 0.49 at ultra) undoes.
+constexpr double PointShadowFieldOfView(ShadowQuality quality) {
+    return quality == ShadowQuality::Ultra ? 91.2 : quality == ShadowQuality::High ? 92.0 : 94.0;
+}
 
 enum class ColorUniformOutput : rstd::uint32_t
 {
@@ -376,9 +418,19 @@ private:
     Arc<SceneNode> m_node;
 };
 
+// How many lights of each kind the newer light interface (Lighting V1) gets: the scene's
+// general.lightconfig, all 0 without one.
+struct LightKindLimits {
+    u32 point {};
+    u32 spot {};
+    u32 directional {};
+};
+
 class LightUniformSource {
 public:
-    explicit LightUniformSource(ref<Scene> scene): m_scene(scene) {}
+    // Without limits, every light shows through the newer interface too.
+    explicit LightUniformSource(ref<Scene> scene, Option<LightKindLimits> limits = None())
+        : m_scene(scene), m_limits(rstd::move(limits)) {}
 
     auto Describe(mut_ref<dyn<UniformBindingSink>>) const -> Result<empty, UniformError>;
     auto Version(ref<dyn<UniformUpdateContext>>) const -> u64;
@@ -387,13 +439,23 @@ public:
     auto AcquireBindingLease() const -> Option<Box<dyn<UniformBindingLease>>> { return None(); }
 
 private:
-    ref<Scene> m_scene;
+    ref<Scene>              m_scene;
+    Option<LightKindLimits> m_limits;
 };
 
 class ShadowUniformSource {
 public:
-    ShadowUniformSource(Arc<SceneCamera> camera, ref<Scene> scene)
-        : m_camera(rstd::move(camera)), m_scene(scene) {}
+    // `scene`'s lights and `limits` as LightUniformSource has them, so each light's views go in its
+    // Lighting V1 slot; `atlas_transforms` holds each view's square of the atlas (x, y, width,
+    // height, in its texture coordinates).
+    ShadowUniformSource(Arc<SceneCamera> camera, ref<Scene> scene, Vec<float> atlas_transforms,
+                        ShadowQuality           quality = ShadowQuality::Medium,
+                        Option<LightKindLimits> limits  = None())
+        : m_camera(rstd::move(camera)),
+          m_scene(scene),
+          m_atlas_transforms(rstd::move(atlas_transforms)),
+          m_quality(quality),
+          m_limits(rstd::move(limits)) {}
 
     auto Describe(mut_ref<dyn<UniformBindingSink>>) const -> Result<empty, UniformError>;
     auto Version(ref<dyn<UniformUpdateContext>>) const -> u64;
@@ -402,8 +464,11 @@ public:
     auto AcquireBindingLease() const -> Option<Box<dyn<UniformBindingLease>>> { return None(); }
 
 private:
-    Arc<SceneCamera> m_camera;
-    ref<Scene>       m_scene;
+    Arc<SceneCamera>        m_camera;
+    ref<Scene>              m_scene;
+    Vec<float>              m_atlas_transforms;
+    ShadowQuality           m_quality;
+    Option<LightKindLimits> m_limits;
 };
 
 class TextureUniformSource {
