@@ -223,7 +223,7 @@ Option<SceneLayerNodeDraft> BuildLayerConfiguration(SceneLayerBuildContext& cont
         model.parent  = u32();
         model.visible = true;
         ParseModelObj(context, model);
-        return AttachCreatedLayer(context, owner, id);
+        return TakeCreatedLayer(context, id);
     }
 
     Vec<float> requested_size;
