@@ -184,7 +184,15 @@ struct TextLayoutMetrics {
     // How far a background box reaches above the line to take in the ink that rises past it (0
     // without a background).
     float background_overflow { 0.0f };
+    // the last line's descent below its baseline
+    float descent { 0.0f };
 };
+
+// How far text's box moves from the layer's origin for its alignment: left, right, top and bottom
+// put that edge of the box on the origin; centred text sits with its baseline half the font's
+// ascent below the origin, its box half the descent below it.
+auto TextAnchorOffset(ref<str> horizontal, ref<str> vertical, float width, float height,
+                      float descent) -> array<float, 2>;
 
 struct TextGeometryPolicy {
     float frame_width { 1.0f };
