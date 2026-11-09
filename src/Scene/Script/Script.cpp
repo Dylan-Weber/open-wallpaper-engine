@@ -1728,7 +1728,8 @@ static uint32_t ResolveBoneIndex(JSContext* ctx, owe::SceneNode* n, EngineHostSt
         if (! name) return 0;
         const auto bone_name = rstd::cppstd::as_str(name).unwrap();
         // the empty name finds no bone, unnamed ones included
-        uint32_t idx = bone_name.is_empty() ? 0 : (*host->bone_index_resolver)->operator()(n, bone_name);
+        uint32_t idx =
+            bone_name.is_empty() ? 0 : (*host->bone_index_resolver)->operator()(n, bone_name);
         JS_FreeCString(ctx, name);
         return idx;
     }
