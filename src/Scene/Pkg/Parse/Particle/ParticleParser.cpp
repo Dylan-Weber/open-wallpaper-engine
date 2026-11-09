@@ -1239,11 +1239,15 @@ struct MovementOperator {
     float                                                     drag {};
     Eigen::Vector3d                                           gravity;
     ParticleInstanceModifiers                                 modifiers;
-    particle::ParticleWriteIndex<particle::VelocityAttribute> velocity;
+    particle::ParticleWriteIndex<particle::VelocityAttribute>        velocity;
+    particle::ParticleReadIndex<particle::LifetimeAttribute>        lifetime;
+    particle::ParticleReadIndex<particle::InitialLifetimeAttribute> initial_lifetime;
 
     void Compile(particle::ParticleViewCompiler& compiler) {
         compiler.WriteBase(attributes.position);
-        velocity = compiler.Write(attributes.velocity);
+        velocity         = compiler.Write(attributes.velocity);
+        lifetime         = compiler.Read(attributes.lifetime);
+        initial_lifetime = compiler.Read(attributes.initial_lifetime);
     }
 
     void Update(particle::ParticleUpdateContext& context) {
@@ -1252,22 +1256,20 @@ struct MovementOperator {
         auto velocities = context.view.Write(velocity);
         auto delta      = context.delta.to_primitive();
         auto speed      = modifiers.Speed();
+        // Wallpaper Engine (FUN_14023fbc0 case 1): gravity is added, the particle moves, then drag takes
+        // min(drag dt2, 1) of the speed, dt2 being the frame-rate compensated step (particles-drag-step: a thrown
+        // particle stops at (speed / drag) x (1 + drag dt2) / (0.503, 0.818, 1) at 15, 30, 60 fps). A particle is not
+        // slowed in the frame it is born in (it has not aged yet): it goes one frame further.
+        const double keep      = 1.0 - rstd::cmp::min(double(drag) * context.delta2.to_primitive(), 1.0);
+        auto         lifetimes = context.view.Read(lifetime);
+        auto         initial   = context.view.Read(initial_lifetime);
         for (auto slot : context.slots) {
-            // Wallpaper Engine pulls a particle by gravity, moves it, then slows it: a frame takes
-            // drag dt / (1 + (dt / 0.065)^2) of its speed, so drag is the rate a second at high
-            // frame rates and gentler at low ones (particles-drag-rest at 15, 30 and 60 frames a
-            // second: a thrown particle stops at 0.51, 0.80 and 0.95 of what the drag's rate says
-            // for drag 0.5 to 2); a capped falling particle moves a frame's gravity faster than
-            // its cap (particles-capvelocity).
             const Eigen::Vector3d pulled =
                 velocities[slot.index].cast<double>() +
-                speed * (frame->world_space ? frame->local_from_world_dir * gravity : gravity) *
-                    delta;
-            positions[slot.index] =
-                (positions[slot.index].cast<double>() + pulled * delta).cast<float>();
-            const double loss = rstd::cmp::min(
-                1.0, double(drag) * delta / (1.0 + (delta / 0.065) * (delta / 0.065)));
-            velocities[slot.index] = (pulled * (1.0 - loss)).cast<float>();
+                speed * (frame->world_space ? frame->local_from_world_dir * gravity : gravity) * delta;
+            positions[slot.index] = (positions[slot.index].cast<double>() + pulled * delta).cast<float>();
+            const bool newborn     = lifetimes[slot.index] >= initial[slot.index];
+            velocities[slot.index] = (newborn ? pulled : pulled * keep).cast<float>();
         }
     }
 };
@@ -1288,14 +1290,13 @@ struct AngularMovementOperator {
         auto rotations  = context.view.Write(rotation);
         auto velocities = context.view.Write(angular_velocity);
         auto delta      = context.delta.to_primitive();
+        // the same as movement (FUN_14023fbc0 case 2): force added, turned, then min(drag dt2, 1) of the angular speed
+        // taken
+        const double keep = 1.0 - rstd::cmp::min(double(drag) * context.delta2.to_primitive(), 1.0);
         for (auto slot : context.slots) {
-            Eigen::Vector3d acceleration =
-                algorism::DragForce(rotations[slot.index].cast<double>(), drag) + force;
-            velocities[slot.index] =
-                (velocities[slot.index].cast<double>() + acceleration * delta).cast<float>();
-            rotations[slot.index] = (rotations[slot.index].cast<double>() +
-                                     velocities[slot.index].cast<double>() * delta)
-                                        .cast<float>();
+            const Eigen::Vector3d pushed = velocities[slot.index].cast<double>() + force * delta;
+            rotations[slot.index] = (rotations[slot.index].cast<double>() + pushed * delta).cast<float>();
+            velocities[slot.index] = (pushed * keep).cast<float>();
         }
     }
 };
