@@ -1018,3 +1018,34 @@ TEST(ParticleInstanceModifiers, CloneRetainsReadOnlyBindingsAfterSourceReplaceme
     ASSERT_TRUE(binding->animation.is_some());
     EXPECT_FLOAT_EQ(binding->animation->c0[usize()].value, 7.0f);
 }
+
+// Instantaneous emitters fire when the system has no particles; every one of them does, not only the first to run
+// (particles-instantaneous-emitters: Wallpaper Engine shows a particle from each of several such emitters).
+TEST(ParticleSubSystem, EveryInstantaneousEmitterFiresIntoAnEmptySystem) {
+    owe::Scene             scene;
+    auto                   mesh = Arc<owe::SceneMesh>::make();
+    owe::ParticleSubSystem subsystem(scene,
+                                     mesh.clone(),
+                                     u32(8),
+                                     f64(1.0),
+                                     u32(1),
+                                     f64(1.0),
+                                     owe::ParticleSubSystem::SpawnType::STATIC,
+                                     owe::ParticleAnimationSpec {});
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"lifetimerandom","min":100,"max":100})"_str).unwrap(), u32(1)));
+    for (usize index {}; index < usize(3); ++index) {
+        subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+            owe::BoxEmitterProgram(subsystem.SpawnPipeline(),
+                                   owe::ParticleBoxEmitterArgs {
+                                       .origin        = { 10.0f, 0.0f, 0.0f },
+                                       .instantaneous = u32(2),
+                                   },
+                                   index)));
+    }
+    subsystem.Finalize();
+    subsystem.Tick(f64(1.0 / 30.0), false);
+    EXPECT_EQ(LiveParticleCount(subsystem), usize(6));
+    subsystem.Tick(f64(1.0 / 30.0), false);
+    EXPECT_EQ(LiveParticleCount(subsystem), usize(6)); // not again while particles live
+}
