@@ -1407,7 +1407,7 @@ public:
     void SetFrame(float frame);
     void SetRate(float rate);
 
-    bool     IsPlaying() const { return m_playing; }
+    bool IsPlaying() const { return m_playing; }
     // How many times it has got to its end: every loop, or a single play's end.
     u64      EndedCount() const { return m_ended; }
     i32      Frame() const;
@@ -1790,8 +1790,8 @@ public:
     auto AnimationLayer(usize index) const -> Option<Arc<SceneAnimationLayer>>;
     // how many animation layers the node has (a script's getAnimationLayerCount)
     usize AnimationLayerCount() const { return m_animation_layers.len(); }
-    void TickFieldAnimations(double runtime, Vec<SceneAnimationEventDispatch>& events);
-    void SetAlphaSource(SceneNode* node) { m_alpha_source = node; }
+    void  TickFieldAnimations(double runtime, Vec<SceneAnimationEventDispatch>& events);
+    void  SetAlphaSource(SceneNode* node) { m_alpha_source = node; }
 
     ref<str> VisibleUserKey() const { return m_visible_user_binding.key.as_str(); }
     void     SetVisibleUserKey(String key) {
