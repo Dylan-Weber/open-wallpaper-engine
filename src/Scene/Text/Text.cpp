@@ -722,7 +722,59 @@ auto StrokeGlyph(const vectext::GlyphBitmap& fine, int trace, double radius, dou
                                   scale,
                                   rstd::move(coverage) };
 }
+// Where a bitmap's ink starts and ends, to a fraction of a pixel: an edge pixel covered c of the
+// way has the edge 1 - c into it (exact for straight edges along the pixels)
+void InkEdges(const vectext::GlyphBitmap& bitmap, AtlasGlyph& entry) {
+    const int w = int(bitmap.width), h = int(bitmap.height);
+    if (! w || ! h) return;
+    auto at = [&](int x, int y) {
+        return bitmap.coverage[usize(y * w + x)] / 255.0;
+    };
+    auto column = [&](int x) {
+        double c {};
+        for (int y = 0; y < h; ++y) c = rstd::cmp::max(c, at(x, y));
+        return c;
+    };
+    auto row = [&](int y) {
+        double c {};
+        for (int x = 0; x < w; ++x) c = rstd::cmp::max(c, at(x, y));
+        return c;
+    };
+    int l = 0, r = w - 1, t = 0, b = h - 1;
+    while (l < r && column(l) == 0) ++l;
+    while (r > l && column(r) == 0) --r;
+    while (t < b && row(t) == 0) ++t;
+    while (b > t && row(b) == 0) --b;
+    entry.ink_left   = l + 1 - column(l);
+    entry.ink_right  = r + column(r);
+    entry.ink_top    = t + 1 - row(t);
+    entry.ink_bottom = b + row(b);
+}
 } // namespace
+
+auto OutlinedGlyphPlace(double left, double right, double top, double bottom, double ppem)
+    -> GlyphPlace {
+    // the atlas's em, and the room round each glyph in it, in atlas pixels
+    constexpr double kAtlasEm = 32, kAtlasRoom = 12;
+    const double     w = right - left, h = bottom - top;
+    if (! (ppem > 0) || ! (w > 0) || ! (h > 0)) return {};
+    // (Wallpaper Engine's single-precision sizes, truncated)
+    const float  per_px  = float(kAtlasEm) / float(ppem);
+    const double atlas_w = rstd::cmp::max(1.0, double(int(float(w) * per_px))),
+                 atlas_h = rstd::cmp::max(1.0, double(int(float(h) * per_px)));
+    const double scale   = rstd::cmp::max(atlas_w, atlas_h) / rstd::cmp::max(w, h);
+    const double room    = ppem * kAtlasRoom / kAtlasEm;
+    // the atlas glyph (with its room) is drawn on the box grown by room
+    const double kx = (w + 2 * room) / (atlas_w + 2 * kAtlasRoom);
+    const double ky = (h + 2 * room) / (atlas_h + 2 * kAtlasRoom);
+    GlyphPlace   place;
+    place.scale_x  = scale * kx;
+    place.offset_x = left - room + (kAtlasRoom - left * scale) * kx;
+    // y is down; the atlas is anchored at the box's bottom
+    place.scale_y  = scale * ky;
+    place.offset_y = bottom + room - (bottom * scale + kAtlasRoom) * ky;
+    return place;
+}
 
 auto TextResources::Rasterize(const vectext::FontInstance& font, vectext::Index glyph, double scale,
                               double outline) -> Result<AtlasGlyph, vectext::TextError> {
@@ -755,6 +807,7 @@ auto TextResources::Rasterize(const vectext::FontInstance& font, vectext::Index 
     AtlasGlyph entry {
         .width = bitmap.width, .height = bitmap.height, .origin = bitmap.origin, .scale = scale
     };
+    InkEdges(bitmap, entry);
     if (bitmap.width && bitmap.height) {
         usize page {};
         for (;;) {
@@ -1391,28 +1444,56 @@ struct TextLayouter::Impl {
                 miny = rstd::cmp::min(miny, bottom);
                 maxy = rstd::cmp::max(maxy, top);
             }
+            float fill_left = left, fill_right = right, fill_bottom = bottom, fill_top = top;
             if (outlined) {
                 auto grown = resources->Rasterize(
                     output.fonts()[usize(glyph.font)], glyph.glyph, 1, style.outline_thickness);
                 if (grown.is_err()) return Err(grown.unwrap_err());
-                auto  outline  = grown.unwrap();
-                float out_left = left + float(outline.origin.x - atlas.origin.x);
-                float out_top  = top - float(outline.origin.y - atlas.origin.y);
+                auto outline = grown.unwrap();
+                // the letter and its outline are drawn where Wallpaper Engine's distance atlas has
+                // them (text-outline-offset), from the letter's box in whole pixels (as hinting
+                // has its edges)
+                auto round = [](double v) {
+                    return f64(v + 0.5).floor().to_primitive();
+                };
+                const auto place = OutlinedGlyphPlace(round(atlas.origin.x + atlas.ink_left),
+                                                      round(atlas.origin.x + atlas.ink_right),
+                                                      round(atlas.origin.y + atlas.ink_top),
+                                                      round(atlas.origin.y + atlas.ink_bottom),
+                                                      round(size));
+                // a glyph point x (y down) is at left - origin.x + x (top + origin.y - y)
+                auto px = [&](double x) {
+                    return float(place.scale_x * x + place.offset_x - x);
+                };
+                auto py = [&](double y) {
+                    return float(place.scale_y * y + place.offset_y - y);
+                };
+                const double ox = atlas.origin.x, oy = atlas.origin.y;
+                const double ow = atlas.width / atlas.scale, oh = atlas.height / atlas.scale;
+                const double gx = outline.origin.x, gy = outline.origin.y;
+                const double gw = outline.width / outline.scale,
+                             gh = outline.height / outline.scale;
+                fill_left       = left + px(ox);
+                fill_right      = right + px(ox + ow);
+                fill_top        = top - py(oy);
+                fill_bottom     = bottom - py(oy + oh);
+                float out_left  = left + float(gx - ox);
+                float out_top   = top - float(gy - oy);
                 outlines.push(Quad { outline,
-                                     out_left,
-                                     out_left + float(outline.width / outline.scale),
-                                     out_top - float(outline.height / outline.scale),
-                                     out_top,
+                                     out_left + px(gx),
+                                     out_left + float(gw) + px(gx + gw),
+                                     out_top - float(gh) - py(gy + gh),
+                                     out_top - py(gy),
                                      { style.outline_color[usize()],
                                        style.outline_color[usize(1)],
                                        style.outline_color[usize(2)],
                                        style.alpha } });
             }
             quads.push(Quad { atlas,
-                              left,
-                              right,
-                              bottom,
-                              top,
+                              fill_left,
+                              fill_right,
+                              fill_bottom,
+                              fill_top,
                               { style.color[usize()],
                                 style.color[usize(1)],
                                 style.color[usize(2)],

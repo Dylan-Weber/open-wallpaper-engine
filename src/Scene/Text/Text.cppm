@@ -32,6 +32,9 @@ struct AtlasGlyph {
     rstd::uint32_t page {}, x {}, y {}, width {}, height {};
     vectext::Point origin;
     double         scale { 1 };
+    // where the ink's edges are, to a fraction of a pixel (from the edge pixels' coverage), in
+    // the bitmap's pixels from `origin`
+    double ink_left {}, ink_top {}, ink_right {}, ink_bottom {};
 };
 class AtlasPage {
     struct Impl;
@@ -257,6 +260,17 @@ struct TextGeometry {
     float effect_frame_width { 1.0f };
     float effect_frame_height { 1.0f };
 };
+
+// Where Wallpaper Engine draws an outlined glyph (text-outline-offset): outlined text comes from a
+// signed distance atlas whose glyphs are stored at 32 pixels an em. The glyph's whole-pixel box
+// (left..right, top..bottom, y down, at `ppem` pixels an em) has its atlas sizes truncated and is
+// scaled by the larger, with 12 atlas pixels round it, then drawn on the box grown by 12 / 32 em:
+// a point x of the glyph is drawn at scale_x * x + offset_x (and the same for y).
+struct GlyphPlace {
+    double scale_x { 1 }, offset_x {}, scale_y { 1 }, offset_y {};
+};
+auto OutlinedGlyphPlace(double left, double right, double top, double bottom, double ppem)
+    -> GlyphPlace;
 
 TextGeometry ResolveTextGeometry(const TextGeometryPolicy& policy,
                                  const TextLayoutMetrics&  metrics);
