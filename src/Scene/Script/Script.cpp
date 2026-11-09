@@ -1723,22 +1723,27 @@ static uint32_t ResolveBoneIndex(JSContext* ctx, owe::SceneNode* n, EngineHostSt
         if (! host->bone_index_resolver) return 0;
         const char* name = JS_ToCString(ctx, arg);
         if (! name) return 0;
+        const auto bone_name = rstd::cppstd::as_str(name).unwrap();
+        // the empty name finds no bone, unnamed ones included
         uint32_t idx =
-            (*host->bone_index_resolver)->operator()(n, rstd::cppstd::as_str(name).unwrap());
+            bone_name.is_empty() ? 0 : (*host->bone_index_resolver)->operator()(n, bone_name);
         JS_FreeCString(ctx, name);
         return idx;
     }
-    int32_t idx = 0;
+    // a number is a script's bone index, from 0
+    int32_t idx = -1;
     JS_ToInt32(ctx, &idx, arg);
-    return idx > 0 ? static_cast<uint32_t>(idx) : 0;
+    return idx >= 0 ? static_cast<uint32_t>(idx) + 1 : 0;
 }
 
+// Scripts number a layer's bones from 0, with -1 for a name the layer does not
+// have, as Wallpaper Engine does; the bone resolvers count from 1, with 0 for none.
 JSValue NodeGetBoneIndex(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
     auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
     auto* n    = GetLayerNode(this_val);
-    if (! n || argc < 1 || ! host) return JS_NewInt32(ctx, 0);
+    if (! n || argc < 1 || ! host) return JS_NewInt32(ctx, -1);
     uint32_t index = ResolveBoneIndex(ctx, n, host, argv[0]);
-    return JS_NewInt32(ctx, static_cast<int32_t>(index));
+    return JS_NewInt32(ctx, static_cast<int32_t>(index) - 1);
 }
 
 JSValue NodeGetBoneCount(JSContext* ctx, JSValueConst this_val, int, JSValueConst*) {
