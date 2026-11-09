@@ -600,11 +600,11 @@ struct TextLayouter::Impl {
             }
             measured.text_width = rstd::cmp::max(line_right - line_left, 0.0f);
         }
-        measured.text_height     = float(bounds.height);
-        measured.source_width    = measured.text_width;
-        measured.source_height   = measured.text_height;
-        measured.padding         = style.padding;
-        auto pages               = resources->Pages();
+        measured.text_height   = float(bounds.height);
+        measured.source_width  = measured.text_width;
+        measured.source_height = measured.text_height;
+        measured.padding       = style.padding;
+        auto pages             = resources->Pages();
         if (pages.is_empty()) return Err(vectext::TextError::Limit);
         if (style.opaquebackground) {
             auto pad = style.padding;
