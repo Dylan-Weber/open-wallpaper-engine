@@ -2124,3 +2124,124 @@ TEST(ParticleSubSystem, EveryInstantaneousEmitterFiresIntoAnEmptySystem) {
     subsystem.Tick(f64(1.0 / 30.0), false);
     EXPECT_EQ(LiveParticleCount(subsystem), usize(6)); // not again while particles live
 }
+
+// boids (particles-boids): particles at rest with only the boids operator; returns each particle's velocity, ordered by x.
+// Wallpaper Engine runs the operator on groups of four particles, and the unused places of the last group count as
+// particles at rest at the system's origin: a pair at -d/2 and d/2 has two such neighbours half way between them.
+struct BoidsResult {
+    int             count {};
+    Eigen::Vector3f velocity[4];
+};
+
+static BoidsResult BoidsVelocities(ref<str> config, std::initializer_list<float> xs, int ticks = 1,
+                                   double tick = 1.0 / 30.0,
+                                   ref<str> velocity = R"({"name":"velocityrandom","min":"0 0 0","max":"0 0 0"})"_str) {
+    owe::Scene             scene;
+    auto                   mesh = Arc<owe::SceneMesh>::make();
+    owe::ParticleSubSystem subsystem(scene,
+                                     mesh.clone(),
+                                     u32(8),
+                                     f64(1.0),
+                                     u32(1),
+                                     f64(1.0),
+                                     owe::ParticleSubSystem::SpawnType::STATIC,
+                                     owe::ParticleAnimationSpec {});
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"lifetimerandom","min":100,"max":100})"_str).unwrap(), u32(1)));
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(owe::ParseJson(velocity).unwrap(), u32(2)));
+    int emitter {};
+    for (float x : xs) {
+        subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+            owe::BoxEmitterProgram(subsystem.SpawnPipeline(),
+                                   owe::ParticleBoxEmitterArgs {
+                                       .origin        = { x, 0.0f, 0.0f },
+                                       .instantaneous = u32(1),
+                                   },
+                                   usize(emitter++))));
+    }
+    subsystem.AddOperator(owe::ParticleParser::GenOperator(
+        owe::ParseJson(config).unwrap(),
+        owe::ParticleInstanceModifiers(Arc<owe::wpscene::ParticleInstanceoverride>::make(),
+                                       owe::wpscene::Particle::EFlags { 0 },
+                                       false),
+        subsystem,
+        usize()));
+    subsystem.Finalize();
+    for (int count = 0; count < ticks; ++count) subsystem.Tick(f64(tick), false);
+    BoidsResult result {};
+    float       place[4] {};
+    for (usize instance {}; instance < subsystem.System().InstanceCount(); ++instance) {
+        auto& storage = subsystem.System().Instance(instance).Storage();
+        usize slot {};
+        for (const auto& state : subsystem.System().Instance(instance).Binding().Read().States()) {
+            if (state.active && result.count < 4) {
+                particle::ParticleSlotReader value(storage, particle::ParticleSlot { .index = slot });
+                place[result.count]           = value.Read(subsystem.Attributes().position).x();
+                result.velocity[result.count] = value.Read(subsystem.Attributes().velocity);
+                ++result.count;
+            }
+            ++slot;
+        }
+    }
+    for (int i = 0; i < result.count; ++i) {
+        for (int j = i + 1; j < result.count; ++j) {
+            if (place[j] < place[i]) {
+                auto p = place[i];
+                place[i] = place[j];
+                place[j] = p;
+                auto v = result.velocity[i];
+                result.velocity[i] = result.velocity[j];
+                result.velocity[j] = v;
+            }
+        }
+    }
+    EXPECT_EQ(result.count, emitter);
+    return result;
+}
+
+// One frame at 30 a second moves velocities by factor x average x dt x (0.025 x 30)^0.7 (Wallpaper Engine's frame-rate
+// compensation; at 40 frames a second and more the time step is used as it is).
+static constexpr double kBoidsStep30 = (1.0 / 30.0) * 0.81766;
+
+TEST(ParticleSubSystem, BoidsSeparationAveragesOverNeighboursIncludingTheEmptyPlaces) {
+    auto config = R"({"name":"boids","separationthreshold":60,"neighborthreshold":200,"separationfactor":1,
+                      "alignmentfactor":0,"cohesionfactor":0})"_str;
+    // 40 apart: the other particle (60 - 40) and two empty places 20 away (60 - 20 each), averaged over 3
+    auto near = BoidsVelocities(config, { -20.0f, 20.0f });
+    EXPECT_NEAR(near.velocity[1].x(), kBoidsStep30 * 100.0 / 3.0, 0.01);
+    EXPECT_NEAR(near.velocity[0].x(), -near.velocity[1].x(), 1e-4);
+    // 100 apart: only the empty places 50 away (60 - 50)
+    EXPECT_NEAR(BoidsVelocities(config, { -50.0f, 50.0f }).velocity[1].x(), kBoidsStep30 * 10.0, 0.005);
+    // 130 apart: nothing within 60
+    EXPECT_NEAR(BoidsVelocities(config, { -65.0f, 65.0f }).velocity[1].x(), 0.0, 1e-6);
+}
+
+TEST(ParticleSubSystem, BoidsCohesionPullsTowardsTheNeighboursMeanPosition) {
+    auto config = R"({"name":"boids","separationthreshold":60,"neighborthreshold":200,"separationfactor":0,
+                      "alignmentfactor":0,"cohesionfactor":1})"_str;
+    // 150 apart: the mean of the other particle and the two empty places is 25 from the origin, 100 from -75
+    EXPECT_NEAR(BoidsVelocities(config, { -75.0f, 75.0f }).velocity[0].x(), kBoidsStep30 * 100.0, 0.05);
+    // 250 apart: the other particle is out of reach, the empty places pull to the origin
+    EXPECT_NEAR(BoidsVelocities(config, { -125.0f, 125.0f }).velocity[0].x(), kBoidsStep30 * 125.0, 0.05);
+    // three particles: one empty place
+    auto three = BoidsVelocities(config, { -60.0f, -40.0f, 60.0f });
+    EXPECT_NEAR(three.velocity[0].x(), kBoidsStep30 * (20.0 / 3.0 + 60.0), 0.05);
+}
+
+TEST(ParticleSubSystem, BoidsAlignmentSteersTowardsTheNeighboursMeanVelocity) {
+    auto config = R"({"name":"boids","separationthreshold":1,"neighborthreshold":200,"separationfactor":0,
+                      "alignmentfactor":1,"cohesionfactor":0})"_str;
+    // one particle moving at 10 with three empty places at rest: the mean velocity is 0
+    auto alone = BoidsVelocities(config, { 30.0f }, 1, 1.0 / 30.0,
+                                 R"({"name":"velocityrandom","min":"10 0 0","max":"10 0 0"})"_str);
+    EXPECT_NEAR(alone.velocity[0].x(), 10.0 - kBoidsStep30 * 10.0, 0.005);
+}
+
+TEST(ParticleSubSystem, BoidsCompensatesForTheFrameRate) {
+    auto config = R"({"name":"boids","separationthreshold":60,"neighborthreshold":200,"separationfactor":1,
+                      "alignmentfactor":0,"cohesionfactor":0})"_str;
+    // at 60 frames a second each step uses the whole time step: one second gains 1 / 0.81766 times what it does at 30
+    auto at30 = BoidsVelocities(config, { -50.0f, 50.0f }, 30, 1.0 / 30.0).velocity[1].x();
+    auto at60 = BoidsVelocities(config, { -50.0f, 50.0f }, 60, 1.0 / 60.0).velocity[1].x();
+    EXPECT_NEAR(at60 / at30, 1.0 / 0.81766, 0.01);
+}

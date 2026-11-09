@@ -2099,6 +2099,146 @@ struct RemapValueOperator {
     }
 };
 
+// boids (particles-boids), as Wallpaper Engine runs it: particles are taken four at a time and each one looks at every
+// particle of every group, including the unused places of the last group of four, which count as particles at rest at
+// the system's origin. A neighbour closer than separationthreshold pushes away by (threshold - distance) and one closer
+// than neighborthreshold adds its velocity and position; the separation push and the differences from the mean velocity
+// and position are averaged (with the CPU's approximate reciprocals) and scaled by their factors and the time step,
+// which below 40 frames a second is shortened by (0.025 / frame time)^0.7. Above 200 particles only every n-th group is
+// updated a frame (n = count / 200 + 1), looking at every n-th group, with the factors multiplied by n. With flags bit 1
+// a particle that speeds up past maxspeed is slowed to it (unless it was already faster).
+struct Boids {
+    float separation_threshold { 20.0f };
+    float neighbor_threshold { 50.0f };
+    float max_speed { 500.0f };
+    float separation_factor { 15.0f };
+    float alignment_factor { 1.0f };
+    float cohesion_factor { 2.0f };
+    u32   flags { 0 };
+
+    static auto ReadFromJson(const Json& json) -> Boids {
+        Boids value;
+        owe::GetJsonValue(json, "separationthreshold"_str, value.separation_threshold, false);
+        owe::GetJsonValue(json, "neighborthreshold"_str, value.neighbor_threshold, false);
+        owe::GetJsonValue(json, "maxspeed"_str, value.max_speed, false);
+        owe::GetJsonValue(json, "separationfactor"_str, value.separation_factor, false);
+        owe::GetJsonValue(json, "alignmentfactor"_str, value.alignment_factor, false);
+        owe::GetJsonValue(json, "cohesionfactor"_str, value.cohesion_factor, false);
+        owe::GetJsonValue(json, "flags"_str, value.flags, false);
+        return value;
+    }
+};
+
+struct BoidsOperator {
+    ParticleAttributes                                        attributes;
+    Boids                                                     config;
+    particle::ParticleWriteIndex<particle::VelocityAttribute> velocity;
+    rstd::size_t                                              frame {};
+
+    static float Reciprocal(float value) {
+#if defined(__SSE__)
+        return _mm_cvtss_f32(_mm_rcp_ss(_mm_set_ss(value)));
+#else
+        return 1.0f / value;
+#endif
+    }
+
+    static float ReciprocalSqrt(float value) {
+#if defined(__SSE__)
+        return _mm_cvtss_f32(_mm_rsqrt_ss(_mm_set_ss(value)));
+#else
+        return 1.0f / Eigen::numext::sqrt(value);
+#endif
+    }
+
+    void Compile(particle::ParticleViewCompiler& compiler) {
+        compiler.ReadBase(attributes.position);
+        velocity = compiler.Write(attributes.velocity);
+    }
+
+    void Update(particle::ParticleUpdateContext& context) {
+        using index_t   = rstd::size_t;
+        auto positions  = context.view.Positions();
+        auto velocities = context.view.Write(velocity);
+        Vec<usize> slots;
+        for (auto slot : context.slots) slots.push(usize(slot.index.to_primitive()));
+        const index_t count = slots.len().to_primitive();
+        if (count == 0) return;
+        const index_t lanes = (count + 3) / 4 * 4;
+        // the particles and the empty places of the last group, as Wallpaper Engine lays them out
+        Vec<Eigen::Vector3f> place;
+        Vec<Eigen::Vector3f> speed;
+        for (index_t lane = 0; lane < lanes; ++lane) {
+            if (lane < count) {
+                place.push(Eigen::Vector3f(positions[slots[usize(lane)]]));
+                speed.push(Eigen::Vector3f(velocities[slots[usize(lane)]]));
+            } else {
+                place.push(Eigen::Vector3f::Zero());
+                speed.push(Eigen::Vector3f::Zero());
+            }
+        }
+        const float delta = static_cast<float>(context.delta.to_primitive());
+        const float scaled =
+            delta * f32(rstd::cmp::min(0.025f / delta, 1.0f)).powf(f32(0.7f)).to_primitive();
+        const index_t groups = lanes / 4;
+        const index_t stride = count / 200 + 1;
+        const index_t phase  = static_cast<index_t>(frame % stride);
+        const float   step   = scaled * static_cast<float>(stride);
+        const float   push   = config.separation_factor * step;
+        const float   align  = config.alignment_factor * step;
+        const float   pull   = config.cohesion_factor * step;
+        const float   limit2 = config.max_speed * config.max_speed;
+        for (index_t group = phase; group < groups; group += stride) {
+            // the four of a group are worked out together from the velocities before the group
+            Eigen::Vector3f result[4];
+            for (index_t lane = group * 4; lane < group * 4 + 4; ++lane) {
+                const Eigen::Vector3f here = place[usize(lane)];
+                Eigen::Vector3f apart = Eigen::Vector3f::Zero(), mean_speed = Eigen::Vector3f::Zero(),
+                                mean_place = Eigen::Vector3f::Zero();
+                float near {}, neighbours {};
+                const index_t first = static_cast<index_t>((frame + group * 4) % stride);
+                for (index_t other_group = first; other_group < groups; other_group += stride) {
+                    for (index_t other = other_group * 4; other < other_group * 4 + 4; ++other) {
+                        const Eigen::Vector3f d  = here - place[usize(other)];
+                        const float           d2 = d.squaredNorm();
+                        if (d2 == 0.0f) continue;
+                        const float inverse  = ReciprocalSqrt(d2);
+                        const float distance = inverse * d2;
+                        if (distance < config.separation_threshold) {
+                            apart += d * (inverse * config.separation_threshold - 1.0f);
+                            near += 1.0f;
+                        }
+                        if (distance < config.neighbor_threshold) {
+                            mean_speed += speed[usize(other)];
+                            mean_place += place[usize(other)];
+                            neighbours += 1.0f;
+                        }
+                    }
+                }
+                const Eigen::Vector3f before = speed[usize(lane)];
+                Eigen::Vector3f       change = Eigen::Vector3f::Zero();
+                if (near != 0.0f) change += apart * (Reciprocal(near) * push);
+                if (neighbours != 0.0f) {
+                    const float share = Reciprocal(neighbours);
+                    change += (mean_speed * share - before) * align + (mean_place * share - here) * pull;
+                }
+                Eigen::Vector3f next = before + change;
+                if ((config.flags & u32(1)) != u32()) {
+                    const float next2 = next.squaredNorm();
+                    if (rstd::cmp::max(before.squaredNorm(), limit2) < next2)
+                        next *= ReciprocalSqrt(next2) * config.max_speed;
+                }
+                result[lane - group * 4] = next;
+            }
+            for (index_t lane = group * 4; lane < group * 4 + 4; ++lane) {
+                speed[usize(lane)] = result[lane - group * 4];
+                if (lane < count) velocities[slots[usize(lane)]] = speed[usize(lane)];
+            }
+        }
+        ++frame;
+    }
+};
+
 struct NoopUpdateOperator {
     void Compile(particle::ParticleViewCompiler&) {}
     void Update(particle::ParticleUpdateContext&) {}
@@ -2260,6 +2400,11 @@ ParticleParser::GenOperator(const Json& wpj, ParticleInstanceModifiers modifiers
         } else if (name == "inheritvaluefromevent"_str) {
             return Box<dyn<particle::ParticleUpdateProgram>>::make(
                 InheritValueFromEventOperator { .attributes = attributes });
+        } else if (name == "boids"_str) {
+            return Box<dyn<particle::ParticleUpdateProgram>>::make(BoidsOperator {
+                .attributes = attributes,
+                .config     = Boids::ReadFromJson(wpj),
+            });
         } else if (name == "controlpointattract"_str) {
             return Box<dyn<particle::ParticleUpdateProgram>>::make(ControlPointAttractOperator {
                 .attributes = attributes,
