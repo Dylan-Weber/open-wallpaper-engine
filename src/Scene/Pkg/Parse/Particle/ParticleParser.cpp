@@ -182,16 +182,18 @@ struct MapSequenceBetweenControlPointsProgram {
     }
 };
 
-// colorlist: a colour picked from a list, which multiplies the particle's colour (particles-colorlist: Wallpaper
-// Engine paints a yellow colorrandom and the list's cyan as dark green, its yellow as yellow, its magenta as red,
-// in either order, so the list is applied after the other initializers).
+// colorlist: a colour picked from a list, which multiplies the particle's colour
+// (particles-colorlist: Wallpaper Engine paints a yellow colorrandom and the list's cyan as dark
+// green, its yellow as yellow, its magenta as red, in either order, so the list is applied after
+// the other initializers).
 struct ColorListProgram {
     Vec<Eigen::Vector3f> colors;
 
     void Initialize(ParticleSpawnColumns& columns, particle::ParticleSpawnRequest request,
                     ref<dyn<rstd::any::Any>>) {
         if (colors.is_empty()) return;
-        auto pick = static_cast<usize>(Random::get(0.0, 1.0) * static_cast<double>(colors.len().to_primitive()));
+        auto pick = static_cast<usize>(Random::get(0.0, 1.0) *
+                                       static_cast<double>(colors.len().to_primitive()));
         if (pick >= colors.len()) pick = colors.len() - usize(1);
         auto& color                                = columns.colors[request.slot.index];
         color                                      = color.cwiseProduct(colors[pick]);
@@ -404,8 +406,7 @@ class ParticleSpawnInstructionValue {
               (TurbulentVelocityRandom, (TurbulentVelocityRandomProgram value;)),
               (MapSequenceAroundControlPoint, (MapSequenceAroundControlPointProgram value;)),
               (MapSequenceBetweenControlPoints, (MapSequenceBetweenControlPointsProgram value;)),
-              (Override, (OverrideSpawnProgram value;)),
-              (ColorList, (ColorListProgram value;)))
+              (Override, (OverrideSpawnProgram value;)), (ColorList, (ColorListProgram value;)))
 };
 
 template<typename T>
@@ -542,11 +543,13 @@ ParticleSpawnInstruction ParticleParser::GenInitializer(const Json& wpj,
                     for (const auto& item : **items) {
                         array<float, 3> color { 1.0f, 1.0f, 1.0f };
                         owe::GetJsonValue(item, color);
-                        colors.push(Eigen::Vector3f(color[usize(0)], color[usize(1)], color[usize(2)]));
+                        colors.push(
+                            Eigen::Vector3f(color[usize(0)], color[usize(1)], color[usize(2)]));
                     }
                 }
             }
-            return ParticleSpawnInstruction::Make(ColorListProgram { .colors = rstd::move(colors) });
+            return ParticleSpawnInstruction::Make(
+                ColorListProgram { .colors = rstd::move(colors) });
         } else if (name == "lifetimerandom"_str) {
             SingleRandom r = { 0.0f, 1.0f };
             SingleRandom::ReadFromJson(wpj, r);

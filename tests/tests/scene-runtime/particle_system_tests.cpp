@@ -847,8 +847,9 @@ TEST(ParticleSubSystem, AppliesTurbulenceMaskAsAxisWeights) {
     EXPECT_FLOAT_EQ(defaults.z(), 0.0f);
 }
 
-// colorlist (particles-colorlist): the particle's colour is multiplied by a colour picked from the list, whatever
-// order the initializers come in (Wallpaper Engine paints a yellow colorrandom + list as yellow, red or dark green).
+// colorlist (particles-colorlist): the particle's colour is multiplied by a colour picked from the
+// list, whatever order the initializers come in (Wallpaper Engine paints a yellow colorrandom +
+// list as yellow, red or dark green).
 TEST(ParticleSubSystem, ColorlistMultipliesTheColourWhateverTheOrder) {
     auto spawn = [](ref<str> first, ref<str> second) -> Eigen::Vector3f {
         owe::Scene             scene;
