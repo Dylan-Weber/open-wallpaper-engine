@@ -287,6 +287,9 @@ function M.apply(entry, ctx)
         end
     end
     if entry.wp_type == "video" then
+        -- Wallpaper Engine picks a video's YUV matrix by its height (BT.601 up to
+        -- 576 lines), not by the stream's tag; the video renderer does so on request
+        extras.color_matrix = "height"
         local props = load_project_properties(entry, ctx)
         if props then
             map_property_keys(props)
