@@ -197,9 +197,9 @@ auto BonePhysics::Apply(usize bone, const BoneSimulation& simulation, const Affi
                 // with the mass squared and a tiny one is none (see TurnBetween).
                 const Vector3f turned = state.rotation_offset * simulation.tip;
                 if (turned.norm() > 1e-6f) {
-                    const Vector3f along = turned.normalized();
-                    const Vector3f pull  = animated.linear().inverse() *
-                                          simulation.gravity_direction * simulation.mass;
+                    const Vector3f along  = turned.normalized();
+                    const Vector3f pull   = animated.linear().inverse() *
+                                            simulation.gravity_direction * simulation.mass;
                     const Vector3f across = pull - pull.dot(along) * along;
                     const float    moved  = across.norm();
                     if (moved > 0.0f) {
