@@ -2694,10 +2694,11 @@ TEST(UniformSourceParallax, PerspectiveWithAuthoredParallaxDepthAppliesShift) {
                          mvp_with_parallax[rstd::usize(13)]) > 1e-5f);
 }
 
-// A script's applyUserProperties is first called with every user property at once (Wallpaper Engine passes all of them when
-// the script starts, only the changed ones afterwards). owe called it for the scene's properties one at a time, before the
-// script existed or never, so a script that reads two properties (the Outer Wilds sun's supernova loop and its duration)
-// saw the second one missing and switched itself off.
+// A script's applyUserProperties is first called with every user property at once (Wallpaper Engine
+// passes all of them when the script starts, only the changed ones afterwards). owe called it for
+// the scene's properties one at a time, before the script existed or never, so a script that reads
+// two properties (the Outer Wilds sun's supernova loop and its duration) saw the second one missing
+// and switched itself off.
 TEST(SceneParserScript, ApplyUserPropertiesFirstGetsEveryPropertyAtOnce) {
     auto document = owe::wpscene::ParseSceneDocumentJson(
         R"JSON({
@@ -2716,11 +2717,10 @@ TEST(SceneParserScript, ApplyUserPropertiesFirstGetsEveryPropertyAtOnce) {
     ASSERT_TRUE(document.is_some());
 
     auto user_properties = rstd::json::Map::make();
-    user_properties.insert(
-        String::make("loop_on"_str), owe::ParseJson(R"({"type":"bool","value":true})"_str).unwrap());
-    user_properties.insert(
-        String::make("loop_length"_str),
-        owe::ParseJson(R"({"type":"slider","value":1320})"_str).unwrap());
+    user_properties.insert(String::make("loop_on"_str),
+                           owe::ParseJson(R"({"type":"bool","value":true})"_str).unwrap());
+    user_properties.insert(String::make("loop_length"_str),
+                           owe::ParseJson(R"({"type":"slider","value":1320})"_str).unwrap());
 
     owe::fs::VFS                vfs;
     wavsen::audio::SoundManager sound_manager;
