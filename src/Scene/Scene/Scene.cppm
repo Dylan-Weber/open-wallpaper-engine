@@ -3429,6 +3429,9 @@ public:
     auto ScreenToWorld(array<float, 2> position) -> Eigen::Vector3d;
     void SetPointerInWindow(bool inside) { m_pointer_in_window = inside; }
     bool PointerInWindow() const { return m_pointer_in_window; }
+    // The frame rate the wallpaper runs at (0 when not known); particles take two operator passes at 1..20.
+    void SetTargetFps(u32 fps) { m_target_fps = fps; }
+    auto TargetFps() const -> u32 { return m_target_fps; }
     void SetClearColor(array<float, 3> color) { m_clear_color = rstd::move(color); }
     auto ClearColor() const -> array<float, 3> { return m_clear_color.clone(); }
     void SetClearColorUserKey(String key) { m_clear_color_user_key = rstd::move(key); }
@@ -3519,6 +3522,7 @@ private:
     f32                           m_viewport_scale { 1.0f };
     array<float, 2>               m_pointer_position { 0.5f, 0.5f };
     bool                          m_pointer_in_window { false };
+    u32                           m_target_fps {};
     array<float, 3>               m_clear_color { 1.0f, 1.0f, 1.0f };
     String                        m_clear_color_user_key;
     Box<SceneNode>                m_scene_graph;

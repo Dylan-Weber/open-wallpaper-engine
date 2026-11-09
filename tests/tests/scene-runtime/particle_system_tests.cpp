@@ -160,6 +160,17 @@ struct TraceUpdate {
     void Update(particle::ParticleUpdateContext&) { trace->emplace_back(value); }
 };
 
+struct DeltaTraceUpdate {
+    rstd::vec::Vec<double>* deltas;
+    rstd::vec::Vec<double>* deltas2;
+
+    void Compile(particle::ParticleViewCompiler&) {}
+    void Update(particle::ParticleUpdateContext& context) {
+        deltas->push(context.delta.to_primitive());
+        if (deltas2 != nullptr) deltas2->push(context.delta2.to_primitive());
+    }
+};
+
 struct TraceExtract {
     rstd::vec::Vec<i32>* trace;
 
@@ -364,6 +375,81 @@ TEST(ParticleProgram, RunsPreparedProgramsInContractOrder) {
     particle::ParticleSlotReader value(instance.Storage(), particle::ParticleSlot {});
     EXPECT_FLOAT_EQ(value.Read(temperature), 42.0f);
     EXPECT_FALSE(value.Read(instance.Storage().SlotStateKey()).fresh);
+}
+
+// Wallpaper Engine at 20 frames a second or less (FUN_140236cd0): ages, emitters and initializers once with the whole
+// step, then the operator pass twice with half dt and half dt2; post-updates (trails) still once a frame.
+TEST(ParticleProgram, RunsTheOperatorPassTwiceWithHalfSteps) {
+    particle::ParticleSchemaBuilder builder;
+    auto temperature = Register<TemperatureAttribute>(builder, "temperature"_str, "test"_str, 0.0f);
+    rstd::vec::Vec<i32>    trace;
+    rstd::vec::Vec<double> deltas;
+    rstd::vec::Vec<double> deltas2;
+    rstd::vec::Vec<double> post;
+    usize                  spawned {};
+
+    particle::ParticleProgram program;
+    program.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+        TraceEmitter { .trace = rstd::addressof(trace) }));
+    program.AddSpawn(Box<dyn<particle::ParticleSpawnProgram>>::make(
+        TraceSpawn { .trace = rstd::addressof(trace), .temperature = temperature }));
+    program.AddLifecycle(Box<dyn<particle::ParticleLifecycleProgram>>::make(
+        TraceLifecycle { .trace = rstd::addressof(trace) }));
+    program.AddEvent(Box<dyn<particle::ParticleEventProgram>>::make(
+        TraceEvent { .trace = rstd::addressof(trace), .spawned = rstd::addressof(spawned) }));
+    program.AddUpdate(Box<dyn<particle::ParticleUpdateProgram>>::make(
+        TraceUpdate { .trace = rstd::addressof(trace), .value = i32(5) }));
+    program.AddUpdate(Box<dyn<particle::ParticleUpdateProgram>>::make(DeltaTraceUpdate {
+        .deltas = rstd::addressof(deltas), .deltas2 = rstd::addressof(deltas2) }));
+    program.AddPostUpdate(Box<dyn<particle::ParticleUpdateProgram>>::make(
+        TraceUpdate { .trace = rstd::addressof(trace), .value = i32(6) }));
+    program.AddPostUpdate(Box<dyn<particle::ParticleUpdateProgram>>::make(
+        DeltaTraceUpdate { .deltas = rstd::addressof(post), .deltas2 = nullptr }));
+
+    auto definition = particle::ParticleDefinition::Prepare(
+        rstd::move(builder).Build(), rstd::move(program), usize(4));
+    ASSERT_TRUE(definition.is_ok());
+    particle::ParticleSystem system(rstd::move(definition).unwrap());
+    auto&                    instance = system.CreateInstance();
+    EmptyFrame               frame;
+    auto                     frame_ref = rstd::dyn<rstd::any::Any>::from_ref(frame).as_ref();
+    system.Advance(instance,
+                   frame_ref,
+                   f64(1.0 / 15.0),
+                   f64(1.0 / 15.0),
+                   particle::ParticleOperatorSteps { .passes = u32(2), .delta2 = Some(f64(0.05)) });
+
+    const rstd::array<i32, 7> expected {
+        i32(3), i32(1), i32(2), i32(4), i32(5), i32(5), i32(6),
+    };
+    ASSERT_EQ(trace.len(), expected.len());
+    for (usize index {}; index < trace.len(); ++index) EXPECT_EQ(trace[index], expected[index]);
+    ASSERT_EQ(deltas.len(), usize(2));
+    for (usize index {}; index < usize(2); ++index) {
+        EXPECT_DOUBLE_EQ(deltas[index], 1.0 / 30.0);
+        EXPECT_DOUBLE_EQ(deltas2[index], 0.025);
+    }
+    ASSERT_EQ(post.len(), usize(1));
+    EXPECT_DOUBLE_EQ(post[usize()], 1.0 / 15.0);
+}
+
+TEST(ParticleProgram, OnePassUsesTheStepAsDt2ByDefault) {
+    rstd::vec::Vec<double>   deltas;
+    rstd::vec::Vec<double>   deltas2;
+    particle::ParticleProgram program;
+    program.AddUpdate(Box<dyn<particle::ParticleUpdateProgram>>::make(DeltaTraceUpdate {
+        .deltas = rstd::addressof(deltas), .deltas2 = rstd::addressof(deltas2) }));
+    auto definition = particle::ParticleDefinition::Prepare(
+        particle::ParticleSchemaBuilder {}.Build(), rstd::move(program), usize(4));
+    ASSERT_TRUE(definition.is_ok());
+    particle::ParticleSystem system(rstd::move(definition).unwrap());
+    auto&                    instance = system.CreateInstance();
+    EmptyFrame               frame;
+    auto                     frame_ref = rstd::dyn<rstd::any::Any>::from_ref(frame).as_ref();
+    system.Advance(instance, frame_ref, f64(1.0 / 60.0), f64(1.0 / 60.0));
+    ASSERT_EQ(deltas.len(), usize(1));
+    EXPECT_DOUBLE_EQ(deltas[usize()], 1.0 / 60.0);
+    EXPECT_DOUBLE_EQ(deltas2[usize()], 1.0 / 60.0);
 }
 
 TEST(ParticleProgram, ReusesExpiredCapacityWithoutAnEmptyFrame) {
@@ -2135,8 +2221,10 @@ struct BoidsResult {
 
 static BoidsResult BoidsVelocities(ref<str> config, std::initializer_list<float> xs, int ticks = 1,
                                    double tick = 1.0 / 30.0,
-                                   ref<str> velocity = R"({"name":"velocityrandom","min":"0 0 0","max":"0 0 0"})"_str) {
+                                   ref<str> velocity = R"({"name":"velocityrandom","min":"0 0 0","max":"0 0 0"})"_str,
+                                   u32 target_fps = u32()) {
     owe::Scene             scene;
+    if (target_fps > u32()) scene.SetTargetFps(target_fps);
     auto                   mesh = Arc<owe::SceneMesh>::make();
     owe::ParticleSubSystem subsystem(scene,
                                      mesh.clone(),
@@ -2244,4 +2332,110 @@ TEST(ParticleSubSystem, BoidsCompensatesForTheFrameRate) {
     auto at30 = BoidsVelocities(config, { -50.0f, 50.0f }, 30, 1.0 / 30.0).velocity[1].x();
     auto at60 = BoidsVelocities(config, { -50.0f, 50.0f }, 60, 1.0 / 60.0).velocity[1].x();
     EXPECT_NEAR(at60 / at30, 1.0 / 0.81766, 0.01);
+}
+
+// Low frame rates (particles-lowfps-substeps): the subsystem reads the scene's target frame rate. dt2 = dt x
+// min(0.025 / target frame time, 1)^0.7, from the target frame time, not the substep; at 1..20 frames a second the
+// operators run twice with half of both, the emitters and ages once with the whole step.
+struct OperatorTrace {
+    rstd::vec::Vec<double> deltas;
+    rstd::vec::Vec<double> deltas2;
+    usize                  live {};
+    float                  lifetime {};
+};
+
+static OperatorTrace TraceOperators(u32 target_fps, double tick) {
+    owe::Scene scene;
+    if (target_fps > u32()) scene.SetTargetFps(target_fps);
+    auto                   mesh = Arc<owe::SceneMesh>::make();
+    owe::ParticleSubSystem subsystem(scene,
+                                     mesh.clone(),
+                                     u32(8),
+                                     f64(1.0),
+                                     u32(1),
+                                     f64(1.0),
+                                     owe::ParticleSubSystem::SpawnType::STATIC,
+                                     owe::ParticleAnimationSpec {});
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(1)));
+    subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+        owe::BoxEmitterProgram(subsystem.SpawnPipeline(),
+                               owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) },
+                               usize())));
+    OperatorTrace trace;
+    subsystem.AddOperator(Box<dyn<particle::ParticleUpdateProgram>>::make(DeltaTraceUpdate {
+        .deltas = rstd::addressof(trace.deltas), .deltas2 = rstd::addressof(trace.deltas2) }));
+    subsystem.Finalize();
+    subsystem.Tick(f64(tick), false); // spawns
+    trace.deltas.clear();
+    trace.deltas2.clear();
+    subsystem.Tick(f64(tick), false);
+    trace.live = LiveParticleCount(subsystem);
+    for (usize instance {}; instance < subsystem.System().InstanceCount(); ++instance) {
+        auto& storage = subsystem.System().Instance(instance).Storage();
+        usize slot {};
+        for (const auto& state : subsystem.System().Instance(instance).Binding().Read().States()) {
+            if (state.active) {
+                particle::ParticleSlotReader value(storage, particle::ParticleSlot { .index = slot });
+                trace.lifetime = value.Read(subsystem.Attributes().lifetime);
+            }
+            ++slot;
+        }
+    }
+    return trace;
+}
+
+static double Dt2Scale(double fps) {
+    return f64(rstd::cmp::min(0.025 * fps, 1.0)).powf(f64(0.7)).to_primitive();
+}
+
+TEST(ParticleSubSystem, OperatorsRunTwiceWithHalfStepsAtTwentyFramesASecondOrLess) {
+    for (u32 fps : { u32(15), u32(20), u32(1) }) {
+        const double tick  = 1.0 / static_cast<double>(fps.to_primitive());
+        auto         trace = TraceOperators(fps, tick);
+        ASSERT_EQ(trace.deltas.len(), usize(2)) << fps.to_primitive();
+        for (usize index {}; index < usize(2); ++index) {
+            EXPECT_NEAR(trace.deltas[index], tick / 2.0, 1e-9);
+            EXPECT_NEAR(trace.deltas2[index],
+                        tick / 2.0 * Dt2Scale(static_cast<double>(fps.to_primitive())),
+                        1e-6);
+        }
+        // emitters and ages once a frame with the whole step
+        EXPECT_EQ(trace.live, usize(1));
+        // spawned after the first tick's ages, so one whole step older
+        if (fps > u32(1)) EXPECT_NEAR(trace.lifetime, 10.0 - tick, 1e-4);
+    }
+}
+
+TEST(ParticleSubSystem, OperatorsRunOnceFromTwentyOneFramesASecond) {
+    for (u32 fps : { u32(21), u32(30), u32(60) }) {
+        const double tick  = 1.0 / static_cast<double>(fps.to_primitive());
+        auto         trace = TraceOperators(fps, tick);
+        ASSERT_EQ(trace.deltas.len(), usize(1)) << fps.to_primitive();
+        EXPECT_NEAR(trace.deltas[usize()], tick, 1e-9);
+        EXPECT_NEAR(trace.deltas2[usize()],
+                    tick * Dt2Scale(static_cast<double>(fps.to_primitive())),
+                    1e-6);
+    }
+}
+
+TEST(ParticleSubSystem, Dt2ComesFromTheTargetFrameTimeNotTheStep) {
+    // a 15 fps target with a longer step (speed, rate): two half steps, dt2 still scaled by 15 fps's factor
+    auto trace = TraceOperators(u32(15), 0.1);
+    ASSERT_EQ(trace.deltas.len(), usize(2));
+    EXPECT_NEAR(trace.deltas2[usize()], 0.05 * Dt2Scale(15.0), 1e-6);
+    // without a target frame rate the step stands in for the frame time, in one pass
+    auto unknown = TraceOperators(u32(), 1.0 / 15.0);
+    ASSERT_EQ(unknown.deltas.len(), usize(1));
+    EXPECT_NEAR(unknown.deltas2[usize()], (1.0 / 15.0) * Dt2Scale(15.0), 1e-6);
+}
+
+TEST(ParticleSubSystem, BoidsTakesTwoHalfStepsAtFifteenFramesASecond) {
+    auto config = R"({"name":"boids","separationthreshold":1,"neighborthreshold":200,"separationfactor":0,
+                      "alignmentfactor":1,"cohesionfactor":0})"_str;
+    // one particle moving at 10 with three empty places at rest steers to 0 twice a frame by half of dt2
+    const double step = (1.0 / 15.0) * Dt2Scale(15.0);
+    auto alone = BoidsVelocities(config, { 30.0f }, 1, 1.0 / 15.0,
+                                 R"({"name":"velocityrandom","min":"10 0 0","max":"10 0 0"})"_str, u32(15));
+    EXPECT_NEAR(alone.velocity[0].x(), 10.0 * (1.0 - step / 2.0) * (1.0 - step / 2.0), 1e-3);
 }

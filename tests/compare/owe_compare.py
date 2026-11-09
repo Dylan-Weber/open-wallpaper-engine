@@ -283,8 +283,9 @@ def render(name, size, viewer, frames=None, script_start=0.0, camera_path_delay=
     if frames is None:
         frames = settings_of(name).get('frames', REFERENCE_FRAMES)
     # the frame rate the reference's physics stepped at (compare.json "owe_fps": Wallpaper Engine steps a bone's springs by the
-    # frame time, and a heavy wallpaper runs at 15 a second in the VM), the frame counted in 30ths of a second
-    fps = settings_of(name).get('owe_fps', 30)
+    # frame time, and a heavy wallpaper runs at 15 a second in the VM; else the "fps" it was taken at), the frame counted in
+    # 30ths of a second
+    fps = settings_of(name).get('owe_fps', frame_rate(name))
     # in a memory cgroup of its own, so a viewer that runs away is killed, not the machine
     capped = ['systemd-run', '--user', '--scope', '-q', '-p', 'MemoryMax=' + os.environ.get('WPE_TEST_MEMORY', '6G'),
               '-p', 'MemorySwapMax=0']
@@ -305,7 +306,7 @@ def render(name, size, viewer, frames=None, script_start=0.0, camera_path_delay=
             json.dump(preset[1], f)
         inputs = list(inputs) + ['--user-properties', values]
     command = capped + ['timeout', '900', viewer, '-C', shader_cache(viewer), '--resolution', '%dx%d' % size,
-                        '--fps', str(fps), '--capture', frame, '--capture-frame', str(round(frames * fps / 30))] + (
+                        '--fps', str(fps), '--capture', frame, '--capture-frame', str(capture_frame(frames, fps))] + (
                            ['--script-start', '%.4f' % script_start] if script_start > 0 else []) + (
                            ['--camera-path-delay', '%.4f' % camera_path_delay] if camera_path_delay > 0
                            else []) + shadows + list(inputs) + [ASSETS, scene_package(os.path.join(WALLPAPERS, folder_of(name)))]
@@ -314,6 +315,17 @@ def render(name, size, viewer, frames=None, script_start=0.0, camera_path_delay=
     if not os.path.exists(frame):
         raise RuntimeError('no picture (see %s/viewer.log)' % out)
     return frame
+
+
+def frame_rate(name):
+    """The frame rate the reference was taken at (compare.json "fps", else 30), which owe renders at too: Wallpaper
+    Engine's particles take two half steps a frame at 20 fps or less."""
+    return int(settings_of(name).get('fps', 30))
+
+
+def capture_frame(frames, fps):
+    """The viewer frame (at `fps`) for a moment given in the probe's frames (g_Time at 30 a second)."""
+    return round(frames * fps / 30)
 
 
 def input_arguments(inputs, frames, help_text, folder):
