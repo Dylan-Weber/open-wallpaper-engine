@@ -261,6 +261,9 @@ bool ImageEffect::FromFileJson(const owe::Json& json, fs::VFS& vfs) {
             {
                 fbo.name  = "_rt_FullCompoBuffer1"_Str;
                 fbo.scale = u32(1);
+                // Wallpaper Engine clamps the compose target where the next pass reads it past
+                // its edge (refraction; effect-edge-wrap)
+                fbo.uvs = "clamp"_Str;
             }
             fbos.push(rstd::move(fbo));
             passes.first_mut().unwrap()->bind.push({ "previous"_Str, i32() });
