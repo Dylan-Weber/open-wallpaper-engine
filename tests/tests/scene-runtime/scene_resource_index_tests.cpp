@@ -2578,15 +2578,17 @@ TEST(SceneTextures, CapturedImageSourcesReuseParsedContentAndPreserveOldRuntimeI
     EXPECT_TRUE(Arc<owe::Image>::ptr_eq(parsed, before->Parse("asset"_str).unwrap()));
 }
 
-// Camera shake moves the view of the layers drawn through the perspective camera too (an orthographic scene's layers with
-// "perspective": true): owe shook only the active orthographic camera, so those layers sat a few pixels from where
-// Wallpaper Engine draws them (ws2959390130's orbs, 7 px).
+// Camera shake moves the view of the layers drawn through the perspective camera too (an
+// orthographic scene's layers with "perspective": true): owe shook only the active orthographic
+// camera, so those layers sat a few pixels from where Wallpaper Engine draws them (ws2959390130's
+// orbs, 7 px).
 TEST(SceneCameras, TheViewOffsetOfTheActiveCameraAlsoMovesThePerspectiveCamera) {
     owe::Scene scene;
-    scene.RegisterCamera(
-        String::make("global"_str),
-        Arc<owe::SceneCamera>::make(owe::SceneCamera::MakeOrthographic(1920.0, 1080.0, -5000.0, 5000.0)));
-    auto perspective = Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.7778, 15000.0, 5.0, 50.0));
+    scene.RegisterCamera(String::make("global"_str),
+                         Arc<owe::SceneCamera>::make(
+                             owe::SceneCamera::MakeOrthographic(1920.0, 1080.0, -5000.0, 5000.0)));
+    auto perspective =
+        Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.7778, 15000.0, 5.0, 50.0));
     perspective->SetLookAt({ 960.0, 540.0, 1000.0 }, { 960.0, 540.0, 0.0 }, { 0.0, 1.0, 0.0 });
     scene.RegisterCamera(String::make("global_perspective"_str), perspective.clone());
     ASSERT_TRUE(scene.SetActiveCamera("global"_str));
