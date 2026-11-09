@@ -1686,12 +1686,12 @@ public:
         MarkTransDirty();
     }
 
-    ref<str>        Camera() const { return m_cameraName.as_str(); }
-    void            SetCamera(ref<str> name) { m_cameraName = rstd::into(name); }
-    bool            Perspective() const { return m_perspective; }
-    void            SetPerspective(bool value) { m_perspective = value; }
-    bool            Reflected() const { return m_reflected; }
-    void            SetReflected(bool value) { m_reflected = value; }
+    ref<str> Camera() const { return m_cameraName.as_str(); }
+    void     SetCamera(ref<str> name) { m_cameraName = rstd::into(name); }
+    bool     Perspective() const { return m_perspective; }
+    void     SetPerspective(bool value) { m_perspective = value; }
+    bool     Reflected() const { return m_reflected; }
+    void     SetReflected(bool value) { m_reflected = value; }
     // A model layer: with the scene's transparent sorting, models are ordered by depth.
     bool            DrawsAsModel() const { return m_draws_as_model; }
     void            SetDrawsAsModel(bool value) { m_draws_as_model = value; }

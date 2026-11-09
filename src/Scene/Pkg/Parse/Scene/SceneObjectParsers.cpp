@@ -673,7 +673,7 @@ BuildContext(Scene& scene, fs::VFS& vfs, ref<str> scene_id, const wpscene::Scene
     InitContext(
         context, vfs, sc, ortho_extent, rstd::move(image_ready), rstd::move(texture_memory));
     ParseCamera(context, sc);
-    context.layer_resources->pkg_version  = sc.pkg_version;
+    context.layer_resources->pkg_version = sc.pkg_version;
     context.scene->SetTransparentSorting(sc.general.transparentsorting);
     context.user_properties               = user_properties;
     context.layer_resources->shader_cache = Arc<ShaderCache>::make(rstd::move(shader_cache_dir));
