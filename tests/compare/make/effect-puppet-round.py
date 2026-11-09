@@ -3,6 +3,7 @@
 # draws Gun Girl 0.22 % (3808 / 3800) wider through her tints than owe does; the plain image layers of effect-width-round
 # don't show it. Each wallpaper holds a plain layer and a tinted copy of it, on a stripe pattern that makes any stretch
 # measurable.
+import math
 import struct
 import numpy
 
@@ -36,7 +37,11 @@ def bone_list(count, turned):
     return [('bone%d' % i, None if i == 0 else i - 1, (0, 0, 0)) for i in range(count)]
 
 
-def puppet_layers(name, title, scene, cells, tex_w, tex_h, img_w, img_h, layer_w, layer_h, inset=(0, 0), mask=None, shading=False, bones=1, turned=False):
+def bone_list_bound(count, bind):
+    return [('bone%d' % i, None if i == 0 else i - 1, (bind(i)[0], bind(i)[1], 0, bind(i)[2])) for i in range(count)]
+
+
+def puppet_layers(name, title, scene, cells, tex_w, tex_h, img_w, img_h, layer_w, layer_h, inset=(0, 0), mask=None, shading=False, bones=1, turned=False, animref=None, bind=None):
     """cells: [(x, y, tinted)]; every layer is layer_w x layer_h over the image img_w x img_h of a tex_w x tex_h texture."""
     w = Wallpaper(name, title, clear='0 0 0', size=scene)
     padded_texture(w, 'picture', tex_w, tex_h, img_w, img_h)
@@ -50,9 +55,30 @@ def puppet_layers(name, title, scene, cells, tex_w, tex_h, img_w, img_h, layer_w
     if mask:
         tex_file(w, 'masks/white_mask', mask[0], mask[1], bytes([255]) * (mask[0] * mask[1]), binary.R8)
     write_binary(os.path.join(name, 'models/picture_puppet.mdl'),
-                 puppet_mdl('materials/picture.json', vertices, [(0, 1, 2), (0, 2, 3)], bone_list(bones, turned),
-                            [('rest', 30.0, [[((0, 0, 0), (0, 0, 0), (1, 1, 1))] * 2 for _ in range(bones)])],
+                 puppet_mdl('materials/picture.json', vertices, [(0, 1, 2), (0, 2, 3)],
+                            bone_list_bound(bones, bind) if bind else bone_list(bones, turned),
+                            [('rest', 30.0, [[((animref(i)[0], animref(i)[1], 0), (0, 0, animref(i)[2]), (1, 1, 1))] * 2 if animref else [((0, 0, 0), (0, 0, 0), (1, 1, 1))] * 2 for i in range(bones)])],
                             shading=shading))
+    if animref is not None:
+        # an MDLS version 2 block with the animation reference pose (Gun Girl's "world binds"), each bone's (x, y, angle)
+        path = os.path.join(HERE, name, 'models/picture_puppet.mdl')
+        data = open(path, 'rb').read()
+        at = data.index(b'MDLS0001\0')
+        end, count = struct.unpack_from('<IH', data, at + 9)
+        block = b'MDLS0002\0' + struct.pack('<I', 0) + data[at + 13:end]
+        refs = b''
+        for i in range(count):
+            x, y, angle = animref(i)
+            c, sn = math.cos(angle), math.sin(angle)
+            refs += struct.pack('<16f', c, sn, 0, 0, -sn, c, 0, 0, 0, 0, 1, 0, x, y, 0, 1)
+        block += struct.pack('<HB', 0, 1) + refs + bytes(8)
+        out = data[:at] + block + data[end:]
+        new_end = at + len(block)
+        out = out[:at + 9] + struct.pack('<I', new_end) + out[at + 13:]
+        ma = out.index(b'MDLA')
+        a_end, = struct.unpack_from('<I', out, ma + 9)
+        out = out[:ma + 9] + struct.pack('<I', a_end + new_end - end) + out[ma + 13:]
+        open(path, 'wb').write(out)
     w.files['models/picture.json'] = {"autosize": True, "material": "materials/picture.json",
                                       "puppet": "models/picture_puppet.mdl"}
     w.files['materials/picture.json'] = {"passes": [{
@@ -114,3 +140,27 @@ puppet_layers('effect-puppet-layer-asym', 'an asymmetric inset puppet with and w
 # many bones: Gun Girl has 54
 puppet_layers('effect-puppet-layer-bones', 'a 54-bone chain puppet with and without an animation layer at blend 0', (2400, 1350),
               [(600, 675, False), (1800, 675, False, 'additive')], 1024, 832, 1000, 800, 1000, 800, inset=(12, 8), bones=54)
+# the MDLS version 2 block with an animation reference pose (Gun Girl's), equal to the bind pose and then a quarter turn away
+puppet_layers('effect-puppet-layer-animref', 'a puppet with an animation reference pose, with and without a layer at blend 0',
+              (2400, 1350), [(600, 675, False), (1800, 675, False, 'additive')], 1024, 832, 1000, 800, 1000, 800, inset=(12, 8),
+              animref=lambda i: (0, 0, 0))
+puppet_layers('effect-puppet-layer-animref-move', 'a puppet whose animation reference is moved from its bind, with and without a layer',
+              (2400, 1350), [(600, 675, False), (1800, 675, False, 'additive')], 1024, 832, 1000, 800, 1000, 800, inset=(12, 8),
+              bones=2, animref=lambda i: (60 + 10 * i, -40, 0.0))
+# Gun Girl's bone 0 alone: bind (-1287.88, -99.76) and animation reference (0, -717.2), both a quarter turn (a mesh quad on it
+# differs with and without a layer in Wallpaper Engine)
+puppet_layers('effect-puppet-layer-bone0', "Gun Girl's bone 0 on a quad, with and without a layer at blend 0", (8000, 4500),
+              [(2000, 2250, False), (6000, 2250, False, 'additive')], 3840, 3008, 3800, 3000, 3800, 3000, inset=(41, 35, 26, 36),
+              bones=1, bind=lambda i: (-1287.88, -99.76, 1.5707964), animref=lambda i: (-0.0014648, -717.2, 1.5707964))
+for tag, bind, ref in (('norot', (-1287.88, -99.76, 0.0), (-0.0014648, -717.2, 0.0)),
+                       ('samepose', (-1287.88, -99.76, 1.5707964), (-1287.88, -99.76, 1.5707964)),
+                       ('bindonly', (-1287.88, -99.76, 1.5707964), (0.0, 0.0, 0.0)),
+                       ('refonly', (0.0, 0.0, 0.0), (-0.0014648, -717.2, 1.5707964))):
+    puppet_layers('effect-puppet-layer-bone0-' + tag, "Gun Girl's bone 0, %s" % tag, (8000, 4500),
+                  [(2000, 2250, False), (6000, 2250, False, 'additive')], 3840, 3008, 3800, 3000, 3800, 3000,
+                  inset=(41, 35, 26, 36), bones=1, bind=lambda i, b=bind: b, animref=lambda i, r=ref: r)
+# the error against the angle: bind = reference = a turn of `angle` radians about the layer's origin, no translation
+for tag, angle in (('a05', 0.5), ('a10', 1.0), ('a314', 3.1415927), ('am157', -1.5707964), ('a01', 0.1)):
+    puppet_layers('effect-puppet-layer-angle-' + tag, "bind = reference = a turn of %g rad" % angle, (8000, 4500),
+                  [(2000, 2250, False), (6000, 2250, False, 'additive')], 3840, 3008, 3800, 3000, 3800, 3000,
+                  inset=(41, 35, 26, 36), bones=1, bind=lambda i, a=angle: (0.0, 0.0, a), animref=lambda i, a=angle: (0.0, 0.0, a))

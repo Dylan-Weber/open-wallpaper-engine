@@ -1,0 +1,17 @@
+{
+  "passes": [
+    {
+      "blending": "translucent",
+      "cullmode": "nocull",
+      "depthtest": "disabled",
+      "depthwrite": "disabled",
+      "shader": "genericimage3",
+      "combos": {
+        "VERSION": 2
+      },
+      "textures": [
+        "picture"
+      ]
+    }
+  ]
+}

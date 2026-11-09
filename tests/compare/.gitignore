@@ -8,4 +8,4 @@ __pycache__/
 # a 67 MB sprite sheet that make/sprite-clock-big.py regenerates
 /wallpapers/sprite-clock-big/materials/frames.tex
 # a 45 MB texture that make/effect-puppet-round.py regenerates
-/wallpapers/effect-puppet-round-big/materials/picture.tex
+/wallpapers/effect-puppet-*/materials/picture.tex
