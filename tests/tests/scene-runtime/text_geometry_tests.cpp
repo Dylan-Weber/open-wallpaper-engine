@@ -554,6 +554,12 @@ TEST(TextGeometry, ALinkedLayersCompositeIsItsTextsBox) {
     const auto big = owe::text::ResolveTextGeometry(policy, long_text);
     EXPECT_FLOAT_EQ(big.rt_width, 400.0f);
     EXPECT_FLOAT_EQ(big.rt_height, 290.0f);
+    // script-written text too (OoT's clock): not the spare room dynamic text gets
+    auto dynamic    = policy;
+    dynamic.dynamic = true;
+    const auto live = owe::text::ResolveTextGeometry(dynamic, short_text);
+    EXPECT_FLOAT_EQ(live.rt_width, 70.0f);
+    EXPECT_FLOAT_EQ(live.rt_height, 40.0f);
 }
 
 TEST(TextGeometry, DynamicEffectFollowsCurrentTextBounds) {
