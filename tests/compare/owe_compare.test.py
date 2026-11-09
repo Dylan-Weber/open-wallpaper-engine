@@ -163,6 +163,15 @@ class Render(unittest.TestCase):
         self.assertEqual(command[command.index('--capture-frame') + 1], '93')
         self.assertEqual(command[command.index('--resolution') + 1], '64x32')
 
+    def test_renders_at_the_frame_rate_the_reference_was_taken_at(self):
+        # Wallpaper Engine's particles step differently at 20 fps or less, so a reference taken at 15 is rendered at 15
+        command = self.command('--capture --capture-frame', {'fps': 15, 'frames': 454})
+        self.assertEqual(command[command.index('--fps') + 1], '15')
+        # the probe counts g_Time at 30 a second whatever the frame rate: 454 is 227 frames at 15
+        self.assertEqual(command[command.index('--capture-frame') + 1], '227')
+        command = self.command('--capture --capture-frame', {})
+        self.assertEqual(command[command.index('--fps') + 1], '30')
+
     def test_gives_the_shadows_setting_only_to_a_viewer_that_has_it(self):
         settings = {'shadow_quality': 'medium'}
         self.assertNotIn('--shadow-quality', self.command('--capture --capture-frame', settings))
