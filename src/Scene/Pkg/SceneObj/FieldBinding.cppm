@@ -61,6 +61,9 @@ struct AnimCurve : rstd::DefaultInClass<AnimCurve, rstd::clone::Clone> {
     Vec<AnimKeyframe> c2;
     AnimOptions       options;
     bool              relative { false }; // only on `origin`
+    // whether the file says "relative" at all: a layer adds a vector animation to its value only
+    // when it does, true or false (SceneAnimationTrack::EvaluateLayerVec3)
+    bool              relative_key { false };
 
     auto clone() const -> AnimCurve;
 };

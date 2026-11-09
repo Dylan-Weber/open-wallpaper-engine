@@ -1368,6 +1368,8 @@ struct SceneAnimationCurve {
     Vec<SceneAnimationKey> c1;
     Vec<SceneAnimationKey> c2;
     bool                   relative { false };
+    // whether the curve came with a "relative" key (curves made in code count as having one)
+    bool                   relative_key { true };
 
     bool            Empty() const;
     i32             EndFrame() const;
@@ -1457,9 +1459,9 @@ struct SceneAnimationTrack {
     bool            Empty() const { return curve->Empty(); }
     float           EvaluateScalar(float base) const;
     Eigen::Vector3f EvaluateVec3(const Eigen::Vector3f& base) const;
-    // A layer property's animation, as Wallpaper Engine applies it whatever the curve's
-    // `relative`: a vector (origin, scale, angles, color) is added to the property's value, a
-    // number (alpha) takes the place of it.
+    // A layer property's animation, as Wallpaper Engine applies it: a vector (origin, scale,
+    // angles, color) is added to the property's value when the curve has a "relative" key, true
+    // or false, and takes its place when it has none; a number (alpha) takes the place of it.
     float           EvaluateLayerScalar(float value) const;
     Eigen::Vector3f EvaluateLayerVec3(const Eigen::Vector3f& value) const;
     auto            Share() const -> SceneAnimationTrack {
