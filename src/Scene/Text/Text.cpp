@@ -744,8 +744,10 @@ TextGeometry ResolveTextGeometry(const TextGeometryPolicy& policy,
                                           : (policy.has_effect ? frame_h : src_bbox_h);
 
     TextGeometry out;
-    out.rt_width            = policy.frame_bound ? frame_w : rstd::cmp::max(rt_max_w, src_bbox_w);
-    out.rt_height           = policy.frame_bound ? frame_h : rstd::cmp::max(rt_max_h, src_bbox_h);
+    // A layer another layer samples has a composite of its text's box too, not of its authored size
+    // (text-composite-blend: Wallpaper Engine's sampled text starts at its top left and isn't cut).
+    out.rt_width            = rstd::cmp::max(rt_max_w, src_bbox_w);
+    out.rt_height           = rstd::cmp::max(rt_max_h, src_bbox_h);
     out.effect_frame_width  = frame_w;
     out.effect_frame_height = frame_h;
 

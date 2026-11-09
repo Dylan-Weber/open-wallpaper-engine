@@ -536,6 +536,26 @@ TEST(TextLayouter, LettersAdvanceByWholePixels) {
     }
 }
 
+// A text layer another layer samples (its _rt_imageLayerComposite: OoT's clock HUD's blend effect)
+// has a composite of its text's box, not of its authored size (text-composite-blend: in Wallpaper
+// Engine the sampled text starts at the composite's top left whatever the size, and lines wider or
+// taller than the size are not cut; owe centred the text in the authored 268 x 105 and clipped it).
+TEST(TextGeometry, ALinkedLayersCompositeIsItsTextsBox) {
+    const owe::text::TextGeometryPolicy policy {
+        .frame_width  = 268.0f,
+        .frame_height = 105.0f,
+        .frame_bound  = true,
+    };
+    const owe::text::TextLayoutMetrics short_text { .text_width = 60.0f, .text_height = 30.0f, .padding = 5.0f };
+    const auto small = owe::text::ResolveTextGeometry(policy, short_text);
+    EXPECT_FLOAT_EQ(small.rt_width, 70.0f);
+    EXPECT_FLOAT_EQ(small.rt_height, 40.0f);
+    const owe::text::TextLayoutMetrics long_text { .text_width = 400.0f, .text_height = 290.0f };
+    const auto big = owe::text::ResolveTextGeometry(policy, long_text);
+    EXPECT_FLOAT_EQ(big.rt_width, 400.0f);
+    EXPECT_FLOAT_EQ(big.rt_height, 290.0f);
+}
+
 TEST(TextGeometry, DynamicEffectFollowsCurrentTextBounds) {
     const owe::text::TextGeometryPolicy policy {
         .frame_width  = 419.0f,

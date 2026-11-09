@@ -89,6 +89,8 @@ struct TextRuntimeTargets {
     String                     camera_key;
     String                     composite;
     String                     effect_final;
+    // the link target of a layer another layer samples: as big as its composite
+    String                     link_target;
     bool                       has_effect { false };
     i32                        layer_w { 1 };
     i32                        layer_h { 1 };
@@ -101,6 +103,8 @@ struct TextRuntimeTargets {
         bool changed          = false;
         auto [next_w, next_h] = TextLayerExtent(geometry);
         changed |= scene->ResizeRenderTarget(composite.as_str(), next_w, next_h);
+        if (! link_target.is_empty())
+            changed |= scene->ResizeRenderTarget(link_target.as_str(), next_w, next_h);
         if (has_effect) {
             changed |= scene->ResizeRenderTarget(effect_final.as_str(), next_w, next_h);
         }
@@ -507,14 +511,12 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
         layer_node->CopyTrans(*sp_node.as_ptr());
         layer_node->SetSize({ initial_geometry.draw_width, initial_geometry.draw_height });
         if (linked_source) {
+            // the text's composite, not the authored size (text-composite-blend)
             const auto link_source = WallpaperLayerId { .value = obj.id };
-            const auto link_width =
-                rstd::cmp::max(i32(1), rstd::as_cast<i32>(f32(object_w).ceil().to_primitive()));
-            const auto link_height =
-                rstd::cmp::max(i32(1), rstd::as_cast<i32>(f32(object_h).ceil().to_primitive()));
             scene.RegisterLayerLinkSource(
-                link_source, *sp_node.as_ptr(), { link_width, link_height });
+                link_source, *sp_node.as_ptr(), { initial_layer_w, initial_layer_h });
             link_output = scene.EnsureLinkRenderTarget(link_source, *sp_node.as_ptr());
+            (*runtime_targets)->link_target = link_output.clone();
         }
 
         auto layer =
