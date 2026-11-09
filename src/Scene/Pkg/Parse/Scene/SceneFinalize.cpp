@@ -185,8 +185,14 @@ void FinalizeUniformSources(SceneParseContext& context) {
         .sources  = rstd::move(audio_sources),
     });
 
-    const auto light_source = registrar->Register(
-        Box<dyn<UniformSource>>::make(LightUniformSource { ref<Scene>::from_raw_parts(&scene) }));
+    LightKindLimits light_limits {
+        .point       = context.layer_resources->shader_environment.point_lights,
+        .spot        = context.layer_resources->shader_environment.spot_lights,
+        .directional = context.layer_resources->shader_environment.directional_lights,
+    };
+
+    const auto light_source = registrar->Register(Box<dyn<UniformSource>>::make(
+        LightUniformSource { ref<Scene>::from_raw_parts(&scene), Some(light_limits) }));
     auto lighting_sources = Vec<UniformSourceAttachment>::make();
     lighting_sources.push(UniformSourceAttachment { .source = light_source });
     auto atlas = scene.RenderTarget(WE_SHADOW_ATLAS_PREFIX);
@@ -219,7 +225,8 @@ void FinalizeUniformSources(SceneParseContext& context) {
             ShadowUniformSource { (*active_camera).clone(),
                                   ref<Scene>::from_raw_parts(&scene),
                                   rstd::move(transforms),
-                                  context.layer_resources->shader_environment.shadow_quality }));
+                                  context.layer_resources->shader_environment.shadow_quality,
+                                  Some(light_limits) }));
         lighting_sources.push(UniformSourceAttachment { .source = shadow_source });
     }
     (void)scene.RegisterUniformBlock(UniformBlockDefinition {

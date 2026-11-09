@@ -44,6 +44,10 @@ struct SceneShaderEnvironment {
     // some light casts a shadow map, and models cast their shadows into it
     bool          shadow_mapping { false };
     ShadowQuality shadow_quality { ShadowQuality::Medium };
+    // The scene's light config: how many lights of each kind the newer light interface gets.
+    u32 point_lights {};
+    u32 spot_lights {};
+    u32 directional_lights {};
 };
 
 // A light that casts a shadow map (by its object id).

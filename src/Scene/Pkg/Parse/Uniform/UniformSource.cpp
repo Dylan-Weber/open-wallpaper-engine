@@ -869,6 +869,91 @@ auto ColorUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
     return writer.Finish();
 }
 
+namespace
+{
+
+// Whether a light lights now: shown by its user property, and shown with every layer it is in.
+bool LightsNow(const SceneLight& light) {
+    if (light.node() == nullptr || ! light.runtimeVisible()) return false;
+    for (const SceneNode* node = light.node(); node != nullptr; node = node->Parent()) {
+        if (! node->Visible()) return false;
+    }
+    return true;
+}
+
+// The lights that take the shaders' light slots, by index in `lights`: those that light now, in
+// order, up to `slots`.
+Vec<usize> LightingSlots(slice<ref<SceneLight>> lights, usize slots) {
+    auto lighting = Vec<usize>::make();
+    for (usize index {}; index < lights.len() && lighting.len() < slots; ++index) {
+        if (LightsNow(*lights[index])) lighting.push(usize(index));
+    }
+    return lighting;
+}
+
+// Lighting V1's slots, by index in `lights`: the lights that light now and that the light config
+// still has a light of their kind for, in order, up to kLightingV1Slots. The old kind of light takes
+// none (the newer interface leaves it out); without limits, every light that lights.
+Vec<usize> LightingV1Slots(slice<ref<SceneLight>> lights, const Option<LightKindLimits>& limits) {
+    auto left     = limits;
+    auto lighting = Vec<usize>::make();
+    for (usize index {}; index < lights.len() && lighting.len() < kLightingV1Slots; ++index) {
+        const auto& light = *lights[index];
+        if (! LightsNow(light) || light.desc().old_kind) continue;
+        if (left.is_some()) {
+            const auto type  = light.type();
+            u32*       count = type == SceneLightType::Spot          ? &left->spot
+                               : type == SceneLightType::Directional ? &left->directional
+                                                                     : &left->point;
+            if (*count == u32()) continue;
+            *count = *count - u32(1);
+        }
+        lighting.push(usize(index));
+    }
+    return lighting;
+}
+
+// What a light puts in a slot: its world position; color and radius; direction (a tube's segment)
+// and type; cone and exponent; whether it casts a shadow.
+struct LightSlot {
+    array<float, 3> position {};
+    array<float, 4> color_radius {};
+    array<float, 4> direction_type {};
+    array<float, 4> cone_exponent {};
+    float           cast_shadow {};
+};
+
+LightSlot SlotValues(const SceneLight& light) {
+    LightSlot values;
+    auto&     node = *light.node();
+    node.UpdateTrans();
+    const auto transform = node.ModelTrans();
+    const auto position  = transform.block<3, 1>(0, 3).cast<float>();
+    auto       color     = light.color();
+    if (node.IsColorOverridden()) color = node.Color() * light.desc().intensity;
+    values.position     = { position.x(), position.y(), position.z() };
+    values.color_radius = { color.x(), color.y(), color.z(), light.radius() };
+    Eigen::Vector3d local_direction = Eigen::Vector3d::UnitX();
+    if (light.type() != SceneLightType::Spot) local_direction = -local_direction;
+    const Eigen::Vector3f direction =
+        (transform.block<3, 3>(0, 0) * local_direction).normalized().cast<float>();
+    values.direction_type = { direction.x(), direction.y(), direction.z(),
+                              static_cast<float>(light.type()) };
+    values.cone_exponent  = { light.desc().inner_cone_cos, light.desc().outer_cone_cos,
+                              light.desc().exponent, 0.0f };
+    values.cast_shadow    = light.desc().cast_shadow ? 1.0f : 0.0f;
+    return values;
+}
+
+// The scene's lights, in its order: the slots go to them as the helpers above say.
+Vec<ref<SceneLight>> SceneLights(const Scene& scene) {
+    auto lights = Vec<ref<SceneLight>>::make();
+    for (const auto& light : scene.Lights()) lights.push(light.as_ref());
+    return lights;
+}
+
+} // namespace
+
 auto LightUniformSource::Describe(mut_ref<dyn<UniformBindingSink>> sink) const
     -> Result<empty, UniformError> {
     return BindGlobalProducer(sink, GlobalUniformProducer::Light);
@@ -886,71 +971,76 @@ auto LightUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
     constexpr usize  max_lights { 4 };
     array<float, 12> positions {};
     array<float, 16> colors_radius {};
-    array<float, 16> lighting_v1_colors_radius {};
     array<float, 12> colors_legacy {};
     array<float, 16> directions_type {};
     array<float, 16> cones_exponent {};
     array<float, 4>  cast_shadow {};
+    array<float, kLightingV1Slots.to_primitive() * 3> v1_positions {};
+    array<float, kLightingV1Slots.to_primitive() * 4> v1_colors_radius {};
+    array<float, kLightingV1Slots.to_primitive() * 4> v1_directions_type {};
+    array<float, kLightingV1Slots.to_primitive() * 4> v1_cones_exponent {};
+    array<float, kLightingV1Slots.to_primitive()>     v1_cast_shadow {};
     for (usize index {}; index < max_lights; ++index)
         directions_type[index * usize(4) + usize(3)] = -1.0f;
-    usize index {};
-    for (const auto& light_ref : m_scene->Lights()) {
-        const auto& light = *light_ref;
-        if (light.node() == nullptr || ! light.runtimeVisible()) continue;
-        bool visible = true;
-        for (auto* node = light.node(); node; node = node->Parent()) {
-            if (! node->Visible()) {
-                visible = false;
-                break;
-            }
+    const auto lights = SceneLights(*m_scene);
+    for (usize index {}; index < kLightingV1Slots; ++index)
+        v1_directions_type[index * usize(4) + usize(3)] = -1.0f;
+
+    const auto v1 = LightingV1Slots(lights.as_slice(), m_limits);
+    auto       in_v1 = [&](usize light) {
+        for (usize slot {}; slot < v1.len(); ++slot)
+            if (v1[slot] == light) return true;
+        return false;
+    };
+    // the old arrays' four slots go to the lights that light now, in order: one hidden, or in a
+    // hidden layer, takes none (Ocarina of Time's four torch lights, in a hidden layer, took every
+    // slot from its sun)
+    const auto lighting = LightingSlots(lights.as_slice(), max_lights);
+    for (usize index {}; index < lighting.len(); ++index) {
+        const auto& light  = *lights[lighting[index]];
+        const auto  values = SlotValues(light);
+        for (usize component {}; component < usize(3); ++component)
+            positions[index * usize(3) + component] = values.position[component];
+        for (usize component {}; component < usize(4); ++component) {
+            // The old arrays get the old kind of light's colors only.
+            if (light.desc().old_kind)
+                colors_radius[index * usize(4) + component] = values.color_radius[component];
+            directions_type[index * usize(4) + component] = values.direction_type[component];
+            cones_exponent[index * usize(4) + component]  = values.cone_exponent[component];
         }
-        if (! visible) continue;
-        if (index >= max_lights) break;
-        auto& node = *light.node();
-        node.UpdateTrans();
-        const auto transform = node.ModelTrans();
-        const auto position  = transform.block<3, 1>(0, 3).cast<float>();
-        auto       color     = light.color();
-        if (node.IsColorOverridden()) color = node.Color() * light.desc().intensity;
-        positions[index * usize(3)]                = position.x();
-        positions[index * usize(3) + usize(1)]     = position.y();
-        positions[index * usize(3) + usize(2)]     = position.z();
-        for (auto* colors : { &lighting_v1_colors_radius, &colors_radius }) {
-            // The old arrays get the old kind of light only.
-            if (colors == &colors_radius && ! light.desc().old_kind) continue;
-            (*colors)[index * usize(4)]            = color.x();
-            (*colors)[index * usize(4) + usize(1)] = color.y();
-            (*colors)[index * usize(4) + usize(2)] = color.z();
-            (*colors)[index * usize(4) + usize(3)] = light.radius();
-        }
-        Eigen::Vector3d local_direction            = Eigen::Vector3d::UnitX();
-        if (light.type() != SceneLightType::Spot) local_direction = -local_direction;
-        const auto direction =
-            (transform.block<3, 3>(0, 0) * local_direction).normalized().cast<float>();
-        directions_type[index * usize(4)]            = direction.x();
-        directions_type[index * usize(4) + usize(1)] = direction.y();
-        directions_type[index * usize(4) + usize(2)] = direction.z();
-        directions_type[index * usize(4) + usize(3)] = static_cast<float>(light.type());
-        cones_exponent[index * usize(4)]             = light.desc().inner_cone_cos;
-        cones_exponent[index * usize(4) + usize(1)]  = light.desc().outer_cone_cos;
-        cones_exponent[index * usize(4) + usize(2)]  = light.desc().exponent;
-        cast_shadow[index]                           = light.desc().cast_shadow ? 1.0f : 0.0f;
+        // the type only for a light Lighting V1 lights
+        if (! in_v1(lighting[index])) directions_type[index * usize(4) + usize(3)] = -1.0f;
+        cast_shadow[index] = values.cast_shadow;
         if (index < usize(3) && light.desc().old_kind) {
-            const auto premultiplied = color * light.radius() * light.radius();
-            for (usize component {}; component < usize(3); ++component) {
+            const float radius = values.color_radius[usize(3)];
+            for (usize component {}; component < usize(3); ++component)
                 colors_legacy[index * usize(4) + component] =
-                    premultiplied[component.to_primitive()];
-            }
+                    values.color_radius[component] * radius * radius;
         }
-        ++index;
+    }
+    // Lighting V1's own slots: every light the light config counts
+    for (usize slot {}; slot < v1.len(); ++slot) {
+        const auto values = SlotValues(*lights[v1[slot]]);
+        for (usize component {}; component < usize(3); ++component)
+            v1_positions[slot * usize(3) + component] = values.position[component];
+        for (usize component {}; component < usize(4); ++component) {
+            v1_colors_radius[slot * usize(4) + component]   = values.color_radius[component];
+            v1_directions_type[slot * usize(4) + component] = values.direction_type[component];
+            v1_cones_exponent[slot * usize(4) + component]  = values.cone_exponent[component];
+        }
+        v1_cast_shadow[slot] = values.cast_shadow;
     }
     writer.Write(Output::Position, positions);
     writer.Write(Output::ColorLegacy, colors_legacy);
     writer.Write(Output::ColorRadius, colors_radius);
-    writer.Write(Output::LightingV1ColorRadius, lighting_v1_colors_radius);
     writer.Write(Output::DirectionType, directions_type);
     writer.Write(Output::ConeExponent, cones_exponent);
     writer.Write(Output::CastShadow, cast_shadow);
+    writer.Write(Output::LightingV1Position, v1_positions);
+    writer.Write(Output::LightingV1ColorRadius, v1_colors_radius);
+    writer.Write(Output::LightingV1DirectionType, v1_directions_type);
+    writer.Write(Output::LightingV1ConeExponent, v1_cones_exponent);
+    writer.Write(Output::LightingV1CastShadow, v1_cast_shadow);
     return writer.Finish();
 }
 
@@ -1125,14 +1215,14 @@ auto ShadowUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
     using Output = ShadowUniformOutput;
     UniformWriter writer(sink);
 
-    constexpr usize max_lights { 4 };
     // kShadowViewCount views
-    array<float, 24 * 16> views {};
-    array<float, 24 * 4>  atlas {};
-    array<float, 96>      cascades {};
-    array<float, 12>      cascade_atlas {};
-    array<float, 4>       slots { -1.0f, -1.0f, -1.0f, -1.0f };
-    array<float, 16>      point_projections {};
+    array<float, 24 * 16>                             views {};
+    array<float, 24 * 4>                              atlas {};
+    array<float, 96>                                  cascades {};
+    array<float, 12>                                  cascade_atlas {};
+    array<float, kLightingV1Slots.to_primitive()>     slots {};
+    array<float, kLightingV1Slots.to_primitive() * 4> point_projections {};
+    for (usize slot {}; slot < kLightingV1Slots; ++slot) slots[slot] = -1.0f;
     for (usize value {};
          value < rstd::cmp::min(kShadowViewCount * usize(4), m_atlas_transforms.len());
          ++value)
@@ -1143,23 +1233,12 @@ auto ShadowUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
     const bool      camera_ok        = forward.allFinite() && forward.squaredNorm() > 1e-12;
     if (camera_ok) forward.normalize();
 
-    bool  have_cascades {};
-    usize next_slot {};
-    // the lights take the slots as LightUniformSource gives them: hidden ones (or in a hidden layer) take none
-    for (const auto& light_ref : m_scene->Lights()) {
-        const auto& light = *light_ref;
-        if (light.node() == nullptr || ! light.runtimeVisible()) continue;
-        bool visible = true;
-        for (auto* node = light.node(); node; node = node->Parent()) {
-            if (! node->Visible()) {
-                visible = false;
-                break;
-            }
-        }
-        if (! visible) continue;
-        if (next_slot >= max_lights) break;
-        const usize slot  = next_slot;
-        next_slot         = next_slot + usize(1);
+    const auto lights = SceneLights(*m_scene);
+    bool have_cascades {};
+    // a light's views go in the Lighting V1 slot it takes in LightUniformSource
+    const auto lighting = LightingV1Slots(lights.as_slice(), m_limits);
+    for (usize slot {}; slot < lighting.len(); ++slot) {
+        const auto& light = *lights[lighting[slot]];
         const auto  first = light.desc().shadow_view;
         if (first < i32()) continue;
         const auto view = usize(rstd::as_cast<rstd::size_t>(first.to_primitive()));

@@ -62,8 +62,17 @@ enum class LightUniformOutput : rstd::uint32_t
     DirectionType,
     ConeExponent,
     CastShadow,
+    // Lighting V1's own slots (kLightingV1Slots), for the lights the light config counts
     LightingV1ColorRadius,
+    LightingV1Position,
+    LightingV1DirectionType,
+    LightingV1ConeExponent,
+    LightingV1CastShadow,
 };
+
+// How many lights Lighting V1 lights: Wallpaper Engine's lights every light its light config
+// counts, not only the first four (the old arrays' four).
+inline constexpr usize kLightingV1Slots { 8 };
 
 enum class ShadowUniformOutput : rstd::uint32_t
 {
@@ -71,11 +80,11 @@ enum class ShadowUniformOutput : rstd::uint32_t
     ViewProjectionMatrices,
     AtlasTransforms,
     // every shadowed light's views (kShadowViewCount), their atlas squares, and each light slot's
-    // first view (-1 without a shadow map)
+    // first view (-1 without a shadow map), for Lighting V1's slots
     Views,
     ViewAtlasTransforms,
     LightViews,
-    // each light slot's point light depth terms for the stock point lookup
+    // each Lighting V1 slot's point light depth terms for the stock point lookup
     PointProjections,
 };
 
@@ -411,9 +420,19 @@ private:
     Arc<SceneNode> m_node;
 };
 
+// How many lights of each kind the newer light interface (Lighting V1) gets: the scene's
+// general.lightconfig, all 0 without one.
+struct LightKindLimits {
+    u32 point {};
+    u32 spot {};
+    u32 directional {};
+};
+
 class LightUniformSource {
 public:
-    explicit LightUniformSource(ref<Scene> scene): m_scene(scene) {}
+    // Without limits, every light shows through the newer interface too.
+    explicit LightUniformSource(ref<Scene> scene, Option<LightKindLimits> limits = None())
+        : m_scene(scene), m_limits(rstd::move(limits)) {}
 
     auto Describe(mut_ref<dyn<UniformBindingSink>>) const -> Result<empty, UniformError>;
     auto Version(ref<dyn<UniformUpdateContext>>) const -> u64;
@@ -422,19 +441,23 @@ public:
     auto AcquireBindingLease() const -> Option<Box<dyn<UniformBindingLease>>> { return None(); }
 
 private:
-    ref<Scene> m_scene;
+    ref<Scene>              m_scene;
+    Option<LightKindLimits> m_limits;
 };
 
 class ShadowUniformSource {
 public:
-    // `scene`'s lights take the light slots as LightUniformSource gives them; `atlas_transforms`
-    // holds each view's square of the atlas (x, y, width, height, in its texture coordinates).
+    // `scene`'s lights and `limits` as LightUniformSource has them, so each light's views go in its
+    // Lighting V1 slot; `atlas_transforms` holds each view's square of the atlas (x, y, width,
+    // height, in its texture coordinates).
     ShadowUniformSource(Arc<SceneCamera> camera, ref<Scene> scene, Vec<float> atlas_transforms,
-                        ShadowQuality quality = ShadowQuality::Medium)
+                        ShadowQuality           quality = ShadowQuality::Medium,
+                        Option<LightKindLimits> limits  = None())
         : m_camera(rstd::move(camera)),
           m_scene(scene),
           m_atlas_transforms(rstd::move(atlas_transforms)),
-          m_quality(quality) {}
+          m_quality(quality),
+          m_limits(rstd::move(limits)) {}
 
     auto Describe(mut_ref<dyn<UniformBindingSink>>) const -> Result<empty, UniformError>;
     auto Version(ref<dyn<UniformUpdateContext>>) const -> u64;
@@ -443,10 +466,11 @@ public:
     auto AcquireBindingLease() const -> Option<Box<dyn<UniformBindingLease>>> { return None(); }
 
 private:
-    Arc<SceneCamera> m_camera;
-    ref<Scene>       m_scene;
-    Vec<float>       m_atlas_transforms;
-    ShadowQuality    m_quality;
+    Arc<SceneCamera>        m_camera;
+    ref<Scene>              m_scene;
+    Vec<float>              m_atlas_transforms;
+    ShadowQuality           m_quality;
+    Option<LightKindLimits> m_limits;
 };
 
 class TextureUniformSource {
