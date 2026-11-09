@@ -159,12 +159,52 @@ Option<Eigen::Affine3f> Puppet::attachmentBindTransform(usize index) const noexc
     return Some(rstd::move(transform));
 }
 
+// Wallpaper Engine rebuilds every bone's rest rotation when an animation layer is visible: the columns of the rest matrix are
+// normalised with the fast reciprocal square root (0x5f375a86 and one Newton step: a unit column comes out 0.99831 long), the
+// quaternion is read off that matrix like glm::quat_cast does, and the matrix is later built from it without normalising. A
+// quarter turn is then 0.17 % small and 0.0025 rad short; no rotation stays exact. Measured in the Windows VM with a one-bone
+// puppet and stripes, and decompiled (FUN_1401fdf90 / FUN_140214eb0 / FUN_140215730).
+static float FastReciprocalSqrt(float x) {
+    const float y0 = __builtin_bit_cast(float, 0x5f375a86u - (__builtin_bit_cast(uint32_t, x) >> 1));
+    return (1.5f - x * 0.5f * y0 * y0) * y0;
+}
+
+static Quaterniond WeRebuiltRotation(const Matrix3f& linear) {
+    Matrix3f m = linear;
+    for (int c = 0; c < 3; ++c) {
+        const float length_squared = m.col(c).squaredNorm();
+        if (length_squared > 1e-12f) m.col(c) *= FastReciprocalSqrt(length_squared);
+    }
+    const float four_x = m(0, 0) - m(1, 1) - m(2, 2);
+    const float four_y = m(1, 1) - m(0, 0) - m(2, 2);
+    const float four_z = m(2, 2) - m(0, 0) - m(1, 1);
+    const float four_w = m(0, 0) + m(1, 1) + m(2, 2);
+    int         biggest = 0;
+    float       biggest_value = four_w;
+    if (four_x > biggest_value) { biggest = 1; biggest_value = four_x; }
+    if (four_y > biggest_value) { biggest = 2; biggest_value = four_y; }
+    if (four_z > biggest_value) { biggest = 3; biggest_value = four_z; }
+    const float root = __builtin_sqrtf(biggest_value + 1.0f) * 0.5f;
+    const float mult = 0.25f / root;
+    switch (biggest) {
+    case 0: return { root, (m(2, 1) - m(1, 2)) * mult, (m(0, 2) - m(2, 0)) * mult, (m(1, 0) - m(0, 1)) * mult };
+    case 1: return { (m(2, 1) - m(1, 2)) * mult, root, (m(1, 0) + m(0, 1)) * mult, (m(0, 2) + m(2, 0)) * mult };
+    case 2: return { (m(0, 2) - m(2, 0)) * mult, (m(1, 0) + m(0, 1)) * mult, root, (m(2, 1) + m(1, 2)) * mult };
+    default: return { (m(1, 0) - m(0, 1)) * mult, (m(0, 2) + m(2, 0)) * mult, (m(2, 1) + m(1, 2)) * mult, root };
+    }
+}
+
 slice<Eigen::Affine3f> PuppetLayer::genFrame(double time) noexcept {
     updateInterpolation(time);
     const auto& bones                     = m_puppet->bones;
     const bool  world_anchored_bones      = m_puppet->world_anchored_bones;
     const bool  additive_uses_first_frame = m_puppet->additive_uses_first_frame;
     const float physics_dt                = m_physics.Advance(time);
+
+    bool any_visible_layer = false;
+    for (const auto& layer : m_layers) {
+        if (layer.anim != nullptr && layer.anim_layer.visible) any_visible_layer = true;
+    }
 
     // Compose local TRS along the animation hierarchy before applying inverse binds.
     for (usize i {}; i < m_final_affines.len(); ++i) {
@@ -215,6 +255,9 @@ slice<Eigen::Affine3f> PuppetLayer::genFrame(double time) noexcept {
                                                           : initial_linear.scale };
         Quaterniond quat { replace_base_frame != nullptr ? replace_base_frame->quaternion
                                                          : initial_linear.rotation };
+        if (any_visible_layer && replace_base_frame == nullptr) {
+            quat = WeRebuiltRotation(initial_reference.linear());
+        }
         const Quaterniond ident { Quaterniond::Identity() };
 
         for (auto& layer : m_layers) {
