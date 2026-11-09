@@ -695,14 +695,11 @@ void ParticleSubSystem::UpdateBoundedState(ParticleInstanceRef current) {
 }
 
 auto owe::ParticleOperatorStepsFor(u32 target_fps, f64 delta) -> particle::ParticleOperatorSteps {
-    const float step       = static_cast<float>(delta.to_primitive());
-    const float frame_time = target_fps > u32()
-                                 ? 1.0f / static_cast<float>(target_fps.to_primitive())
-                                 : step;
-    const float scale =
-        frame_time > 0.0f
-            ? f32(rstd::cmp::min(0.025f / frame_time, 1.0f)).powf(f32(0.7f)).to_primitive()
-            : 1.0f;
+    // the frame's own time: a slow frame at a 60 fps target is shortened like a frame at its own rate
+    const float step  = static_cast<float>(delta.to_primitive());
+    const float scale = step > 0.0f
+                            ? f32(rstd::cmp::min(0.025f / step, 1.0f)).powf(f32(0.7f)).to_primitive()
+                            : 1.0f;
     return particle::ParticleOperatorSteps {
         .passes = target_fps >= u32(1) && target_fps <= u32(20) ? u32(2) : u32(1),
         .delta2 = Some(f64(static_cast<double>(scale * step))),

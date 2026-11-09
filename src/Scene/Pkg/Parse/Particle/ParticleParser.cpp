@@ -922,18 +922,16 @@ struct MovementOperator {
         auto velocities = context.view.Write(velocity);
         auto delta      = context.delta.to_primitive();
         auto speed      = modifiers.Speed();
+        // Wallpaper Engine (FUN_14023fbc0 case 1): gravity is added, the particle moves, then drag takes
+        // min(drag dt2, 1) of the speed, dt2 being the frame-rate compensated step (particles-drag-step: a thrown
+        // particle stops at speed / (drag x 0.503, 0.818, 1) at 15, 30, 60 fps).
+        const double keep = 1.0 - rstd::cmp::min(double(drag) * context.delta2.to_primitive(), 1.0);
         for (auto slot : context.slots) {
-            auto world_velocity =
-                frame->world_from_local_dir * velocities[slot.index].cast<double>();
-            Eigen::Vector3d acceleration =
-                frame->local_from_world_dir * algorism::DragForce(world_velocity, drag);
-            acceleration +=
-                speed * (frame->world_space ? frame->local_from_world_dir * gravity : gravity);
-            velocities[slot.index] =
-                (velocities[slot.index].cast<double>() + acceleration * delta).cast<float>();
-            positions[slot.index] = (positions[slot.index].cast<double>() +
-                                     velocities[slot.index].cast<double>() * delta)
-                                        .cast<float>();
+            const Eigen::Vector3d pulled =
+                velocities[slot.index].cast<double>() +
+                speed * (frame->world_space ? frame->local_from_world_dir * gravity : gravity) * delta;
+            positions[slot.index] = (positions[slot.index].cast<double>() + pulled * delta).cast<float>();
+            velocities[slot.index] = (pulled * keep).cast<float>();
         }
     }
 };
@@ -954,14 +952,13 @@ struct AngularMovementOperator {
         auto rotations  = context.view.Write(rotation);
         auto velocities = context.view.Write(angular_velocity);
         auto delta      = context.delta.to_primitive();
+        // the same as movement (FUN_14023fbc0 case 2): force added, turned, then min(drag dt2, 1) of the angular speed
+        // taken
+        const double keep = 1.0 - rstd::cmp::min(double(drag) * context.delta2.to_primitive(), 1.0);
         for (auto slot : context.slots) {
-            Eigen::Vector3d acceleration =
-                algorism::DragForce(rotations[slot.index].cast<double>(), drag) + force;
-            velocities[slot.index] =
-                (velocities[slot.index].cast<double>() + acceleration * delta).cast<float>();
-            rotations[slot.index] = (rotations[slot.index].cast<double>() +
-                                     velocities[slot.index].cast<double>() * delta)
-                                        .cast<float>();
+            const Eigen::Vector3d pushed = velocities[slot.index].cast<double>() + force * delta;
+            rotations[slot.index] = (rotations[slot.index].cast<double>() + pushed * delta).cast<float>();
+            velocities[slot.index] = (pushed * keep).cast<float>();
         }
     }
 };

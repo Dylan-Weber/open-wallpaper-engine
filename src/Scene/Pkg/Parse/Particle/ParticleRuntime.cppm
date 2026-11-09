@@ -253,9 +253,8 @@ struct ParticleFrame {
 
 auto ParticleFrameFrom(ref<dyn<rstd::any::Any>>) -> ref<ParticleFrame>;
 
-// Wallpaper Engine's operator steps for a frame (FUN_140236cd0): dt2 = dt x min(0.025 / target frame time, 1)^0.7,
-// and at 1..20 target frames a second two operator passes. Without a target frame rate (0) the step stands in for the
-// frame time.
+// Wallpaper Engine's operator steps for a frame (FUN_140236cd0): dt2 = dt x min(0.025 / dt, 1)^0.7, dt being the
+// frame's own time (particles-frametime-f15/-f30/-f60), and at 1..20 target frames a second two operator passes.
 auto ParticleOperatorStepsFor(u32 target_fps, f64 delta) -> particle::ParticleOperatorSteps;
 
 struct ParticleSpawnColumns {
