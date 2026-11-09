@@ -279,8 +279,8 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
     SceneMesh effct_final_mesh {};
     // where the puppet's own geometry goes (in effct_final_mesh with effects), for its blend shapes
     Option<usize>         puppet_submesh;
-    auto      spMesh              = Arc<SceneMesh>::make();
-    auto&     mesh                = *spMesh;
+    auto                  spMesh  = Arc<SceneMesh>::make();
+    auto&                 mesh    = *spMesh;
     const array<float, 2> mapRate = Texture0UvScale(material, wpimgobj.nopadding);
     const bool            source_uses_framebuffer_space = hasEffect && wpimgobj.composite_layer;
     const Vector3f        source_alignment_offset = hasEffect ? Vector3f::Zero() : alignment_offset;
