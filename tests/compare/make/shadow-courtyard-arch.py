@@ -4,7 +4,8 @@
 # shadows. WE lets a wider strip of sun in at the wall's foot. Variants: -lowered, the floor 0.4 lower (the wall's
 # foot no longer inside it); -novault, the wall without its vault (only its upright faces); -nowall, the floor alone;
 # -closed, the wall two-sided (each triangle twice); -clipped, the wall's foot raised to the floor's top (y 0.84);
-# -slab / -slab-sunk, a plain box in the wall's place standing on the floor's top / from 0.44 (sunk 0.4).
+# -slab / -slab-sunk, a plain box in the wall's place standing on the floor's top / from 0.44 (sunk 0.4);
+# -flat-slab / -flat-slab-sunk, the same under a flat, top-only floor at 0.84.
 import struct
 CENTER = (8.98972, 1.30595, -0.10218)
 DATA = json.load(open(os.path.join(os.path.dirname(HERE), 'make', 'data', 'courtyard-arch.json')))
@@ -24,7 +25,7 @@ def mesh_mdl(parts):
     return data
 
 
-def make(name, floor_dy=0.0, vault=True, wall=True, closed=False, clip=None, slab=None):
+def make(name, floor_dy=0.0, vault=True, wall=True, closed=False, clip=None, slab=None, flat=False):
     w = Scene3D(name, 'the courtyard wall that casts the edge (%s)' % name, ambient='0.15 0.15 0.15',
                 eye='0.98868 0.13889 0.05676')
     mat = 'materials/plain.json'
@@ -43,7 +44,11 @@ def make(name, floor_dy=0.0, vault=True, wall=True, closed=False, clip=None, sla
         return (mat, ps, normals, tris)
     upright = (lambda n: True) if vault else (lambda n: abs(n[1]) < 0.01)
     mdl = 'models/arch.mdl'
-    write_binary(os.path.join(w.name, mdl), mesh_mdl(([part('wall', keep=upright)] if wall else []) + [part('floor', floor_dy)]))
+    floor = part('floor', floor_dy)
+    if flat:  # one upward quad at the stone floor's top (y 0.84), x 0..16, z -4..4: top only, as the stone floor is
+        q = [[x - CENTER[0], 0.84 - CENTER[1], z - CENTER[2]] for x, z in ((0, -4), (16, -4), (16, 4), (0, 4))]
+        floor = (mat, q, [[0, 1, 0]] * 4, [[0, 2, 1], [0, 3, 2], [0, 1, 2], [0, 2, 3]])  # both windings
+    write_binary(os.path.join(w.name, mdl), mesh_mdl(([part('wall', keep=upright)] if wall else []) + [floor]))
     w.cube('arch', mdl, 0, 0, 0)
     if slab is not None:  # a plain box in the wall's place: its face at z 0.80, x 5..15, from y `slab` up to 1.73
         lit = w.material('slab', '0.8 0.8 0.8', lighting=True)
@@ -68,3 +73,5 @@ make('shadow-courtyard-arch-closed', closed=True)
 make('shadow-courtyard-arch-clipped', clip=0.84)
 make('shadow-courtyard-arch-slab', wall=False, slab=0.84)
 make('shadow-courtyard-arch-slab-sunk', wall=False, slab=0.44)
+make('shadow-courtyard-arch-flat-slab', wall=False, slab=0.84, flat=True)
+make('shadow-courtyard-arch-flat-slab-sunk', wall=False, slab=0.44, flat=True)
