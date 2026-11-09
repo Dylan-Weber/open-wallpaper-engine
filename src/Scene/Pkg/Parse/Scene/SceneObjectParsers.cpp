@@ -701,8 +701,8 @@ BuildContext(Scene& scene, fs::VFS& vfs, ref<str> scene_id, const wpscene::Scene
     if (context.layer_resources->shader_environment.shadow_mapping) {
         // a square of the atlas for each spot light, each cascade and each point light, in rows
         // of a near square: the spots' first, the points' last
-        const int     tile       = ShadowTileSize(shadow_quality);
-        const auto    squares_of = [](SceneLightType type) {
+        const int  tile       = ShadowTileSize(shadow_quality);
+        const auto squares_of = [](SceneLightType type) {
             return type == SceneLightType::Directional ? 3 : 1;
         };
         int squares {};
