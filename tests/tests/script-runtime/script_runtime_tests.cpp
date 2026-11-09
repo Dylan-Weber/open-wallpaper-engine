@@ -785,26 +785,35 @@ TEST(ScriptBones, LocalOriginAndAngles) {
 }
 
 TEST(ScriptBones, LocalBonesReadZeroAndTakeNothingInInit) {
-    // In a script's init Wallpaper Engine's bones read zero and setting them does nothing (puppet-bone-init); update sees them.
+    // In a script's init Wallpaper Engine's bones read zero and setting them does nothing
+    // (puppet-bone-init); update sees them.
     owe::SceneNode node;
     JsRuntime      rt;
     rt.SetBoneResolvers(
-        JsRuntime::BoneIndexResolver::make([](owe::SceneNode*, ref<str>) -> uint32_t { return 1; }),
-        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t { return 0; }),
+        JsRuntime::BoneIndexResolver::make([](owe::SceneNode*, ref<str>) -> uint32_t {
+            return 1;
+        }),
+        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t {
+            return 0;
+        }),
         JsRuntime::BoneTransformResolver::make(
-            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTransformData> { return None(); }),
+            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTransformData> {
+                return None();
+            }),
         JsRuntime::BoneSetTransformResolver::make(
-            [](owe::SceneNode*, uint32_t, const BoneTransformData&) {}));
+            [](owe::SceneNode*, uint32_t, const BoneTransformData&) {
+            }));
     BoneLocalPose pose { .origin = { 1.0f, 2.0f, 3.0f }, .angles = { 0.0f, 0.0f, 0.3f } };
     int           sets = 0;
-    rt.SetBoneLocalResolvers(
-        JsRuntime::BoneLocalGetter::make(
-            [&](owe::SceneNode*, uint32_t, double) -> Option<BoneLocalPose> { return Some(pose); }),
-        JsRuntime::BoneLocalSetter::make(
-            [&](owe::SceneNode*, uint32_t, BoneLocalPose value, double) {
-                ++sets;
-                pose = value;
-            }));
+    rt.SetBoneLocalResolvers(JsRuntime::BoneLocalGetter::make(
+                                 [&](owe::SceneNode*, uint32_t, double) -> Option<BoneLocalPose> {
+                                     return Some(pose);
+                                 }),
+                             JsRuntime::BoneLocalSetter::make(
+                                 [&](owe::SceneNode*, uint32_t, BoneLocalPose value, double) {
+                                     ++sets;
+                                     pose = value;
+                                 }));
     auto* fs = rt.MakeFieldScript(
         R"JS(
             let atInit = 'unset';
@@ -2808,8 +2817,8 @@ TEST(ScriptScene, CameraTransformsRoundTripThroughSceneOwner) {
     EXPECT_DOUBLE_EQ(LastScalar(script), 345.0);
 }
 
-// Measured in Wallpaper Engine: a script that calls setCameraTransforms in init (and returns its value) leaves the
-// camera where the scene put it; the same call in update moves it.
+// Measured in Wallpaper Engine: a script that calls setCameraTransforms in init (and returns its
+// value) leaves the camera where the scene put it; the same call in update moves it.
 TEST(ScriptScene, CameraTransformsSetInInitAreIgnored) {
     owe::Scene scene;
     auto       camera = Arc<owe::SceneCamera>::make(
