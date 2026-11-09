@@ -917,6 +917,70 @@ TEST(ParticleRemap, SubtractsAndShapesTheInput) {
     EXPECT_TRUE(read(R"(,"transformfunction":"simplexnoise")"_str).is_none());
 }
 
+// transforminputscale (default 2) sets how far round the sine goes: 0.5 - 0.5 cos(pi * scale *
+// fraction) (particles-remap-timescale-range: scale 6 is 0.009 at a fraction of 0.344 and 0.99 at
+// 0.5075, scale 0.5 is 0.071 at 0.344; -timescale: past the range, scale 0.5 holds 0.5 and scale 6
+// holds 0). Linear ignores it.
+TEST(ParticleRemap, TheInputScaleSetsTheSinesTurns) {
+    auto read = [](ref<str> extra) {
+        auto json = rstd::format(
+            R"({{"name":"remapvalue","input":"particlesystemtime","output":"opacity","transformfunction":"sine"{}}})",
+            extra);
+        return owe::ParticleRemap::FromJson(owe::ParseJson(json.as_str()).unwrap()).unwrap();
+    };
+    auto six = read(R"(,"transforminputscale":6,"inputrangemax":40)"_str);
+    EXPECT_NEAR(six.Map(0.3442 * 40).x(), 0.0090, 0.01);
+    EXPECT_NEAR(six.Map(0.4358 * 40).x(), 0.6746, 0.01);
+    EXPECT_NEAR(six.Map(0.5075 * 40).x(), 0.9924, 0.01);
+    auto half = read(R"(,"transforminputscale":0.5,"inputrangemax":40)"_str);
+    EXPECT_NEAR(half.Map(0.3442 * 40).x(), 0.0708, 0.01);
+    EXPECT_NEAR(half.Map(0.5567 * 40).x(), 0.1793, 0.01);
+    EXPECT_NEAR(read(R"(,"transforminputscale":0.5)"_str).Map(14.0).x(), 0.5, 1e-9);
+    EXPECT_NEAR(read(R"(,"transforminputscale":6)"_str).Map(14.0).x(), 0.0, 1e-9);
+    EXPECT_NEAR(read(R"(,"transforminputscale":2,"inputrangemax":40)"_str).Map(0.3442 * 40).x(),
+                read(R"(,"inputrangemax":40)"_str).Map(0.3442 * 40).x(),
+                1e-9);
+    auto linear =
+        owe::ParticleRemap::FromJson(
+            owe::ParseJson(
+                R"({"name":"remapvalue","input":"particlesystemtime","output":"opacity","inputrangemax":40,"transforminputscale":0.5})"_str)
+                .unwrap())
+            .unwrap();
+    EXPECT_NEAR(linear.Map(0.3442 * 40).x(), 0.3442, 1e-9);
+}
+
+// blendinstart..blendinend (fractions of the particle's life) blend the remapped value in from the
+// particle's own, linearly; before the window the operator does nothing
+// (particles-remap-timescale: a 30 s particle remapped to 0 over 0.3..0.5 had 0.207 of its opacity
+// left at 13.77 s and 0.0845 at 14.5 s; one 0.5..0.6 into a 100000 s life kept all of it).
+// blendoutstart..blendoutend blend it back out.
+TEST(ParticleRemap, TheBlendWindowFollowsTheParticlesLife) {
+    auto read = [](ref<str> extra) {
+        auto json = rstd::format(
+            R"({{"name":"remapvalue","input":"particlesystemtime","output":"opacity","outputrangemin":0,"outputrangemax":0{}}})",
+            extra);
+        return owe::ParticleRemap::FromJson(owe::ParseJson(json.as_str()).unwrap()).unwrap();
+    };
+    auto plain = read(""_str);
+    EXPECT_EQ(plain.BlendWeight(0.0), 1.0);
+    EXPECT_EQ(plain.BlendWeight(0.99), 1.0);
+    auto in = read(R"(,"blendinstart":0.3,"blendinend":0.5)"_str);
+    EXPECT_EQ(in.BlendWeight(0.1), 0.0);
+    EXPECT_NEAR(in.BlendWeight(13.77 / 30.0), 0.795, 1e-3);
+    EXPECT_EQ(in.BlendWeight(0.6), 1.0);
+    EXPECT_NEAR(in.Blend(Eigen::Vector3d::Ones(), 13.77, 13.77 / 30.0).x(), 0.205, 1e-3);
+    EXPECT_NEAR(in.Blend(Eigen::Vector3d::Ones(), 14.5, 14.5 / 30.0).x(), 0.0833, 2e-3);
+    auto out = read(R"(,"blendoutstart":0.6,"blendoutend":0.8)"_str);
+    EXPECT_EQ(out.BlendWeight(0.5), 1.0);
+    EXPECT_NEAR(out.BlendWeight(0.7), 0.5, 1e-9);
+    EXPECT_EQ(out.BlendWeight(0.9), 0.0);
+    // thunderbolt: in over 0.5..0.6 of the life only
+    auto bolt = read(R"(,"blendinstart":0.5,"blendinend":0.6)"_str);
+    EXPECT_EQ(bolt.Blend(Eigen::Vector3d::Ones(), 20.0, 0.4).x(), 1.0);
+    EXPECT_NEAR(bolt.Blend(Eigen::Vector3d::Ones(), 20.0, 0.55).x(), 0.5, 1e-9);
+    EXPECT_EQ(bolt.Blend(Eigen::Vector3d::Ones(), 20.0, 0.7).x(), 0.0);
+}
+
 // A size a remapvalue sets, adds or takes is a radius, drawn twice as large
 // (particles-remap-outputs: adding up to 40 to a size of 60 draws it 105, taking 22.5 draws 15);
 // one it multiplies is a factor.
