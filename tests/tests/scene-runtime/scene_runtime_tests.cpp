@@ -2694,9 +2694,9 @@ TEST(UniformSourceParallax, PerspectiveWithAuthoredParallaxDepthAppliesShift) {
                          mvp_with_parallax[rstd::usize(13)]) > 1e-5f);
 }
 
-
 TEST(SceneCameraPath, ACameraLayerAScriptHidesGivesTheScenesViewBack) {
-    // camera-layer-restore: a script's init hides a visible camera layer, and Wallpaper Engine shows the scene's view
+    // camera-layer-restore: a script's init hides a visible camera layer, and Wallpaper Engine
+    // shows the scene's view
     auto document = owe::wpscene::ParseSceneDocumentJson(
         R"JSON({
             "camera": { "center": "0 0 0", "eye": "0 1 5", "up": "0 1 0" },
