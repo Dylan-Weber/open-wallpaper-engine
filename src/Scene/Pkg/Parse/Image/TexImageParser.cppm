@@ -29,6 +29,12 @@ inline auto LayerTexCoordInset(float width, float height) -> array<float, 2> {
              height > 0.0f ? kLayerTexelInset / height : 0.0f };
 }
 
+// An image layer's inset: none on a model with "nopadding", which draws its texture edge to edge
+// (texture-uv-inset-nopadding; the videotex-* probes' video models).
+inline auto ImageLayerTexCoordInset(float width, float height, bool nopadding) -> array<float, 2> {
+    return nopadding ? array<float, 2> { 0.0f, 0.0f } : LayerTexCoordInset(width, height);
+}
+
 // Sub-version stamps embedded in a `.tex` file. All four are read from
 // independent "TEXX0000" stamps interleaved with the header / sprite
 // payload (see `LoadHeader` and the sprite branch of `ParseHeader`).
