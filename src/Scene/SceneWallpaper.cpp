@@ -364,7 +364,7 @@ private:
     bool                                      m_pending_view_config {};
     Option<RenderMsg::SwapchainReady_payload> m_pending_swapchain;
     // a spectrum held still instead of what is heard (SceneWallpaperConfig::fixed_audio)
-    Option<scene_audio::Buffers>              m_fixed_audio;
+    Option<scene_audio::Buffers> m_fixed_audio;
 
     Atomic<array<float, 2>> m_mouse_pos { array<float, 2> { 0.5f, 0.5f } };
     Atomic<u32>             m_buttons_down {};
