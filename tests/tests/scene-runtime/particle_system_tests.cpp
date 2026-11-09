@@ -1086,3 +1086,69 @@ TEST(ParticleEmitterTiming, PeriodicEmissionSwitchesOnAndOff) {
     EXPECT_EQ(owe::EmitterTimingAllowance(state, capped, u32(3)), u32());
     EXPECT_EQ(owe::EmitterTimingAllowance(state, periodic, u32(7)), u32(7));
 }
+
+// A new on phase of a periodic emitter fires its system's static children's instantaneous
+// emitters again (particles-child-static, GPU VM: a 0.3 s halo in a static child flashes every
+// 2.06 s under a parent emitting 1 s on, 1 s off, and never again under a plain parent or one
+// with no particles); thunderbolt's glow flashes with each bolt.
+TEST(ParticleSubSystem, PeriodicEmissionRestartsStaticChildren) {
+    owe::Scene             scene;
+    owe::ParticleSubSystem parent(scene,
+                                  Arc<owe::SceneMesh>::make(),
+                                  u32(8),
+                                  f64(1.0),
+                                  u32(1),
+                                  f64(1.0),
+                                  owe::ParticleSubSystem::SpawnType::STATIC,
+                                  owe::ParticleAnimationSpec {});
+    parent.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"lifetimerandom","min":0.5,"max":0.5})"_str).unwrap(), u32(8)));
+    owe::wpscene::Emitter periodic;
+    EXPECT_TRUE(periodic.FromJson(
+        owe::ParseJson(
+            R"({"name":"boxrandom","rate":5,"flags":4,"minperiodicdelay":1,"maxperiodicdelay":1,"minperiodicduration":1,"maxperiodicduration":1})"_str)
+            .unwrap()));
+    parent.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+        owe::BoxEmitterProgram(parent.SpawnPipeline(),
+                               owe::ParticleBoxEmitterArgs {
+                                   .emit_speed = 5.0f,
+                                   .timing     = owe::ParticleEmitterTiming::From(periodic),
+                               },
+                               usize())));
+
+    auto child = Box<owe::ParticleSubSystem>::make(scene,
+                                                   Arc<owe::SceneMesh>::make(),
+                                                   u32(4),
+                                                   f64(1.0),
+                                                   u32(1),
+                                                   f64(1.0),
+                                                   owe::ParticleSubSystem::SpawnType::STATIC,
+                                                   owe::ParticleAnimationSpec {});
+    child->AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"lifetimerandom","min":0.3,"max":0.3})"_str).unwrap(), u32(4)));
+    child->AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+        owe::BoxEmitterProgram(child->SpawnPipeline(),
+                               owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) },
+                               usize())));
+    child->Finalize();
+    auto* glow = child.get();
+    parent.AddChild(rstd::move(child));
+    parent.Finalize();
+
+    // whether the child has a live particle after each of 200 frames at 30 a second
+    Vec<bool> lit;
+    for (int k = 0; k < 200; ++k) {
+        parent.Tick(f64(1.0 / 30.0), false);
+        lit.push(glow->System().InstanceCount() > usize() && ! glow->InstanceState(usize()).no_live_particle);
+    }
+    EXPECT_TRUE(lit[usize(2)]);
+    // dead by 0.5 s, and nothing fires it until the next on phase (at about 61 frames)
+    for (int k = 20; k < 58; ++k) EXPECT_FALSE(lit[usize(k)]) << k;
+    bool again = false;
+    for (int k = 60; k < 72; ++k) again = again || lit[usize(k)];
+    EXPECT_TRUE(again);
+    for (int k = 85; k < 118; ++k) EXPECT_FALSE(lit[usize(k)]) << k;
+    bool third = false;
+    for (int k = 121; k < 134; ++k) third = third || lit[usize(k)];
+    EXPECT_TRUE(third);
+}
