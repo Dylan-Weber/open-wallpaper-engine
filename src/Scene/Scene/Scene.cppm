@@ -879,7 +879,8 @@ public:
     SceneMaterialCustomShader customShader;
     // its shadow casters, one for each of the scene's shadow definitions
     Vec<Arc<SceneMaterial>> shadow_variants;
-    // a translucent or additive material: its casters draw no pixels (Wallpaper Engine casts no shadow from it)
+    // a translucent or additive material: its casters draw no pixels (Wallpaper Engine casts no
+    // shadow from it)
     bool shadow_silent { false };
 
 private:
