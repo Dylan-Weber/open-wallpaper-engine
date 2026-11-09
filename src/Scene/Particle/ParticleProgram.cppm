@@ -319,7 +319,9 @@ struct ParticleExtractContext {
 
 class ParticleEmitterContext {
 public:
-    bool Empty() const noexcept { return m_storage->Len() == usize(); }
+    // Whether the system had no particles when this frame's emitters started: every instantaneous emitter fires into
+    // an empty system, not only the first to run.
+    bool Empty() const noexcept { return m_empty; }
     auto Frame() const noexcept -> ref<dyn<rstd::any::Any>> { return m_frame; }
     f64  Delta() const noexcept { return m_delta; }
     f64  Elapsed() const noexcept { return m_elapsed; }
@@ -362,7 +364,8 @@ private:
           m_frame(frame),
           m_max_slots(max_slots),
           m_delta(delta),
-          m_elapsed(elapsed) {}
+          m_elapsed(elapsed),
+          m_empty(storage.Len() == usize()) {}
 
     ParticleStorage*                     m_storage;
     ParticleViewBinding*                 m_binding;
@@ -372,6 +375,7 @@ private:
     usize                                m_max_slots;
     f64                                  m_delta;
     f64                                  m_elapsed;
+    bool                                 m_empty;
     Vec<ParticleSpawnRequest>            m_requests;
 };
 
