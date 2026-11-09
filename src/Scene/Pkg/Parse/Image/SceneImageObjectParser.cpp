@@ -231,6 +231,8 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
         if (! hasEffect && puppet.is_some() && has_bones) {
             MdlParser::AddPuppetShaderInfo(shaderInfo, **puppet);
         }
+        if (! hasEffect && primary_puppet_mesh != nullptr && image_puppet_layer.is_some())
+            MdlParser::AddMorphShaderInfo(shaderInfo, *primary_puppet_mesh);
 
         (void)baseConstSvs.insert(rstd::into(G_COLOR4),
                                   ShaderValue(array<float, 4> { wpimgobj.color[usize(0)],
@@ -355,6 +357,8 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
                 wpscene::Material    puppet_mat = image_wpmat.clone();
                 puppet_mat.textures[usize()].clear();
                 MdlParser::AddPuppetMatInfo(puppet_mat, **puppet);
+                if (primary_puppet_mesh != nullptr && image_puppet_layer.is_some())
+                    MdlParser::AddMorphMatInfo(puppet_mat, *primary_puppet_mesh);
                 if (color_blend_uses_layer_material)
                     color_blend_attachment_override =
                         ApplyLayerColorBlend(puppet_mat, wpimgobj.colorBlendMode);
