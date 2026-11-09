@@ -374,8 +374,9 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
             mesh.SetGeometryTransform(
                 Affine3d(Translation3d(alignment_offset.cast<double>())).matrix());
         }
-        // Wallpaper Engine samples the texture of the quad it draws on screen 0.15 texel in from its edges:
-        // the layer's own quad without effects, else the effects' final quad (in the effect target's texels)
+        // Wallpaper Engine samples the texture of the quad it draws on screen 0.15 texel in from
+        // its edges: the layer's own quad without effects, else the effects' final quad (in the
+        // effect target's texels)
         GenCardMesh(mesh,
                     { geometry_size[usize(0)], geometry_size[usize(1)] },
                     mapRate,
@@ -384,11 +385,12 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
         if (parse_geometry.final_mesh.is_some()) {
             effct_final_mesh.ChangeMeshDataFrom(**parse_geometry.final_mesh);
         } else {
-            GenCardMesh(effct_final_mesh,
-                        { geometry_size[usize(0)], geometry_size[usize(1)] },
-                        { 1.0f, 1.0f },
-                        alignment_offset,
-                        LayerTexCoordInset(effect_target_size[usize(0)], effect_target_size[usize(1)]));
+            GenCardMesh(
+                effct_final_mesh,
+                { geometry_size[usize(0)], geometry_size[usize(1)] },
+                { 1.0f, 1.0f },
+                alignment_offset,
+                LayerTexCoordInset(effect_target_size[usize(0)], effect_target_size[usize(1)]));
         }
     }
     // The final pass owns the authored blend mode.
