@@ -757,7 +757,7 @@ void BuildParticleObjectNode(ParticleObjectParseServices& services,
     } else {
         mesh.MaterialSlots().last_mut().unwrap().get_mut()->RegisterAnimations(*spNode);
     }
-    spNode->AddMesh(spMesh.clone());
+    if (particle_obj.drawn) spNode->AddMesh(spMesh.clone());
     SetParticleUniformConfig(output, spNode, rstd::move(svData));
     if (trail_uniform_state.is_some()) {
         output.trail_uniform_configs.push(ParticleTrailUniformConfigDraft {
