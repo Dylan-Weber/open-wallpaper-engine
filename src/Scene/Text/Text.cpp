@@ -607,7 +607,7 @@ auto TextResources::Rasterize(const vectext::FontInstance& font, vectext::Index 
     if (raster.is_err()) return Err(raster.unwrap_err());
     auto bitmap = rstd::move(raster).unwrap();
     if (outline > 0 && bitmap.width && bitmap.height)
-        bitmap = StrokeGlyph(bitmap, trace, outline, scale);
+        bitmap = StrokeGlyph(bitmap, trace, outline * scale, scale); // (outline in layer units)
     auto extent = im.options.extent;
     if (extent < 8 || extent > 8192 || ! im.options.max_pages || im.options.max_pages > 64 ||
         rstd::uint64_t(extent) * extent * im.options.max_pages > 268435456 ||
@@ -1072,13 +1072,17 @@ struct TextLayouter::Impl {
         float      minx {}, maxx {}, miny {}, maxy {};
         for (auto& glyph : output.glyphs()) {
             if (! glyph.drawable) continue;
-            auto raster = resources->Rasterize(output.fonts()[usize(glyph.font)], glyph.glyph);
+            // outlined text on a scaled layer is rasterised finer (Wallpaper Engine's distance atlas
+            // stays sharp at any scale); the glyph's bitmap is then in raster_scale pixels a unit
+            const double rs     = outlined ? rstd::cmp::max(1.0, double(style.raster_scale)) : 1.0;
+            auto         raster = resources->Rasterize(output.fonts()[usize(glyph.font)], glyph.glyph, rs);
             if (raster.is_err()) return Err(raster.unwrap_err());
             auto atlas = raster.unwrap();
             if (! atlas.width || ! atlas.height) continue;
-            float left = float(glyph.position.x + atlas.origin.x) - measured.text_width / 2;
-            float top =
-                measured.text_height / 2 - float(glyph.position.y - bounds.y + atlas.origin.y);
+            // its corner and ink, in layer units
+            const double ox = atlas.origin.x / rs, oy = atlas.origin.y / rs;
+            float        left = float(glyph.position.x + ox) - measured.text_width / 2;
+            float        top  = measured.text_height / 2 - float(glyph.position.y - bounds.y + oy);
             float right  = left + float(atlas.width / atlas.scale),
                   bottom = top - float(atlas.height / atlas.scale);
             if (! have_bounds) {
@@ -1096,7 +1100,7 @@ struct TextLayouter::Impl {
             float fill_left = left, fill_right = right, fill_bottom = bottom, fill_top = top;
             if (outlined) {
                 auto grown = resources->Rasterize(
-                    output.fonts()[usize(glyph.font)], glyph.glyph, 1, style.outline_thickness);
+                    output.fonts()[usize(glyph.font)], glyph.glyph, rs, style.outline_thickness);
                 if (grown.is_err()) return Err(grown.unwrap_err());
                 auto outline = grown.unwrap();
                 // the letter and its outline are drawn where Wallpaper Engine's distance atlas has
@@ -1105,10 +1109,10 @@ struct TextLayouter::Impl {
                 auto round = [](double v) {
                     return f64(v + 0.5).floor().to_primitive();
                 };
-                double box[4] { round(atlas.origin.x + atlas.ink_left),
-                                round(atlas.origin.y + atlas.ink_top),
-                                round(atlas.origin.x + atlas.ink_right),
-                                round(atlas.origin.y + atlas.ink_bottom) };
+                double box[4] { round(ox + atlas.ink_left / rs),
+                                round(oy + atlas.ink_top / rs),
+                                round(ox + atlas.ink_right / rs),
+                                round(oy + atlas.ink_bottom / rs) };
                 if (font.source.is_some() && glyph.font == 0)
                     if (auto hinted = resources->HintedGlyphBox(*font.source, glyph.glyph, size);
                         hinted.is_some())
@@ -1122,9 +1126,8 @@ struct TextLayouter::Impl {
                 auto py = [&](double y) {
                     return float(place.scale_y * y + place.offset_y - y);
                 };
-                const double ox = atlas.origin.x, oy = atlas.origin.y;
                 const double ow = atlas.width / atlas.scale, oh = atlas.height / atlas.scale;
-                const double gx = outline.origin.x, gy = outline.origin.y;
+                const double gx = outline.origin.x / rs, gy = outline.origin.y / rs;
                 const double gw = outline.width / outline.scale,
                              gh = outline.height / outline.scale;
                 fill_left       = left + px(ox);
