@@ -176,7 +176,8 @@ namespace
 // A bone with only its rotation spring (the tip 62.5 along x, mass `mass`) under gravity
 // `direction`, left to settle for 4 seconds at 30 frames a second: how far it has turned (radians,
 // 0 when it hasn't).
-float SettledTurn(float mass, const std::string& direction, bool gravity = true) {
+float SettledTurn(float mass, const std::string& direction, bool gravity = true,
+                  const Eigen::Vector3f& scale = Eigen::Vector3f::Ones()) {
     std::string settings = Settings(true, false);
     const auto  replace  = [&](const std::string& from, const std::string& to) {
         const auto at = settings.find(from);
@@ -198,7 +199,8 @@ float SettledTurn(float mass, const std::string& direction, bool gravity = true)
                                simulation,
                                Eigen::Affine3f::Identity(),
                                Eigen::Affine3f::Identity(),
-                               1.0f / 30.0f);
+                               1.0f / 30.0f,
+                               scale);
     }
     return Eigen::AngleAxisf(Eigen::Quaternionf(turned.rotation())).angle();
 }
@@ -322,4 +324,44 @@ TEST(Puppet, LayerImpulseMovesTheBoneAndResetPutsItBack) {
     layer.ResetBonePhysics(None());
     (void)layer.genFrame(0.132);
     EXPECT_NEAR(layer.boneTransform(1, 0.132)->translation().x(), 0.0f, 1e-5f);
+}
+
+// Wallpaper Engine pulls a turning bone in the bone's own space, where an object scaled unevenly
+// is squeezed: gravity divided by the object's scale axis by axis, times its mean scale
+// (puppet-physics-scale-turn-axes). Scaled 2 along y (mean 4 / 3), a pull down is 2 / 3 of the mass;
+// scaled 2 along x, 4 / 3.
+TEST(BonePhysics, GravityTurnsAnUnevenlyScaledBoneInItsOwnSpace) {
+    EXPECT_NEAR(SettledTurn(60.0f, "0 -1 0", true, Eigen::Vector3f(1.0f, 2.0f, 1.0f)),
+                SettledTurn(40.0f, "0 -1 0"),
+                1e-3f);
+    EXPECT_NEAR(SettledTurn(60.0f, "0 -1 0", true, Eigen::Vector3f(2.0f, 1.0f, 1.0f)),
+                SettledTurn(80.0f, "0 -1 0"),
+                1e-3f);
+    // evenly scaled, nothing changes
+    EXPECT_NEAR(SettledTurn(60.0f, "0 -1 0", true, Eigen::Vector3f::Constant(2.0f)),
+                SettledTurn(60.0f, "0 -1 0"),
+                1e-4f);
+}
+
+// The axes a translation spring may not move along are the bone's own, as animated
+// (puppet-physics-axislock): a bone turned 45 degrees from its parent with its y locked sags
+// along its own x, slantwise.
+TEST(BonePhysics, LockedAxesAreTheBonesOwn) {
+    std::string settings = Settings(false, true);
+    settings.replace(settings.find("\"ge\":false"), 10, "\"ge\":true");
+    settings.replace(settings.find("\"tm\":2.0"), 8, "\"tm\":100");
+    settings.replace(settings.find("\"tay\":true"), 10, "\"tay\":false");
+    const auto            simulation = Parse(settings);
+    const Eigen::Affine3f turned(Eigen::AngleAxisf(0.785398f, Eigen::Vector3f::UnitZ()));
+    owe::BonePhysics      physics;
+    physics.Resize(usize(1));
+    Eigen::Affine3f hanging = turned;
+    for (int frame = 0; frame < 300; ++frame) {
+        hanging = physics.Apply(usize(), simulation, Eigen::Affine3f::Identity(), turned, 1.0f / 30.0f);
+    }
+    const Eigen::Vector3f sag   = hanging.translation();
+    const Eigen::Vector3f own_x = turned.linear().col(0);
+    EXPECT_GT(sag.norm(), 5.0f);
+    EXPECT_NEAR(std::abs(sag.normalized().dot(own_x)), 1.0f, 1e-3f);
+    EXPECT_LT(sag.y(), 0.0f);
 }

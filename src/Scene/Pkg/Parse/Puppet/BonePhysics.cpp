@@ -166,9 +166,11 @@ auto BonePhysics::Apply(usize bone, const BoneSimulation& simulation, const Affi
                 state.velocity -= dt * simulation.translation_stiffness * state.offset;
             }
             state.offset += dt * state.velocity;
+            // the locked axes are the bone's own, as animated (in the scene's units)
             for (int axis = 0; axis < 3; ++axis) {
                 if (simulation.translation_axes[usize(axis)]) continue;
-                const Vector3f direction = parent.linear().col(axis).normalized();
+                const Vector3f direction =
+                    animated.linear().col(axis).cwiseProduct(scale).normalized();
                 state.offset -= state.offset.dot(direction) * direction;
             }
             if (const float distance = state.offset.norm(); distance > simulation.max_distance) {
@@ -195,8 +197,11 @@ auto BonePhysics::Apply(usize bone, const BoneSimulation& simulation, const Affi
                 const Vector3f turned = state.rotation_offset * simulation.tip;
                 if (turned.norm() > 1e-6f) {
                     const Vector3f along = turned.normalized();
-                    const Vector3f pull  = animated.linear().inverse() *
-                                          simulation.gravity_direction * simulation.mass;
+                    // in the bone's own space, which an unevenly scaled object squeezes: the
+                    // pull divided by its scale axis by axis, times its mean scale
+                    const Vector3f pull = animated.linear().inverse() *
+                                          simulation.gravity_direction.cwiseQuotient(scale) *
+                                          simulation.mass * scale.mean();
                     now -= pull - pull.dot(along) * along;
                 }
             }
