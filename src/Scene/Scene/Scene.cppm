@@ -1407,7 +1407,7 @@ public:
     void SetFrame(float frame);
     void SetRate(float rate);
 
-    bool     IsPlaying() const { return m_playing; }
+    bool IsPlaying() const { return m_playing; }
     // How many times it has got to its end: every loop, or a single play's end.
     u64      EndedCount() const { return m_ended; }
     i32      Frame() const;

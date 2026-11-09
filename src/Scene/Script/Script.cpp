@@ -2593,7 +2593,8 @@ JSValue NamedLayerStop(JSContext*, JSValueConst value, int, JSValueConst*) {
     return JS_UNDEFINED;
 }
 // an animation layer's addEndedCallback(fn): fn is called each time its animation gets to its end
-JSValue NamedLayerAddEndedCallback(JSContext* ctx, JSValueConst value, int argc, JSValueConst* argv) {
+JSValue NamedLayerAddEndedCallback(JSContext* ctx, JSValueConst value, int argc,
+                                   JSValueConst* argv) {
     if (argc < 1) return JS_UNDEFINED;
     if (auto* layer = GetNamedAnimationLayer(value))
         if (auto playback = layer->Playback(); playback.is_some())
