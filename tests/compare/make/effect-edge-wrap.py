@@ -2,7 +2,7 @@
 # from the bottom of the picture to its top edge in owe, not in Wallpaper Engine). A picture whose top quarter is red and
 # bottom quarter cyan (grey between); the shipped refraction effect at strength 0.3 pushes the texture coordinates past
 # the edges: wrapping shows cyan at the top and red at the bottom, clamping shows red at the top and cyan at the bottom.
-# Cells: refraction 0.3, refraction 0 (control), tint then refraction 0.3 (a target in between), and the picture alone.
+# Cells: refraction at strength 0 (its compose target alone), tint then refraction 0, and the picture alone.
 import struct
 SHIPPED_PASSES['refraction'] = 2
 
@@ -21,9 +21,17 @@ def bands_tex(side=256):
 w = Wallpaper('effect-edge-wrap', 'what an effect reads past the edge of its layer', clear='0.12 0.12 0.12')
 write_binary(os.path.join(w.name, 'materials', 'bands.tex'), bands_tex())
 model = w.texture_model('picture', 'bands')
-cells = [('refraction 0.3', [shipped('refraction', {"strength": 0.3})]),
-         ('refraction 0', [shipped('refraction', {"strength": 0})]),
-         ('tint, refraction 0.3', [shipped('tint', {"color": "1 1 1", "blendmode": 0}), shipped('refraction', {"strength": 0.3})]),
+def refraction(strength):
+    # the strength and normal go to the second pass (the first is the compose pass); the shipped bubble normal map
+    # is a .tex as in the Workshop wallpaper (owe reads no editor .png)
+    return {"file": "effects/refraction/effect.json", "id": 0, "name": "", "visible": True, "passes": [
+        {"id": 1}, {"id": 2, "constantshadervalues": {"strength": strength}, "textures": [None, None, "particle/bubbles/bubble3"]}]}
+
+
+# strength 0 isolates the compose target's edge: any colour past the top edge is the target wrapping (a displacing
+# refraction reads WE's default opacity mask, which owe doesn't paint the same way: kept out of this probe)
+cells = [('refraction 0', [refraction(0)]),
+         ('tint, refraction 0', [shipped('tint', {"color": "1 1 1", "blendmode": 0}), refraction(0)]),
          ('plain', [])]
 for i, (label, effects) in enumerate(cells):
     effects = [dict(e, id=100 + i * 10 + k, passes=[dict(p, id=1000 + i * 10 + k * 3 + n) for n, p in enumerate(e['passes'])])
