@@ -183,6 +183,48 @@ TEST(WebState, PropertySnippetEscapesKey) {
     EXPECT_TRUE(empty.as_str().contains("applyUserProperties({}"_str));
 }
 
+// Wallpaper Engine calls a page's audio listeners only when project.json's general.supportsaudioprocessing is true
+// (VM, DevTools on its CEF, 2026-11-08: 30 calls a second with it, none without)
+TEST(WebState, AudioDemandIsRefusedWithoutAudioProcessing) {
+    CefRefPtr<OsrRenderHandler> render = new OsrRenderHandler;
+    CefRefPtr<ClientHandler>    client =
+        new ClientHandler(owe::Json::Null(), render, false, { .audio_allowed = false });
+    int  calls = 0;
+    bool last  = true;
+    client->SetAudioDemandCallback(Some(AudioDemandCallback::make([&](bool active) {
+        ++calls;
+        last = active;
+    })));
+    auto message = CefProcessMessage::Create("weweb.audio-demand");
+    message->GetArgumentList()->SetInt(0, 0);
+    message->GetArgumentList()->SetBool(1, true);
+    EXPECT_TRUE(client->OnProcessMessageReceived(nullptr, nullptr, PID_RENDERER, message));
+    EXPECT_FALSE(last);
+    EXPECT_EQ(calls, 1);
+    client->RequestClose();
+}
+
+TEST(WebState, AudioDemandPassesWithAudioProcessing) {
+    CefRefPtr<OsrRenderHandler> render = new OsrRenderHandler;
+    CefRefPtr<ClientHandler>    client =
+        new ClientHandler(owe::Json::Null(), render, false, { .audio_allowed = true });
+    bool last = false;
+    client->SetAudioDemandCallback(Some(AudioDemandCallback::make([&](bool active) { last = active; })));
+    auto message = CefProcessMessage::Create("weweb.audio-demand");
+    message->GetArgumentList()->SetInt(0, 0);
+    message->GetArgumentList()->SetBool(1, true);
+    EXPECT_TRUE(client->OnProcessMessageReceived(nullptr, nullptr, PID_RENDERER, message));
+    EXPECT_TRUE(last);
+    client->RequestClose();
+}
+
+// Wallpaper Engine hands a page applyGeneralProperties({fps}) with its frame rate setting (15 in the VM)
+TEST(WebState, GeneralPropertiesSnippetGivesTheFrameRate) {
+    auto snippet = BuildGeneralPropertiesSnippet(15);
+    EXPECT_TRUE(snippet.as_str().contains("applyGeneralProperties({\"fps\":15})"_str));
+    EXPECT_TRUE(snippet.as_str().contains("typeof window.wallpaperPropertyListener"_str));
+}
+
 TEST(WebManifest, LoadsOwnedStringsAndDefaults) {
     auto temporary = rstd::fs::TempDir::make("owe-web-manifest"_str).unwrap();
     auto root      = rstd::path::PathBuf::from(temporary.path());
@@ -198,6 +240,7 @@ TEST(WebManifest, LoadsOwnedStringsAndDefaults) {
     ASSERT_TRUE(manifest->preview.is_some());
     EXPECT_EQ(manifest->preview->as_str(), "preview.jpg"_str);
     EXPECT_TRUE(manifest->user_props.get("enabled"_str).is_some());
+    EXPECT_FALSE(manifest->supports_audio);
     ASSERT_TRUE(
         rstd::fs::write(root.join("project.json"_str).as_path(),
                         R"({"type":"web","title":0,"file":null,"preview":false})"_str.as_bytes())
@@ -269,3 +312,14 @@ TEST(WebState, AcceleratedFrameBorrowsDescriptors) {
     EXPECT_EQ(calls, 1);
 }
 #endif
+
+TEST(WebManifest, ReadsSupportsAudioProcessing) {
+    auto temporary = rstd::fs::TempDir::make("owe-web-manifest-audio"_str).unwrap();
+    auto root      = rstd::path::PathBuf::from(temporary.path());
+    auto content   = R"({"type":"web","general":{"supportsaudioprocessing":true}})"_str;
+    ASSERT_TRUE(
+        rstd::fs::write(root.join("project.json"_str).as_path(), content.as_bytes()).is_ok());
+    auto manifest = LoadWebManifest(root.as_path());
+    ASSERT_TRUE(manifest.is_some());
+    EXPECT_TRUE(manifest->supports_audio);
+}

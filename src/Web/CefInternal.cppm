@@ -100,13 +100,21 @@ private:
     CefRefCount  ref_count_;
 };
 
+// What the page is given besides its user properties, as Wallpaper Engine gives it.
+struct ClientOptions {
+    // the page's audio listeners are fed (project.json general.supportsaudioprocessing)
+    bool audio_allowed { true };
+    // applyGeneralProperties({fps}) after the page loads; 0 leaves it out
+    int  general_fps { 0 };
+};
+
 class ClientHandler : public CefClient,
                       public CefLifeSpanHandler,
                       public CefLoadHandler,
                       public CefDisplayHandler {
 public:
     explicit ClientHandler(owe::Json user_props, CefRefPtr<OsrRenderHandler> render_handler,
-                           bool initially_muted);
+                           bool initially_muted, ClientOptions options = {});
 
     ClientHandler(const ClientHandler&)            = delete;
     ClientHandler& operator=(const ClientHandler&) = delete;
@@ -168,6 +176,7 @@ private:
     void FinishClose();
 
     owe::Json                   user_props_;
+    ClientOptions               options_;
     CefRefPtr<OsrRenderHandler> render_handler_;
     CefRefPtr<CefBrowser>       browser_;
     Vec<CefRefPtr<CefBrowser>>  browsers_;
@@ -186,6 +195,7 @@ private:
 String BuildPropertyListenerSnippet(const owe::Json& props);
 String BuildPropertyPatchSnippet(ref<str> key, const owe::Json& value);
 String BuildAudioResponseSnippet(slice<float> data);
+String BuildGeneralPropertiesSnippet(int fps);
 void   InjectUserProperties(CefRefPtr<CefBrowser> browser, const owe::Json& props);
 
 } // namespace weweb

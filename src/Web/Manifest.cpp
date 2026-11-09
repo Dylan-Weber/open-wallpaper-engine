@@ -78,9 +78,12 @@ rstd::Option<WebManifest> LoadWebManifest(ref<Path> workshop_dir) {
         if (string.is_some()) m.preview = rstd::Some(String::make(*string));
     }
 
-    if (auto general = root.get("general"_str); general.is_some())
+    if (auto general = root.get("general"_str); general.is_some()) {
         if (auto properties = (*general)->get("properties"_str); properties.is_some())
             m.user_props = (*properties)->clone();
+        if (auto audio = (*general)->get("supportsaudioprocessing"_str); audio.is_some())
+            m.supports_audio = (*audio)->as_bool().unwrap_or(false);
+    }
 
     return rstd::Some(rstd::move(m));
 }
