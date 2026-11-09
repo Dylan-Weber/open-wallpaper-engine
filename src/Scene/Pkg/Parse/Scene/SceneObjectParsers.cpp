@@ -414,7 +414,8 @@ void ParseModelObjImpl(SceneLayerBuildContext& context, wpscene::ModelObject& mo
     node->ID()         = model_obj.id;
     node->SetPerspective(model_obj.perspective);
     node->SetReflected(model_obj.reflected);
-    node->shadow.cast = context.layer_resources->shader_environment.shadow_mapping && model_obj.castshadow;
+    node->shadow.cast =
+        context.layer_resources->shader_environment.shadow_mapping && model_obj.castshadow;
     if (! model_obj.visible) {
         node->SetVisible(false);
         if (model_obj.id >= i32())
@@ -519,14 +520,14 @@ void ParseModelObjImpl(SceneLayerBuildContext& context, wpscene::ModelObject& mo
                                                    rstd::as_cast<i32>(definition.view_offset));
                 ShaderInfo shadow_info;
                 shadow_info.baseConstSvs = context.layer_resources->global_base_uniforms.clone();
-                auto shadow_result       = BuildMaterial(vfs,
-                                                         *context.layer_resources->shader_cache,
-                                                         context.layer_resources->shader_environment,
-                                                         light_material,
-                                                         *context.scene,
-                                                         rstd::move(shadow_info),
-                                                         GeometryStageRequirement::None,
-                                                         context.load_bench);
+                auto shadow_result = BuildMaterial(vfs,
+                                                   *context.layer_resources->shader_cache,
+                                                   context.layer_resources->shader_environment,
+                                                   light_material,
+                                                   *context.scene,
+                                                   rstd::move(shadow_info),
+                                                   GeometryStageRequirement::None,
+                                                   context.load_bench);
                 if (shadow_result.is_err()) {
                     rstd_warn("load shadow material '{}' failed for '{}'",
                               light_material.shader,
@@ -675,8 +676,8 @@ BuildContext(Scene& scene, fs::VFS& vfs, ref<str> scene_id, const wpscene::Scene
     context.layer_resources->pkg_version  = sc.pkg_version;
     context.user_properties               = user_properties;
     context.layer_resources->shader_cache = Arc<ShaderCache>::make(rstd::move(shader_cache_dir));
-    context.layer_resources->geometry_shader_limits    = geometry_limits;
-    context.layer_resources->geometry_shader_supported = geometry_shader_supported;
+    context.layer_resources->geometry_shader_limits            = geometry_limits;
+    context.layer_resources->geometry_shader_supported         = geometry_shader_supported;
     context.layer_resources->shader_environment.shadow_mapping = ! shadow_lights.is_empty();
     context.layer_resources->shader_environment.shadow_quality = shadow_quality;
 
@@ -701,8 +702,8 @@ BuildContext(Scene& scene, fs::VFS& vfs, ref<str> scene_id, const wpscene::Scene
     if (context.layer_resources->shader_environment.shadow_mapping) {
         // a square of the atlas for each spot light, each cascade and each point light, in rows
         // of a near square: the spots' first, the points' last
-        const int     tile       = ShadowTileSize(shadow_quality);
-        const auto    squares_of = [](SceneLightType type) {
+        const int  tile       = ShadowTileSize(shadow_quality);
+        const auto squares_of = [](SceneLightType type) {
             return type == SceneLightType::Directional ? 3 : 1;
         };
         int squares {};
