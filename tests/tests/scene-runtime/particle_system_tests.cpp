@@ -1470,3 +1470,115 @@ TEST(ParticleSubSystem, CompensatedStepUsesTheFramesOwnTime) {
     EXPECT_NEAR(quick.delta2.unwrap().to_primitive(), 1.0 / 60.0, 1e-6);
     EXPECT_TRUE(quick.passes == u32(2));
 }
+
+// Wallpaper Engine's frame times in the particles-frametime-f60 and -f15 references (ms, printed by their script) and
+// where its thrown particles stopped in the same takes, x speed / drag, for drag 0.5, 1 and 2. owe given the same
+// frames stops them there too.
+static constexpr double kWeFrames60[] = {
+    0.1, 57.2, 16.4, 17.0, 16.0, 16.6, 16.4, 16.0, 16.0, 16.0, 16.0, 16.0,
+    16.0, 16.0, 16.6, 16.4, 16.0, 16.1, 15.9, 16.0, 16.0, 16.0, 16.0, 18.3,
+    16.3, 16.3, 16.0, 20.5, 16.5, 16.0, 16.0, 16.0, 16.0, 16.0, 16.0, 16.0,
+    16.0, 16.0, 16.0, 16.0, 19.1, 16.8, 16.0, 16.0, 15.0, 26.9, 15.1, 15.4,
+    29.6, 34.6, 27.9, 29.6, 14.5, 17.6, 29.0, 18.6, 16.5, 16.3, 16.0, 15.8,
+    16.3, 16.0, 17.0, 17.0, 17.0, 17.0, 17.2, 16.8, 17.0, 17.0, 17.0, 17.0,
+    17.0, 17.0, 18.2, 16.8, 17.0, 17.0, 17.0, 17.0, 17.0, 17.0, 17.0, 17.9,
+    17.9, 17.2, 17.0, 17.0, 17.0, 16.0, 17.0, 21.0, 15.2, 16.7, 17.0, 16.5,
+    17.5, 17.0, 20.2, 16.8, 16.0, 17.0, 17.0, 16.0, 16.0, 17.0, 18.8, 16.2,
+    16.0, 17.0, 16.0, 17.0, 13.0, 29.4, 30.1, 32.7, 29.3, 27.8, 16.7, 16.0,
+    16.0, 16.0, 16.0, 16.0, 16.0, 16.0, 16.0, 16.0, 16.5, 16.0, 17.0, 17.5,
+    16.5, 16.0, 16.0, 16.0, 16.0, 16.0, 16.1, 16.0, 16.0, 18.7, 16.3, 16.6,
+    16.4, 16.0, 16.0, 16.0, 26.9, 16.5, 17.8, 15.8, 16.0, 15.0, 15.0, 15.0,
+    16.0, 15.0, 16.0, 16.0, 16.0, 16.6, 15.4, 16.0, 15.0, 15.0, 16.0, 15.0,
+    16.0, 14.5, 30.0, 33.4, 30.3, 32.9, 28.9, 31.7, 32.5, 27.7, 15.5, 15.9,
+    16.7, 15.8, 32.9, 30.2, 29.8, 33.4, 14.5, 14.0, 15.0, 14.0, 15.0, 14.0,
+    15.0, 15.9, 14.1, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0,
+    14.0, 14.0, 14.0, 14.0, 14.0, 15.0, 14.0, 15.0, 17.9, 14.1, 14.0, 14.0,
+    14.0, 14.0, 14.0, 14.0, 14.0, 18.6, 13.4, 20.6, 24.5, 35.8, 13.5, 5.7,
+    5.7, 5.3, 5.0, 6.0, 22.5, 32.0, 31.3, 16.2, 16.0, 16.0, 16.0, 16.0,
+    16.0, 17.0, 16.0, 16.0, 16.0, 17.3, 16.7, 18.0, 16.0, 18.5, 16.5, 17.0,
+    16.0, 17.0, 16.0, 16.0, 16.0, 17.0, 16.0, 16.0, 16.0, 17.0, 16.0, 16.0,
+    17.0, 16.9, 16.1, 16.0, 17.0, 16.0, 17.0, 17.0, 17.0, 17.0, 17.0, 16.0,
+    16.0, 16.0, 16.0, 17.0, 16.0, 16.0, 16.0, 17.0, 17.0, 17.0, 16.0, 15.0,
+    16.0, 20.1, 12.9, 15.0, 16.0, 16.0, 17.0, 17.0, 17.0, 16.0, 17.0, 17.0,
+    16.0, 17.0, 16.0, 16.0, 16.0, 16.0, 17.0, 17.0, 17.0, 17.0, 17.0, 17.0,
+    16.0, 16.0, 17.0, 16.0, 16.0, 17.0, 17.0, 17.0, 17.0, 17.9, 16.1, 16.0,
+    17.0, 17.0, 17.0, 18.4, 16.6, 17.0, 17.0, 17.0, 17.0, 17.0, 17.0, 17.0,
+    16.0, 17.0, 17.0, 16.0, 16.0, 17.0, 17.8, 17.3, 17.0, 16.0, 16.0, 16.0,
+    16.0, 17.0, 15.0, 17.0, 17.0, 16.0, 18.8, 17.2, 17.0, 17.0, 17.0, 17.0,
+    17.0, 16.0, 17.0, 17.0, 16.0, 17.0, 17.0, 17.5, 16.5, 17.0, 17.0, 17.0,
+    16.0, 16.0, 16.0, 16.0, 16.0, 16.0, 16.0, 16.0, 16.0, 16.0, 17.0, 17.0,
+    16.0, 17.0, 17.0, 18.6, 16.4, 17.0, 16.0, 17.0, 17.0, 17.0, 16.0, 16.0,
+    17.0, 17.0, 19.7, 16.3,
+};
+static constexpr double kWeFrames15[] = {
+    0.1, 72.2, 70.8, 71.0, 71.0, 71.0, 71.0, 72.0, 71.0, 72.0, 71.0, 71.0,
+    72.0, 72.0, 71.0, 66.0, 67.0, 67.0, 67.0, 66.0, 67.0, 67.0, 66.0, 67.0,
+    67.0, 67.0, 66.0, 67.0, 67.0, 66.0, 67.0, 67.0, 66.0, 67.0, 66.0, 67.0,
+    67.0, 67.0, 67.0, 66.0, 66.0, 67.0, 67.0, 66.0, 67.0, 66.0, 67.0, 66.0,
+    67.0, 67.0, 67.0, 67.0, 67.0, 66.0, 67.0, 67.0, 66.0, 66.0, 67.0, 67.0,
+    67.0, 66.0, 67.0, 67.0, 66.0, 67.0, 67.0, 67.0, 66.0, 67.0, 67.0, 66.0,
+    67.0, 67.0, 66.0, 66.0, 67.0, 67.0, 66.0, 67.0, 67.0, 67.0, 67.0, 66.0,
+    67.0, 65.7, 67.0, 66.0, 67.0, 67.0, 67.0, 66.0, 66.0, 67.0, 67.0, 66.0,
+    67.0, 67.0, 67.0, 66.0, 67.0, 66.0, 67.0, 67.0, 67.0, 67.0, 66.0, 67.0,
+    66.0, 71.6, 66.4, 66.0, 66.0, 66.0, 66.0, 66.0, 66.0, 68.4, 65.6, 65.0,
+    66.0, 67.0, 67.2, 66.9, 66.0, 68.2, 65.8, 66.0, 67.0, 66.0, 67.0, 67.0,
+    67.0, 66.0, 67.0, 66.0, 67.0, 66.0, 67.0, 66.0, 67.0, 66.0, 67.0, 67.0,
+    67.0, 66.0, 67.0, 68.7, 66.3, 66.0, 67.0, 66.0, 68.0, 66.0, 67.0, 66.0,
+    66.0, 67.0, 67.0, 66.8, 66.2, 66.0, 67.0, 67.0, 67.0, 66.7, 66.3, 66.0,
+    66.0, 67.0, 68.2, 67.1, 66.7, 66.0, 66.0, 67.0, 67.0, 66.0, 67.0, 66.0,
+    66.4, 66.6, 66.0, 67.0, 67.3, 66.7, 67.2, 67.7, 66.2, 67.2, 66.8, 67.1,
+    67.4, 65.6, 65.1, 66.9, 67.0, 66.1, 66.0, 66.0, 67.0, 68.0, 67.6, 66.5,
+    67.8, 67.3, 66.3, 68.3, 66.3, 63.0, 66.0, 66.0, 67.0, 66.0, 66.0, 66.0,
+    67.9, 67.1, 67.0, 66.0, 67.0, 66.0, 67.0, 68.0, 66.0, 67.0, 66.0, 67.0,
+    67.0, 67.0, 67.0, 66.0,
+};
+
+static double ThrownStop(double drag, u32 target_fps, const double* frames, int count, double runtime) {
+    owe::Scene scene;
+    scene.SetTargetFps(target_fps);
+    auto                   mesh = Arc<owe::SceneMesh>::make();
+    owe::ParticleSubSystem subsystem(scene,
+                                     mesh.clone(),
+                                     u32(1),
+                                     f64(1.0),
+                                     u32(1),
+                                     f64(1.0),
+                                     owe::ParticleSubSystem::SpawnType::STATIC,
+                                     owe::ParticleAnimationSpec {});
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"lifetimerandom","min":100,"max":100})"_str).unwrap(), u32(1)));
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"velocityrandom","min":"100 0 0","max":"100 0 0"})"_str).unwrap(), u32(2)));
+    subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(owe::BoxEmitterProgram(
+        subsystem.SpawnPipeline(), owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) }, usize())));
+    auto movement = drag == 0.5   ? R"({"name":"movement","drag":0.5})"_str
+                    : drag == 1.0 ? R"({"name":"movement","drag":1})"_str
+                                  : R"({"name":"movement","drag":2})"_str;
+    subsystem.AddOperator(owe::ParticleParser::GenOperator(
+        owe::ParseJson(movement).unwrap(),
+        owe::ParticleInstanceModifiers(Arc<owe::wpscene::ParticleInstanceoverride>::make(),
+                                       owe::wpscene::Particle::EFlags { 0 },
+                                       false),
+        subsystem,
+        usize()));
+    subsystem.Finalize();
+    double time {};
+    for (int index = 0; index < count; ++index) {
+        subsystem.Tick(f64(frames[index] / 1000.0), false);
+        time += frames[index] / 1000.0;
+    }
+    const double rest = 1.0 / static_cast<double>(target_fps.to_primitive());
+    for (; time < runtime; time += rest) subsystem.Tick(f64(rest), false);
+    auto&                        storage = subsystem.System().Instance(usize()).Storage();
+    particle::ParticleSlotReader value(storage, particle::ParticleSlot {});
+    return value.Read(subsystem.Attributes().position).x() / (100.0 / drag);
+}
+
+TEST(ParticleSubSystem, ThrownParticlesStopWhereWallpaperEngineStoppedThemGivenItsFrames) {
+    EXPECT_NEAR(ThrownStop(0.5, u32(60), kWeFrames60, int(sizeof(kWeFrames60) / sizeof(double)), 15.417), 1.0291, 0.002);
+    EXPECT_NEAR(ThrownStop(1.0, u32(60), kWeFrames60, int(sizeof(kWeFrames60) / sizeof(double)), 15.417), 1.0392, 0.002);
+    EXPECT_NEAR(ThrownStop(2.0, u32(60), kWeFrames60, int(sizeof(kWeFrames60) / sizeof(double)), 15.417), 1.0584, 0.002);
+    EXPECT_NEAR(ThrownStop(0.5, u32(15), kWeFrames15, int(sizeof(kWeFrames15) / sizeof(double)), 15.463), 1.9674, 0.003);
+    EXPECT_NEAR(ThrownStop(1.0, u32(15), kWeFrames15, int(sizeof(kWeFrames15) / sizeof(double)), 15.463), 2.0235, 0.003);
+    EXPECT_NEAR(ThrownStop(2.0, u32(15), kWeFrames15, int(sizeof(kWeFrames15) / sizeof(double)), 15.463), 2.0469, 0.003);
+}
