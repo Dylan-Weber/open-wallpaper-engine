@@ -1239,26 +1239,45 @@ struct TextLayouter::Impl {
             return float(kerning->Pair(rstd::uint32_t(left.glyph), rstd::uint32_t(right.glyph)) *
                          size / kerning->UnitsPerEm());
         };
-        Vec<float> glyph_pen;  // each glyph's pen, from its line's start
-        Vec<float> line_shift; // how far that moves each line's last letter
+        // A line's leading spaces don't move its pen, and a line ending in spaces reaches to the pen
+        // of its last one (text-pair-advance: Wallpaper Engine measures a line by its advances but
+        // the last, plus the last letter's ink, and a space has none).
+        Vec<float> glyph_pen;   // each glyph's pen, from its line's start
+        Vec<float> line_first;  // how far that moves each line's first letter
+        Vec<float> line_shift;  // how far that moves each line's last letter
+        Vec<float> line_spaces; // where a line ending in spaces reaches: its last space's pen
         glyph_pen.resize(glyphs.len(), 0.0f);
         for (auto& line : output.lines()) {
-            float pen {}, shift {};
+            float pen {}, first {}, shift {}, spaces {};
+            bool  inked {};
             for (auto index = usize(line.glyph_start); index < usize(line.glyph_end); ++index) {
                 const auto& glyph = glyphs[index];
                 glyph_pen[index]  = pen;
-                if (glyph.drawable) shift = pen - float(glyph.position.x - line.logical.x);
+                if (glyph.drawable) {
+                    shift = pen - float(glyph.position.x - line.logical.x);
+                    if (! inked) first = shift;
+                    inked = true;
+                    spaces = 0.0f;
+                } else if (! inked) {
+                    continue; // a leading space
+                } else {
+                    spaces = pen; // a space after ink: the line reaches its pen if no ink follows
+                }
                 pen += f32(float(glyph.advance) + kern(index, usize(line.glyph_end)))
                            .floor()
                            .to_primitive();
             }
+            line_first.push(float(first));
             line_shift.push(float(shift));
+            line_spaces.push(float(spaces));
         }
         const auto span = [&](usize index) -> array<float, 2> {
             const auto& line = output.lines()[index];
             if (line.ink.width == 0) return { 0.0f, 0.0f };
-            const float left = float(line.ink.x - line.logical.x);
-            return { left, left + float(line.ink.width) + line_shift[index] };
+            const float ink = float(line.ink.x - line.logical.x);
+            return { ink + line_first[index],
+                     rstd::cmp::max(ink + float(line.ink.width) + line_shift[index],
+                                    line_spaces[index]) };
         };
         Vec<float> line_pen; // where each line's pen starts, from the text's left edge
         measured.text_width = float(bounds.width);

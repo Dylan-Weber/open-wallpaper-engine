@@ -492,6 +492,60 @@ TEST(TextLayouter, LinesAreMeasuredByTheirInk) {
     }
 }
 
+// Spaces at the ends of a line (text-pair-advance): Wallpaper Engine drops a line's leading spaces,
+// and a line ending in spaces spans to the pen of its last one (its advances but the last, which
+// has no ink), so trailing spaces move right- and centre-aligned text left. owe had it the other
+// way round: leading spaces moved the text, trailing ones didn't.
+TEST(TextLayouter, SpacesAtTheEndsOfALine) {
+    auto source      = rstd::path::PathBuf::from(__FILE__ ""_str);
+    auto root        = source.as_path().parent().unwrap().parent().unwrap().parent().unwrap();
+    auto path        = rstd::path::PathBuf::from(root).join("fixtures/fonts/Bearings.ttf"_str);
+    auto bytes       = rstd::fs::read(path.as_path()).unwrap();
+    auto resources   = TextResources();
+    auto font_source = resources->RegisterFont(bytes.as_slice()).unwrap();
+    constexpr std::size_t                                                     peak_quads = 8;
+    const rstd::initializer_list<owe::SceneVertexArray::SceneVertexAttribute> attributes {
+        { .name = "a_Position"_Str, .type = owe::VertexType::FLOAT3 },
+        { .name = "a_TexCoord"_Str, .type = owe::VertexType::FLOAT2 },
+        { .name = "a_Color"_Str, .type = owe::VertexType::FLOAT4 },
+    };
+    struct Case {
+        const char* text;
+        float       width;
+        float       left, right; // the L's quad
+    };
+    // Bearings.ttf at 100 pixels: L ink 10..50 of 60, space 25 with no ink
+    const std::vector<Case> cases {
+        { "L", 50, -15, 25 },
+        { " L", 50, -15, 25 },        // the leading space is dropped
+        { "  L", 50, -15, 25 },
+        { "L ", 60, -20, 20 },        // to the trailing space's pen: 60
+        { "L  ", 85, -32.5f, 7.5f },  // 60 + 25
+        { " L ", 60, -20, 20 },
+        { "L L", 135, -57.5f, -17.5f }, // a space inside stays: the second L inks 95..135
+    };
+    for (const auto& c : cases) {
+        auto mesh = Arc<owe::SceneMesh>::make();
+        mesh->AddVertexArray(owe::SceneVertexArray(attributes, rstd::usize(peak_quads * 4)));
+        mesh->AddIndexArray(owe::SceneIndexArray(rstd::usize(peak_quads * 6)));
+        owe::text::TextLayoutStyle style;
+        style.mesh_origin = owe::text::TextMeshOrigin::Layout;
+        style.halign      = "left"_Str;
+        owe::text::TextLayouter layouter(resources.clone(),
+                                         { .source = Some(font_source), .size = 100 },
+                                         mesh.clone(),
+                                         rstd::move(style),
+                                         peak_quads);
+        ASSERT_TRUE(layouter.SetText(rstd::cppstd::as_str(c.text).unwrap()).is_ok());
+        EXPECT_NEAR(layouter.TextWidth(), c.width, 0.01f) << '"' << c.text << '"';
+        const auto& vertices = mesh->GetVertexArray(rstd::usize());
+        const auto  stride   = vertices.OneSize().to_primitive();
+        // the rasterizer may pad a quad by a pixel
+        EXPECT_NEAR(vertices.Data()[0], c.left, 1.01f) << '"' << c.text << '"';
+        EXPECT_NEAR(vertices.Data()[stride], c.right, 1.01f) << '"' << c.text << '"';
+    }
+}
+
 // Wallpaper Engine moves the pen by whole pixels: each letter's advance rounded down at the text's
 // size (user-properties' "from a property" at 64 points: its letters' places fit floored Arial
 // advances to 0.3 pixels, and owe's whole advances drifted 5 pixels wider along the line).
