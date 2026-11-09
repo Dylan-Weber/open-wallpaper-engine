@@ -27,7 +27,7 @@ class Inputs(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             arguments, env, notes = owe_compare.input_arguments(inputs, 351, EVERY_FLAG, folder)
             # one argument: a pointer outside the window is negative, which would read as an option
-        self.assertIn('--mouse-position=1.1900,1.1600', arguments)
+            self.assertIn('--mouse-position=1.1900,1.1600', arguments)
             # the scripts' clock as the scene starts: the date the reference's scripts saw, 351 frames earlier
             self.assertEqual(arguments[arguments.index('--script-clock') + 1], '%d' % (1793226531600 - 11700))
             # 420 minutes behind UTC; POSIX counts the hours the other way round
