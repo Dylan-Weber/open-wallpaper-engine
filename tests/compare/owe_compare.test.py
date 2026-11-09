@@ -28,7 +28,8 @@ class Inputs(unittest.TestCase):
                   'bands': {16: {'left': [0.5] * 16, 'right': [0.25] * 16}}}
         with tempfile.TemporaryDirectory() as folder:
             arguments, env, notes = owe_compare.input_arguments(inputs, 351, EVERY_FLAG, folder)
-            self.assertEqual(arguments[arguments.index('--mouse-position') + 1], '1.1900,1.1600')
+            # one argument: a pointer outside the window is negative, which would read as an option
+            self.assertIn('--mouse-position=1.1900,1.1600', arguments)
             # the scripts' clock as the scene starts: the date the reference's scripts saw, 351 frames earlier
             self.assertEqual(arguments[arguments.index('--script-clock') + 1], '%d' % (1793226531600 - 11700))
             # 420 minutes behind UTC; POSIX counts the hours the other way round
@@ -53,7 +54,7 @@ class Inputs(unittest.TestCase):
         inputs = {'pointer': (0.25, 0.75), 'scripts': 'started', 'date': 5000, 'timezone': 0,
                   'bands': {64: {'left': [0.0] * 64, 'right': [0.0] * 64}}}
         arguments, env, notes = owe_compare.input_arguments(inputs, 30, '--mouse-position', tempfile.gettempdir())
-        self.assertEqual(arguments, ['--mouse-position', '0.2500,0.7500'])
+        self.assertEqual(arguments, ['--mouse-position=0.2500,0.7500'])
         self.assertEqual(len(notes), 2)   # no spectrum, no script clock
 
     def test_a_press_the_reference_saw_is_noted(self):
@@ -233,7 +234,6 @@ class Shots(unittest.TestCase):
 
     def test_a_frame_shown_twice_is_rendered_once(self):
         calls = []
-        cache = {}
         renders = owe_compare.Renders(2)
         self.addCleanup(renders.close)
 
@@ -241,8 +241,6 @@ class Shots(unittest.TestCase):
             calls.append(1)
             return 'frame.ppm'
         for _ in range(3):
-            self.assertEqual(owe_compare.cached(cache, ('w', 340), render), 'frame.ppm')
-        self.assertEqual(owe_compare.cached(cache, ('w', 341), render), 'frame.ppm')
             self.assertEqual(renders.get(('w', 340), render), 'frame.ppm')
         self.assertEqual(renders.get(('w', 341), render), 'frame.ppm')
         self.assertEqual(len(calls), 2)
@@ -312,6 +310,22 @@ class Parallel(unittest.TestCase):
     def test_the_default_is_a_few_not_every_core(self):
         self.assertGreaterEqual(owe_compare.default_jobs(), 1)
         self.assertLessEqual(owe_compare.default_jobs(), 4)
+
+
+class Presets(unittest.TestCase):
+    def write(self, folder, project):
+        os.makedirs(folder)
+        with open(os.path.join(folder, 'project.json'), 'w') as f:
+            json.dump(project, f)
+
+    def test_a_preset_plays_its_parent_with_its_values(self):
+        with tempfile.TemporaryDirectory() as root:
+            parent, preset = os.path.join(root, 'parent'), os.path.join(root, 'values')
+            self.write(parent, {'type': 'scene', 'file': 'scene.json'})
+            self.write(preset, {'dependency': 'parent', 'preset': {'boxcolor': '1 0 0', 'boxalpha': 0.5, '_d0': None}})
+            self.assertEqual(owe_compare.preset_of(preset), (parent, {'boxcolor': '1 0 0', 'boxalpha': 0.5}))
+            self.assertEqual(owe_compare.scene_package(preset), os.path.join(parent, 'scene.pkg'))
+            self.assertIsNone(owe_compare.preset_of(parent))
 
 
 if __name__ == '__main__':

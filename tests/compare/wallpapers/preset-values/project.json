@@ -1,0 +1,10 @@
+{
+  "title": "wpe-test a preset: red, half alpha, second box shown",
+  "dependency": "preset-parent",
+  "preset": {
+    "boxcolor": "1 0 0",
+    "boxalpha": 0.5,
+    "showsecond": true,
+    "_d0": null
+  }
+}

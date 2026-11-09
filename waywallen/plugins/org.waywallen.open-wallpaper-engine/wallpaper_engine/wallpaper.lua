@@ -140,8 +140,33 @@ local PLAYBACK_SPEED_PROPERTY = {
     value = 100,
 }
 
+-- A preset's value as user properties carry it on the wire (text the renderer
+-- parses by the property's type); nil for JSON null and anything else.
+local function wire_value(value)
+    if type(value) == "string" then return value end
+    if type(value) == "boolean" then return value and "true" or "false" end
+    if type(value) == "number" then
+        if value == math.floor(value) and math.abs(value) < 2 ^ 53 then
+            return string.format("%d", value)
+        end
+        return tostring(value)
+    end
+    return nil
+end
+
+local function apply_preset(props, preset)
+    if not preset then return end
+    for key, value in pairs(preset) do
+        local prop = props[key]
+        if type(prop) == "table" and wire_value(value) ~= nil then
+            prop.value = value
+        end
+    end
+end
+
 local function load_project_properties(entry, ctx)
-    local dir = project_util.project_dir_of(entry)
+    local resolved = project_util.resolve(ctx, entry)
+    local dir = resolved.dir
     if not dir then return nil end
     local proj = dir .. "/project.json"
     if not ctx.fs.exists(proj) then return nil end
@@ -151,6 +176,7 @@ local function load_project_properties(entry, ctx)
     if not parsed or type(parsed) ~= "table" then return nil end
     local props = parsed.general and parsed.general.properties or {}
     if type(props) ~= "table" then return {} end
+    apply_preset(props, resolved.preset)
     return props
 end
 
@@ -250,8 +276,16 @@ local function we_assets(ctx)
 end
 
 function M.apply(entry, ctx)
-    local extras = { path = entry.resource }
+    local resolved = project_util.resolve(ctx, entry)
+    local extras = { path = resolved.resource or entry.resource }
     local default_user_properties = {}
+    -- a preset's values, before the renderer applies the user's own
+    for key, value in pairs(resolved.preset or {}) do
+        local wire = wire_value(value)
+        if wire ~= nil then
+            default_user_properties[PROPERTY_KEY_MAP[key] or key] = wire
+        end
+    end
     if entry.wp_type == "video" then
         local props = load_project_properties(entry, ctx)
         if props then

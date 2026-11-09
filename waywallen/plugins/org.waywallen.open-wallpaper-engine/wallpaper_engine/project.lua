@@ -71,6 +71,62 @@ function M.classify(ctx, dir, project, project_type)
     return nil, nil
 end
 
+local function read_project(ctx, dir)
+    local path = dir .. "/project.json"
+    if not ctx.fs.exists(path) then return nil end
+    local content = ctx.fs.read(path)
+    if not content then return nil end
+    local project = ctx.json.parse(content)
+    if type(project) ~= "table" then return nil end
+    return project
+end
+
+-- A Workshop preset is a project.json with no type that names the item it is
+-- made from ("dependency", a sibling directory) and the property values it sets
+-- ("preset"); Wallpaper Engine plays that item with those values. Returns the
+-- parent's directory and project.
+function M.preset_parent(ctx, dir, project)
+    if type(project) ~= "table" or project.type ~= nil or project.dependency == nil then
+        return nil
+    end
+    local container = dir:match("^(.*)/[^/]+/*$")
+    if not container then return nil end
+    local parent_dir = container .. "/" .. tostring(project.dependency)
+    local parent = read_project(ctx, parent_dir)
+    if not parent then return nil end
+    return parent_dir, parent
+end
+
+local function project_type(project)
+    return project and type(project.type) == "string" and string.lower(project.type) or nil
+end
+
+-- What a preset is listed as: its parent's type, and its own project.json as the
+-- resource (the parent's resource is the parent's entry).
+function M.classify_preset(ctx, dir, project)
+    local parent_dir, parent = M.preset_parent(ctx, dir, project)
+    if not parent_dir then return nil, nil end
+    local wp_type = M.classify(ctx, parent_dir, parent, project_type(parent))
+    if not wp_type then return nil, nil end
+    return wp_type, dir .. "/project.json"
+end
+
+-- What an entry plays: its directory and resource, and for a preset its parent's
+-- with the preset's values.
+function M.resolve(ctx, entry)
+    local dir = entry.resource and entry.resource:match("^(.*)/project%.json$")
+    if dir then
+        local project = read_project(ctx, dir)
+        local parent_dir, parent = M.preset_parent(ctx, dir, project)
+        if parent_dir then
+            local _, resource = M.classify(ctx, parent_dir, parent, project_type(parent))
+            local preset = type(project.preset) == "table" and project.preset or {}
+            return { dir = parent_dir, resource = resource, preset = preset }
+        end
+    end
+    return { dir = M.project_dir_of(entry), resource = entry.resource }
+end
+
 -- Strip the item-directory prefix so resource/preview come back relative to it,
 -- the form the daemon's resolve upsert expects.
 function M.relpath(dir, abs)

@@ -116,12 +116,6 @@ def labels_of(names):
     return labels
 
 
-def cached(cache, key, make):
-    """make()'s result, made once for each key: the pictures of a series often show the same frame (the screen is
-    copied faster than the wallpaper draws), and owe renders it once."""
-    if key not in cache:
-        cache[key] = make()
-    return cache[key]
 def default_jobs():
     """How many viewers render at once unless --jobs or WPE_TEST_JOBS says: a few (each has a memory cap of its own,
     WPE_TEST_MEMORY, 6G: a heavy Workshop wallpaper
@@ -203,9 +197,26 @@ def probe_boxes(size, inputs=None, bands=(), mirrored=False):
     return boxes
 
 
+def preset_of(folder):
+    """For a Workshop preset (a project.json with no type, naming the item it is made from in "dependency", a folder
+    beside it, and the values it sets in "preset"): that item's folder and the values. Else None."""
+    if not os.path.exists(os.path.join(folder, 'project.json')):
+        return None
+    with open(os.path.join(folder, 'project.json')) as f:
+        project = json.load(f)
+    if 'type' in project or 'dependency' not in project:
+        return None
+    parent = os.path.join(os.path.dirname(folder), str(project['dependency']))
+    values = {key: value for key, value in (project.get('preset') or {}).items() if value is not None}
+    return parent, values
+
+
 def skipped(name):
     """Why the wallpaper is left out, or None."""
-    with open(os.path.join(WALLPAPERS, folder_of(name), 'project.json')) as f:
+    folder = os.path.join(WALLPAPERS, folder_of(name))
+    while preset_of(folder):
+        folder = preset_of(folder)[0]
+    with open(os.path.join(folder, 'project.json')) as f:
         kind = json.load(f).get('type', 'scene').lower()
     if kind != 'scene':
         return 'a %s wallpaper' % kind
@@ -228,7 +239,10 @@ def has_capture(viewer):
 
 def scene_package(folder):
     """The package the viewer is given: named after project.json's "file" (X.json: X.pkg), which it reads as the
-    scene; without the package it mounts the folder itself."""
+    scene; without the package it mounts the folder itself. A preset is its parent's package."""
+    preset = preset_of(folder)
+    if preset:
+        return scene_package(preset[0])
     with open(os.path.join(folder, 'project.json')) as f:
         scene_file = json.load(f).get('file', 'scene.json')
     return os.path.join(folder, os.path.splitext(scene_file)[0] + '.pkg')
@@ -263,12 +277,18 @@ def render(name, size, viewer, frames=None, script_start=0.0, camera_path_delay=
     # the "shadows" setting the reference was taken at (medium by default), for a viewer that has the setting
     shadows = ['--shadow-quality', settings_of(name)['shadow_quality']] \
         if 'shadow_quality' in settings_of(name) and '--shadow-quality' in viewer_help(viewer) else []
+    # a preset plays its parent with the preset's values (as the Waywallen plugin hands them to the renderer)
+    preset = preset_of(os.path.join(WALLPAPERS, folder_of(name)))
+    if preset:
+        values = os.path.join(out, 'preset-values.json')
+        with open(values, 'w') as f:
+            json.dump(preset[1], f)
+        inputs = list(inputs) + ['--user-properties', values]
     command = capped + ['timeout', '900', viewer, '-C', shader_cache(viewer), '--resolution', '%dx%d' % size,
                         '--fps', str(fps), '--capture', frame, '--capture-frame', str(round(frames * fps / 30))] + (
                            ['--script-start', '%.4f' % script_start] if script_start > 0 else []) + (
                            ['--camera-path-delay', '%.4f' % camera_path_delay] if camera_path_delay > 0
                            else []) + shadows + list(inputs) + [ASSETS, scene_package(os.path.join(WALLPAPERS, folder_of(name)))]
-    with open(os.path.join(out, 'viewer.log'), 'w') as log:
     with open(os.path.join(out, 'viewer.log'), 'w') as log, _slots:
         subprocess.run(command, env=env, stdout=log, stderr=subprocess.STDOUT, check=False)
     if not os.path.exists(frame):
@@ -531,7 +551,6 @@ def main():
         if os.path.exists(os.path.join(WALLPAPERS, n, 'reference.png')) or shots_of(n)))
     results, counts = {}, {'ok': 0, 'near': 0, 'differ': 0, 'failed': 0, 'skipped': 0}
     help_text = '' if args.no_render else viewer_help(args.viewer)
-    rendered = {}
     renders = Renders(max(1, int(os.environ.get('WPE_TEST_JOBS', 0)) or args.jobs or default_jobs()))
     if not args.no_render:
         # every plain render starts now, side by side (up to the job limit), and the loop below takes them in order
@@ -581,9 +600,6 @@ def main():
                         name, reference, args.viewer, frames, script_start, args.tolerance, input_args, input_env,
                         masked)
                     stamp['camera_path_delay'] = round(camera_path_delay * 30)
-                frame = cached(rendered, (folder_of(name), frames, script_start, camera_path_delay, tuple(input_args)),
-                               lambda: render(name, reference.size, args.viewer, frames, script_start,
-                                              camera_path_delay, input_args, input_env))
                 frame = renders.get((folder_of(name), frames, script_start, camera_path_delay, tuple(input_args)),
                                     lambda: render(name, reference.size, args.viewer, frames, script_start,
                                                    camera_path_delay, input_args, input_env))
