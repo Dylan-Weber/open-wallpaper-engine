@@ -74,6 +74,8 @@ struct SceneWallpaperConfig {
     bool                                mouse_parallax { true };
     bool                                graphviz { false };
     Option<u64>                         random_seed;
+    // a reference's recorded frame times, stepped instead of 1 / fps while they last (--frame-times: ParseFrameTimes)
+    Vec<f64> frame_times;
 };
 
 class SceneRuntimeController;

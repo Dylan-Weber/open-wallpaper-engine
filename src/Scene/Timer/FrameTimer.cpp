@@ -1,10 +1,12 @@
 module wescene.timer;
+import wescene.json;
 import rstd;
 
 using namespace rstd::prelude;
 using rstd::time::Duration;
 using rstd::time::Instant;
 using namespace owe;
+using namespace rstd::literals;
 
 FrameTimer::FrameTimer(Option<Callback> callback)
     : m_callback(rstd::move(callback)), m_timer(ThreadTimer::Callback::make([this] {
@@ -63,3 +65,22 @@ void FrameTimer::SetCallback(Option<Callback> callback) {
 void FrameTimer::Run() { m_timer.Start(); }
 void FrameTimer::Stop() { m_timer.Stop(); }
 bool FrameTimer::Running() const { return m_timer.Running(); }
+
+auto owe::ParseFrameTimes(ref<str> source) -> Result<Vec<f64>, String> {
+    auto parsed = owe::ParseJson(source);
+    if (parsed.is_err()) return Err("the frame times are not JSON"_Str);
+    auto array = parsed->as_array();
+    if (array.is_none()) return Err("the frame times are not a JSON array"_Str);
+    Vec<f64> times;
+    for (const auto& value : **array) {
+        auto seconds = value.as_f64();
+        if (seconds.is_none() || seconds->to_primitive() < 0.0)
+            return Err("a frame time is not a number of seconds"_Str);
+        times.push(f64(seconds->to_primitive()));
+    }
+    return Ok(rstd::move(times));
+}
+
+double owe::RecordedFrameStep(const Vec<f64>& times, usize index, double fallback) {
+    return index < times.len() ? times[index].to_primitive() : fallback;
+}

@@ -28,6 +28,7 @@ struct SceneViewerArgs {
     String      capture_output;
     u32         capture_frame;
     Option<u64> random_seed;
+    PathBuf     frame_times_path;
     Resolution  resolution;
     i32         fps;
     u32         msaa_samples;
@@ -150,6 +151,12 @@ SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
     auto random_seed = command.add_arg(Arg<u64>::value("random-seed"_str, from_str_parser<u64>())
                                            .long_name("random-seed"_str)
                                            .help("Set the scene random seed"_str));
+    auto frame_times = command.add_arg(
+        Arg<String>::value("frame-times"_str, string_parser())
+            .long_name("frame-times"_str)
+            .help("Step frame N by the Nth time of FILE (a JSON array of seconds, e.g. a reference's "
+                  "recorded frames) instead of 1 / fps, then 1 / fps after the list"_str)
+            .default_value(""_str));
     auto load_bench_output =
         command.add_arg(Arg<String>::value("load-bench-output"_str, string_parser())
                             .long_name("load-bench-output"_str)
@@ -201,6 +208,7 @@ SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
         .capture_output        = Value(matches, capture).clone(),
         .capture_frame         = Value(matches, capture_frame),
         .random_seed           = OptionalValue(matches, random_seed),
+        .frame_times_path      = PathBuf::from(Value(matches, frame_times).as_str()),
         .resolution            = Value(matches, resolution),
         .fps                   = Value(matches, fps),
         .msaa_samples          = Value(matches, msaa),
