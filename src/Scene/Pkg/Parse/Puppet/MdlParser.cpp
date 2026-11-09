@@ -52,10 +52,10 @@ void ResetDefault(Vec<T>& values, usize length) {
 }
 
 // Vertex layout bits (mirror imhex/mdl.hexpat MdlFlagBit).
-constexpr uint32_t MDL_FLAG_NORMAL      = 0x00000002;
-constexpr uint32_t MDL_FLAG_TANGENT     = 0x00000004;
-constexpr uint32_t MDL_FLAG_UV          = 0x00000008;
-constexpr uint32_t MDL_FLAG_UV2         = 0x00000020;
+constexpr uint32_t MDL_FLAG_NORMAL  = 0x00000002;
+constexpr uint32_t MDL_FLAG_TANGENT = 0x00000004;
+constexpr uint32_t MDL_FLAG_UV      = 0x00000008;
+constexpr uint32_t MDL_FLAG_UV2     = 0x00000020;
 // The position has a fourth float, the vertex's blend shape index (wallpaper64.exe: 16 bytes).
 constexpr uint32_t MDL_FLAG_POSITION4   = 0x00010000;
 constexpr uint32_t MDL_FLAG_SKIN_BLEND  = 0x00800000;
