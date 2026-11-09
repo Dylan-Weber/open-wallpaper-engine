@@ -744,6 +744,11 @@ struct LayerImageSource {
 Vec<LayerImagePoint> LayerImageLattice(const unsigned char* data, int width, int height,
                                        int channels, bool bgra, float layer_alpha);
 
+// A solid layer's points: the lattice of a white image of its size in whole units
+// (particles-layerimage-alpha: a 300x150 rectangle has 37 rows of blocks from the top and none in
+// its last 2 units).
+Vec<LayerImagePoint> SolidLayerLattice(int width, int height);
+
 struct ParticleLayerImageEmitterArgs {
     float                         emit_speed {};
     bool                          one_per_frame { false };

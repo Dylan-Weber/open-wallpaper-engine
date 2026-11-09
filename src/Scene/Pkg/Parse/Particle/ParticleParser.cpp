@@ -1525,46 +1525,67 @@ struct OscillatePositionOperator {
     }
 };
 
+// turbulence (operator case 14 of wallpaper64.exe's FUN_14023fbc0): each particle draws a random r
+// once; the velocity gains n * mask * speed * dt2, where speed = speedmin + r (speedmax - speedmin)
+// and n is simplex noise at p = (position + r (phasemax - phasemin) + time * timescale) * scale:
+// n = (noise(p.x, p.y, p.z), noise(p.z, p.x, p.y), noise(p.y, p.z, p.x)), not normalized.
 struct TurbulenceOperator {
-    ParticleAttributes                                        attributes;
-    Turbulence                                                config;
-    ParticleInstanceModifiers                                 modifiers;
-    double                                                    phase {};
-    double                                                    speed {};
-    ParticleOperatorWindow                                    window;
-    particle::ParticleWriteIndex<particle::VelocityAttribute> velocity;
-    particle::ParticleReadIndex<particle::LifetimeAttribute>  lifetime;
+    ParticleAttributes                                              attributes;
+    Turbulence                                                      config;
+    ParticleInstanceModifiers                                       modifiers;
+    OscillationAttributes                                           state_attributes;
+    OscillationIndices                                              state;
+    particle::ParticleWriteIndex<particle::VelocityAttribute>       velocity;
+    ParticleOperatorWindow                                          window;
+    particle::ParticleReadIndex<particle::LifetimeAttribute>        lifetime;
     particle::ParticleReadIndex<particle::InitialLifetimeAttribute> initial_lifetime;
 
     void Compile(particle::ParticleViewCompiler& compiler) {
         compiler.ReadBase(attributes.position);
-        velocity         = compiler.Write(attributes.velocity);
+        velocity = compiler.Write(attributes.velocity);
         lifetime         = compiler.Read(attributes.lifetime);
         initial_lifetime = compiler.Read(attributes.initial_lifetime);
+        state.Compile(compiler, state_attributes);
     }
 
     void Update(particle::ParticleUpdateContext& context) {
-        auto frame      = ParticleFrameFrom(context.frame);
-        auto positions  = context.view.Positions();
-        auto velocities = context.view.Write(velocity);
-        auto lifetimes  = context.view.Read(lifetime);
-        auto initial    = context.view.Read(initial_lifetime);
-        auto delta      = context.delta.to_primitive();
+        auto         frame      = ParticleFrameFrom(context.frame);
+        auto         positions  = context.view.Positions();
+        auto         velocities = context.view.Write(velocity);
+        auto         lifetimes  = context.view.Read(lifetime);
+        auto         initial    = context.view.Read(initial_lifetime);
+        auto         random     = state.Bind(context.view);
+        const double delta      = context.delta2.to_primitive();
+        const double time       = frame->time.to_primitive() * config.timescale;
         for (auto slot : context.slots) {
+            // the particle's random number, drawn the first time it is seen (kept in the phase
+            // slot of an oscillation state)
+            auto own = random.At(slot.index);
+            if (! (lifetimes[slot.index] > 0.0f)) own.reset = true;
+            if (own.reset) {
+                own.phase = static_cast<float>(Random::get(0.0, 1.0));
+                own.reset = false;
+            }
             const double weight =
                 window.Always()
                     ? 1.0
                     : window.Weight(LifetimePosition(lifetimes[slot.index], initial[slot.index]));
             if (weight <= 0.0) continue;
-            Eigen::Vector3d position = positions[slot.index].cast<double>();
-            position.x() += phase + config.timescale * frame->time.to_primitive();
-            Eigen::Vector3d result = speed * modifiers.Speed() *
-                                     algorism::CurlNoise(position * config.scale * 2).normalized();
+            const double    r     = own.phase;
+            const double    phase = r * (config.phasemax - config.phasemin) + time;
+            Eigen::Vector3d p =
+                (positions[slot.index].cast<double>() + Eigen::Vector3d::Constant(phase)) *
+                static_cast<double>(config.scale);
+            Eigen::Vector3d n(algorism::SimplexNoise3(p.x(), p.y(), p.z()),
+                              algorism::SimplexNoise3(p.z(), p.x(), p.y()),
+                              algorism::SimplexNoise3(p.y(), p.z(), p.x()));
+            const double speed =
+                (config.speedmin + r * (config.speedmax - config.speedmin)) * modifiers.Speed();
             for (usize component {}; component < usize(3); ++component) {
-                result[component.to_primitive()] *= config.mask[component];
+                n[component.to_primitive()] *= config.mask[component];
             }
             velocities[slot.index] =
-                (velocities[slot.index].cast<double>() + result * (delta * weight)).cast<float>();
+                (velocities[slot.index].cast<double>() + n * (speed * delta * weight)).cast<float>();
         }
     }
 };
@@ -2429,12 +2450,12 @@ ParticleParser::GenOperator(const Json& wpj, ParticleInstanceModifiers modifiers
         } else if (name == "turbulence"_str) {
             auto config = Turbulence::ReadFromJson(wpj);
             return Box<dyn<particle::ParticleUpdateProgram>>::make(TurbulenceOperator {
-                .attributes = attributes,
-                .config     = config,
-                .modifiers  = modifiers.Clone(),
-                .phase      = Random::get(config.phasemin, config.phasemax),
-                .speed      = Random::get(config.speedmin, config.speedmax),
-                .window     = ParticleOperatorWindow::FromJson(wpj),
+                .attributes       = attributes,
+                .config           = config,
+                .modifiers        = modifiers.Clone(),
+                .state_attributes = RegisterOscillationAttributes(subsystem, operator_index,
+                                                                  "turbulence"_str),
+                .window           = ParticleOperatorWindow::FromJson(wpj),
             });
         } else if (name == "vortex"_str) {
             return Box<dyn<particle::ParticleUpdateProgram>>::make(VortexOperator {
