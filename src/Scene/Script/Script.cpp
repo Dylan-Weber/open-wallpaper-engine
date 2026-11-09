@@ -136,22 +136,22 @@ struct EngineHostState {
         String                          alignment;
         JsRuntime::ImageAlignmentSetter setter;
     };
-    HashMap<owe::SceneNode*, ImageAlignmentHook> image_alignment_hooks;
-    HashMap<owe::SceneNode*, Json>               initial_layer_configs;
-    Option<JsRuntime::BoneIndexResolver>         bone_index_resolver;
-    Option<JsRuntime::BoneCountResolver>         bone_count_resolver;
-    Option<JsRuntime::BoneTransformResolver>     bone_transform_resolver;
-    Option<JsRuntime::BoneSetTransformResolver>  bone_set_transform_resolver;
-    Option<JsRuntime::BoneParentsResolver>       bone_parents_resolver;
-    Option<JsRuntime::BoneLocalGetter>           bone_local_getter;
-    Option<JsRuntime::BoneLocalSetter>           bone_local_setter;
+    HashMap<owe::SceneNode*, ImageAlignmentHook>   image_alignment_hooks;
+    HashMap<owe::SceneNode*, Json>                 initial_layer_configs;
+    Option<JsRuntime::BoneIndexResolver>           bone_index_resolver;
+    Option<JsRuntime::BoneCountResolver>           bone_count_resolver;
+    Option<JsRuntime::BoneTransformResolver>       bone_transform_resolver;
+    Option<JsRuntime::BoneSetTransformResolver>    bone_set_transform_resolver;
+    Option<JsRuntime::BoneParentsResolver>         bone_parents_resolver;
+    Option<JsRuntime::BoneLocalGetter>             bone_local_getter;
+    Option<JsRuntime::BoneLocalSetter>             bone_local_setter;
     Option<JsRuntime::BoneMatrixGetter>            bone_world_matrix;
     Option<JsRuntime::BoneMatrixGetter>            bone_local_matrix;
     Option<JsRuntime::BoneMatrixSetter>            set_bone_world_matrix;
     Option<JsRuntime::BoneMatrixSetter>            set_bone_local_matrix;
     Option<JsRuntime::AttachmentIndexResolver>     attachment_index_resolver;
     Option<JsRuntime::AttachmentTransformResolver> attachment_transform_resolver;
-    owe::SceneNode*                              scene_root { nullptr };
+    owe::SceneNode*                                scene_root { nullptr };
 };
 
 class EngineBindingGuard : NoCopy, NoMove {
@@ -1728,7 +1728,8 @@ static uint32_t ResolveBoneIndex(JSContext* ctx, owe::SceneNode* n, EngineHostSt
         if (! name) return 0;
         const auto bone_name = rstd::cppstd::as_str(name).unwrap();
         // the empty name finds no bone, unnamed ones included
-        uint32_t idx = bone_name.is_empty() ? 0 : (*host->bone_index_resolver)->operator()(n, bone_name);
+        uint32_t idx =
+            bone_name.is_empty() ? 0 : (*host->bone_index_resolver)->operator()(n, bone_name);
         JS_FreeCString(ctx, name);
         return idx;
     }
