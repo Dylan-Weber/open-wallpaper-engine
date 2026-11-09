@@ -94,6 +94,14 @@ struct EngineHostState {
     // JsRuntime::TickAll before the script update loop runs.
     Vec<DeferredCb> deferred;
     rstd::uint32_t  next_handle { 1 };
+    // addEndedCallback: called each time the playback gets to its end.
+    struct EndedCallback {
+        Arc<owe::SceneAnimationPlayback> playback;
+        u64                              seen;
+        JSValue                          fn; // owned
+        FieldScript*                     owner { nullptr };
+    };
+    Vec<EndedCallback> ended_callbacks;
     // localStorage backing. Values are JSON-serialised strings so we can
     // round-trip arbitrary script values through the persistence file.
     // Empty `ls_path` means in-memory only (the legacy bootstrap shape).
@@ -2401,6 +2409,55 @@ JSValue AnimationIsPlaying(JSContext* ctx, JSValueConst value, int, JSValueConst
     return JS_NewBool(ctx, playback != nullptr && playback->IsPlaying());
 }
 
+void AddEndedCallback(JSContext* ctx, Arc<owe::SceneAnimationPlayback> playback, JSValueConst fn) {
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    if (host == nullptr || ! JS_IsFunction(ctx, fn)) return;
+    const auto seen = playback->EndedCount();
+    host->ended_callbacks.push(EngineHostState::EndedCallback {
+        .playback = rstd::move(playback),
+        .seen     = seen,
+        .fn       = JS_DupValue(ctx, fn),
+        .owner    = host->active_field_script,
+    });
+}
+
+// addEndedCallback(fn): fn is called each time the animation gets to its end.
+JSValue AnimationAddEndedCallback(JSContext* ctx, JSValueConst value, int argc,
+                                  JSValueConst* argv) {
+    auto* handle = static_cast<AnimationHandle*>(JS_GetOpaque(value, s_animation_class_id));
+    if (handle == nullptr || argc < 1) return JS_UNDEFINED;
+    AddEndedCallback(ctx, handle->playback.clone(), argv[0]);
+    return JS_UNDEFINED;
+}
+
+// Calls each ended callback once for every time its playback got to its end since the last call.
+void CallEndedCallbacks(JSContext* ctx, EngineHostState* host) {
+    // Iterate by index; callbacks may add more.
+    for (usize i {}; i < host->ended_callbacks.len(); ++i) {
+        while (host->ended_callbacks[i].seen < host->ended_callbacks[i].playback->EndedCount()) {
+            host->ended_callbacks[i].seen += u64(1);
+            auto* previous = host->active_field_script;
+            auto* owner    = host->ended_callbacks[i].owner;
+            if (owner != nullptr && owner->m_impl->alive) {
+                BindFieldScriptContext(ctx, *owner->m_impl, host->default_layer);
+                host->active_field_script = owner;
+            }
+            JSValue fn  = JS_DupValue(ctx, host->ended_callbacks[i].fn);
+            JSValue ret = JS_Call(ctx, fn, JS_UNDEFINED, 0, nullptr);
+            JS_FreeValue(ctx, fn);
+            host->active_field_script = previous;
+            if (JS_IsException(ret)) {
+                JSValue     exc = JS_GetException(ctx);
+                const char* msg = JS_ToCString(ctx, exc);
+                rstd_error("animation ended callback threw: {}", msg ? msg : "<no message>");
+                if (msg) JS_FreeCString(ctx, msg);
+                JS_FreeValue(ctx, exc);
+            }
+            JS_FreeValue(ctx, ret);
+        }
+    }
+}
+
 const JSCFunctionListEntry s_animation_proto_funcs[] = {
     JS_CGETSET_DEF("fps", AnimationGetFps, NodeSetIgnore),
     JS_CGETSET_DEF("frameCount", AnimationGetFrameCount, NodeSetIgnore),
@@ -2413,6 +2470,7 @@ const JSCFunctionListEntry s_animation_proto_funcs[] = {
     JS_CFUNC_DEF("setFrame", 1, AnimationSetFrame),
     JS_CFUNC_DEF("getFrame", 0, AnimationGetFrame),
     JS_CFUNC_DEF("isPlaying", 0, AnimationIsPlaying),
+    JS_CFUNC_DEF("addEndedCallback", 1, AnimationAddEndedCallback),
 };
 
 void InitAnimationClass(JSContext* ctx, JSRuntime* rt) {
@@ -2534,6 +2592,15 @@ JSValue NamedLayerStop(JSContext*, JSValueConst value, int, JSValueConst*) {
         if (auto playback = layer->Playback(); playback.is_some()) (*playback)->Stop();
     return JS_UNDEFINED;
 }
+// an animation layer's addEndedCallback(fn): fn is called each time its animation gets to its end
+JSValue NamedLayerAddEndedCallback(JSContext* ctx, JSValueConst value, int argc, JSValueConst* argv) {
+    if (argc < 1) return JS_UNDEFINED;
+    if (auto* layer = GetNamedAnimationLayer(value))
+        if (auto playback = layer->Playback(); playback.is_some())
+            AddEndedCallback(ctx, (*playback).clone(), argv[0]);
+    return JS_UNDEFINED;
+}
+
 JSValue NamedLayerIsPlaying(JSContext* ctx, JSValueConst value, int, JSValueConst*) {
     if (auto* layer = GetNamedAnimationLayer(value))
         if (auto playback = layer->Playback(); playback.is_some())
@@ -2639,6 +2706,7 @@ void InitNamedAnimationLayerClass(JSContext* ctx, JSRuntime* rt) {
         JS_CFUNC_DEF("pause", 0, NamedLayerPause),
         JS_CFUNC_DEF("stop", 0, NamedLayerStop),
         JS_CFUNC_DEF("isPlaying", 0, NamedLayerIsPlaying),
+        JS_CFUNC_DEF("addEndedCallback", 1, NamedLayerAddEndedCallback),
         JS_CFUNC_DEF("getFrame", 0, NamedLayerGetFrame),
         JS_CFUNC_DEF("setFrame", 1, NamedLayerSetFrame),
         JS_CGETSET_DEF("name", NamedLayerGetName, NodeSetIgnore),
@@ -3106,6 +3174,8 @@ JsRuntime::~JsRuntime() {
         if (! JS_IsUndefined(d.fn)) JS_FreeValue(m_impl->ctx, d.fn);
     }
     m_impl->host.deferred.clear();
+    for (auto& callback : m_impl->host.ended_callbacks) JS_FreeValue(m_impl->ctx, callback.fn);
+    m_impl->host.ended_callbacks.clear();
     PruneSceneLayerBindings(m_impl->ctx, m_impl->host, nullptr);
     if (m_impl->ctx) JS_FreeContext(m_impl->ctx);
     if (m_impl->rt) JS_FreeRuntime(m_impl->rt);
@@ -3369,6 +3439,7 @@ void JsRuntime::SetSceneRoot(owe::SceneNode* root) {
 void JsRuntime::TickAll(slice<owe::SceneAnimationEventDispatch> animation_events) {
     JSContext* ctx = m_impl->ctx;
     SweepDeferred(ctx, &m_impl->host);
+    CallEndedCallbacks(ctx, &m_impl->host);
     const auto script_count = usize(m_impl->scripts.len().to_primitive());
 
     // Node animations run before scripts; cached script returns must not erase their values.
