@@ -196,6 +196,7 @@ String BuildPropertyListenerSnippet(const owe::Json& props);
 String BuildPropertyPatchSnippet(ref<str> key, const owe::Json& value);
 String BuildAudioResponseSnippet(slice<float> data);
 String BuildGeneralPropertiesSnippet(int fps);
+String BuildPageApiSnippet();
 void   InjectUserProperties(CefRefPtr<CefBrowser> browser, const owe::Json& props);
 
 } // namespace weweb
