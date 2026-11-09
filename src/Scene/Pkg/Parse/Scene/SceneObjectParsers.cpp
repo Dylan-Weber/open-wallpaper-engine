@@ -488,7 +488,7 @@ void ParseModelObjImpl(SceneLayerBuildContext& context, wpscene::ModelObject& mo
         if (context.scene->TransparentSorting() && wpmat->blending == "translucent"_str &&
             wpmat->depthwrite == "enabled"_str)
             (void)scene_mat.SetDepthWrite(true);
-        shader_info         = rstd::move(material_build.shader_info);
+        shader_info = rstd::move(material_build.shader_info);
         LoadConstvalue(context, scene_mat, *wpmat, shader_info);
 
         if (node->shadow.cast) {
