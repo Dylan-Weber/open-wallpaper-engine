@@ -1753,7 +1753,7 @@ inline Eigen::Vector3d AfterContact(CollisionBehavior behavior, double bounce,
 struct CollisionState {
     ParticleAttributes attributes;
     CollisionBehavior  behavior { CollisionBehavior::Bounce };
-    double             bounce { 1.0 };
+    double             bounce { 0.5 };
     particle::ParticleWriteIndex<particle::VelocityAttribute> velocity;
     particle::ParticleWriteIndex<particle::LifetimeAttribute> lifetime;
     particle::ParticleWriteIndex<particle::AlphaAttribute>    alpha;
@@ -2491,7 +2491,8 @@ ParticleParser::GenOperator(const Json& wpj, ParticleInstanceModifiers modifiers
                    name == "collisionquad"_str) {
             CollisionState state { .attributes = attributes,
                                    .behavior   = ReadCollisionBehavior(wpj) };
-            float          bounce { 1.0f };
+            // a missing bouncefactor is 0.5 (Wallpaper Engine fills it in: 0x1401c00a0)
+            float          bounce { 0.5f };
             owe::GetJsonValue(wpj, "bouncefactor"_str, bounce, false);
             state.bounce = double(bounce);
             if (name == "collisionplane"_str) {
@@ -2525,7 +2526,8 @@ ParticleParser::GenOperator(const Json& wpj, ParticleInstanceModifiers modifiers
         } else if (name == "collisionbounds"_str) {
             CollisionState state { .attributes = attributes,
                                    .behavior   = ReadCollisionBehavior(wpj) };
-            float          bounce { 1.0f };
+            // a missing bouncefactor is 0.5 (Wallpaper Engine fills it in: 0x1401c00a0)
+            float          bounce { 0.5f };
             owe::GetJsonValue(wpj, "bouncefactor"_str, bounce, false);
             state.bounce = double(bounce);
             return Box<dyn<particle::ParticleUpdateProgram>>::make(

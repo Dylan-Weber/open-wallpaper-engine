@@ -1986,6 +1986,23 @@ TEST(ParticleSubSystem, CollisionStopHoldsAParticleWhereItHits) {
     EXPECT_NEAR(free.velocity.x(), 20.0f, 1e-3f); // not touching: left alone
 }
 
+// Without "bouncefactor" a collision bounces at 0.5: Wallpaper Engine's collision operators all
+// fill a missing bouncefactor with 0.5 (0x1401c00a0) before reading it (ft-collisionbounds under
+// replay: its default systems match only at 0.5).
+TEST(ParticleSubSystem, CollisionsBounceHalfWithoutABounceFactor) {
+    auto plane = CollideWithPlane(
+        R"({"name":"collisionplane","distance":-100})"_str,
+        { 0, -100, 0 },
+        R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
+    EXPECT_NEAR(plane.velocity.y(), 30.0f, 1e-3f);
+    auto bounds = CollideWithPlane(R"({"name":"collisionbounds"})"_str,
+                                   { 1919, 500, 0 },
+                                   R"({"name":"velocityrandom","min":"120 0 0","max":"120 0 0"})"_str,
+                                   1,
+                                   true);
+    EXPECT_NEAR(bounds.velocity.x(), -60.0f, 1e-3f);
+}
+
 // collisionbounds (particles-collisionbounds-rest): the scene's edges, 0..1920 across and 0..1080
 // up
 TEST(ParticleSubSystem, CollisionBoundsKeepParticlesInsideTheScene) {
