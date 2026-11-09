@@ -1350,8 +1350,10 @@ struct MaintainDistanceOperator {
 };
 
 // What the collision operators do to a particle on a surface with this normal
-// (particles-collisionplane): bounce makes its speed along the normal |v_n| * bouncefactor, slide
-// 0, delete removes it; the sideways speed stays. stop takes all its speed (particles-collisionbounds-single:
+// (particles-collisionplane): bounce makes its speed along the normal -bouncefactor * v_n whichever
+// way it moves (Wallpaper Engine's kernel adds n (v . n) x factor without looking at the sign, so a
+// particle already moving away is turned back: ft-collisionplane), slide 0, delete removes it; the
+// sideways speed stays. stop takes all its speed (particles-collisionbounds-single:
 // Wallpaper Engine's fourth collision kernel).
 enum class CollisionBehavior
 {
@@ -1376,7 +1378,7 @@ inline Eigen::Vector3d AfterContact(CollisionBehavior behavior, double bounce,
                                     const Eigen::Vector3d& normal, const Eigen::Vector3d& v) {
     if (behavior == CollisionBehavior::Stop) return Eigen::Vector3d::Zero();
     const double along   = normal.dot(v);
-    const double rebound = behavior == CollisionBehavior::Slide ? 0.0 : Abs(along) * bounce;
+    const double rebound = behavior == CollisionBehavior::Slide ? 0.0 : -along * bounce;
     return v + normal * (rebound - along);
 }
 
