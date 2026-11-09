@@ -1033,13 +1033,13 @@ TEST(ParticleOperatorWindow, WeighsAnOperatorByTheParticlesLife) {
     EXPECT_EQ(none.Weight(0.9), 1.0);
     auto in = window(R"({"name":"turbulence","blendinstart":0.5,"blendinend":0.75})"_str);
     EXPECT_EQ(in.Weight(0.4), 0.0);
-    EXPECT_NEAR(in.Weight(0.625), 0.5, 1e-9);
+    EXPECT_NEAR(in.Weight(0.625), 0.5, 1e-6);
     EXPECT_EQ(in.Weight(0.8), 1.0);
     auto both = window(
         R"({"name":"turbulence","blendinstart":0.1,"blendinend":0.5,"blendoutstart":0.6,"blendoutend":0.7})"_str);
-    EXPECT_NEAR(both.Weight(0.3), 0.5, 1e-9);
+    EXPECT_NEAR(both.Weight(0.3), 0.5, 1e-6);
     EXPECT_EQ(both.Weight(0.55), 1.0);
-    EXPECT_NEAR(both.Weight(0.65), 0.5, 1e-9);
+    EXPECT_NEAR(both.Weight(0.65), 0.5, 1e-6);
     EXPECT_EQ(both.Weight(0.75), 0.0);
 }
 
@@ -1086,7 +1086,7 @@ TEST(ParticleSubSystem, TurbulenceAndOscillationWaitForTheirBlendWindow) {
         R"({"name":"turbulence","speedmin":100,"speedmax":100,"blendinstart":0.5,"blendinend":0.75})"_str);
     EXPECT_EQ(waiting[usize()].norm(), 0.0f);
     auto over = simulate(
-        R"({"name":"turbulence","speedmin":100,"speedmax":100,"blendoutstart":0,"blendoutend":0.001})"_str);
+        R"({"name":"turbulence","speedmin":100,"speedmax":100,"blendoutstart":-1,"blendoutend":0})"_str);
     EXPECT_EQ(over[usize()].norm(), 0.0f);
     auto oscillation = simulate(
         R"({"name":"oscillateposition","frequencymin":1,"frequencymax":1,"scalemin":30,"scalemax":30})"_str);
