@@ -175,8 +175,14 @@ void BoxEmitterProgram::Emit(particle::ParticleEmitterContext& context) {
         return;
     // Cursor-bound emitters run even while stationary, but must not accrue
     // an emission backlog while the cursor is outside this output.
+    const bool was_running = emitter.timing_started && emitter.timing_on;
+    const bool restarting  = emitter.timing_started && ! emitter.timing_on;
     const bool timing_on =
         AdvanceEmitterTiming(emitter, m_args.timing, frame->emitter_delta.to_primitive());
+    if (m_args.timing.periodic && restarting && timing_on && ! was_running)
+        frame->subsystem->RestartStaticChildren();
+    const bool restart =
+        frame->subsystem->InstanceStateMut(frame->instance_index).restart_pending;
     // an emitter that is off keeps no backlog
     if (! timing_on) emitter.timer = f64();
     const bool timed_emission = timing_on && TimedEmissionEnabled(frame, m_args.controlpoint);
@@ -191,7 +197,7 @@ void BoxEmitterProgram::Emit(particle::ParticleEmitterContext& context) {
                                                                emit_speed,
                                                                m_args.instantaneous,
                                                                m_args.one_per_frame,
-                                                               context.Empty())
+                                                               context.Empty() || restart)
                                             : u32();
     timed_emit_count = EmitterTimingAllowance(emitter, m_args.timing, timed_emit_count);
     auto  emit_count       = timed_emit_count.saturating_add(pending_count);
@@ -239,8 +245,14 @@ void SphereEmitterProgram::Emit(particle::ParticleEmitterContext& context) {
     emitter.elapsed += frame->emitter_delta;
     if (m_args.duration > 0.0f && emitter.elapsed > f64(m_args.duration) && pending_count == u32())
         return;
+    const bool was_running = emitter.timing_started && emitter.timing_on;
+    const bool restarting  = emitter.timing_started && ! emitter.timing_on;
     const bool timing_on =
         AdvanceEmitterTiming(emitter, m_args.timing, frame->emitter_delta.to_primitive());
+    if (m_args.timing.periodic && restarting && timing_on && ! was_running)
+        frame->subsystem->RestartStaticChildren();
+    const bool restart =
+        frame->subsystem->InstanceStateMut(frame->instance_index).restart_pending;
     // an emitter that is off keeps no backlog
     if (! timing_on) emitter.timer = f64();
     const bool timed_emission = timing_on && TimedEmissionEnabled(frame, m_args.controlpoint);
@@ -257,7 +269,7 @@ void SphereEmitterProgram::Emit(particle::ParticleEmitterContext& context) {
                                                                emit_speed,
                                                                m_args.instantaneous,
                                                                m_args.one_per_frame,
-                                                               context.Empty())
+                                                               context.Empty() || restart)
                                             : u32();
     timed_emit_count = EmitterTimingAllowance(emitter, m_args.timing, timed_emit_count);
     auto  emit_count       = timed_emit_count.saturating_add(pending_count);
