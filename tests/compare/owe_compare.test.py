@@ -36,6 +36,10 @@ class Inputs(unittest.TestCase):
                 self.assertEqual(json.load(f), {'16': {'left': [0.5] * 16, 'right': [0.25] * 16}})
             self.assertEqual(notes, [])
 
+    def test_a_pointer_left_of_the_window_is_not_read_as_an_option(self):
+        arguments, _, _ = owe_compare.input_arguments({'pointer': (-0.02, 0.5)}, 0, EVERY_FLAG, tempfile.gettempdir())
+        self.assertIn('--mouse-position=-0.0200,0.5000', arguments)
+
     def test_a_time_zone_ahead_of_utc(self):
         _, env, _ = owe_compare.input_arguments({'scripts': 'started', 'date': 0, 'timezone': -330}, 0,
                                                 EVERY_FLAG, tempfile.gettempdir())
@@ -162,6 +166,15 @@ class Render(unittest.TestCase):
         command = self.command('--capture --capture-frame', {'frames': 93})
         self.assertEqual(command[command.index('--capture-frame') + 1], '93')
         self.assertEqual(command[command.index('--resolution') + 1], '64x32')
+
+    def test_renders_at_the_frame_rate_the_reference_was_taken_at(self):
+        # Wallpaper Engine's particles step differently at 20 fps or less, so a reference taken at 15 is rendered at 15
+        command = self.command('--capture --capture-frame', {'fps': 15, 'frames': 454})
+        self.assertEqual(command[command.index('--fps') + 1], '15')
+        # the probe counts g_Time at 30 a second whatever the frame rate: 454 is 227 frames at 15
+        self.assertEqual(command[command.index('--capture-frame') + 1], '227')
+        command = self.command('--capture --capture-frame', {})
+        self.assertEqual(command[command.index('--fps') + 1], '30')
 
     def test_gives_the_shadows_setting_only_to_a_viewer_that_has_it(self):
         settings = {'shadow_quality': 'medium'}

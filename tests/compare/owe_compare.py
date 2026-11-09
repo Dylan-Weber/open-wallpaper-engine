@@ -137,6 +137,7 @@ def render(name, size, viewer, frames=None, script_start=0.0, camera_path_delay=
     out = os.path.join(OUTPUT, name, 'engine')
     if frames is None:
         frames = settings_of(name).get('frames', REFERENCE_FRAMES)
+    fps = frame_rate(name)
     # in a memory cgroup of its own, so a viewer that runs away is killed, not the machine
     capped = ['systemd-run', '--user', '--scope', '-q', '-p', 'MemoryMax=' + os.environ.get('WPE_TEST_MEMORY', '3G'),
               '-p', 'MemorySwapMax=0']
@@ -150,7 +151,7 @@ def render(name, size, viewer, frames=None, script_start=0.0, camera_path_delay=
     shadows = ['--shadow-quality', settings_of(name)['shadow_quality']] \
         if 'shadow_quality' in settings_of(name) and '--shadow-quality' in viewer_help(viewer) else []
     command = capped + ['timeout', '900', viewer, '-C', shader_cache(viewer), '--resolution', '%dx%d' % size,
-                        '--fps', '30', '--capture', frame, '--capture-frame', str(frames)] + (
+                        '--fps', str(fps), '--capture', frame, '--capture-frame', str(capture_frame(frames, fps))] + (
                            ['--script-start', '%.4f' % script_start] if script_start > 0 else []) + (
                            ['--camera-path-delay', '%.4f' % camera_path_delay] if camera_path_delay > 0
                            else []) + shadows + list(inputs) + [ASSETS, scene_package(os.path.join(WALLPAPERS, name))]
@@ -161,13 +162,26 @@ def render(name, size, viewer, frames=None, script_start=0.0, camera_path_delay=
     return frame
 
 
+def frame_rate(name):
+    """The frame rate the reference was taken at (compare.json "fps", else 30), which owe renders at too: Wallpaper
+    Engine's particles take two half steps a frame at 20 fps or less."""
+    return int(settings_of(name).get('fps', 30))
+
+
+def capture_frame(frames, fps):
+    """The viewer frame (at `fps`) for a moment given in the probe's frames (g_Time at 30 a second)."""
+    return round(frames * fps / 30)
+
+
 def input_arguments(inputs, frames, help_text, folder):
     """The viewer arguments and environment that give owe what a reference's clock probe recorded (`inputs`, from
     clock_probe.read_inputs, at frame `frames`), as far as the viewer (its `help_text`) takes them, and notes on
     what it can't be given. A spectrum is written to spectrum.json in `folder`."""
     arguments, env, notes = [], {}, []
     if 'pointer' in inputs and '--mouse-position' in help_text:
-        arguments += ['--mouse-position', '%.4f,%.4f' % tuple(inputs['pointer'])]
+        position = '%.4f,%.4f' % tuple(inputs['pointer'])
+        # a value that starts with '-' would be read as an option
+        arguments += ['--mouse-position=' + position] if position.startswith('-') else ['--mouse-position', position]
     if 'bands' in inputs:
         if '--audio-spectrum' in help_text:
             path = os.path.join(folder, 'spectrum.json')

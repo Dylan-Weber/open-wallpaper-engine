@@ -539,6 +539,7 @@ void SceneRenderController::onDraw() {
             }
             m_frame_delta =
                 m_stopped ? 0.0 : frame_timer.TargetFrameTime() * m_speed.to_primitive();
+            m_scene->SetTargetFps(u32(frame_timer.RequiredFps().to_primitive()));
             owe::script::FrameInputs fi;
             fi.frametime   = static_cast<float>(m_frame_delta);
             fi.runtime     = static_cast<float>(m_scene->Runtime().Frame().elapsed.to_primitive());

@@ -694,6 +694,21 @@ void ParticleSubSystem::UpdateBoundedState(ParticleInstanceRef current) {
     }
 }
 
+auto owe::ParticleOperatorStepsFor(u32 target_fps, f64 delta) -> particle::ParticleOperatorSteps {
+    const float step       = static_cast<float>(delta.to_primitive());
+    const float frame_time = target_fps > u32()
+                                 ? 1.0f / static_cast<float>(target_fps.to_primitive())
+                                 : step;
+    const float scale =
+        frame_time > 0.0f
+            ? f32(rstd::cmp::min(0.025f / frame_time, 1.0f)).powf(f32(0.7f)).to_primitive()
+            : 1.0f;
+    return particle::ParticleOperatorSteps {
+        .passes = target_fps >= u32(1) && target_fps <= u32(20) ? u32(2) : u32(1),
+        .delta2 = Some(f64(static_cast<double>(scale * step))),
+    };
+}
+
 void ParticleSubSystem::Advance(f64 frame_time, f64 child_frame_time, bool update_mesh) {
     m_time += frame_time;
     UpdateFrameInput(frame_time);
@@ -719,7 +734,11 @@ void ParticleSubSystem::Advance(f64 frame_time, f64 child_frame_time, bool updat
         UpdateControlpoints(current);
         Warmup(current, frame_ref);
         m_pending_child_deaths.clear();
-        System().Advance(*current.instance, frame_ref, frame_time, m_time);
+        System().Advance(*current.instance,
+                         frame_ref,
+                         frame_time,
+                         m_time,
+                         ParticleOperatorStepsFor(m_scene.TargetFps(), frame_time));
         current.state->no_live_particle = true;
         auto states                     = current.instance->Binding().Read().States();
         for (const auto& state : states) {
