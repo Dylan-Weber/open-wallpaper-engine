@@ -1231,6 +1231,14 @@ public:
         m_lookat = true;
     }
     bool IsLookAt() const { return m_lookat; }
+    // A camera that looks at an orthographic scene's layers from a distance (the scene overrides
+    // the perspective fov) was set up to see `height` units at its look-at center;
+    // FitFovToHeightAtCenter keeps it seeing the projection's height when the window crops the
+    // projection.
+    void SetFitsProjectionHeight(double height) { m_fit_height = Some(height); }
+    // Sets the fov so such a camera sees `height` units at its look-at center. Other cameras keep
+    // their fov.
+    void FitFovToHeightAtCenter(double height);
     // Base transforms remain independent of transient rendering offsets.
     auto Transforms() const -> SceneCameraTransforms;
     auto RenderTransforms(SceneRenderViewKind view = SceneRenderViewKind::Primary) const
@@ -1271,6 +1279,7 @@ public:
         m_fov_policy  = cam.m_fov_policy;
         m_perspective = cam.m_perspective;
         m_lookat      = cam.m_lookat;
+        m_fit_height  = cam.m_fit_height;
         m_eye         = cam.m_eye;
         m_center      = cam.m_center;
         m_up          = cam.m_up;
@@ -1307,6 +1316,7 @@ private:
     bool                 m_perspective { false };
 
     bool            m_lookat { false };
+    Option<double>  m_fit_height;
     Eigen::Vector3d m_eye { Eigen::Vector3d::Zero() };
     Eigen::Vector3d m_center { -Eigen::Vector3d::UnitZ() };
     Eigen::Vector3d m_up { Eigen::Vector3d::UnitY() };
