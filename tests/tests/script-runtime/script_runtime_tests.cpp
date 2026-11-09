@@ -682,11 +682,16 @@ TEST(ScriptBones, CountAndParents) {
         JsRuntime::BoneIndexResolver::make([](owe::SceneNode*, ref<str> name) -> uint32_t {
             return name == "hair"_str ? 3 : 0;
         }),
-        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t { return 3; }),
+        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t {
+            return 3;
+        }),
         JsRuntime::BoneTransformResolver::make(
-            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTransformData> { return None(); }),
+            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTransformData> {
+                return None();
+            }),
         JsRuntime::BoneSetTransformResolver::make(
-            [](owe::SceneNode*, uint32_t, const BoneTransformData&) {}));
+            [](owe::SceneNode*, uint32_t, const BoneTransformData&) {
+            }));
     // three bones: a root, its child, and that child's child (1-based, 0 for none)
     rt.SetBoneParentsResolver(
         JsRuntime::BoneParentsResolver::make([](owe::SceneNode*) -> Vec<uint32_t> {
