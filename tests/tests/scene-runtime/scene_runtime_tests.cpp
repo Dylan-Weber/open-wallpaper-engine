@@ -2694,8 +2694,9 @@ TEST(UniformSourceParallax, PerspectiveWithAuthoredParallaxDepthAppliesShift) {
                          mvp_with_parallax[rstd::usize(13)]) > 1e-5f);
 }
 
-// A layer scaled to no area (More Physics' sky gradient layer, 0 x 0) still makes its composite in Wallpaper Engine: the
-// matrices an effect pass uses must not collapse with the layer's scale (owe's were singular, so the composite came out black).
+// A layer scaled to no area (More Physics' sky gradient layer, 0 x 0) still makes its composite in
+// Wallpaper Engine: the matrices an effect pass uses must not collapse with the layer's scale
+// (owe's were singular, so the composite came out black).
 TEST(TransformUniformSource, EffectMatricesOfALayerWithNoAreaStayInvertible) {
     auto camera =
         Arc<owe::SceneCamera>::make(owe::SceneCamera::MakeOrthographic(200, 100, -1.0, 1.0));
@@ -2718,8 +2719,10 @@ TEST(TransformUniformSource, EffectMatricesOfALayerWithNoAreaStayInvertible) {
     // as a layer of scale 1 (the existing test shows 0.4 and 0.6 for a scale of 2 and 3)
     EXPECT_FLOAT_EQ(projected[usize()], 0.2f);
     EXPECT_FLOAT_EQ(projected[usize(5)], 0.2f);
-    auto inverse = scene_test::Capture(
-        owe::SceneFrame {}, transform_source, owe::TransformUniformOutput::EffectModelViewProjectionInverse);
+    auto inverse =
+        scene_test::Capture(owe::SceneFrame {},
+                            transform_source,
+                            owe::TransformUniformOutput::EffectModelViewProjectionInverse);
     ASSERT_EQ(inverse.size(), usize(16));
     for (usize i {}; i < inverse.size(); ++i) EXPECT_TRUE(std::isfinite(inverse[i]));
     EXPECT_FLOAT_EQ(inverse[usize()], 5.0f);
