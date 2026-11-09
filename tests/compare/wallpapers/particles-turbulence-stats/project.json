@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test turbulence: strength and spatial scale, statistically",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}
