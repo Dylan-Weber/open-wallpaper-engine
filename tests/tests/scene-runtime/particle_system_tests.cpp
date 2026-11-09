@@ -698,7 +698,7 @@ TEST(ParticleSubSystem, ConvertsWorldSpaceFollowAnchorsIntoChildLocalSpace) {
     parent.AddChild(rstd::move(child));
     parent.Finalize();
 
-    parent.Tick(f64(), false);
+    parent.Tick(f64(1.0 / 64.0), false);
 
     ASSERT_EQ(parent.System().InstanceCount(), usize(1));
     ASSERT_EQ(child_system->System().InstanceCount(), usize(1));
@@ -966,7 +966,7 @@ TEST(ParticleSubSystem, UsesEmitterPeriodLimitForImplicitControlpointSequenceCou
                                   },
                                   usize())));
     subsystem.Finalize();
-    subsystem.Tick(f64(), false);
+    subsystem.Tick(f64(1.0 / 60.0), false);
 
     auto positions = subsystem.System().Instance(usize()).Binding().Read().Positions();
     ASSERT_EQ(positions.len(), usize(4));
@@ -1402,11 +1402,13 @@ static Eigen::Vector3f MovedVelocity(ref<str> movement, ref<str> velocity, int t
 
 TEST(ParticleSubSystem, MovementDragTakesDragTimesTheCompensatedStep) {
     auto thrown = R"({"name":"velocityrandom","min":"300 0 0","max":"300 0 0"})"_str;
-    // 30 fps: 1 - 2 x (1/30 x 0.81766) a frame
-    EXPECT_NEAR(MovedVelocity(R"({"name":"movement","drag":2})"_str, thrown, 1, 1.0 / 30.0).x(),
+    // not slowed in the frame it is born in
+    EXPECT_NEAR(MovedVelocity(R"({"name":"movement","drag":2})"_str, thrown, 1, 1.0 / 30.0).x(), 300.0, 1e-3);
+    // 30 fps: then 1 - 2 x (1/30 x 0.81766) a frame
+    EXPECT_NEAR(MovedVelocity(R"({"name":"movement","drag":2})"_str, thrown, 2, 1.0 / 30.0).x(),
                 300.0 * (1.0 - 2.0 * (1.0 / 30.0) * 0.81766), 0.02);
     // 60 fps: the whole step, 1 - 2/60 a frame
-    EXPECT_NEAR(MovedVelocity(R"({"name":"movement","drag":2})"_str, thrown, 2, 1.0 / 60.0).x(),
+    EXPECT_NEAR(MovedVelocity(R"({"name":"movement","drag":2})"_str, thrown, 3, 1.0 / 60.0).x(),
                 300.0 * (1.0 - 2.0 / 60.0) * (1.0 - 2.0 / 60.0), 0.02);
 }
 
@@ -1416,4 +1418,43 @@ TEST(ParticleSubSystem, MovementMovesBeforeTheDragAndAddsGravityFirst) {
     MovedVelocity(R"({"name":"movement","drag":2,"gravity":"0 -600 0"})"_str, thrown, 1, 1.0 / 60.0, &place);
     EXPECT_NEAR(place.x(), 300.0 / 60.0, 1e-3);          // moved at the speed before the drag
     EXPECT_NEAR(place.y(), -600.0 / 60.0 / 60.0, 1e-3);  // and with this frame's gravity already added
+}
+
+// The scene's first frame passes no time (owe advances the clock after drawing). Wallpaper Engine's first particle
+// frame is a whole step: a burst is born in it, moves at full speed and is only slowed from the next frame on
+// (particles-drag-step: thrown particles stop at (v / drag) x (1 + drag dt2) / g). So nothing is emitted in a step
+// with no time.
+TEST(ParticleSubSystem, EmitsNothingInAStepWithNoTime) {
+    owe::Scene             scene;
+    auto                   mesh = Arc<owe::SceneMesh>::make();
+    owe::ParticleSubSystem subsystem(scene,
+                                     mesh.clone(),
+                                     u32(1),
+                                     f64(1.0),
+                                     u32(1),
+                                     f64(1.0),
+                                     owe::ParticleSubSystem::SpawnType::STATIC,
+                                     owe::ParticleAnimationSpec {});
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"lifetimerandom","min":100,"max":100})"_str).unwrap(), u32(1)));
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"velocityrandom","min":"300 0 0","max":"300 0 0"})"_str).unwrap(), u32(2)));
+    subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(owe::BoxEmitterProgram(
+        subsystem.SpawnPipeline(), owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) }, usize())));
+    subsystem.AddOperator(owe::ParticleParser::GenOperator(
+        owe::ParseJson(R"({"name":"movement","drag":2})"_str).unwrap(),
+        owe::ParticleInstanceModifiers(Arc<owe::wpscene::ParticleInstanceoverride>::make(),
+                                       owe::wpscene::Particle::EFlags { 0 },
+                                       false),
+        subsystem,
+        usize()));
+    subsystem.Finalize();
+    subsystem.Tick(f64(), false);
+    EXPECT_EQ(LiveParticleCount(subsystem), usize());
+    subsystem.Tick(f64(1.0 / 30.0), false);
+    ASSERT_EQ(LiveParticleCount(subsystem), usize(1));
+    auto&                        storage = subsystem.System().Instance(usize()).Storage();
+    particle::ParticleSlotReader value(storage, particle::ParticleSlot {});
+    EXPECT_NEAR(value.Read(subsystem.Attributes().velocity).x(), 300.0f, 1e-3f); // born in the step: not slowed
+    EXPECT_NEAR(value.Read(subsystem.Attributes().position).x(), 10.0f, 1e-3f);  // and moved a whole step
 }

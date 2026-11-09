@@ -172,7 +172,10 @@ void BoxEmitterProgram::Emit(particle::ParticleEmitterContext& context) {
         return;
     // Cursor-bound emitters run even while stationary, but must not accrue
     // an emission backlog while the cursor is outside this output.
-    const bool timed_emission = TimedEmissionEnabled(frame, m_args.controlpoint);
+    // a step with no time (the scene's first frame) emits nothing of its own: Wallpaper Engine's first particle frame
+    // is a whole step, in which a burst is born and moves (events' spawns still come)
+    const bool timed_emission = frame->scene_delta.to_primitive() > 0.0 &&
+                                TimedEmissionEnabled(frame, m_args.controlpoint);
     if (timed_emission) emitter.timer += frame->emitter_delta;
 
     auto  controlpoints = frame->subsystem->Controlpoints();
@@ -229,7 +232,10 @@ void SphereEmitterProgram::Emit(particle::ParticleEmitterContext& context) {
     emitter.elapsed += frame->emitter_delta;
     if (m_args.duration > 0.0f && emitter.elapsed > f64(m_args.duration) && pending_count == u32())
         return;
-    const bool timed_emission = TimedEmissionEnabled(frame, m_args.controlpoint);
+    // a step with no time (the scene's first frame) emits nothing of its own: Wallpaper Engine's first particle frame
+    // is a whole step, in which a burst is born and moves (events' spawns still come)
+    const bool timed_emission = frame->scene_delta.to_primitive() > 0.0 &&
+                                TimedEmissionEnabled(frame, m_args.controlpoint);
     if (timed_emission) emitter.timer += frame->emitter_delta;
 
     auto controlpoints = frame->subsystem->Controlpoints();
