@@ -635,7 +635,9 @@ TEST(ScriptBones, IndicesCountFromZero) {
             if (name == ""_str) return 1;
             return name == "hair"_str ? 5 : 0;
         }),
-        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t { return 5; }),
+        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t {
+            return 5;
+        }),
         JsRuntime::BoneTransformResolver::make(
             [&asked](owe::SceneNode*, uint32_t index, double) -> Option<BoneTransformData> {
                 asked = index;
@@ -644,7 +646,8 @@ TEST(ScriptBones, IndicesCountFromZero) {
                 return Some(bone);
             }),
         JsRuntime::BoneSetTransformResolver::make(
-            [](owe::SceneNode*, uint32_t, const BoneTransformData&) {}));
+            [](owe::SceneNode*, uint32_t, const BoneTransformData&) {
+            }));
     auto* fs = rt.MakeFieldScript(
         R"JS(
             const results = [
