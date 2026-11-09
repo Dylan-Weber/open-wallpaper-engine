@@ -2595,8 +2595,8 @@ TEST(ScriptScene, CameraTransformsRoundTripThroughSceneOwner) {
     EXPECT_DOUBLE_EQ(LastScalar(script), 345.0);
 }
 
-// Measured in Wallpaper Engine: a script that calls setCameraTransforms in init (and returns its value) leaves the
-// camera where the scene put it; the same call in update moves it.
+// Measured in Wallpaper Engine: a script that calls setCameraTransforms in init (and returns its
+// value) leaves the camera where the scene put it; the same call in update moves it.
 TEST(ScriptScene, CameraTransformsSetInInitAreIgnored) {
     owe::Scene scene;
     auto       camera = Arc<owe::SceneCamera>::make(
