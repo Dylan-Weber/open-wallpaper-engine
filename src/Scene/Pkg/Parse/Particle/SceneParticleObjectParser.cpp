@@ -266,14 +266,16 @@ void LoadOperator(ParticleSubSystem& system, const wpscene::Particle& particle,
     }
 }
 void LoadEmitter(ParticleSubSystem& system, const wpscene::Particle& particle,
-                 const ParticleInstanceModifiers&             modifiers,
+                 const ParticleInstanceModifiers&     modifiers,
                  const Option<Arc<LayerImageSource>>& layer_image) {
     usize emitter_index {};
     for (const auto& em : particle.emitters) {
         auto newEm = em.clone();
         newEm.rate *= modifiers.Count();
         system.AddEmitter(ParticleParser::GenEmitter(
-            newEm, system, emitter_index++,
+            newEm,
+            system,
+            emitter_index++,
             layer_image.is_some() ? Some((*layer_image).clone()) : None()));
     }
 }
@@ -283,10 +285,13 @@ struct LayerImagePixelSet {
     float                jitter { 0.5f };
 };
 
-// The pixels of a layer's texture that are opaque enough (the layer's opacity times the pixel's, half or more; particles-layerimage-alpha: the halo's disc matches at 0.5), as
-// points from the image's centre in pixels, for the ones stored as 8-bit colour with or without alpha; None for a format
-// not read (the layer then emits from its texture's rectangle). A large image is sampled every few pixels.
-Option<LayerImagePixelSet> LayerImagePixels(const TexImageParser& textures, ref<str> name, float layer_alpha) {
+// The pixels of a layer's texture that are opaque enough (the layer's opacity times the pixel's,
+// half or more; particles-layerimage-alpha: the halo's disc matches at 0.5), as points from the
+// image's centre in pixels, for the ones stored as 8-bit colour with or without alpha; None for a
+// format not read (the layer then emits from its texture's rectangle). A large image is sampled
+// every few pixels.
+Option<LayerImagePixelSet> LayerImagePixels(const TexImageParser& textures, ref<str> name,
+                                            float layer_alpha) {
     auto parsed = textures.Parse(name);
     if (parsed.is_err()) return None();
     const auto image = rstd::move(parsed).unwrap_unchecked();
@@ -297,36 +302,43 @@ Option<LayerImagePixelSet> LayerImagePixels(const TexImageParser& textures, ref<
     case TextureFormat::RGB8: channels = 3; break;
     default: return None();
     }
-    if (image->content->slots.is_empty() || image->content->slots[usize()].mipmaps.is_empty()) return None();
+    if (image->content->slots.is_empty() || image->content->slots[usize()].mipmaps.is_empty())
+        return None();
     const auto& base = image->content->slots[usize()].mipmaps[usize()];
     if (! base.data || base.width <= 0 || base.height <= 0) return None();
-    const bool   bgra   = image->header.format == TextureFormat::BGRA8;
-    const double total  = static_cast<double>(base.width) * static_cast<double>(base.height);
-    const int    stride = rstd::cmp::max(1, static_cast<int>(std::ceil(std::sqrt(total / 65536.0))));
+    const bool   bgra  = image->header.format == TextureFormat::BGRA8;
+    const double total = static_cast<double>(base.width) * static_cast<double>(base.height);
+    const int stride   = rstd::cmp::max(1, static_cast<int>(std::ceil(std::sqrt(total / 65536.0))));
     LayerImagePixelSet set;
-    set.jitter = 0.5f * static_cast<float>(stride);
+    set.jitter       = 0.5f * static_cast<float>(stride);
     const auto* data = base.data.get();
     for (int row = 0; row < base.height; row += stride) {
         for (int column = 0; column < base.width; column += stride) {
-            const auto* pixel = data + (static_cast<std::size_t>(row) * static_cast<std::size_t>(base.width) +
-                                        static_cast<std::size_t>(column)) * static_cast<std::size_t>(channels);
+            const auto* pixel =
+                data + (static_cast<std::size_t>(row) * static_cast<std::size_t>(base.width) +
+                        static_cast<std::size_t>(column)) *
+                           static_cast<std::size_t>(channels);
             const float alpha = channels == 4 ? static_cast<float>(pixel[3]) / 255.0f : 1.0f;
             if (alpha * layer_alpha < 0.5f) continue;
             const float first = static_cast<float>(pixel[0]) / 255.0f;
             const float third = static_cast<float>(pixel[2]) / 255.0f;
             set.points.push(LayerImagePoint {
-                .x     = static_cast<float>(column) + 0.5f * static_cast<float>(stride) - static_cast<float>(base.width) * 0.5f,
-                .y     = static_cast<float>(base.height) * 0.5f - static_cast<float>(row) - 0.5f * static_cast<float>(stride),
-                .color = Eigen::Vector3f(bgra ? third : first, static_cast<float>(pixel[1]) / 255.0f, bgra ? first : third),
+                .x     = static_cast<float>(column) + 0.5f * static_cast<float>(stride) -
+                         static_cast<float>(base.width) * 0.5f,
+                .y     = static_cast<float>(base.height) * 0.5f - static_cast<float>(row) -
+                         0.5f * static_cast<float>(stride),
+                .color = Eigen::Vector3f(bgra ? third : first,
+                                         static_cast<float>(pixel[1]) / 255.0f,
+                                         bgra ? first : third),
             });
         }
     }
     return Some(rstd::move(set));
 }
 
-// The layer a layerimage emitter emits from, by the object id of the particle object's emitterimage dependency: its
-// rectangle (a solid layer's size; for another image the size of its texture, whose pixels are not read), colour and
-// opacity (particles-layerimage).
+// The layer a layerimage emitter emits from, by the object id of the particle object's emitterimage
+// dependency: its rectangle (a solid layer's size; for another image the size of its texture, whose
+// pixels are not read), colour and opacity (particles-layerimage).
 Option<Arc<LayerImageSource>> BuildLayerImageSource(SceneParseContext& context, i32 id) {
     auto node_ref = context.layer_build.node_id_map.get(id);
     auto config   = context.initial_layer_configs.get(id);
@@ -355,7 +367,8 @@ Option<Arc<LayerImageSource>> BuildLayerImageSource(SceneParseContext& context, 
                         auto entries = (*names)->as_array();
                         if (entries.is_none()) break;
                         for (const auto& entry : **entries) {
-                            if (auto name = entry.as_str(); name.is_some()) texture = String::make(*name);
+                            if (auto name = entry.as_str(); name.is_some())
+                                texture = String::make(*name);
                             break;
                         }
                         break;
@@ -381,7 +394,7 @@ Option<Arc<LayerImageSource>> BuildLayerImageSource(SceneParseContext& context, 
         .alpha       = alpha,
     };
     if (texture_pixels.is_some()) {
-        auto& pixels = *texture_pixels;
+        auto& pixels  = *texture_pixels;
         source.points = rstd::move(pixels.points);
         source.jitter = pixels.jitter;
         if (source.points.is_empty()) source.alpha = 0.0f; // nothing in the image to emit from
@@ -694,9 +707,9 @@ void BuildParticleObjectNode(ParticleObjectParseServices& services,
     // the parser's context knows the scene's layers; a layer a script creates has none to emit from
     if (! is_child && wppartobj.emitterimage_layer.is_some() &&
         ! services.construction_context.runtime_created)
-        layer_image = BuildLayerImageSource(
-            static_cast<SceneParseContext&>(services.construction_context),
-            *wppartobj.emitterimage_layer);
+        layer_image =
+            BuildLayerImageSource(static_cast<SceneParseContext&>(services.construction_context),
+                                  *wppartobj.emitterimage_layer);
     LoadEmitter(*particleSub, particle_obj, modifiers, layer_image);
     LoadInitializer(*particleSub, particle_obj, modifiers.Clone());
     LoadOperator(*particleSub, particle_obj, modifiers.Clone());
