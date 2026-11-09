@@ -2745,3 +2745,14 @@ TEST(LayerTexCoordInset, NoneForAnEmptyTexture) {
     EXPECT_EQ(inset[rstd::usize(0)], 0.0f);
     EXPECT_EQ(inset[rstd::usize(1)], 0.0f);
 }
+
+// A model with "nopadding" draws its texture edge to edge (texture-uv-inset-nopadding: a 4-texel texture's edges at 1, 2
+// and 3 of the quad, where the same texture on a plain model starts 0.15 texel in; the videotex-* probes' models).
+TEST(LayerTexCoordInset, NoneForANoPaddingModel) {
+    auto inset = owe::ImageLayerTexCoordInset(4.0f, 4.0f, true);
+    EXPECT_EQ(inset[rstd::usize(0)], 0.0f);
+    EXPECT_EQ(inset[rstd::usize(1)], 0.0f);
+    auto padded = owe::ImageLayerTexCoordInset(4.0f, 4.0f, false);
+    EXPECT_FLOAT_EQ(padded[rstd::usize(0)], 0.15f / 4.0f);
+    EXPECT_FLOAT_EQ(padded[rstd::usize(1)], 0.15f / 4.0f);
+}
