@@ -3,7 +3,8 @@
 # naka_isi_01, times its 0.01). Untextured, under OoT's camera (looking at the origin), sun and cascades, medium
 # shadows. WE lets a wider strip of sun in at the wall's foot. Variants: -lowered, the floor 0.4 lower (the wall's
 # foot no longer inside it); -novault, the wall without its vault (only its upright faces); -nowall, the floor alone;
-# -closed, the wall two-sided (each triangle twice); -clipped, the wall's foot raised to the floor's top (y 0.84).
+# -closed, the wall two-sided (each triangle twice); -clipped, the wall's foot raised to the floor's top (y 0.84);
+# -slab / -slab-sunk, a plain box in the wall's place standing on the floor's top / from 0.44 (sunk 0.4).
 import struct
 CENTER = (8.98972, 1.30595, -0.10218)
 DATA = json.load(open(os.path.join(os.path.dirname(HERE), 'make', 'data', 'courtyard-arch.json')))
@@ -23,7 +24,7 @@ def mesh_mdl(parts):
     return data
 
 
-def make(name, floor_dy=0.0, vault=True, wall=True, closed=False, clip=None):
+def make(name, floor_dy=0.0, vault=True, wall=True, closed=False, clip=None, slab=None):
     w = Scene3D(name, 'the courtyard wall that casts the edge (%s)' % name, ambient='0.15 0.15 0.15',
                 eye='0.98868 0.13889 0.05676')
     mat = 'materials/plain.json'
@@ -44,6 +45,11 @@ def make(name, floor_dy=0.0, vault=True, wall=True, closed=False, clip=None):
     mdl = 'models/arch.mdl'
     write_binary(os.path.join(w.name, mdl), mesh_mdl(([part('wall', keep=upright)] if wall else []) + [part('floor', floor_dy)]))
     w.cube('arch', mdl, 0, 0, 0)
+    if slab is not None:  # a plain box in the wall's place: its face at z 0.80, x 5..15, from y `slab` up to 1.73
+        lit = w.material('slab', '0.8 0.8 0.8', lighting=True)
+        bottom, top = slab, 1.73
+        w.cube('slab', lit, 10 - CENTER[0], (bottom + top) / 2 - CENTER[1], 0.825 - CENTER[2], (0, 0, 0),
+               '5 %g 0.025' % ((top - bottom) / 2))
     w.light('sun', 'ldirectional', -CENTER[0], 1.51901 - CENTER[1], -CENTER[2], '1 1 1', 3.09, 5,
             (0.0, 0.32301, -2.06849), castshadow=True, cascadedistance0=3.0, cascadedistance1=14.34,
             cascadedistance2=100.0)
@@ -60,3 +66,5 @@ make('shadow-courtyard-arch-novault', vault=False)
 make('shadow-courtyard-arch-nowall', wall=False)
 make('shadow-courtyard-arch-closed', closed=True)
 make('shadow-courtyard-arch-clipped', clip=0.84)
+make('shadow-courtyard-arch-slab', wall=False, slab=0.84)
+make('shadow-courtyard-arch-slab-sunk', wall=False, slab=0.44)
