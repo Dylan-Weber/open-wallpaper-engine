@@ -136,15 +136,15 @@ struct EngineHostState {
         String                          alignment;
         JsRuntime::ImageAlignmentSetter setter;
     };
-    HashMap<owe::SceneNode*, ImageAlignmentHook> image_alignment_hooks;
-    HashMap<owe::SceneNode*, Json>               initial_layer_configs;
-    Option<JsRuntime::BoneIndexResolver>         bone_index_resolver;
-    Option<JsRuntime::BoneCountResolver>         bone_count_resolver;
-    Option<JsRuntime::BoneTransformResolver>     bone_transform_resolver;
-    Option<JsRuntime::BoneSetTransformResolver>  bone_set_transform_resolver;
+    HashMap<owe::SceneNode*, ImageAlignmentHook>   image_alignment_hooks;
+    HashMap<owe::SceneNode*, Json>                 initial_layer_configs;
+    Option<JsRuntime::BoneIndexResolver>           bone_index_resolver;
+    Option<JsRuntime::BoneCountResolver>           bone_count_resolver;
+    Option<JsRuntime::BoneTransformResolver>       bone_transform_resolver;
+    Option<JsRuntime::BoneSetTransformResolver>    bone_set_transform_resolver;
     Option<JsRuntime::AttachmentIndexResolver>     attachment_index_resolver;
     Option<JsRuntime::AttachmentTransformResolver> attachment_transform_resolver;
-    owe::SceneNode*                              scene_root { nullptr };
+    owe::SceneNode*                                scene_root { nullptr };
 };
 
 class EngineBindingGuard : NoCopy, NoMove {
