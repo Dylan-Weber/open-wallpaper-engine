@@ -793,7 +793,7 @@ static void EmitShadowPasses(ExtraInfo& extra) {
             continue;
         const auto& definition = definitions[caster.definition];
         const auto  target     = definition.target.as_str();
-        auto draw = extra.scene->ResourceIndex().resolve(item->scene_draw_item);
+        auto        draw       = extra.scene->ResourceIndex().resolve(item->scene_draw_item);
         if (draw.is_none() || draw->node == nullptr || draw->mesh == nullptr) continue;
         extra.scene->ResolveMaterialTextureSources(*caster.material);
 
