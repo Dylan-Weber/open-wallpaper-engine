@@ -263,6 +263,9 @@ void AppHandler::OnContextCreated(CefRefPtr<CefBrowser> /*browser*/, CefRefPtr<C
         "  };"
         "})();";
     frame->ExecuteJavaScript(kAudioApi, "weweb://internal/audio_api.js", 0);
+    // the rest of Wallpaper Engine's page API, as no-ops (owe has no media integration or file services)
+    frame->ExecuteJavaScript(
+        rstd::cppstd::to_string(BuildPageApiSnippet().as_str()), "weweb://internal/page_api.js", 0);
 }
 
 void AppHandler::OnContextReleased(CefRefPtr<CefBrowser> /*browser*/, CefRefPtr<CefFrame> frame,

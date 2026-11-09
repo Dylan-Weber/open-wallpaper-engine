@@ -183,6 +183,30 @@ TEST(WebState, PropertySnippetEscapesKey) {
     EXPECT_TRUE(empty.as_str().contains("applyUserProperties({}"_str));
 }
 
+// The page API Wallpaper Engine defines on window besides wallpaperRegisterAudioListener (read over DevTools in its
+// CEF, VM 2026-11-08): owe defines each with the same type, so a page that calls one unguarded doesn't throw.
+TEST(WebState, PageApiSnippetDefinesWallpaperEnginesNames) {
+    auto snippet = BuildPageApiSnippet();
+    array<ref<str>, 9> names { "wallpaperRegisterMediaPropertiesListener"_str,
+                       "wallpaperRegisterMediaThumbnailListener"_str,
+                       "wallpaperRegisterMediaPlaybackListener"_str,
+                       "wallpaperRegisterMediaTimelineListener"_str,
+                       "wallpaperRegisterMediaStatusListener"_str,
+                       "wallpaperGetUtilities"_str,
+                       "wallpaperRequestRandomFileForProperty"_str,
+                       "wallpaperOnVideoEnded"_str,
+                       "wallpaperRequestTakeScreenshotResponse"_str };
+    for (auto name : names) {
+        auto definition = String::make("define('"_str);
+        definition.push_str(name);
+        definition.push_str("', function"_str);
+        EXPECT_TRUE(snippet.as_str().contains(definition.as_str()));
+    }
+    EXPECT_TRUE(snippet.as_str().contains("define('wallpaperMediaIntegration', {"_str));
+    // a page's own definition wins
+    EXPECT_TRUE(snippet.as_str().contains("if (typeof window[name] === 'undefined')"_str));
+}
+
 TEST(WebManifest, LoadsOwnedStringsAndDefaults) {
     auto temporary = rstd::fs::TempDir::make("owe-web-manifest"_str).unwrap();
     auto root      = rstd::path::PathBuf::from(temporary.path());
