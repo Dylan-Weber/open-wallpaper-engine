@@ -37,6 +37,9 @@ local function scan_container(ctx, steam_root, container, name_prefix, is_worksh
         local project_type = project and project.type and string.lower(project.type) or nil
 
         local wp_type, resource = project_util.classify(ctx, dir, project, project_type)
+        if not wp_type then
+            wp_type, resource = project_util.classify_preset(ctx, dir, project)
+        end
         if wp_type and resource then
             local external_id = is_workshop and workshop.subscription_id(id) or nil
             table.insert(entries, {

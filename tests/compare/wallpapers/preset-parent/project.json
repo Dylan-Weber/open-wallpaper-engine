@@ -1,0 +1,31 @@
+{
+  "title": "wpe-test layers bound to user properties (a preset sets them)",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {
+      "boxcolor": {
+        "type": "color",
+        "value": "0.2 0.4 1",
+        "text": "box colour",
+        "order": 0
+      },
+      "boxalpha": {
+        "type": "slider",
+        "value": 1,
+        "min": 0,
+        "max": 1,
+        "fraction": true,
+        "text": "box alpha",
+        "order": 1
+      },
+      "showsecond": {
+        "type": "bool",
+        "value": false,
+        "text": "second box",
+        "order": 2
+      }
+    }
+  }
+}
