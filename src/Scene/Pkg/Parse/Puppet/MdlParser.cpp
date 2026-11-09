@@ -919,7 +919,7 @@ bool ParseMDMP(fs::BinaryReader& f, Mdl& mdl, int version, ref<str> path) {
             shape.id = f.ReadUint32();
             (void)f.ReadUint32();
             shape.name              = f.ReadStr();
-            uint32_t length = f.ReadUint32();
+            uint32_t length         = f.ReadUint32();
             mesh.morph_vertex_count = rstd::cmp::min(mesh.morph_vertex_count, length / uint32_t(6));
             const uint32_t vertices = mesh.morph_vertex_count;
             if (length != vertices * 6) {
