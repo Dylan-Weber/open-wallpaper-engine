@@ -2578,8 +2578,9 @@ TEST(SceneTextures, CapturedImageSourcesReuseParsedContentAndPreserveOldRuntimeI
     EXPECT_TRUE(Arc<owe::Image>::ptr_eq(parsed, before->Parse("asset"_str).unwrap()));
 }
 
-// A perspective camera that looks at the layers from a distance (a scene's perspectiveoverridefov) is refitted when the
-// window crops the projection: it must see the cropped height at the layers' plane, as the ortho camera does.
+// A perspective camera that looks at the layers from a distance (a scene's perspectiveoverridefov)
+// is refitted when the window crops the projection: it must see the cropped height at the layers'
+// plane, as the ortho camera does.
 TEST(SceneCameras, ALookAtCameraRefitsItsFovToTheHeightAtItsCenter) {
     auto camera = owe::SceneCamera::MakePerspective(1.6, 15000.0, 5.0, 30.0);
     camera.SetLookAt(Eigen::Vector3d(256.0, 160.0, 600.0),
@@ -2602,7 +2603,8 @@ TEST(SceneCameras, ALookAtCameraRefitsItsFovToTheHeightAtItsCenter) {
     EXPECT_DOUBLE_EQ(flat.Fov(), 30.0);
     // nor does a look-at camera of a scene without the override
     auto authored = owe::SceneCamera::MakePerspective(1.6, 15000.0, 5.0, 30.0);
-    authored.SetLookAt(Eigen::Vector3d(0.0, 0.0, 6.0), Eigen::Vector3d::Zero(), Eigen::Vector3d::UnitY());
+    authored.SetLookAt(
+        Eigen::Vector3d(0.0, 0.0, 6.0), Eigen::Vector3d::Zero(), Eigen::Vector3d::UnitY());
     authored.FitFovToHeightAtCenter(288.0);
     EXPECT_DOUBLE_EQ(authored.Fov(), 30.0);
 }
