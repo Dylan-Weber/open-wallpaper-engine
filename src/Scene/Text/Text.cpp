@@ -106,7 +106,7 @@ namespace
 struct FontBytes {
     const unsigned char* data;
     rstd::size_t         size;
-    auto U16(rstd::size_t at) const -> rstd::uint32_t {
+    auto                 U16(rstd::size_t at) const -> rstd::uint32_t {
         return at + 2 <= size ? (rstd::uint32_t(data[at]) << 8) | data[at + 1] : 0;
     }
     auto S16(rstd::size_t at) const -> rstd::int32_t {
@@ -129,20 +129,25 @@ auto ValueRecordSize(rstd::uint32_t format) -> rstd::size_t {
 
 // The glyph's index in an OpenType coverage table, or -1.
 auto CoverageIndex(const FontBytes& font, rstd::size_t at, rstd::uint32_t glyph) -> rstd::int64_t {
-    const auto format = font.U16(at), count = font.U16(at + 2);
-    rstd::int64_t low {}, high = rstd::int64_t(count) - 1;
+    const auto    format = font.U16(at), count = font.U16(at + 2);
+    rstd::int64_t low {}, high                 = rstd::int64_t(count) - 1;
     while (low <= high) {
         const auto mid = (low + high) / 2;
         if (format == 1) {
             const auto value = font.U16(at + 4 + rstd::size_t(mid) * 2);
             if (value == glyph) return mid;
-            if (value < glyph) low = mid + 1;
-            else high = mid - 1;
+            if (value < glyph)
+                low = mid + 1;
+            else
+                high = mid - 1;
         } else if (format == 2) {
             const auto range = at + 4 + rstd::size_t(mid) * 6;
-            if (glyph < font.U16(range)) high = mid - 1;
-            else if (glyph > font.U16(range + 2)) low = mid + 1;
-            else return rstd::int64_t(font.U16(range + 4) + glyph - font.U16(range));
+            if (glyph < font.U16(range))
+                high = mid - 1;
+            else if (glyph > font.U16(range + 2))
+                low = mid + 1;
+            else
+                return rstd::int64_t(font.U16(range + 4) + glyph - font.U16(range));
         } else
             return -1;
     }
@@ -161,16 +166,19 @@ auto GlyphClass(const FontBytes& font, rstd::size_t at, rstd::uint32_t glyph) ->
     while (low <= high) {
         const auto mid   = (low + high) / 2;
         const auto range = at + 4 + rstd::size_t(mid) * 6;
-        if (glyph < font.U16(range)) high = mid - 1;
-        else if (glyph > font.U16(range + 2)) low = mid + 1;
-        else return font.U16(range + 4);
+        if (glyph < font.U16(range))
+            high = mid - 1;
+        else if (glyph > font.U16(range + 2))
+            low = mid + 1;
+        else
+            return font.U16(range + 4);
     }
     return 0;
 }
 
 // A pair adjustment subtable's x advance for the pair, or None when the subtable doesn't cover it.
-auto PairAdjustment(const FontBytes& font, rstd::size_t at, rstd::uint32_t left, rstd::uint32_t right)
-    -> Option<rstd::int32_t> {
+auto PairAdjustment(const FontBytes& font, rstd::size_t at, rstd::uint32_t left,
+                    rstd::uint32_t right) -> Option<rstd::int32_t> {
     const auto coverage = CoverageIndex(font, at + font.U16(at + 2), left);
     if (coverage < 0) return None();
     const auto format1 = font.U16(at + 4), format2 = font.U16(at + 6);
@@ -181,16 +189,18 @@ auto PairAdjustment(const FontBytes& font, rstd::size_t at, rstd::uint32_t left,
     };
     if (font.U16(at) == 1) {
         if (rstd::uint32_t(coverage) >= font.U16(at + 8)) return None();
-        const auto set    = at + font.U16(at + 10 + rstd::size_t(coverage) * 2);
-        const auto stride = 2 + size1 + size2;
+        const auto    set    = at + font.U16(at + 10 + rstd::size_t(coverage) * 2);
+        const auto    stride = 2 + size1 + size2;
         rstd::int64_t low {}, high = rstd::int64_t(font.U16(set)) - 1;
         while (low <= high) {
             const auto mid    = (low + high) / 2;
             const auto record = set + 2 + rstd::size_t(mid) * stride;
             const auto second = font.U16(record);
             if (second == right) return Some(x_advance(record + 2));
-            if (second < right) low = mid + 1;
-            else high = mid - 1;
+            if (second < right)
+                low = mid + 1;
+            else
+                high = mid - 1;
         }
         return None();
     }
@@ -207,7 +217,8 @@ auto FontKerning::Read(slice<u8> bytes) -> FontKerning {
     FontKerning kerning;
     const auto* data = reinterpret_cast<const unsigned char*>(bytes.as_raw_ptr());
     const auto  size = rstd::size_t(bytes.len().to_primitive());
-    for (rstd::size_t i {}; i < size; ++i) kerning.m_bytes.push(static_cast<unsigned char>(data[i]));
+    for (rstd::size_t i {}; i < size; ++i)
+        kerning.m_bytes.push(static_cast<unsigned char>(data[i]));
     const FontBytes font { data, size };
 
     // a collection kerns as its first font
@@ -280,8 +291,8 @@ auto FontKerning::Empty() const -> bool {
 auto FontKerning::Pair(rstd::uint32_t left, rstd::uint32_t right) const -> rstd::int32_t {
     const FontBytes font { m_bytes.as_slice().as_raw_ptr(),
                            rstd::size_t(m_bytes.len().to_primitive()) };
-    rstd::int32_t total {};
-    rstd::size_t  first {};
+    rstd::int32_t   total {};
+    rstd::size_t    first {};
     for (const auto end : m_lookup_ends) {
         // within a lookup the first subtable that covers the pair applies
         for (auto i = first; i < end; ++i) {
@@ -304,21 +315,23 @@ auto FontKerning::Pair(rstd::uint32_t left, rstd::uint32_t right) const -> rstd:
                 total += font.S16(pair + 4);
                 break;
             }
-            if (here < key) low = mid + 1;
-            else high = mid - 1;
+            if (here < key)
+                low = mid + 1;
+            else
+                high = mid - 1;
         }
     }
     return total;
 }
 
 struct TextResources::Impl {
-    vectext::SystemTextService  service;
-    AtlasOptions                options;
-    Vec<Arc<AtlasPage>>         pages;
-    HashMap<String, AtlasGlyph> glyphs;
+    vectext::SystemTextService   service;
+    AtlasOptions                 options;
+    Vec<Arc<AtlasPage>>          pages;
+    HashMap<String, AtlasGlyph>  glyphs;
     HashMap<String, FontKerning> kerning; // by font source, for fonts that kern
-    rstd::uint64_t              id { vectext::new_identity() }, rasters {}, layouts {};
-    void                        Initialize() {
+    rstd::uint64_t               id { vectext::new_identity() }, rasters {}, layouts {};
+    void                         Initialize() {
         if (options.extent >= 8 && options.extent <= 8192 && options.max_pages &&
             options.max_pages <= 64 &&
             rstd::uint64_t(options.extent) * options.extent * options.max_pages <= 268435456)
@@ -344,8 +357,8 @@ auto TextResources::RegisterFont(slice<u8> bytes)
     if (source.is_ok()) {
         auto kerning = FontKerning::Read(bytes);
         if (! kerning.Empty())
-            (void)m_impl->kerning.insert(
-                rstd::format("{}:{}", source->collection, source->source), rstd::move(kerning));
+            (void)m_impl->kerning.insert(rstd::format("{}:{}", source->collection, source->source),
+                                         rstd::move(kerning));
     }
     return source;
 }
