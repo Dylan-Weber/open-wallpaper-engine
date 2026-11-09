@@ -665,16 +665,21 @@ Option<Arc<SceneNode>> InstantiateScriptModel(SceneParseContext& context, SceneN
         Vec<VertexAttrSpec> specs;
         for (auto attribute : shape.format) {
             VertexAttrSpec spec = VAttr::Position;
-            if (attribute == i32(0)) spec = VAttr::Position;
-            else if (attribute == i32(1)) spec = VAttr::Normal;
-            else if (attribute == i32(2)) spec = VAttr::Tangent4;
-            else if (attribute == i32(3)) spec = VAttr::TexCoord;
-            else continue;
+            if (attribute == i32(0))
+                spec = VAttr::Position;
+            else if (attribute == i32(1))
+                spec = VAttr::Normal;
+            else if (attribute == i32(2))
+                spec = VAttr::Tangent4;
+            else if (attribute == i32(3))
+                spec = VAttr::TexCoord;
+            else
+                continue;
             spec.padding = false;
             specs.push(rstd::move(spec));
         }
         if (specs.is_empty()) continue;
-        auto attributes = MakeAttrSet(specs.as_slice());
+        auto  attributes = MakeAttrSet(specs.as_slice());
         usize stride {};
         for (const auto& attribute : attributes)
             stride += SceneVertexArray::RealAttributeSize(attribute);
@@ -687,13 +692,13 @@ Option<Arc<SceneNode>> InstantiateScriptModel(SceneParseContext& context, SceneN
         ShaderInfo shader_info;
         shader_info.baseConstSvs = context.layer_resources->global_base_uniforms.clone();
         auto material_result     = BuildMaterial(vfs,
-                                             *context.layer_resources->shader_cache,
-                                             context.layer_resources->shader_environment,
-                                             *wpmat,
-                                             *context.scene,
-                                             rstd::move(shader_info),
-                                             GeometryStageRequirement::None,
-                                             context.load_bench);
+                                                 *context.layer_resources->shader_cache,
+                                                 context.layer_resources->shader_environment,
+                                                 *wpmat,
+                                                 *context.scene,
+                                                 rstd::move(shader_info),
+                                                 GeometryStageRequirement::None,
+                                                 context.load_bench);
         if (material_result.is_err()) {
             rstd_error("script model material '{}' failed to build", shape.material);
             continue;

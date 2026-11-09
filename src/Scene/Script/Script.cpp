@@ -110,11 +110,11 @@ struct EngineHostState {
     Option<JsRuntime::ModelLayerFactory>     model_layer_factory;
     // The meshes scripts built (createModelData), by id, and the layer showing each.
     struct ModelBinding {
-        ModelData        data;
-        owe::SceneNode*  node { nullptr };
+        ModelData       data;
+        owe::SceneNode* node { nullptr };
     };
-    Vec<ModelBinding> models;
-    Option<JsRuntime::LayerConfigFactory>    layer_config_factory;
+    Vec<ModelBinding>                     models;
+    Option<JsRuntime::LayerConfigFactory> layer_config_factory;
     // SceneNode -> text-content setter. Populated by text layers in the
     // parser; consulted by NodeSetText so `thisLayer.text = "..."` reaches
     // TextLayouter::SetText. Missing entry means the layer is not text-
@@ -2110,7 +2110,7 @@ bool ReadTypedArray(JSContext* ctx, JSValueConst value, const uint8_t** data, si
 }
 
 bool ReadFloatArray(JSContext* ctx, JSValueConst value, Vec<float>& out) {
-    const uint8_t* data = nullptr;
+    const uint8_t* data   = nullptr;
     size_t         length = 0, element = 0;
     if (! ReadTypedArray(ctx, value, &data, &length, &element) || element != sizeof(float))
         return false;
@@ -2124,7 +2124,7 @@ bool ReadFloatArray(JSContext* ctx, JSValueConst value, Vec<float>& out) {
 }
 
 bool ReadIndexArray(JSContext* ctx, JSValueConst value, Vec<uint32_t>& out) {
-    const uint8_t* data = nullptr;
+    const uint8_t* data   = nullptr;
     size_t         length = 0, element = 0;
     if (! ReadTypedArray(ctx, value, &data, &length, &element) ||
         (element != sizeof(uint16_t) && element != sizeof(uint32_t)))
@@ -2156,7 +2156,7 @@ bool ReadModelShape(JSContext* ctx, JSValueConst shape, ModelShapeData& out) {
     JS_FreeValue(ctx, index);
     JSValue format = JS_GetPropertyStr(ctx, shape, "vertexFormat");
     if (JS_IsObject(format)) {
-        out.format = Vec<i32>::make();
+        out.format     = Vec<i32>::make();
         JSValue length = JS_GetPropertyStr(ctx, format, "length");
         int32_t count  = 0;
         JS_ToInt32(ctx, &count, length);
@@ -2169,10 +2169,14 @@ bool ReadModelShape(JSContext* ctx, JSValueConst shape, ModelShapeData& out) {
                 const char* text = JS_ToCString(ctx, item);
                 if (text != nullptr) {
                     const auto name = rstd::cppstd::as_str(text).unwrap();
-                    if (name == "position"_str) value = 0;
-                    else if (name == "normal"_str) value = 1;
-                    else if (name == "tangentSigned"_str || name == "tangent"_str) value = 2;
-                    else if (name == "uv"_str) value = 3;
+                    if (name == "position"_str)
+                        value = 0;
+                    else if (name == "normal"_str)
+                        value = 1;
+                    else if (name == "tangentSigned"_str || name == "tangent"_str)
+                        value = 2;
+                    else if (name == "uv"_str)
+                        value = 3;
                     JS_FreeCString(ctx, text);
                 }
             } else {
@@ -2246,8 +2250,8 @@ JSValue NodeSceneCreateModelData(JSContext* ctx, JSValueConst /*this_val*/, int 
     return created;
 }
 
-// modelData.applyData({shapes: [{vertexBuffer, ...}]}): what is given replaces what the shape had, and
-// the layer showing the model takes the new vertices on its next frame.
+// modelData.applyData({shapes: [{vertexBuffer, ...}]}): what is given replaces what the shape had,
+// and the layer showing the model takes the new vertices on its next frame.
 JSValue WwApplyModelData(JSContext* ctx, JSValueConst /*this_val*/, int argc, JSValueConst* argv) {
     auto*   host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
     int32_t id   = -1;
@@ -2292,8 +2296,8 @@ JSValue CreateModelLayer(JSContext* ctx, JSValueConst config, JSValueConst model
     if (! ok || id < 0 || usize(static_cast<size_t>(id)) >= host->models.len() ||
         host->model_layer_factory.is_none())
         return JS_ThrowReferenceError(ctx, "createLayer model is unavailable");
-    auto& binding = host->models[usize(static_cast<size_t>(id))];
-    JSValue name  = JS_GetPropertyStr(ctx, config, "name");
+    auto&   binding   = host->models[usize(static_cast<size_t>(id))];
+    JSValue name      = JS_GetPropertyStr(ctx, config, "name");
     binding.data.name = String::make();
     if (JS_IsString(name)) {
         const char* text = JS_ToCString(ctx, name);

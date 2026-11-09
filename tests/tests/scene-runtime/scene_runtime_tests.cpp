@@ -2694,8 +2694,8 @@ TEST(UniformSourceParallax, PerspectiveWithAuthoredParallaxDepthAppliesShift) {
                          mvp_with_parallax[rstd::usize(13)]) > 1e-5f);
 }
 
-// A script can build a mesh of its own (thisScene.createModelData) and show it as a layer; it later rewrites
-// the vertices with applyData. More Physics draws its cloth this way.
+// A script can build a mesh of its own (thisScene.createModelData) and show it as a layer; it later
+// rewrites the vertices with applyData. More Physics draws its cloth this way.
 TEST(SceneParserScript, ScriptBuiltModelBecomesAMeshLayerWhoseVerticesItRewrites) {
     const auto dir = std::filesystem::temp_directory_path() / "owe-script-model-data";
     std::filesystem::remove_all(dir);
@@ -2723,7 +2723,8 @@ TEST(SceneParserScript, ScriptBuiltModelBecomesAMeshLayerWhoseVerticesItRewrites
 
     auto assets = owe::fs::make_physical_fs(
         owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
-    auto own = owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(dir.string()).unwrap()));
+    auto own =
+        owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(dir.string()).unwrap()));
     ASSERT_TRUE(assets.is_ok());
     ASSERT_TRUE(own.is_ok());
     owe::fs::VFS vfs;
