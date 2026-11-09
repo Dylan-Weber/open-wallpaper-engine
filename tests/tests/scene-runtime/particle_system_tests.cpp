@@ -852,12 +852,14 @@ TEST(ParticleRemap, TheInitialValueFormReadsTheSameSettings) {
             .is_none());
 }
 
-// remapvalue's other inputs (particles-remap-inputs, grey = the input over its range): the particle's speed per axis
-// (a vector, so a colour of 100 0 0 over 0..200 is 0.5 0 0), its opacity, rotation and angular speed (one number),
-// the time, and "lifetimefraction", the name Wallpaper Engine uses for how far through its life it is.
+// remapvalue's other inputs (particles-remap-inputs, grey = the input over its range): the
+// particle's speed per axis (a vector, so a colour of 100 0 0 over 0..200 is 0.5 0 0), its opacity,
+// rotation and angular speed (one number), the time, and "lifetimefraction", the name Wallpaper
+// Engine uses for how far through its life it is.
 TEST(ParticleRemap, ReadsTheInputsWallpaperEngineOffers) {
     auto read = [](ref<str> input) {
-        auto json = rstd::format(R"({{"name":"remapvalue","input":"{}","inputrangemax":4,"output":"color"}})", input);
+        auto json = rstd::format(
+            R"({{"name":"remapvalue","input":"{}","inputrangemax":4,"output":"color"}})", input);
         return owe::ParticleRemap::FromJson(owe::ParseJson(json.as_str()).unwrap());
     };
     EXPECT_EQ(read("lifetimefraction"_str).unwrap().input, owe::ParticleRemap::Input::Lifetime);
@@ -871,20 +873,24 @@ TEST(ParticleRemap, ReadsTheInputsWallpaperEngineOffers) {
     EXPECT_EQ(read("layertime"_str).unwrap().input, owe::ParticleRemap::Input::LayerTime);
     EXPECT_EQ(read("runtime"_str).unwrap().input, owe::ParticleRemap::Input::Runtime);
     EXPECT_EQ(read("timeofday"_str).unwrap().input, owe::ParticleRemap::Input::TimeOfDay);
-    EXPECT_EQ(read("deltatocontrolpoint"_str).unwrap().input, owe::ParticleRemap::Input::DeltaToControlPoint);
-    EXPECT_EQ(read("directiontocontrolpoint"_str).unwrap().input, owe::ParticleRemap::Input::DirectionToControlPoint);
+    EXPECT_EQ(read("deltatocontrolpoint"_str).unwrap().input,
+              owe::ParticleRemap::Input::DeltaToControlPoint);
+    EXPECT_EQ(read("directiontocontrolpoint"_str).unwrap().input,
+              owe::ParticleRemap::Input::DirectionToControlPoint);
     EXPECT_EQ(read("positionbetweentwocontrolpoints"_str).unwrap().input,
               owe::ParticleRemap::Input::PositionBetweenControlPoints);
     EXPECT_TRUE(read("nothing"_str).is_none());
     // a vector input maps each axis over the range
-    auto velocity = read("velocity"_str).unwrap();
+    auto velocity      = read("velocity"_str).unwrap();
     velocity.input_max = 200;
-    EXPECT_TRUE(velocity.Apply(Eigen::Vector3d::Ones(), Eigen::Vector3d(100, 0, 400)).isApprox(Eigen::Vector3d(0.5, 0, 1)));
+    EXPECT_TRUE(velocity.Apply(Eigen::Vector3d::Ones(), Eigen::Vector3d(100, 0, 400))
+                    .isApprox(Eigen::Vector3d(0.5, 0, 1)));
 }
 
-// remapvalue's operations and transform functions (particles-remap-outputs, -remap-transform): "subtract" takes the mapped
-// value from the particle's; triangle and square repeat twice over the input range (square low first), sine once
-// (0 at the ends, 1 in the middle); a noise function isn't read.
+// remapvalue's operations and transform functions (particles-remap-outputs, -remap-transform):
+// "subtract" takes the mapped value from the particle's; triangle and square repeat twice over the
+// input range (square low first), sine once (0 at the ends, 1 in the middle); a noise function
+// isn't read.
 TEST(ParticleRemap, SubtractsAndShapesTheInput) {
     auto read = [](ref<str> extra) {
         auto json = rstd::format(
@@ -911,8 +917,9 @@ TEST(ParticleRemap, SubtractsAndShapesTheInput) {
     EXPECT_TRUE(read(R"(,"transformfunction":"simplexnoise")"_str).is_none());
 }
 
-// A size a remapvalue sets, adds or takes is a radius, drawn twice as large (particles-remap-outputs: adding up to 40 to
-// a size of 60 draws it 105, taking 22.5 draws 15); one it multiplies is a factor.
+// A size a remapvalue sets, adds or takes is a radius, drawn twice as large
+// (particles-remap-outputs: adding up to 40 to a size of 60 draws it 105, taking 22.5 draws 15);
+// one it multiplies is a factor.
 TEST(ParticleRemap, SizeAddsAndSubtractsRadii) {
     auto read = [](ref<str> operation) {
         auto json = rstd::format(
@@ -926,8 +933,9 @@ TEST(ParticleRemap, SizeAddsAndSubtractsRadii) {
 }
 
 TEST(ParticleSubSystem, RemapValueMapsTheParticlesVelocityOpacityAndRotation) {
-    auto remap = [](ref<str> initializer, ref<str> operator_json, bool read_velocity = false,
-                     int ticks = 1) -> Eigen::Vector3f {
+    auto remap =
+        [](ref<str> initializer, ref<str> operator_json, bool read_velocity = false, int ticks = 1)
+        -> Eigen::Vector3f {
         owe::Scene             scene;
         auto                   mesh = Arc<owe::SceneMesh>::make();
         owe::ParticleSubSystem subsystem(scene,
@@ -946,9 +954,10 @@ TEST(ParticleSubSystem, RemapValueMapsTheParticlesVelocityOpacityAndRotation) {
             owe::BoxEmitterProgram(subsystem.SpawnPipeline(),
                                    owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) },
                                    usize())));
-        owe::ParticleInstanceModifiers modifiers(Arc<owe::wpscene::ParticleInstanceoverride>::make(),
-                                                 owe::wpscene::Particle::EFlags { 0 },
-                                                 false);
+        owe::ParticleInstanceModifiers modifiers(
+            Arc<owe::wpscene::ParticleInstanceoverride>::make(),
+            owe::wpscene::Particle::EFlags { 0 },
+            false);
         subsystem.AddOperator(owe::ParticleParser::GenOperator(
             owe::ParseJson(operator_json).unwrap(), modifiers.Clone(), subsystem, usize()));
         subsystem.Finalize();
@@ -958,32 +967,39 @@ TEST(ParticleSubSystem, RemapValueMapsTheParticlesVelocityOpacityAndRotation) {
         return read_velocity ? value.Read(subsystem.Attributes().velocity)
                              : value.Read(subsystem.Attributes().color);
     };
-    auto velocity = remap(R"({"name":"velocityrandom","min":"100 0 0","max":"100 0 0"})"_str,
-                          R"({"name":"remapvalue","input":"velocity","inputrangemax":200,"output":"color"})"_str);
+    auto velocity = remap(
+        R"({"name":"velocityrandom","min":"100 0 0","max":"100 0 0"})"_str,
+        R"({"name":"remapvalue","input":"velocity","inputrangemax":200,"output":"color"})"_str);
     EXPECT_NEAR(velocity.x(), 0.5f, 1e-4f);
     EXPECT_NEAR(velocity.y(), 0.0f, 1e-4f);
-    auto opacity = remap(R"({"name":"alpharandom","min":0.3,"max":0.3})"_str,
-                         R"({"name":"remapvalue","input":"opacity","inputrangemax":1,"output":"color"})"_str);
+    auto opacity =
+        remap(R"({"name":"alpharandom","min":0.3,"max":0.3})"_str,
+              R"({"name":"remapvalue","input":"opacity","inputrangemax":1,"output":"color"})"_str);
     EXPECT_NEAR(opacity.x(), 0.3f, 1e-4f);
     EXPECT_NEAR(opacity.z(), 0.3f, 1e-4f);
-    auto rotation = remap(R"({"name":"rotationrandom","min":"0 0 1","max":"0 0 1"})"_str,
-                          R"({"name":"remapvalue","input":"rotation","inputrangemax":4,"output":"color"})"_str);
+    auto rotation =
+        remap(R"({"name":"rotationrandom","min":"0 0 1","max":"0 0 1"})"_str,
+              R"({"name":"remapvalue","input":"rotation","inputrangemax":4,"output":"color"})"_str);
     EXPECT_NEAR(rotation.x(), 0.25f, 1e-4f);
     EXPECT_NEAR(rotation.y(), 0.25f, 1e-4f);
-    // the velocity output sets, adds and subtracts on each frame (particles-remap-velocity); its input is always 1 here
+    // the velocity output sets, adds and subtracts on each frame (particles-remap-velocity); its
+    // input is always 1 here
     auto velocity_after = [&](ref<str> operation, ref<str> start) {
         auto json = rstd::format(
             R"({{"name":"remapvalue","input":"lifetimefraction","inputrangemax":0.0001,"output":"velocity","operation":"{}","outputrangemax":"0.5 0 0"}})",
             operation);
-        auto init = rstd::format(R"({{"name":"velocityrandom","min":"{}","max":"{}"}})", start, start);
-        // the first step finds the particle at 0 of its life: the operator's second is the one that counts
+        auto init =
+            rstd::format(R"({{"name":"velocityrandom","min":"{}","max":"{}"}})", start, start);
+        // the first step finds the particle at 0 of its life: the operator's second is the one that
+        // counts
         return remap(init.as_str(), json.as_str(), true, 2);
     };
     EXPECT_NEAR(velocity_after("remap"_str, "10 0 0"_str).x(), 0.5f, 1e-4f);
     EXPECT_NEAR(velocity_after("add"_str, "10 0 0"_str).x(), 10.5f, 1e-4f);
     EXPECT_NEAR(velocity_after("subtract"_str, "10 0 0"_str).x(), 9.5f, 1e-4f);
-    auto spin = remap(R"({"name":"angularvelocityrandom","min":"0 0 1","max":"0 0 1"})"_str,
-                      R"({"name":"remapvalue","input":"angularspeed","inputrangemax":4,"output":"color"})"_str);
+    auto spin = remap(
+        R"({"name":"angularvelocityrandom","min":"0 0 1","max":"0 0 1"})"_str,
+        R"({"name":"remapvalue","input":"angularspeed","inputrangemax":4,"output":"color"})"_str);
     EXPECT_NEAR(spin.x(), 0.25f, 1e-4f);
 }
 
