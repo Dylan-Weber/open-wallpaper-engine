@@ -176,10 +176,12 @@ void BoxEmitterProgram::Emit(particle::ParticleEmitterContext& context) {
     const bool restarting  = emitter.timing_started && ! emitter.timing_on;
     const bool timing_on =
         AdvanceEmitterTiming(emitter, m_args.timing, frame->emitter_delta.to_primitive());
-    if (m_args.timing.periodic && restarting && timing_on && ! was_running)
-        frame->subsystem->RestartStaticChildren();
+    // a new on phase fires this emitter's instantaneous count again, and its system's static
+    // children's (wallpaper64.exe's emitter pass copies the count back into the pending one)
+    const bool new_period = m_args.timing.periodic && restarting && timing_on && ! was_running;
+    if (new_period) frame->subsystem->RestartStaticChildren();
     const bool restart =
-        frame->subsystem->InstanceStateMut(frame->instance_index).restart_pending;
+        new_period || frame->subsystem->InstanceStateMut(frame->instance_index).restart_pending;
     // an emitter that is off keeps no backlog
     if (! timing_on) emitter.timer = f64();
     const bool timed_emission = timing_on && TimedEmissionEnabled(frame, m_args.controlpoint);
@@ -245,10 +247,12 @@ void SphereEmitterProgram::Emit(particle::ParticleEmitterContext& context) {
     const bool restarting  = emitter.timing_started && ! emitter.timing_on;
     const bool timing_on =
         AdvanceEmitterTiming(emitter, m_args.timing, frame->emitter_delta.to_primitive());
-    if (m_args.timing.periodic && restarting && timing_on && ! was_running)
-        frame->subsystem->RestartStaticChildren();
+    // a new on phase fires this emitter's instantaneous count again, and its system's static
+    // children's (wallpaper64.exe's emitter pass copies the count back into the pending one)
+    const bool new_period = m_args.timing.periodic && restarting && timing_on && ! was_running;
+    if (new_period) frame->subsystem->RestartStaticChildren();
     const bool restart =
-        frame->subsystem->InstanceStateMut(frame->instance_index).restart_pending;
+        new_period || frame->subsystem->InstanceStateMut(frame->instance_index).restart_pending;
     // an emitter that is off keeps no backlog
     if (! timing_on) emitter.timer = f64();
     const bool timed_emission = timing_on && TimedEmissionEnabled(frame, m_args.controlpoint);
