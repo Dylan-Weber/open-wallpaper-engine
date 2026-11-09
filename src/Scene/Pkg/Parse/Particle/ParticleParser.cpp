@@ -1391,8 +1391,8 @@ struct ControlPointAttractOperator {
 // particle of every group, including the unused places of the last group of four, which count as particles at rest at
 // the system's origin. A neighbour closer than separationthreshold pushes away by (threshold - distance) and one closer
 // than neighborthreshold adds its velocity and position; the separation push and the differences from the mean velocity
-// and position are averaged (with the CPU's approximate reciprocals) and scaled by their factors and the time step,
-// which below 40 frames a second is shortened by (0.025 / frame time)^0.7. Above 200 particles only every n-th group is
+// and position are averaged (with the CPU's approximate reciprocals) and scaled by their factors and dt2, the time step
+// shortened below 40 frames a second by (0.025 / frame time)^0.7. Above 200 particles only every n-th group is
 // updated a frame (n = count / 200 + 1), looking at every n-th group, with the factors multiplied by n. With flags bit 1
 // a particle that speeds up past maxspeed is slowed to it (unless it was already faster).
 struct Boids {
@@ -1465,9 +1465,7 @@ struct BoidsOperator {
                 speed.push(Eigen::Vector3f::Zero());
             }
         }
-        const float delta = static_cast<float>(context.delta.to_primitive());
-        const float scaled =
-            delta * f32(rstd::cmp::min(0.025f / delta, 1.0f)).powf(f32(0.7f)).to_primitive();
+        const float scaled = static_cast<float>(context.delta2.to_primitive());
         const index_t groups = lanes / 4;
         const index_t stride = count / 200 + 1;
         const index_t phase  = static_cast<index_t>(frame % stride);
@@ -1523,7 +1521,7 @@ struct BoidsOperator {
                 if (lane < count) velocities[slots[usize(lane)]] = speed[usize(lane)];
             }
         }
-        ++frame;
+        if (context.last_pass) ++frame;
     }
 };
 

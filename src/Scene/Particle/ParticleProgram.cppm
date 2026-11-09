@@ -199,6 +199,17 @@ struct ParticleUpdateContext {
     ref<dyn<rstd::any::Any>> frame;
     f64                      delta {};
     f64                      elapsed {};
+    // Wallpaper Engine's frame-rate compensated step (dt2, used by boids), split like delta
+    f64                      delta2 {};
+    // false on the first of two operator passes, for state that advances once a frame
+    bool                     last_pass { true };
+};
+
+// How Wallpaper Engine runs the operators in a frame (FUN_140236cd0): once, or at 1..20 target frames a second twice
+// with half dt and half dt2. delta2 is the whole frame's dt2; when it is none the step is used.
+struct ParticleOperatorSteps {
+    u32           passes { 1 };
+    Option<f64>   delta2;
 };
 
 class ParticleProgram {
@@ -406,7 +417,7 @@ public:
     const ParticleDefinition& Definition() const noexcept { return m_definition; }
 
     void Advance(ParticleInstance& instance, ref<dyn<rstd::any::Any>> frame, f64 delta,
-                 f64 elapsed) {
+                 f64 elapsed, ParticleOperatorSteps steps = {}) {
         if (! instance.Active()) return;
 
         auto& storage = instance.Storage();
@@ -452,14 +463,22 @@ public:
         auto states = binding.Write().StatesMut();
         for (auto slot : instance.ActiveSlots()) states[slot.index].fresh = false;
 
+        const auto passes = rstd::cmp::max(steps.passes, u32(1));
+        const auto split  = static_cast<double>(passes.to_primitive());
         ParticleUpdateContext update_context {
             .view    = binding.Write(),
             .slots   = instance.ActiveSlots(),
             .frame   = frame,
-            .delta   = delta,
+            .delta   = f64(delta.to_primitive() / split),
             .elapsed = elapsed,
+            .delta2  = f64(steps.delta2.unwrap_or(delta).to_primitive() / split),
         };
-        for (auto& update : m_definition.program.m_updates) update->Update(update_context);
+        for (u32 pass {}; pass < passes; ++pass) {
+            update_context.last_pass = pass + u32(1) == passes;
+            for (auto& update : m_definition.program.m_updates) update->Update(update_context);
+        }
+        update_context.delta  = delta;
+        update_context.delta2 = steps.delta2.unwrap_or(delta);
         for (auto& update : m_definition.program.m_post_updates) update->Update(update_context);
     }
 
