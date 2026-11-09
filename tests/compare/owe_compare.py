@@ -92,6 +92,18 @@ def probe_boxes(size, inputs=None, bands=(), mirrored=False):
     return boxes
 
 
+def known_differences():
+    """Wallpapers whose difference is known and not a parity target (known-differences.json beside this script:
+    {"random": {name: why}, "control": {name: why}}): a DIFF among them is reported as RAND or CTRL and counted apart.
+    Without the file, none."""
+    path = os.path.join(HERE, 'known-differences.json')
+    if not os.path.exists(path):
+        return {}
+    with open(path) as f:
+        known = json.load(f)
+    return {name: kind for kind in ('random', 'control') for name in known.get(kind, {})}
+
+
 def skipped(name):
     """Why the wallpaper is left out, or None."""
     with open(os.path.join(WALLPAPERS, name, 'project.json')) as f:
@@ -349,7 +361,8 @@ def main():
     names = args.wallpapers or sorted(
         n for n in (os.listdir(WALLPAPERS) if os.path.isdir(WALLPAPERS) else ())
         if os.path.exists(os.path.join(WALLPAPERS, n, 'reference.png')))
-    results, counts = {}, {'ok': 0, 'near': 0, 'differ': 0, 'failed': 0, 'skipped': 0}
+    results, counts = {}, {'ok': 0, 'near': 0, 'differ': 0, 'random': 0, 'control': 0, 'failed': 0, 'skipped': 0}
+    known = known_differences()
     help_text = '' if args.no_render else viewer_help(args.viewer)
     for name in names:
         why = skipped(name)
@@ -450,9 +463,11 @@ def main():
         results[name] = metrics
         ok = metrics['ssim'] >= args.threshold and not metrics['regions']
         near = not ok and near_floor(metrics['ssim'], metrics.get('floor'))
-        counts['ok' if ok else 'near' if near else 'differ'] += 1
+        status = 'ok' if ok else 'near' if near else known.get(name, 'differ')
+        counts[status] += 1
+        metrics['status'] = status
         print('%s %-28s ssim %.4f  mae %.2f  changed %.3f%%  regions %d%s' % (
-            'ok  ' if ok else 'near' if near else 'DIFF', name, metrics['ssim'], metrics['mae'],
+            {'ok': 'ok  ', 'near': 'near', 'differ': 'DIFF', 'random': 'RAND', 'control': 'CTRL'}[status], name, metrics['ssim'], metrics['mae'],
             metrics['changed'] * 100, len(metrics['regions']),
             '  (Wallpaper Engine against itself %.4f, frames %s and %s)' % (
                 floor['ssim'], *metrics['floor']['frames']) if floor else ''), flush=True)
@@ -460,7 +475,9 @@ def main():
     os.makedirs(OUTPUT, exist_ok=True)
     with open(os.path.join(OUTPUT, 'report.json'), 'w') as f:
         json.dump(results, f, indent=2)
-    print('\n%(ok)d ok, %(near)d near, %(differ)d differ, %(failed)d failed, %(skipped)d skipped' % counts)
+    print('\n%(ok)d ok, %(near)d near, %(differ)d differ, %(failed)d failed, %(skipped)d skipped' % counts +
+          (' (and %(random)d random by design, %(control)d controls: known-differences.json)' % counts
+           if counts['random'] or counts['control'] else ''))
     print('pictures and report.json: %s' % OUTPUT)
     return 0 if counts['differ'] == counts['failed'] == 0 else 1
 

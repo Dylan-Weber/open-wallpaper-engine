@@ -1,0 +1,7 @@
+{
+  "_comment": "Wallpapers whose difference from Wallpaper Engine is known and not a parity target: owe_compare reports a DIFF among these as RAND (random by design) or CTRL (control), counted apart from 'differ'. Delete an entry, or this file, to count them as DIFF again. Reasons: wpe-parity-comparer compare/OWE_PARITY.md.",
+  "random": {
+    "particles-layerimage-lattice": "random node picks with repetition leave ~9% of lattice nodes empty, different ones each run (placement matches)"
+  },
+  "control": {}
+}
