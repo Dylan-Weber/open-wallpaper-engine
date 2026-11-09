@@ -918,7 +918,7 @@ auto LightUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
         if (! visible) continue;
         if (index >= max_lights) break;
         const bool lighting_v1 = lit(light.type());
-        auto& node = *light.node();
+        auto&      node        = *light.node();
         node.UpdateTrans();
         const auto transform = node.ModelTrans();
         const auto position  = transform.block<3, 1>(0, 3).cast<float>();
@@ -946,10 +946,10 @@ auto LightUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
         directions_type[index * usize(4) + usize(2)] = direction.z();
         directions_type[index * usize(4) + usize(3)] =
             lighting_v1 ? static_cast<float>(light.type()) : -1.0f;
-        cones_exponent[index * usize(4)]             = light.desc().inner_cone_cos;
-        cones_exponent[index * usize(4) + usize(1)]  = light.desc().outer_cone_cos;
-        cones_exponent[index * usize(4) + usize(2)]  = light.desc().exponent;
-        cast_shadow[index]                           = light.desc().cast_shadow ? 1.0f : 0.0f;
+        cones_exponent[index * usize(4)]            = light.desc().inner_cone_cos;
+        cones_exponent[index * usize(4) + usize(1)] = light.desc().outer_cone_cos;
+        cones_exponent[index * usize(4) + usize(2)] = light.desc().exponent;
+        cast_shadow[index]                          = light.desc().cast_shadow ? 1.0f : 0.0f;
         if (index < usize(3) && light.desc().old_kind) {
             const auto premultiplied = color * light.radius() * light.radius();
             for (usize component {}; component < usize(3); ++component) {

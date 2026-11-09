@@ -200,9 +200,9 @@ void FinalizeUniformSources(SceneParseContext& context) {
         .directional = context.layer_resources->shader_environment.directional_lights,
     };
 
-    const auto light_source = registrar->Register(Box<dyn<UniformSource>>::make(
+    const auto light_source     = registrar->Register(Box<dyn<UniformSource>>::make(
         LightUniformSource { ref<Scene>::from_raw_parts(&scene), Some(light_limits) }));
-    auto lighting_sources = Vec<UniformSourceAttachment>::make();
+    auto       lighting_sources = Vec<UniformSourceAttachment>::make();
     lighting_sources.push(UniformSourceAttachment { .source = light_source });
     if (context.layer_resources->shader_environment.directional_shadow && shadow_light) {
         const auto shadow_source = registrar->Register(Box<dyn<UniformSource>>::make(
