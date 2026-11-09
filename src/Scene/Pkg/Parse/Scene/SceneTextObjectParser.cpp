@@ -333,8 +333,10 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
     }
 
     text::TextLayoutStyle style;
-    style.mesh_origin =
-        direct_text ? text::TextMeshOrigin::Layout : text::TextMeshOrigin::InkBounds;
+    // A layer another layer samples is laid out in its line box, as Wallpaper Engine's composite
+    // holds it: from the line's top, not the ink's (text-composite-blend).
+    style.mesh_origin = direct_text || linked_source ? text::TextMeshOrigin::Layout
+                                                     : text::TextMeshOrigin::InkBounds;
     style.color                 = { obj.color[usize(0)], obj.color[usize(1)], obj.color[usize(2)] };
     style.alpha                 = direct_text ? 1.0f : obj.alpha;
     style.brightness            = obj.brightness;
@@ -442,7 +444,7 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
         .dynamic            = wants_dynamic_text,
         .has_effect         = has_text_effect,
         .frame_bound        = linked_source,
-        .preserve_text_bbox = has_bg || obj.copybackground,
+        .preserve_text_bbox = has_bg || obj.copybackground || linked_source,
     };
     const auto initial_geometry = text::ResolveTextGeometry(geometry_policy, layouter->Metrics());
     const auto [initial_layer_w, initial_layer_h] = TextLayerExtent(initial_geometry);
