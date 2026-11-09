@@ -852,7 +852,9 @@ TEST(ScriptBones, MatricesAreMat4s) {
         JsRuntime::BoneIndexResolver::make([](owe::SceneNode*, ref<str> name) -> uint32_t {
             return name == "hand"_str ? 2 : 0;
         }),
-        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t { return 2; }),
+        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t {
+            return 2;
+        }),
         // the bone in the scene (upstream's getBoneTransform)
         JsRuntime::BoneTransformResolver::make(
             [](owe::SceneNode*, uint32_t bone, double) -> Option<BoneTransformData> {
@@ -881,13 +883,17 @@ TEST(ScriptBones, MatricesAreMat4s) {
     JsRuntime::BoneMatrix set_local {};
     rt.SetBoneMatrixResolvers(
         JsRuntime::BoneMatrixGetter::make(
-            [&](owe::SceneNode*, uint32_t, double) -> Option<JsRuntime::BoneMatrix> { return None(); }),
+            [&](owe::SceneNode*, uint32_t, double) -> Option<JsRuntime::BoneMatrix> {
+                return None();
+            }),
         JsRuntime::BoneMatrixGetter::make(
             [&](owe::SceneNode*, uint32_t bone, double) -> Option<JsRuntime::BoneMatrix> {
                 if (bone != 2) return None();
                 return Some(JsRuntime::BoneMatrix(local));
             }),
-        JsRuntime::BoneMatrixSetter::make([&](owe::SceneNode*, uint32_t, JsRuntime::BoneMatrix, double) {}),
+        JsRuntime::BoneMatrixSetter::make(
+            [&](owe::SceneNode*, uint32_t, JsRuntime::BoneMatrix, double) {
+            }),
         JsRuntime::BoneMatrixSetter::make(
             [&](owe::SceneNode*, uint32_t bone, JsRuntime::BoneMatrix matrix, double) {
                 local_bone = bone;
