@@ -124,6 +124,29 @@ String BuildPageApiSnippet() {
            "})();"_Str;
 }
 
+// Wallpaper Engine's web audio-response API, installed before the page's own scripts run. The page
+// calls wallpaperRegisterAudioListener to subscribe; the browser process feeds samples each tick by
+// invoking __weweb_pushAudio with a 128-float array (64 left + 64 right). Values remain linear and
+// may exceed 1. As in Wallpaper Engine (read over DevTools) the page has one listener: registering
+// again replaces it, registering anything but a function changes nothing, and there is no way to
+// remove it.
+String BuildAudioApiSnippet() {
+    return "(function(){"
+           "  if (window.__weweb_audio_installed) return;"
+           "  window.__weweb_audio_installed = true;"
+           "  var listener = null;"
+           "  window.wallpaperRegisterAudioListener = function(cb){"
+           "    if (typeof cb !== 'function') return;"
+           "    if (listener === null) window.__weweb_setAudioDemand(true);"
+           "    listener = cb;"
+           "  };"
+           "  window.__weweb_pushAudio = function(arr){"
+           "    if (listener === null) return;"
+           "    try { listener(arr); } catch (e) {}"
+           "  };"
+           "})();"_Str;
+}
+
 void InjectUserProperties(CefRefPtr<CefBrowser> browser, const owe::Json& props) {
     if (! browser) return;
     auto frame = browser->GetMainFrame();
