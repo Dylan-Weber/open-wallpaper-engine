@@ -1344,11 +1344,11 @@ TEST(ParticleSubSystem, OperatorsRunOnceFromTwentyOneFramesASecond) {
     }
 }
 
-TEST(ParticleSubSystem, Dt2ComesFromTheTargetFrameTimeNotTheStep) {
-    // a 15 fps target with a longer step (speed, rate): two half steps, dt2 still scaled by 15 fps's factor
+TEST(ParticleSubSystem, Dt2ComesFromTheStepAndThePassesFromTheTarget) {
+    // a 15 fps target with a longer step: two half steps (the target), dt2 scaled by the step's own rate (10 fps)
     auto trace = TraceOperators(u32(15), 0.1);
     ASSERT_EQ(trace.deltas.len(), usize(2));
-    EXPECT_NEAR(trace.deltas2[usize()], 0.05 * Dt2Scale(15.0), 1e-6);
+    EXPECT_NEAR(trace.deltas2[usize()], 0.05 * Dt2Scale(10.0), 1e-6);
     // without a target frame rate the step stands in for the frame time, in one pass
     auto unknown = TraceOperators(u32(), 1.0 / 15.0);
     ASSERT_EQ(unknown.deltas.len(), usize(1));
@@ -1457,4 +1457,16 @@ TEST(ParticleSubSystem, EmitsNothingInAStepWithNoTime) {
     particle::ParticleSlotReader value(storage, particle::ParticleSlot {});
     EXPECT_NEAR(value.Read(subsystem.Attributes().velocity).x(), 300.0f, 1e-3f); // born in the step: not slowed
     EXPECT_NEAR(value.Read(subsystem.Attributes().position).x(), 10.0f, 1e-3f);  // and moved a whole step
+}
+
+// Wallpaper Engine compensates each frame by its own time, not the target frame rate's (particles-frametime-f15/-f30/
+// -f60: the stops of thrown particles follow the frame times its script recorded in the same run, at every rate).
+// A 33 ms frame at a 60 fps target is shortened like a 30 fps frame; the two passes still follow the target rate.
+TEST(ParticleSubSystem, CompensatedStepUsesTheFramesOwnTime) {
+    auto slow = owe::ParticleOperatorStepsFor(u32(60), f64(1.0 / 30.0));
+    EXPECT_NEAR(slow.delta2.unwrap().to_primitive(), (1.0 / 30.0) * 0.81766, 1e-5);
+    EXPECT_TRUE(slow.passes == u32(1));
+    auto quick = owe::ParticleOperatorStepsFor(u32(15), f64(1.0 / 60.0));
+    EXPECT_NEAR(quick.delta2.unwrap().to_primitive(), 1.0 / 60.0, 1e-6);
+    EXPECT_TRUE(quick.passes == u32(2));
 }
