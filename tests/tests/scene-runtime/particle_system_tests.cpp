@@ -8,6 +8,7 @@ import wescene.particle;
 import wescene.particle.program;
 import wescene.pkg.parse;
 import wescene.scene;
+import wescene.utils;
 
 using namespace rstd::prelude;
 using rstd::sync::Arc;
