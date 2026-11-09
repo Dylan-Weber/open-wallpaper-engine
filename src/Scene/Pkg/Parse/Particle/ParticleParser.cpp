@@ -191,8 +191,9 @@ struct HsvColorRandomProgram {
 
     void Initialize(ParticleSpawnColumns& columns, particle::ParticleSpawnRequest request,
                     ref<dyn<rstd::any::Any>>) {
-        const double hue = hue_min == hue_max ? Random::get(0.0, 1.0)
-                                              : algorism::lerp(Random::get(0.0, 1.0), hue_min, hue_max);
+        const double hue = hue_min == hue_max
+                               ? Random::get(0.0, 1.0)
+                               : algorism::lerp(Random::get(0.0, 1.0), hue_min, hue_max);
         const double saturation =
             algorism::lerp(Random::get(0.0, 1.0), saturation_min, saturation_max);
         const double    value = algorism::lerp(Random::get(0.0, 1.0), value_min, value_max);
@@ -521,8 +522,8 @@ ParticleSpawnInstruction ParticleParser::GenInitializer(const Json& wpj,
                 }),
             });
         } else if (name == "hsvcolorrandom"_str) {
-            float hue_min { 0.0f }, hue_max { 1.0f }, saturation_min { 1.0f }, saturation_max { 1.0f },
-                value_min { 1.0f }, value_max { 1.0f };
+            float hue_min { 0.0f }, hue_max { 1.0f }, saturation_min { 1.0f },
+                saturation_max { 1.0f }, value_min { 1.0f }, value_max { 1.0f };
             owe::GetJsonValue(wpj, "huemin"_str, hue_min, false);
             owe::GetJsonValue(wpj, "huemax"_str, hue_max, false);
             owe::GetJsonValue(wpj, "saturationmin"_str, saturation_min, false);
