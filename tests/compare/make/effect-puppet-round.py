@@ -30,7 +30,7 @@ def padded_texture(w, name, tex_w, tex_h, img_w, img_h, stripe=50):
     write_binary(os.path.join(w.name, 'materials', name + '.tex'), data)
 
 
-def puppet_layers(name, title, scene, cells, tex_w, tex_h, img_w, img_h, layer_w, layer_h, inset=(0, 0), mask=None):
+def puppet_layers(name, title, scene, cells, tex_w, tex_h, img_w, img_h, layer_w, layer_h, inset=(0, 0), mask=None, shading=False):
     """cells: [(x, y, tinted)]; every layer is layer_w x layer_h over the image img_w x img_h of a tex_w x tex_h texture."""
     w = Wallpaper(name, title, clear='0 0 0', size=scene)
     padded_texture(w, 'picture', tex_w, tex_h, img_w, img_h)
@@ -44,14 +44,20 @@ def puppet_layers(name, title, scene, cells, tex_w, tex_h, img_w, img_h, layer_w
     if mask:
         tex_file(w, 'masks/white_mask', mask[0], mask[1], bytes([255]) * (mask[0] * mask[1]), binary.R8)
     write_binary(os.path.join(name, 'models/picture_puppet.mdl'),
-                 puppet_mdl('materials/picture.json', vertices, [(0, 1, 2), (0, 2, 3)], [('root', None, (0, 0, 0))]))
+                 puppet_mdl('materials/picture.json', vertices, [(0, 1, 2), (0, 2, 3)], [('root', None, (0, 0, 0))],
+                            [('rest', 30.0, [[((0, 0, 0), (0, 0, 0), (1, 1, 1))] * 2])], shading=shading))
     w.files['models/picture.json'] = {"autosize": True, "material": "materials/picture.json",
                                       "puppet": "models/picture_puppet.mdl"}
     w.files['materials/picture.json'] = {"passes": [{
         "blending": "translucent", "cullmode": "nocull", "depthtest": "disabled", "depthwrite": "disabled",
         "shader": "genericimage3", "combos": {"VERSION": 2}, "textures": ["picture"]}]}
-    for i, (x, y, tinted) in enumerate(cells):
+    for i, cell in enumerate(cells):
+        x, y, tinted, *rest = cell
         extra = {}
+        if rest and rest[0]:
+            # an animation layer at blend 0: additive, normal or (hidden) invisible
+            extra["animationlayers"] = [{"animation": 1, "blend": 0.0, "rate": 1.0, "additive": rest[0] != 'normal',
+                                         "visible": rest[0] != 'hidden', "id": 500 + i, "name": "rest"}]
         if tinted:
             effect = shipped("tint", {"color": "0 0 0", "alpha": 0.25}, id=10 + i)
             if mask:
@@ -85,3 +91,13 @@ puppet_layers('effect-puppet-round-both', 'inset mesh and masked tint on a puppe
 for kind, tinted in (('plain', False), ('tint', True)):
     puppet_layers('effect-puppet-round-over-' + kind, 'an oversize puppet layer, ' + kind, (2560, 1440),
                   [(1280, 720, tinted)], 3840, 3008, 3800, 3000, 3800, 3000, inset=(41, 26))
+# a visible animation layer at blend 0 on an autosize puppet: Gun Girl's pictures differ in Wallpaper Engine with it
+for name, size, scene, tex, img, inset in (
+        ('small', (1000, 800), (2400, 1350), (1024, 832), (1000, 800), (12, 8)),
+        ('big', (3800, 3000), (8000, 4500), (3840, 3008), (3800, 3000), (41, 26))):
+    cx, cy = scene[0] / 4, scene[1] / 2
+    puppet_layers('effect-puppet-layer-' + name, 'an autosize puppet with and without an animation layer at blend 0', scene,
+                  [(cx, cy, False), (cx * 3, cy, False, 'additive')], tex[0], tex[1], img[0], img[1], size[0], size[1], inset=inset)
+# the same with the mesh's normals and tangents (Gun Girl's mesh flags are 0xf: position, normal, tangent, texture coordinates)
+puppet_layers('effect-puppet-layer-shaded', 'a shaded autosize puppet with and without an animation layer at blend 0', (2400, 1350),
+              [(600, 675, False), (1800, 675, False, 'additive')], 1024, 832, 1000, 800, 1000, 800, inset=(12, 8), shading=True)
