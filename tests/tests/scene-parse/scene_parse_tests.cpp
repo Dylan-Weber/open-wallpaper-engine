@@ -2719,3 +2719,44 @@ TEST(SceneAssetPaths, ModelCameraAndClipRetainTheirReparseSemantics) {
     EXPECT_EQ(camera.path, "motion.json"_str);
     EXPECT_TRUE(clip.name.is_empty());
 }
+
+// Wallpaper Engine draws an image layer's texture 0.15 texel in from the quad's edges at each end,
+// counted in the texture's own texels (probes texture-uv-inset, -big and -size).
+TEST(LayerTexCoordInset, IsAFixedShareOfATextureTexel) {
+    auto inset = owe::LayerTexCoordInset(4.0f, 1.0f);
+    EXPECT_FLOAT_EQ(inset[rstd::usize(0)], 0.15f / 4.0f);
+    EXPECT_FLOAT_EQ(inset[rstd::usize(1)], 0.15f);
+    auto padded = owe::LayerTexCoordInset(128.0f, 32.0f);
+    EXPECT_FLOAT_EQ(padded[rstd::usize(0)], 0.15f / 128.0f);
+    EXPECT_FLOAT_EQ(padded[rstd::usize(1)], 0.15f / 32.0f);
+}
+
+TEST(LayerTexCoordInset, PutsTexelEdgesWhereWallpaperEngineDraws) {
+    // a 4-texel texture across a quad: Wallpaper Engine's texel edges at 0.919, 2.000 and 3.081
+    // texels of the quad
+    auto       inset = owe::LayerTexCoordInset(4.0f, 4.0f)[rstd::usize(0)];
+    const auto edge  = [&](float u) {
+        return (u - inset) / (1.0f - 2.0f * inset) * 4.0f;
+    };
+    EXPECT_NEAR(edge(0.25f), 0.919f, 0.003f);
+    EXPECT_NEAR(edge(0.5f), 2.0f, 0.003f);
+    EXPECT_NEAR(edge(0.75f), 3.081f, 0.003f);
+}
+
+TEST(LayerTexCoordInset, NoneForAnEmptyTexture) {
+    auto inset = owe::LayerTexCoordInset(0.0f, 0.0f);
+    EXPECT_EQ(inset[rstd::usize(0)], 0.0f);
+    EXPECT_EQ(inset[rstd::usize(1)], 0.0f);
+}
+
+// A model with "nopadding" draws its texture edge to edge (texture-uv-inset-nopadding: a 4-texel
+// texture's edges at 1, 2 and 3 of the quad, where the same texture on a plain model starts 0.15
+// texel in; the videotex-* probes' models).
+TEST(LayerTexCoordInset, NoneForANoPaddingModel) {
+    auto inset = owe::ImageLayerTexCoordInset(4.0f, 4.0f, true);
+    EXPECT_EQ(inset[rstd::usize(0)], 0.0f);
+    EXPECT_EQ(inset[rstd::usize(1)], 0.0f);
+    auto padded = owe::ImageLayerTexCoordInset(4.0f, 4.0f, false);
+    EXPECT_FLOAT_EQ(padded[rstd::usize(0)], 0.15f / 4.0f);
+    EXPECT_FLOAT_EQ(padded[rstd::usize(1)], 0.15f / 4.0f);
+}

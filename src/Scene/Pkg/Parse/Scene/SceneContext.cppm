@@ -85,8 +85,10 @@ void LoadConstvalue(SceneLayerBuildContext&, SceneMaterial&, const wpscene::Mate
                     const ShaderInfo&, SceneShaderValueAnimationMap* = nullptr);
 
 using DirectDrawQuad = array<array<float, 2>, 4>;
+// `texcoord_inset` moves the texture coordinates in from each edge (LayerTexCoordInset)
 void GenCardMesh(SceneMesh&, array<float, 2>, array<float, 2> = { 1.0f, 1.0f },
-                 const Eigen::Vector3f& = Eigen::Vector3f::Zero());
+                 const Eigen::Vector3f&         = Eigen::Vector3f::Zero(),
+                 array<float, 2> texcoord_inset = { 0.0f, 0.0f });
 auto ReadDirectDrawQuad(const wpscene::Material&) -> Option<DirectDrawQuad>;
 void GenDirectDrawQuadMesh(SceneMesh&, float, const DirectDrawQuad&);
 void SetParticleMesh(SceneMesh&, u32, bool, bool geometry_shader_supported);
@@ -242,6 +244,7 @@ void RegisterPuppetLayer(SceneLayerBuildContext&, SceneNode*, Arc<PuppetLayer>);
 void MarkHiddenLinkSource(SceneLayerBuildContext&, i32);
 auto ToSceneUserVisibilityBinding(const wpscene::VisibleUserBinding&) -> SceneUserVisibilityBinding;
 auto Texture0UvScale(const SceneMaterial&, bool = false) -> array<float, 2>;
+auto Texture0TexCoordInset(const SceneMaterial&, bool nopadding) -> array<float, 2>;
 auto ParticleTextureRatio(const SceneMaterial&) -> float;
 void RegisterImageAlignmentBinding(SceneLayerBuildContext&, SceneNode*, ref<str>,
                                    SceneLayerBuildContext::ImageAlignmentSetter);

@@ -17,7 +17,7 @@ namespace owe
 using DirectDrawQuad = array<array<float, 2>, 4>;
 
 void GenCardMesh(SceneMesh& mesh, const array<float, 2> size, const array<float, 2> mapRate,
-                 const Vector3f& position_offset) {
+                 const Vector3f& position_offset, const array<float, 2> texcoord_inset) {
     float left   = -(size[usize()] / 2.0f) + position_offset.x();
     float right  = size[usize()] / 2.0f + position_offset.x();
     float bottom = -(size[usize(1)] / 2.0f) + position_offset.y();
@@ -25,6 +25,9 @@ void GenCardMesh(SceneMesh& mesh, const array<float, 2> size, const array<float,
     float z      = 0.0f;
 
     float tw = mapRate[usize()], th = mapRate[usize(1)];
+    float u0 = texcoord_inset[usize()], v0 = texcoord_inset[usize(1)];
+    tw -= u0;
+    th -= v0;
 
     // clang-format off
 	const rstd::array<float, 12> pos = {
@@ -34,9 +37,9 @@ void GenCardMesh(SceneMesh& mesh, const array<float, 2> size, const array<float,
 		right, bottom, z,
 	};
 	const rstd::array<float, 8> texCoord = {
-		0.0f, 0.0f,
-		0.0f, th,
-		tw, 0.0f,
+		u0, v0,
+		u0, th,
+		tw, v0,
 		tw, th,
 	};
     // clang-format on
