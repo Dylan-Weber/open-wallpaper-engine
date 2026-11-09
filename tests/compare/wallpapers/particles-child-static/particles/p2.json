@@ -1,0 +1,71 @@
+{
+  "material": "materials/particle/halo.json",
+  "maxcount": 8,
+  "starttime": 0,
+  "flags": 0,
+  "emitter": [
+    {
+      "id": 1,
+      "name": "boxrandom",
+      "distancemin": "0 0 0",
+      "distancemax": "0 0 0",
+      "directions": "1 1 0",
+      "origin": "0 0 0",
+      "speedmin": 0,
+      "speedmax": 0,
+      "rate": 5,
+      "flags": 4,
+      "minperiodicdelay": 1,
+      "maxperiodicdelay": 1,
+      "minperiodicduration": 1,
+      "maxperiodicduration": 1
+    }
+  ],
+  "initializer": [
+    {
+      "id": 2,
+      "name": "lifetimerandom",
+      "min": 1.5,
+      "max": 1.5
+    },
+    {
+      "id": 3,
+      "name": "sizerandom",
+      "min": 20,
+      "max": 20
+    },
+    {
+      "id": 4,
+      "name": "velocityrandom",
+      "min": "100 0 0",
+      "max": "100 0 0"
+    }
+  ],
+  "operator": [
+    {
+      "id": 5,
+      "name": "movement",
+      "drag": 0,
+      "gravity": "0 0 0"
+    }
+  ],
+  "renderer": [
+    {
+      "id": 90,
+      "name": "sprite"
+    }
+  ],
+  "children": [
+    {
+      "id": 9,
+      "maxcount": 10,
+      "name": "particles/glow.json",
+      "type": "static",
+      "flags": 2,
+      "probability": 1.0,
+      "origin": "0 0 0",
+      "angles": "0 0 0",
+      "scale": "1 1 1"
+    }
+  ]
+}

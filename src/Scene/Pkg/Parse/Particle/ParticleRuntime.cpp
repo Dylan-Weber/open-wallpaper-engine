@@ -720,6 +720,7 @@ void ParticleSubSystem::Advance(f64 frame_time, f64 child_frame_time, bool updat
         Warmup(current, frame_ref);
         m_pending_child_deaths.clear();
         System().Advance(*current.instance, frame_ref, frame_time, m_time);
+        current.state->restart_pending  = false;
         current.state->no_live_particle = true;
         auto states                     = current.instance->Binding().Read().States();
         for (const auto& state : states) {
@@ -808,6 +809,13 @@ void ParticleSubSystem::Tick(f64 frame_time, bool update_mesh) {
     auto rate =
         m_instance_modifiers.is_some() ? (*m_instance_modifiers).Rate() : m_rate.to_primitive();
     Advance(frame_time * f64(rstd::cmp::max(0.0, rate)), frame_time, update_mesh);
+}
+
+void ParticleSubSystem::RestartStaticChildren() {
+    for (auto& child : m_children) {
+        if (child->Type() != SpawnType::STATIC) continue;
+        for (auto& state : child->m_instance_states) state.restart_pending = true;
+    }
 }
 
 void ParticleSubSystem::SpawnChild(ParticleInstanceRef parent, ParticleSubSystem& child,
