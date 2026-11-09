@@ -138,8 +138,8 @@ auto BindEntries(mut_ref<dyn<UniformBindingSink>>      sink,
     return Ok(empty {});
 }
 
-// A layer scaled to no area (the sky's gradient layer is 0 x 0) still makes its composite: the matrices an effect pass
-// reads take its collapsed axes as scale 1, or they would be singular.
+// A layer scaled to no area (the sky's gradient layer is 0 x 0) still makes its composite: the
+// matrices an effect pass reads take its collapsed axes as scale 1, or they would be singular.
 Matrix4d RestoreCollapsedAxes(Matrix4d matrix) {
     for (int column = 0; column < 3; ++column) {
         if (f64(matrix.col(column).head<3>().norm()).to_primitive() < 1e-4)
@@ -419,7 +419,8 @@ auto UniformSceneState::ComputeParallaxOffset(const UniformNodeState& state,
     const Vector2f depth { depth_values[usize(0)], depth_values[usize(1)] };
     const auto     ortho_values = Ortho();
     const Vector2f ortho { ortho_values[usize(0)], ortho_values[usize(1)] };
-    // the parallax follows the pointer only as far as the window's edge (camera-parallax); shaders see it outside
+    // the parallax follows the pointer only as far as the window's edge (camera-parallax); shaders
+    // see it outside
     const Vector2f pointer =
         Vector2f(Inputs().pointer.data()).cwiseMax(Vector2f::Zero()).cwiseMin(Vector2f::Ones());
     const Vector2f pointer_offset  = Scaling(1.0f, -1.0f) * (Vector2f { 0.5f, 0.5f } - pointer);
@@ -615,7 +616,8 @@ auto TransformUniformSource::Evaluate(ref<dyn<UniformUpdateContext>> context,
         auto        attached = camera.GetAttachedNode();
         // A layer camera renders the complete local surface; its outer draw owns parallax.
         const bool layer_camera = attached.is_some() && (*attached)->HasLayer();
-        // the layer's own frame is what a layer camera renders: a layer scaled to no area still has one
+        // the layer's own frame is what a layer camera renders: a layer scaled to no area still has
+        // one
         if (layer_camera) model = RestoreCollapsedAxes(model);
         const bool apply_model_parallax =
             node.Camera() != "effect"_str && parallax.enable && ! layer_camera;
@@ -697,7 +699,8 @@ auto TransformUniformSource::Evaluate(ref<dyn<UniformUpdateContext>> context,
             if (m_node->effect_projection_node.is_some()) {
                 auto& source = **m_node->effect_projection_node;
                 source.UpdateTrans();
-                layer_model  = RestoreCollapsedAxes(source.ModelTrans()) * source.GeometryTransform();
+                layer_model =
+                    RestoreCollapsedAxes(source.ModelTrans()) * source.GeometryTransform();
                 effect_model = layer_model;
                 if (m_node->effect_projection_size[usize(0)] > 0.0f &&
                     m_node->effect_projection_size[usize(1)] > 0.0f) {
@@ -908,8 +911,8 @@ Vec<usize> LightingSlots(slice<ref<SceneLight>> lights, usize slots) {
 }
 
 // Lighting V1's slots, by index in `lights`: the lights that light now and that the light config
-// still has a light of their kind for, in order, up to kLightingV1Slots. The old kind of light takes
-// none (the newer interface leaves it out); without limits, every light that lights.
+// still has a light of their kind for, in order, up to kLightingV1Slots. The old kind of light
+// takes none (the newer interface leaves it out); without limits, every light that lights.
 Vec<usize> LightingV1Slots(slice<ref<SceneLight>> lights, const Option<LightKindLimits>& limits) {
     auto left     = limits;
     auto lighting = Vec<usize>::make();
@@ -948,8 +951,8 @@ LightSlot SlotValues(const SceneLight& light) {
     const auto position  = transform.block<3, 1>(0, 3).cast<float>();
     auto       color     = light.color();
     if (node.IsColorOverridden()) color = node.Color() * light.desc().intensity;
-    values.position     = { position.x(), position.y(), position.z() };
-    values.color_radius = { color.x(), color.y(), color.z(), light.radius() };
+    values.position                 = { position.x(), position.y(), position.z() };
+    values.color_radius             = { color.x(), color.y(), color.z(), light.radius() };
     Eigen::Vector3d local_direction = Eigen::Vector3d::UnitX();
     if (light.type() != SceneLightType::Spot) local_direction = -local_direction;
     Eigen::Vector3f direction =
@@ -958,11 +961,14 @@ LightSlot SlotValues(const SceneLight& light) {
     // direction.
     if (light.type() == SceneLightType::Tube)
         direction = (transform.block<3, 3>(0, 0) * (2.0 * Eigen::Vector3d::UnitX())).cast<float>();
-    values.direction_type = { direction.x(), direction.y(), direction.z(),
-                              static_cast<float>(light.type()) };
-    values.cone_exponent  = { light.desc().inner_cone_cos, light.desc().outer_cone_cos,
-                              light.desc().exponent, light.desc().cookie ? 1.0f : 0.0f };
-    values.cast_shadow    = light.desc().cast_shadow ? 1.0f : 0.0f;
+    values.direction_type = {
+        direction.x(), direction.y(), direction.z(), static_cast<float>(light.type())
+    };
+    values.cone_exponent = { light.desc().inner_cone_cos,
+                             light.desc().outer_cone_cos,
+                             light.desc().exponent,
+                             light.desc().cookie ? 1.0f : 0.0f };
+    values.cast_shadow   = light.desc().cast_shadow ? 1.0f : 0.0f;
     return values;
 }
 
@@ -988,14 +994,14 @@ auto LightUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
                                   mut_ref<dyn<UniformValueSink>> sink) const
     -> Result<empty, UniformError> {
     using Output = LightUniformOutput;
-    UniformWriter    writer(sink);
-    constexpr usize  max_lights { 4 };
-    array<float, 12> positions {};
-    array<float, 16> colors_radius {};
-    array<float, 12> colors_legacy {};
-    array<float, 16> directions_type {};
-    array<float, 16> cones_exponent {};
-    array<float, 4>  cast_shadow {};
+    UniformWriter                                     writer(sink);
+    constexpr usize                                   max_lights { 4 };
+    array<float, 12>                                  positions {};
+    array<float, 16>                                  colors_radius {};
+    array<float, 12>                                  colors_legacy {};
+    array<float, 16>                                  directions_type {};
+    array<float, 16>                                  cones_exponent {};
+    array<float, 4>                                   cast_shadow {};
     array<float, kLightingV1Slots.to_primitive() * 3> v1_positions {};
     array<float, kLightingV1Slots.to_primitive() * 4> v1_colors_radius {};
     array<float, kLightingV1Slots.to_primitive() * 4> v1_directions_type {};
@@ -1007,7 +1013,7 @@ auto LightUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
     for (usize index {}; index < kLightingV1Slots; ++index)
         v1_directions_type[index * usize(4) + usize(3)] = -1.0f;
 
-    const auto v1 = LightingV1Slots(lights.as_slice(), m_limits);
+    const auto v1    = LightingV1Slots(lights.as_slice(), m_limits);
     auto       in_v1 = [&](usize light) {
         for (usize slot {}; slot < v1.len(); ++slot)
             if (v1[slot] == light) return true;
@@ -1255,7 +1261,7 @@ auto ShadowUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
     if (camera_ok) forward.normalize();
 
     const auto lights = SceneLights(*m_scene);
-    bool have_cascades {};
+    bool       have_cascades {};
     // a light's views go in the Lighting V1 slot it takes in LightUniformSource
     const auto lighting = LightingV1Slots(lights.as_slice(), m_limits);
     for (usize slot {}; slot < lighting.len(); ++slot) {

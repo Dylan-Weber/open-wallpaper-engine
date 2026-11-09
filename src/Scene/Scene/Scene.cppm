@@ -876,10 +876,11 @@ public:
 
     bool hasSprite { false };
 
-    SceneMaterialCustomShader  customShader;
+    SceneMaterialCustomShader customShader;
     // its shadow casters, one for each of the scene's shadow definitions
     Vec<Arc<SceneMaterial>> shadow_variants;
-    // a translucent or additive material: its casters draw no pixels (Wallpaper Engine casts no shadow from it)
+    // a translucent or additive material: its casters draw no pixels (Wallpaper Engine casts no
+    // shadow from it)
     bool shadow_silent { false };
 
 private:
@@ -1236,11 +1237,13 @@ public:
         m_lookat = true;
     }
     bool IsLookAt() const { return m_lookat; }
-    // A camera that looks at an orthographic scene's layers from a distance (the scene overrides the perspective
-    // fov) was set up to see `height` units at its look-at center; FitFovToHeightAtCenter keeps it seeing the
-    // projection's height when the window crops the projection.
+    // A camera that looks at an orthographic scene's layers from a distance (the scene overrides
+    // the perspective fov) was set up to see `height` units at its look-at center;
+    // FitFovToHeightAtCenter keeps it seeing the projection's height when the window crops the
+    // projection.
     void SetFitsProjectionHeight(double height) { m_fit_height = Some(height); }
-    // Sets the fov so such a camera sees `height` units at its look-at center. Other cameras keep their fov.
+    // Sets the fov so such a camera sees `height` units at its look-at center. Other cameras keep
+    // their fov.
     void FitFovToHeightAtCenter(double height);
     // Base transforms remain independent of transient rendering offsets.
     auto Transforms() const -> SceneCameraTransforms;
@@ -1420,7 +1423,7 @@ public:
     void SetFrame(float frame);
     void SetRate(float rate);
 
-    bool     IsPlaying() const { return m_playing; }
+    bool IsPlaying() const { return m_playing; }
     // How many times it has got to its end: every loop, or a single play's end.
     u64      EndedCount() const { return m_ended; }
     i32      Frame() const;
@@ -1708,12 +1711,12 @@ public:
         MarkTransDirty();
     }
 
-    ref<str>        Camera() const { return m_cameraName.as_str(); }
-    void            SetCamera(ref<str> name) { m_cameraName = rstd::into(name); }
-    bool            Perspective() const { return m_perspective; }
-    void            SetPerspective(bool value) { m_perspective = value; }
-    bool            Reflected() const { return m_reflected; }
-    void            SetReflected(bool value) { m_reflected = value; }
+    ref<str> Camera() const { return m_cameraName.as_str(); }
+    void     SetCamera(ref<str> name) { m_cameraName = rstd::into(name); }
+    bool     Perspective() const { return m_perspective; }
+    void     SetPerspective(bool value) { m_perspective = value; }
+    bool     Reflected() const { return m_reflected; }
+    void     SetReflected(bool value) { m_reflected = value; }
     // A model layer: with the scene's transparent sorting, models are ordered by depth.
     bool            DrawsAsModel() const { return m_draws_as_model; }
     void            SetDrawsAsModel(bool value) { m_draws_as_model = value; }
@@ -1830,8 +1833,8 @@ public:
     auto AnimationLayer(usize index) const -> Option<Arc<SceneAnimationLayer>>;
     // how many animation layers the node has (a script's getAnimationLayerCount)
     usize AnimationLayerCount() const { return m_animation_layers.len(); }
-    void TickFieldAnimations(double runtime, Vec<SceneAnimationEventDispatch>& events);
-    void SetAlphaSource(SceneNode* node) { m_alpha_source = node; }
+    void  TickFieldAnimations(double runtime, Vec<SceneAnimationEventDispatch>& events);
+    void  SetAlphaSource(SceneNode* node) { m_alpha_source = node; }
 
     ref<str> VisibleUserKey() const { return m_visible_user_binding.key.as_str(); }
     void     SetVisibleUserKey(String key) {
@@ -3200,14 +3203,14 @@ public:
     double ScriptStart() const { return m_script_start; }
     void   SetCameraPathDelay(double seconds) { m_camera_path_delay = seconds; }
     double CameraPathDelay() const { return m_camera_path_delay; }
-    void RegisterCameraPathUserBinding(String key, Arc<SceneCameraPath>);
-    void RegisterTexture(String name, SceneTexture texture);
-    bool RemoveTexture(ref<str> name);
-    bool RemoveRenderTarget(ref<str> name);
-    auto Texture(ref<str> name) const -> Option<ref<SceneTexture>>;
-    auto TextureContentRevision(ref<str> name) const -> u64;
-    auto TextureResource(SceneTextureId id) const -> Option<vrento::resource::TextureResourceRef>;
-    auto TargetResource(SceneRenderTargetId id) const
+    void   RegisterCameraPathUserBinding(String key, Arc<SceneCameraPath>);
+    void   RegisterTexture(String name, SceneTexture texture);
+    bool   RemoveTexture(ref<str> name);
+    bool   RemoveRenderTarget(ref<str> name);
+    auto   Texture(ref<str> name) const -> Option<ref<SceneTexture>>;
+    auto   TextureContentRevision(ref<str> name) const -> u64;
+    auto   TextureResource(SceneTextureId id) const -> Option<vrento::resource::TextureResourceRef>;
+    auto   TargetResource(SceneRenderTargetId id) const
         -> Option<vrento::resource::TextureResourceRef>;
     auto  TargetResource(ref<str>                             name,
                          vrento::resource::TextureRequestKind kind =
@@ -3429,7 +3432,8 @@ public:
     auto ScreenToWorld(array<float, 2> position) -> Eigen::Vector3d;
     void SetPointerInWindow(bool inside) { m_pointer_in_window = inside; }
     bool PointerInWindow() const { return m_pointer_in_window; }
-    // The frame rate the wallpaper runs at (0 when not known); particles take two operator passes at 1..20.
+    // The frame rate the wallpaper runs at (0 when not known); particles take two operator passes
+    // at 1..20.
     void SetTargetFps(u32 fps) { m_target_fps = fps; }
     auto TargetFps() const -> u32 { return m_target_fps; }
     void SetClearColor(array<float, 3> color) { m_clear_color = rstd::move(color); }
@@ -3568,11 +3572,11 @@ private:
     HashSet<String>                          m_active_camera_paths;
     MaterialBindingIndex<Arc<SceneCameraPath>> m_camera_path_user_index;
     // The scene's own field of view (general.fov), what scripts read as thisScene.fov
-    double                                   m_scene_fov { 50.0 };
+    double m_scene_fov { 50.0 };
     // the camera scripts see: the scene's own and what scripts set (ScriptCameraTransforms)
-    Option<SceneCameraTransforms>              m_script_camera;
-    double                                   m_script_start { 0.0 };
-    double                                   m_camera_path_delay { 0.0 };
+    Option<SceneCameraTransforms> m_script_camera;
+    double                        m_script_start { 0.0 };
+    double                        m_camera_path_delay { 0.0 };
 
     void        RebuildElidableLayerIds();
     void        WriteRenderTarget(String name, SceneRenderTarget target);

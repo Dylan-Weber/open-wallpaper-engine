@@ -377,8 +377,9 @@ TEST(ParticleProgram, RunsPreparedProgramsInContractOrder) {
     EXPECT_FALSE(value.Read(instance.Storage().SlotStateKey()).fresh);
 }
 
-// Wallpaper Engine at 20 frames a second or less (FUN_140236cd0): ages, emitters and initializers once with the whole
-// step, then the operator pass twice with half dt and half dt2; post-updates (trails) still once a frame.
+// Wallpaper Engine at 20 frames a second or less (FUN_140236cd0): ages, emitters and initializers
+// once with the whole step, then the operator pass twice with half dt and half dt2; post-updates
+// (trails) still once a frame.
 TEST(ParticleProgram, RunsTheOperatorPassTwiceWithHalfSteps) {
     particle::ParticleSchemaBuilder builder;
     auto temperature = Register<TemperatureAttribute>(builder, "temperature"_str, "test"_str, 0.0f);
@@ -434,8 +435,8 @@ TEST(ParticleProgram, RunsTheOperatorPassTwiceWithHalfSteps) {
 }
 
 TEST(ParticleProgram, OnePassUsesTheStepAsDt2ByDefault) {
-    rstd::vec::Vec<double>   deltas;
-    rstd::vec::Vec<double>   deltas2;
+    rstd::vec::Vec<double>    deltas;
+    rstd::vec::Vec<double>    deltas2;
     particle::ParticleProgram program;
     program.AddUpdate(Box<dyn<particle::ParticleUpdateProgram>>::make(DeltaTraceUpdate {
         .deltas = rstd::addressof(deltas), .deltas2 = rstd::addressof(deltas2) }));
@@ -686,8 +687,8 @@ TEST(ParticleSubSystem, ConvertsWorldSpaceFollowAnchorsIntoChildLocalSpace) {
     EXPECT_TRUE(resolved.head<3>().cast<float>().isApprox(parent_position));
 }
 
-// A child made by eventspawn stays where its parent's particle was born; one made by eventfollow goes with the particle
-// (particles-event-children).
+// A child made by eventspawn stays where its parent's particle was born; one made by eventfollow
+// goes with the particle (particles-event-children).
 TEST(ParticleSubSystem, AnEventSpawnChildStaysWhereTheParticleWasBornAndAFollowChildMoves) {
     auto child_position = [](owe::ParticleSubSystem::SpawnType type) {
         owe::Scene scene;
@@ -706,16 +707,22 @@ TEST(ParticleSubSystem, AnEventSpawnChildStaysWhereTheParticleWasBornAndAFollowC
         parent.AddInitializer(owe::ParticleParser::GenInitializer(
             owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(1)));
         parent.AddInitializer(owe::ParticleParser::GenInitializer(
-            owe::ParseJson(R"({"name":"velocityrandom","min":"30 0 0","max":"30 0 0"})"_str).unwrap(), u32(1)));
+            owe::ParseJson(R"({"name":"velocityrandom","min":"30 0 0","max":"30 0 0"})"_str)
+                .unwrap(),
+            u32(1)));
         parent.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
             owe::BoxEmitterProgram(parent.SpawnPipeline(),
                                    owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) },
                                    usize())));
-        owe::ParticleInstanceModifiers modifiers(Arc<owe::wpscene::ParticleInstanceoverride>::make(),
-                                                 owe::wpscene::Particle::EFlags { 0 },
-                                                 false);
-        parent.AddOperator(owe::ParticleParser::GenOperator(
-            owe::ParseJson(R"({"name":"movement"})"_str).unwrap(), modifiers.Clone(), parent, usize()));
+        owe::ParticleInstanceModifiers modifiers(
+            Arc<owe::wpscene::ParticleInstanceoverride>::make(),
+            owe::wpscene::Particle::EFlags { 0 },
+            false);
+        parent.AddOperator(
+            owe::ParticleParser::GenOperator(owe::ParseJson(R"({"name":"movement"})"_str).unwrap(),
+                                             modifiers.Clone(),
+                                             parent,
+                                             usize()));
         auto child = Box<owe::ParticleSubSystem>::make(scene,
                                                        Arc<owe::SceneMesh>::make(),
                                                        u32(1),
@@ -731,7 +738,8 @@ TEST(ParticleSubSystem, AnEventSpawnChildStaysWhereTheParticleWasBornAndAFollowC
         parent.Finalize();
         for (int tick = 0; tick < 12; ++tick) parent.Tick(f64(1.0 / 4.0), false);
         EXPECT_EQ(child_system->System().InstanceCount(), usize(1));
-        EXPECT_GT(parent.System().Instance(usize()).Binding().Read().Positions()[usize()].x(), 60.0f);
+        EXPECT_GT(parent.System().Instance(usize()).Binding().Read().Positions()[usize()].x(),
+                  60.0f);
         return child_system->InstanceState(usize()).bounded.position;
     };
     // the particle has gone 30 a second for 3 seconds by the end
@@ -739,67 +747,76 @@ TEST(ParticleSubSystem, AnEventSpawnChildStaysWhereTheParticleWasBornAndAFollowC
     EXPECT_GT(child_position(owe::ParticleSubSystem::SpawnType::EVENT_FOLLOW).x(), 60.0f);
 }
 
-// inheritinitialvaluefromevent and inheritvaluefromevent give a child's particle its parent particle's colour, and nothing
-// else (particles-inherit-event).
+// inheritinitialvaluefromevent and inheritvaluefromevent give a child's particle its parent
+// particle's colour, and nothing else (particles-inherit-event).
 TEST(ParticleSubSystem, ChildParticlesInheritTheirParentsColourFromTheEvent) {
-    auto child_color = [](owe::ParticleSubSystem::SpawnType type, ref<str> initializer, ref<str> operator_json) {
-        owe::Scene scene;
-        auto       parent_node = rstd::sync::Arc<owe::SceneNode>::make();
-        auto       child_node  = rstd::sync::Arc<owe::SceneNode>::make();
-        parent_node->AppendChild(child_node.clone());
-        owe::ParticleSubSystem parent(scene,
-                                      Arc<owe::SceneMesh>::make(),
-                                      u32(1),
-                                      f64(),
-                                      u32(1),
-                                      f64(1.0),
-                                      owe::ParticleSubSystem::SpawnType::STATIC,
-                                      owe::ParticleAnimationSpec {});
-        parent.SetOwnerNode(parent_node.as_ptr());
-        parent.AddInitializer(owe::ParticleParser::GenInitializer(
-            owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(1)));
-        parent.AddInitializer(owe::ParticleParser::GenInitializer(
-            owe::ParseJson(R"({"name":"colorrandom","min":"255 128 0","max":"255 128 0"})"_str).unwrap(), u32(1)));
-        parent.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
-            owe::BoxEmitterProgram(parent.SpawnPipeline(),
-                                   owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) },
-                                   usize())));
-        auto child = Box<owe::ParticleSubSystem>::make(scene,
-                                                       Arc<owe::SceneMesh>::make(),
-                                                       u32(1),
-                                                       f64(),
-                                                       u32(1),
-                                                       f64(1.0),
-                                                       type,
-                                                       owe::ParticleAnimationSpec {});
-        child->SetOwnerNode(child_node.as_ptr());
-        child->AddInitializer(owe::ParticleParser::GenInitializer(
-            owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(1)));
-        child->AddInitializer(owe::ParticleParser::GenInitializer(
-            owe::ParseJson(R"({"name":"colorrandom","min":"255 255 255","max":"255 255 255"})"_str).unwrap(), u32(1)));
-        if (initializer.len() != usize())
-            child->AddInitializer(
-                owe::ParticleParser::GenInitializer(owe::ParseJson(initializer).unwrap(), u32(1)));
-        child->AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
-            owe::BoxEmitterProgram(child->SpawnPipeline(),
-                                   owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) },
-                                   usize())));
-        if (operator_json.len() != usize()) {
-            owe::ParticleInstanceModifiers modifiers(Arc<owe::wpscene::ParticleInstanceoverride>::make(),
-                                                     owe::wpscene::Particle::EFlags { 0 },
-                                                     false);
-            child->AddOperator(owe::ParticleParser::GenOperator(
-                owe::ParseJson(operator_json).unwrap(), modifiers.Clone(), *child, usize()));
-        }
-        child->Finalize();
-        auto* child_system = child.get();
-        parent.AddChild(rstd::move(child));
-        parent.Finalize();
-        for (int tick = 0; tick < 4; ++tick) parent.Tick(f64(1.0 / 60.0), false);
-        auto&                        storage = child_system->System().Instance(usize()).Storage();
-        particle::ParticleSlotReader value(storage, particle::ParticleSlot {});
-        return Eigen::Vector3f(value.Read(child_system->Attributes().color));
-    };
+    auto child_color =
+        [](owe::ParticleSubSystem::SpawnType type, ref<str> initializer, ref<str> operator_json) {
+            owe::Scene scene;
+            auto       parent_node = rstd::sync::Arc<owe::SceneNode>::make();
+            auto       child_node  = rstd::sync::Arc<owe::SceneNode>::make();
+            parent_node->AppendChild(child_node.clone());
+            owe::ParticleSubSystem parent(scene,
+                                          Arc<owe::SceneMesh>::make(),
+                                          u32(1),
+                                          f64(),
+                                          u32(1),
+                                          f64(1.0),
+                                          owe::ParticleSubSystem::SpawnType::STATIC,
+                                          owe::ParticleAnimationSpec {});
+            parent.SetOwnerNode(parent_node.as_ptr());
+            parent.AddInitializer(owe::ParticleParser::GenInitializer(
+                owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(),
+                u32(1)));
+            parent.AddInitializer(owe::ParticleParser::GenInitializer(
+                owe::ParseJson(R"({"name":"colorrandom","min":"255 128 0","max":"255 128 0"})"_str)
+                    .unwrap(),
+                u32(1)));
+            parent.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+                owe::BoxEmitterProgram(parent.SpawnPipeline(),
+                                       owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) },
+                                       usize())));
+            auto child = Box<owe::ParticleSubSystem>::make(scene,
+                                                           Arc<owe::SceneMesh>::make(),
+                                                           u32(1),
+                                                           f64(),
+                                                           u32(1),
+                                                           f64(1.0),
+                                                           type,
+                                                           owe::ParticleAnimationSpec {});
+            child->SetOwnerNode(child_node.as_ptr());
+            child->AddInitializer(owe::ParticleParser::GenInitializer(
+                owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(),
+                u32(1)));
+            child->AddInitializer(owe::ParticleParser::GenInitializer(
+                owe::ParseJson(
+                    R"({"name":"colorrandom","min":"255 255 255","max":"255 255 255"})"_str)
+                    .unwrap(),
+                u32(1)));
+            if (initializer.len() != usize())
+                child->AddInitializer(owe::ParticleParser::GenInitializer(
+                    owe::ParseJson(initializer).unwrap(), u32(1)));
+            child->AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+                owe::BoxEmitterProgram(child->SpawnPipeline(),
+                                       owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) },
+                                       usize())));
+            if (operator_json.len() != usize()) {
+                owe::ParticleInstanceModifiers modifiers(
+                    Arc<owe::wpscene::ParticleInstanceoverride>::make(),
+                    owe::wpscene::Particle::EFlags { 0 },
+                    false);
+                child->AddOperator(owe::ParticleParser::GenOperator(
+                    owe::ParseJson(operator_json).unwrap(), modifiers.Clone(), *child, usize()));
+            }
+            child->Finalize();
+            auto* child_system = child.get();
+            parent.AddChild(rstd::move(child));
+            parent.Finalize();
+            for (int tick = 0; tick < 4; ++tick) parent.Tick(f64(1.0 / 60.0), false);
+            auto& storage = child_system->System().Instance(usize()).Storage();
+            particle::ParticleSlotReader value(storage, particle::ParticleSlot {});
+            return Eigen::Vector3f(value.Read(child_system->Attributes().color));
+        };
     const auto spawn  = owe::ParticleSubSystem::SpawnType::EVENT_SPAWN;
     const auto follow = owe::ParticleSubSystem::SpawnType::EVENT_FOLLOW;
     EXPECT_TRUE(child_color(spawn, ""_str, ""_str).isApprox(Eigen::Vector3f(1, 1, 1)));
@@ -809,18 +826,19 @@ TEST(ParticleSubSystem, ChildParticlesInheritTheirParentsColourFromTheEvent) {
                     .isApprox(Eigen::Vector3f(1, 128.0f / 255.0f, 0)));
 }
 
-// The layerimage emitter (particles-layerimage) emits from the shape of an image layer: a solid layer's rectangle (its size,
-// moved with the layer), in the layer's colour, and nothing from a layer less than about half opaque.
+// The layerimage emitter (particles-layerimage) emits from the shape of an image layer: a solid
+// layer's rectangle (its size, moved with the layer), in the layer's colour, and nothing from a
+// layer less than about half opaque.
 TEST(ParticleSubSystem, LayerImageEmitterFillsTheLayersRectangleInItsColour) {
     struct Emitted {
-        usize                        count {};
-        bool                         inside { true };
-        bool                         red { true };
-        float                        min_x { 1e9f }, max_x { -1e9f }, min_y { 1e9f }, max_y { -1e9f };
+        usize count {};
+        bool  inside { true };
+        bool  red { true };
+        float min_x { 1e9f }, max_x { -1e9f }, min_y { 1e9f }, max_y { -1e9f };
     };
     auto emit = [](float alpha) {
         owe::Scene scene;
-        auto       layer = rstd::sync::Arc<owe::SceneNode>::make(Eigen::Vector3f { 100.0f, 50.0f, 0.0f },
+        auto layer = rstd::sync::Arc<owe::SceneNode>::make(Eigen::Vector3f { 100.0f, 50.0f, 0.0f },
                                                            Eigen::Vector3f { 1.0f, 1.0f, 1.0f },
                                                            Eigen::Vector3f::Zero());
         owe::ParticleSubSystem subsystem(scene,
@@ -832,26 +850,31 @@ TEST(ParticleSubSystem, LayerImageEmitterFillsTheLayersRectangleInItsColour) {
                                          owe::ParticleSubSystem::SpawnType::STATIC,
                                          owe::ParticleAnimationSpec {});
         subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
-            owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(64)));
+            owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(),
+            u32(64)));
         owe::wpscene::Emitter emitter;
         emitter.name          = String::make("layerimage"_str);
         emitter.instantaneous = u32(40);
-        auto source = Arc<owe::LayerImageSource>::make(owe::LayerImageSource {
-            .node = layer.clone(), .half_width = 20.0, .half_height = 10.0,
-            .color = Eigen::Vector3f(1.0f, 0.0f, 0.0f), .alpha = alpha });
+        auto source           = Arc<owe::LayerImageSource>::make(
+            owe::LayerImageSource { .node        = layer.clone(),
+                                    .half_width  = 20.0,
+                                    .half_height = 10.0,
+                                    .color       = Eigen::Vector3f(1.0f, 0.0f, 0.0f),
+                                    .alpha       = alpha });
         subsystem.AddEmitter(
             owe::ParticleParser::GenEmitter(emitter, subsystem, usize(), Some(rstd::move(source))));
         subsystem.Finalize();
         subsystem.Tick(f64(1.0 / 60.0), false);
         Emitted result;
-        result.count = LiveParticleCount(subsystem);
+        result.count  = LiveParticleCount(subsystem);
         auto& storage = subsystem.System().Instance(usize()).Storage();
         for (usize index {}; index < result.count; ++index) {
             particle::ParticleSlotReader value(storage, particle::ParticleSlot { .index = index });
-            auto                         position = Eigen::Vector3f(value.Read(subsystem.Attributes().position));
-            auto                         color    = Eigen::Vector3f(value.Read(subsystem.Attributes().color));
-            result.inside = result.inside && position.x() >= 80.0f - 1e-3f && position.x() <= 120.0f + 1e-3f &&
-                            position.y() >= 40.0f - 1e-3f && position.y() <= 60.0f + 1e-3f;
+            auto position = Eigen::Vector3f(value.Read(subsystem.Attributes().position));
+            auto color    = Eigen::Vector3f(value.Read(subsystem.Attributes().color));
+            result.inside = result.inside && position.x() >= 80.0f - 1e-3f &&
+                            position.x() <= 120.0f + 1e-3f && position.y() >= 40.0f - 1e-3f &&
+                            position.y() <= 60.0f + 1e-3f;
             result.red    = result.red && color.isApprox(Eigen::Vector3f(1, 0, 0));
             result.min_x  = std::min(result.min_x, position.x());
             result.max_x  = std::max(result.max_x, position.x());
@@ -874,11 +897,12 @@ TEST(ParticleSubSystem, LayerImageEmitterFillsTheLayersRectangleInItsColour) {
     EXPECT_EQ(emit(0.5f).count, usize(40));
 }
 
-// A layer with pixels (a texture's opaque ones) emits from those: here two points, 10 left of the layer's centre (green) and
-// 10 right (blue), each within half a unit; the layer's colour multiplies theirs.
+// A layer with pixels (a texture's opaque ones) emits from those: here two points, 10 left of the
+// layer's centre (green) and 10 right (blue), each within half a unit; the layer's colour
+// multiplies theirs.
 TEST(ParticleSubSystem, LayerImageEmitterEmitsFromThePixelsOfAnImage) {
     owe::Scene scene;
-    auto       layer = rstd::sync::Arc<owe::SceneNode>::make(Eigen::Vector3f { 100.0f, 50.0f, 0.0f },
+    auto layer = rstd::sync::Arc<owe::SceneNode>::make(Eigen::Vector3f { 100.0f, 50.0f, 0.0f },
                                                        Eigen::Vector3f { 1.0f, 1.0f, 1.0f },
                                                        Eigen::Vector3f::Zero());
     owe::ParticleSubSystem subsystem(scene,
@@ -894,11 +918,15 @@ TEST(ParticleSubSystem, LayerImageEmitterEmitsFromThePixelsOfAnImage) {
     owe::wpscene::Emitter emitter;
     emitter.name          = String::make("layerimage"_str);
     emitter.instantaneous = u32(40);
-    owe::LayerImageSource image {
-        .node = layer.clone(), .half_width = 20.0, .half_height = 10.0,
-        .color = Eigen::Vector3f(1.0f, 1.0f, 0.5f), .alpha = 1.0f };
-    image.points.push(owe::LayerImagePoint { .x = -10.0f, .y = 0.0f, .color = Eigen::Vector3f(0, 1, 0) });
-    image.points.push(owe::LayerImagePoint { .x = 10.0f, .y = 0.0f, .color = Eigen::Vector3f(0, 0, 1) });
+    owe::LayerImageSource image { .node        = layer.clone(),
+                                  .half_width  = 20.0,
+                                  .half_height = 10.0,
+                                  .color       = Eigen::Vector3f(1.0f, 1.0f, 0.5f),
+                                  .alpha       = 1.0f };
+    image.points.push(
+        owe::LayerImagePoint { .x = -10.0f, .y = 0.0f, .color = Eigen::Vector3f(0, 1, 0) });
+    image.points.push(
+        owe::LayerImagePoint { .x = 10.0f, .y = 0.0f, .color = Eigen::Vector3f(0, 0, 1) });
     subsystem.AddEmitter(owe::ParticleParser::GenEmitter(
         emitter, subsystem, usize(), Some(Arc<owe::LayerImageSource>::make(rstd::move(image)))));
     subsystem.Finalize();
@@ -925,11 +953,11 @@ TEST(ParticleSubSystem, LayerImageEmitterEmitsFromThePixelsOfAnImage) {
     EXPECT_GT(right, 0);
 }
 
-// A colorrandom initializer multiplies the colour the emitter gave (a layer's pixels), it does not replace it
-// (particles-layerimage-color: white keeps the rainbow, red keeps only its red).
+// A colorrandom initializer multiplies the colour the emitter gave (a layer's pixels), it does not
+// replace it (particles-layerimage-color: white keeps the rainbow, red keeps only its red).
 TEST(ParticleSubSystem, ColorRandomMultipliesAnImageEmittersColours) {
     owe::Scene scene;
-    auto       layer = rstd::sync::Arc<owe::SceneNode>::make(Eigen::Vector3f { 100.0f, 50.0f, 0.0f },
+    auto layer = rstd::sync::Arc<owe::SceneNode>::make(Eigen::Vector3f { 100.0f, 50.0f, 0.0f },
                                                        Eigen::Vector3f { 1.0f, 1.0f, 1.0f },
                                                        Eigen::Vector3f::Zero());
     owe::ParticleSubSystem subsystem(scene,
@@ -943,15 +971,21 @@ TEST(ParticleSubSystem, ColorRandomMultipliesAnImageEmittersColours) {
     subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
         owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(64)));
     subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
-        owe::ParseJson(R"({"name":"colorrandom","min":"255 128 255","max":"255 128 255"})"_str).unwrap(), u32(64)));
+        owe::ParseJson(R"({"name":"colorrandom","min":"255 128 255","max":"255 128 255"})"_str)
+            .unwrap(),
+        u32(64)));
     owe::wpscene::Emitter emitter;
     emitter.name          = String::make("layerimage"_str);
     emitter.instantaneous = u32(40);
-    owe::LayerImageSource image {
-        .node = layer.clone(), .half_width = 20.0, .half_height = 10.0,
-        .color = Eigen::Vector3f(1.0f, 1.0f, 1.0f), .alpha = 1.0f };
-    image.points.push(owe::LayerImagePoint { .x = -10.0f, .y = 0.0f, .color = Eigen::Vector3f(0, 1, 0) });
-    image.points.push(owe::LayerImagePoint { .x = 10.0f, .y = 0.0f, .color = Eigen::Vector3f(1, 0, 1) });
+    owe::LayerImageSource image { .node        = layer.clone(),
+                                  .half_width  = 20.0,
+                                  .half_height = 10.0,
+                                  .color       = Eigen::Vector3f(1.0f, 1.0f, 1.0f),
+                                  .alpha       = 1.0f };
+    image.points.push(
+        owe::LayerImagePoint { .x = -10.0f, .y = 0.0f, .color = Eigen::Vector3f(0, 1, 0) });
+    image.points.push(
+        owe::LayerImagePoint { .x = 10.0f, .y = 0.0f, .color = Eigen::Vector3f(1, 0, 1) });
     subsystem.AddEmitter(owe::ParticleParser::GenEmitter(
         emitter, subsystem, usize(), Some(Arc<owe::LayerImageSource>::make(rstd::move(image)))));
     subsystem.Finalize();
@@ -962,15 +996,17 @@ TEST(ParticleSubSystem, ColorRandomMultipliesAnImageEmittersColours) {
         particle::ParticleSlotReader value(storage, particle::ParticleSlot { .index = index });
         auto position = Eigen::Vector3f(value.Read(subsystem.Attributes().position));
         auto color    = Eigen::Vector3f(value.Read(subsystem.Attributes().color));
-        const Eigen::Vector3f expected =
-            position.x() < 100.0f ? Eigen::Vector3f(0, 128.0f / 255.0f, 0) : Eigen::Vector3f(1, 0, 1);
+        const Eigen::Vector3f expected = position.x() < 100.0f
+                                             ? Eigen::Vector3f(0, 128.0f / 255.0f, 0)
+                                             : Eigen::Vector3f(1, 0, 1);
         EXPECT_TRUE(color.isApprox(expected, 1e-3f));
     }
 }
 
-// Wallpaper Engine reads a layer's image in 4x4 texel blocks (particles-layerimage-pitch, -block): one point at the centre of
-// each block (texel 4i+2 from the top left, no jitter) when the block's average opacity times the layer's is half or more,
-// in the block's average colour; the lattice follows the texture, whatever the scene's size.
+// Wallpaper Engine reads a layer's image in 4x4 texel blocks (particles-layerimage-pitch, -block):
+// one point at the centre of each block (texel 4i+2 from the top left, no jitter) when the block's
+// average opacity times the layer's is half or more, in the block's average colour; the lattice
+// follows the texture, whatever the scene's size.
 TEST(LayerImageLattice, OnePointPerFourByFourBlockAtItsCentre) {
     auto image = [](int width, int height, auto texel) {
         std::vector<unsigned char> data;
@@ -979,8 +1015,11 @@ TEST(LayerImageLattice, OnePointPerFourByFourBlockAtItsCentre) {
                 for (auto v : texel(x, y)) data.push_back(static_cast<unsigned char>(v));
         return data;
     };
-    // 8x8 white, the top right block transparent: three points, at the block centres from the image's centre (y up)
-    auto white = image(8, 8, [](int x, int y) { return rstd::array<int, 4> { 255, 255, 255, x >= 4 && y < 4 ? 0 : 255 }; });
+    // 8x8 white, the top right block transparent: three points, at the block centres from the
+    // image's centre (y up)
+    auto white  = image(8, 8, [](int x, int y) {
+        return rstd::array<int, 4> { 255, 255, 255, x >= 4 && y < 4 ? 0 : 255 };
+    });
     auto points = owe::LayerImageLattice(white.data(), 8, 8, 4, false, 1.0f);
     ASSERT_EQ(points.len(), usize(3));
     EXPECT_EQ(points[usize()].x, -2.0f);
@@ -990,16 +1029,23 @@ TEST(LayerImageLattice, OnePointPerFourByFourBlockAtItsCentre) {
     EXPECT_EQ(points[usize(2)].x, 2.0f);
     EXPECT_EQ(points[usize(2)].y, -2.0f);
     // 40x24: 10x6 blocks
-    auto wide = image(40, 24, [](int, int) { return rstd::array<int, 4> { 255, 255, 255, 255 }; });
+    auto wide = image(40, 24, [](int, int) {
+        return rstd::array<int, 4> { 255, 255, 255, 255 };
+    });
     EXPECT_EQ(owe::LayerImageLattice(wide.data(), 40, 24, 4, false, 1.0f).len(), usize(60));
     // the layer's opacity counts: half opaque still emits, below half nothing
     EXPECT_EQ(owe::LayerImageLattice(wide.data(), 40, 24, 4, false, 0.5f).len(), usize(60));
     EXPECT_EQ(owe::LayerImageLattice(wide.data(), 40, 24, 4, false, 0.4f).len(), usize());
     // only one texel in sixteen opaque: the block averages 1/16 and emits nothing
-    auto sparse = image(32, 32, [](int x, int y) { return rstd::array<int, 4> { 255, 255, 255, x % 4 == 2 && y % 4 == 2 ? 255 : 0 }; });
+    auto sparse = image(32, 32, [](int x, int y) {
+        return rstd::array<int, 4> { 255, 255, 255, x % 4 == 2 && y % 4 == 2 ? 255 : 0 };
+    });
     EXPECT_EQ(owe::LayerImageLattice(sparse.data(), 32, 32, 4, false, 1.0f).len(), usize());
     // a block half red, half blue is purple
-    auto halves = image(4, 4, [](int x, int) { return x < 2 ? rstd::array<int, 4> { 255, 0, 0, 255 } : rstd::array<int, 4> { 0, 0, 255, 255 }; });
+    auto halves = image(4, 4, [](int x, int) {
+        return x < 2 ? rstd::array<int, 4> { 255, 0, 0, 255 }
+                     : rstd::array<int, 4> { 0, 0, 255, 255 };
+    });
     auto purple = owe::LayerImageLattice(halves.data(), 4, 4, 4, false, 1.0f);
     ASSERT_EQ(purple.len(), usize(1));
     EXPECT_NEAR(purple[usize()].color.x(), 0.5f, 0.01f);
@@ -1194,7 +1240,7 @@ TEST(ParticleSubSystem, DragSlowsEachFrameByItsLoss) {
                                      f64(),
                                      f64(),
                                      true);
-    auto owner    = rstd::sync::Arc<owe::SceneNode>::make(
+    auto                   owner = rstd::sync::Arc<owe::SceneNode>::make(
         Eigen::Vector3f::Zero(), Eigen::Vector3f::Ones(), Eigen::Vector3f::Zero());
     auto override = rstd::sync::Arc<owe::wpscene::ParticleInstanceoverride>::make();
     subsystem.SetOwnerNode(owner.as_ptr());
@@ -1247,7 +1293,7 @@ TEST(ParticleSubSystem, CapVelocityLimitsTheSpeed) {
                                      f64(),
                                      f64(),
                                      true);
-    auto owner    = rstd::sync::Arc<owe::SceneNode>::make(
+    auto                   owner = rstd::sync::Arc<owe::SceneNode>::make(
         Eigen::Vector3f::Zero(), Eigen::Vector3f::Ones(), Eigen::Vector3f::Zero());
     auto override = rstd::sync::Arc<owe::wpscene::ParticleInstanceoverride>::make();
     subsystem.SetOwnerNode(owner.as_ptr());
@@ -1306,7 +1352,7 @@ TEST(ParticleSubSystem, ReduceMovementNearControlPointSlowsLikeADrag) {
                                      f64(),
                                      f64(),
                                      true);
-    auto owner    = rstd::sync::Arc<owe::SceneNode>::make(
+    auto                   owner = rstd::sync::Arc<owe::SceneNode>::make(
         Eigen::Vector3f::Zero(), Eigen::Vector3f::Ones(), Eigen::Vector3f::Zero());
     auto override = rstd::sync::Arc<owe::wpscene::ParticleInstanceoverride>::make();
     subsystem.SetOwnerNode(owner.as_ptr());
@@ -1348,54 +1394,60 @@ TEST(ParticleSubSystem, ReduceMovementNearControlPointSlowsLikeADrag) {
 // output range (particles-remapvalue: rows 0 to 400 units out remap colour red to blue, size 10 to
 // 80 - drawn 20 to 160, a radius - and opacity 1 to 0.1, and multiply size 40 by 0.2 to 2).
 TEST(ParticleRemap, MapsTheDistanceOntoTheOutputRange) {
-    auto color = owe::ParticleRemap::FromJson(
-                     owe::ParseJson(
-                         R"({"name":"remapvalue","input":"distancetocontrolpoint","inputcontrolpoint0":1,"inputrangemin":0,"inputrangemax":400,"operation":"remap","output":"color","outputrangemin":"1 0 0","outputrangemax":"0 0 1"})"_str)
-                         .unwrap())
-                     .unwrap();
+    auto color =
+        owe::ParticleRemap::FromJson(
+            owe::ParseJson(
+                R"({"name":"remapvalue","input":"distancetocontrolpoint","inputcontrolpoint0":1,"inputrangemin":0,"inputrangemax":400,"operation":"remap","output":"color","outputrangemin":"1 0 0","outputrangemax":"0 0 1"})"_str)
+                .unwrap())
+            .unwrap();
     EXPECT_EQ(color.controlpoint, i32(1));
     EXPECT_TRUE(color.Apply(Eigen::Vector3d::Ones(), 100).isApprox(Eigen::Vector3d(0.75, 0, 0.25)));
     EXPECT_TRUE(color.Apply(Eigen::Vector3d::Ones(), 900).isApprox(Eigen::Vector3d(0, 0, 1)));
     EXPECT_TRUE(color.Apply(Eigen::Vector3d::Ones(), -5).isApprox(Eigen::Vector3d(1, 0, 0)));
 
-    auto size = owe::ParticleRemap::FromJson(
-                    owe::ParseJson(
-                        R"({"name":"remapvalue","input":"distancetocontrolpoint","inputrangemax":400,"output":"size","outputrangemin":10,"outputrangemax":80})"_str)
-                        .unwrap())
-                    .unwrap();
+    auto size =
+        owe::ParticleRemap::FromJson(
+            owe::ParseJson(
+                R"({"name":"remapvalue","input":"distancetocontrolpoint","inputrangemax":400,"output":"size","outputrangemin":10,"outputrangemax":80})"_str)
+                .unwrap())
+            .unwrap();
     EXPECT_NEAR(size.Apply(Eigen::Vector3d::Constant(40), 200).x(), 90.0, 1e-4);
 
-    auto multiply = owe::ParticleRemap::FromJson(
-                        owe::ParseJson(
-                            R"({"name":"remapvalue","input":"distancetocontrolpoint","inputrangemax":400,"operation":"multiply","output":"size","outputrangemin":0.2,"outputrangemax":2})"_str)
-                            .unwrap())
-                        .unwrap();
+    auto multiply =
+        owe::ParticleRemap::FromJson(
+            owe::ParseJson(
+                R"({"name":"remapvalue","input":"distancetocontrolpoint","inputrangemax":400,"operation":"multiply","output":"size","outputrangemin":0.2,"outputrangemax":2})"_str)
+                .unwrap())
+            .unwrap();
     EXPECT_NEAR(multiply.Apply(Eigen::Vector3d::Constant(40), 400).x(), 80.0, 1e-4);
     EXPECT_NEAR(multiply.Apply(Eigen::Vector3d::Constant(40), 0).x(), 8.0, 1e-4);
 
     // noise and sine transforms aren't read
-    EXPECT_TRUE(owe::ParticleRemap::FromJson(
-                    owe::ParseJson(
-                        R"({"name":"remapvalue","output":"velocity","transformfunction":"simplexnoise"})"_str)
-                        .unwrap())
-                    .is_none());
+    EXPECT_TRUE(
+        owe::ParticleRemap::FromJson(
+            owe::ParseJson(
+                R"({"name":"remapvalue","output":"velocity","transformfunction":"simplexnoise"})"_str)
+                .unwrap())
+            .is_none());
 }
 
 // remapinitialvalue reads the same settings as remapvalue (particles-remapinitialvalue); one
 // without an output it can set (thunderbolt_beam_child's, distance to control point 1 with no
 // output) does nothing.
 TEST(ParticleRemap, TheInitialValueFormReadsTheSameSettings) {
-    auto size = owe::ParticleRemap::FromJson(
-                    owe::ParseJson(
-                        R"({"name":"remapinitialvalue","input":"distancetocontrolpoint","inputcontrolpoint0":0,"inputrangemin":0,"inputrangemax":400,"operation":"remap","output":"size","outputrangemin":10,"outputrangemax":80})"_str)
-                        .unwrap())
-                    .unwrap();
+    auto size =
+        owe::ParticleRemap::FromJson(
+            owe::ParseJson(
+                R"({"name":"remapinitialvalue","input":"distancetocontrolpoint","inputcontrolpoint0":0,"inputrangemin":0,"inputrangemax":400,"operation":"remap","output":"size","outputrangemin":10,"outputrangemax":80})"_str)
+                .unwrap())
+            .unwrap();
     EXPECT_NEAR(size.Apply(Eigen::Vector3d::Constant(40), 400).x(), 160.0, 1e-4);
-    EXPECT_TRUE(owe::ParticleRemap::FromJson(
-                    owe::ParseJson(
-                        R"({"name":"remapinitialvalue","input":"distancetocontrolpoint","inputcontrolpoint0":1,"inputrangemax":50,"operation":"multiply"})"_str)
-                        .unwrap())
-                    .is_none());
+    EXPECT_TRUE(
+        owe::ParticleRemap::FromJson(
+            owe::ParseJson(
+                R"({"name":"remapinitialvalue","input":"distancetocontrolpoint","inputcontrolpoint0":1,"inputrangemax":50,"operation":"multiply"})"_str)
+                .unwrap())
+            .is_none());
 }
 
 // hsvcolorrandom's colours: hue around the circle, saturation and value (particles-hsvcolor:
@@ -1408,10 +1460,11 @@ TEST(ParticleColor, HsvToRgbGoesAroundTheHueCircle) {
     EXPECT_TRUE(owe::HsvToRgb(0.6, 0.5, 0.5).isApprox(Eigen::Vector3d(0.25, 0.35, 0.5)));
 }
 
-// A plain rope's vertex shader takes the length of the rope, in points, from the fourth component of
-// each segment's end point, and spreads its texture over length - 1 segments: a rope of n particles
-// has n - 1 segments and says n (particles-rope-count: owe said n - 1, so the last segment's
-// texture ran off the end and a rope of two particles, whose length - 1 came to 0, drew nothing).
+// A plain rope's vertex shader takes the length of the rope, in points, from the fourth component
+// of each segment's end point, and spreads its texture over length - 1 segments: a rope of n
+// particles has n - 1 segments and says n (particles-rope-count: owe said n - 1, so the last
+// segment's texture ran off the end and a rope of two particles, whose length - 1 came to 0, drew
+// nothing).
 TEST(ParticleSubSystem, ARopeSaysItsLengthInPoints) {
     owe::Scene scene;
     auto       mesh = Arc<owe::SceneMesh>::make();
@@ -1440,7 +1493,7 @@ TEST(ParticleSubSystem, ARopeSaysItsLengthInPoints) {
                                      f64(),
                                      f64(),
                                      true);
-    auto owner    = rstd::sync::Arc<owe::SceneNode>::make(
+    auto                   owner = rstd::sync::Arc<owe::SceneNode>::make(
         Eigen::Vector3f::Zero(), Eigen::Vector3f::Ones(), Eigen::Vector3f::Zero());
     auto override = rstd::sync::Arc<owe::wpscene::ParticleInstanceoverride>::make();
     subsystem.SetOwnerNode(owner.as_ptr());
@@ -1467,12 +1520,14 @@ TEST(ParticleSubSystem, ARopeSaysItsLengthInPoints) {
     for (std::size_t v = 0; v < 3; ++v) EXPECT_FLOAT_EQ(vertices.Data()[v * 19 + 7], 4.0f) << v;
 }
 
-// remapvalue's other inputs (particles-remap-inputs, grey = the input over its range): the particle's speed per axis
-// (a vector, so a colour of 100 0 0 over 0..200 is 0.5 0 0), its opacity, rotation and angular speed (one number),
-// the time, and "lifetimefraction", the name Wallpaper Engine uses for how far through its life it is.
+// remapvalue's other inputs (particles-remap-inputs, grey = the input over its range): the
+// particle's speed per axis (a vector, so a colour of 100 0 0 over 0..200 is 0.5 0 0), its opacity,
+// rotation and angular speed (one number), the time, and "lifetimefraction", the name Wallpaper
+// Engine uses for how far through its life it is.
 TEST(ParticleRemap, ReadsTheInputsWallpaperEngineOffers) {
     auto read = [](ref<str> input) {
-        auto json = rstd::format(R"({{"name":"remapvalue","input":"{}","inputrangemax":4,"output":"color"}})", input);
+        auto json = rstd::format(
+            R"({{"name":"remapvalue","input":"{}","inputrangemax":4,"output":"color"}})", input);
         return owe::ParticleRemap::FromJson(owe::ParseJson(json.as_str()).unwrap());
     };
     EXPECT_EQ(read("lifetimefraction"_str).unwrap().input, owe::ParticleRemap::Input::Lifetime);
@@ -1486,20 +1541,24 @@ TEST(ParticleRemap, ReadsTheInputsWallpaperEngineOffers) {
     EXPECT_EQ(read("layertime"_str).unwrap().input, owe::ParticleRemap::Input::LayerTime);
     EXPECT_EQ(read("runtime"_str).unwrap().input, owe::ParticleRemap::Input::Runtime);
     EXPECT_EQ(read("timeofday"_str).unwrap().input, owe::ParticleRemap::Input::TimeOfDay);
-    EXPECT_EQ(read("deltatocontrolpoint"_str).unwrap().input, owe::ParticleRemap::Input::DeltaToControlPoint);
-    EXPECT_EQ(read("directiontocontrolpoint"_str).unwrap().input, owe::ParticleRemap::Input::DirectionToControlPoint);
+    EXPECT_EQ(read("deltatocontrolpoint"_str).unwrap().input,
+              owe::ParticleRemap::Input::DeltaToControlPoint);
+    EXPECT_EQ(read("directiontocontrolpoint"_str).unwrap().input,
+              owe::ParticleRemap::Input::DirectionToControlPoint);
     EXPECT_EQ(read("positionbetweentwocontrolpoints"_str).unwrap().input,
               owe::ParticleRemap::Input::PositionBetweenControlPoints);
     EXPECT_TRUE(read("nothing"_str).is_none());
     // a vector input maps each axis over the range
-    auto velocity = read("velocity"_str).unwrap();
+    auto velocity      = read("velocity"_str).unwrap();
     velocity.input_max = 200;
-    EXPECT_TRUE(velocity.Apply(Eigen::Vector3d::Ones(), Eigen::Vector3d(100, 0, 400)).isApprox(Eigen::Vector3d(0.5, 0, 1)));
+    EXPECT_TRUE(velocity.Apply(Eigen::Vector3d::Ones(), Eigen::Vector3d(100, 0, 400))
+                    .isApprox(Eigen::Vector3d(0.5, 0, 1)));
 }
 
-// remapvalue's operations and transform functions (particles-remap-outputs, -remap-transform): "subtract" takes the mapped
-// value from the particle's; triangle and square repeat twice over the input range (square low first), sine once
-// (0 at the ends, 1 in the middle); a noise function isn't read.
+// remapvalue's operations and transform functions (particles-remap-outputs, -remap-transform):
+// "subtract" takes the mapped value from the particle's; triangle and square repeat twice over the
+// input range (square low first), sine once (0 at the ends, 1 in the middle); a noise function
+// isn't read.
 TEST(ParticleRemap, SubtractsAndShapesTheInput) {
     auto read = [](ref<str> extra) {
         auto json = rstd::format(
@@ -1526,8 +1585,9 @@ TEST(ParticleRemap, SubtractsAndShapesTheInput) {
     EXPECT_TRUE(read(R"(,"transformfunction":"simplexnoise")"_str).is_none());
 }
 
-// A size a remapvalue sets, adds or takes is a radius, drawn twice as large (particles-remap-outputs: adding up to 40 to
-// a size of 60 draws it 105, taking 22.5 draws 15); one it multiplies is a factor.
+// A size a remapvalue sets, adds or takes is a radius, drawn twice as large
+// (particles-remap-outputs: adding up to 40 to a size of 60 draws it 105, taking 22.5 draws 15);
+// one it multiplies is a factor.
 TEST(ParticleRemap, SizeAddsAndSubtractsRadii) {
     auto read = [](ref<str> operation) {
         auto json = rstd::format(
@@ -1541,8 +1601,9 @@ TEST(ParticleRemap, SizeAddsAndSubtractsRadii) {
 }
 
 TEST(ParticleSubSystem, RemapValueMapsTheParticlesVelocityOpacityAndRotation) {
-    auto remap = [](ref<str> initializer, ref<str> operator_json, bool read_velocity = false,
-                     int ticks = 1) -> Eigen::Vector3f {
+    auto remap =
+        [](ref<str> initializer, ref<str> operator_json, bool read_velocity = false, int ticks = 1)
+        -> Eigen::Vector3f {
         owe::Scene             scene;
         auto                   mesh = Arc<owe::SceneMesh>::make();
         owe::ParticleSubSystem subsystem(scene,
@@ -1561,9 +1622,10 @@ TEST(ParticleSubSystem, RemapValueMapsTheParticlesVelocityOpacityAndRotation) {
             owe::BoxEmitterProgram(subsystem.SpawnPipeline(),
                                    owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) },
                                    usize())));
-        owe::ParticleInstanceModifiers modifiers(Arc<owe::wpscene::ParticleInstanceoverride>::make(),
-                                                 owe::wpscene::Particle::EFlags { 0 },
-                                                 false);
+        owe::ParticleInstanceModifiers modifiers(
+            Arc<owe::wpscene::ParticleInstanceoverride>::make(),
+            owe::wpscene::Particle::EFlags { 0 },
+            false);
         subsystem.AddOperator(owe::ParticleParser::GenOperator(
             owe::ParseJson(operator_json).unwrap(), modifiers.Clone(), subsystem, usize()));
         subsystem.Finalize();
@@ -1573,32 +1635,39 @@ TEST(ParticleSubSystem, RemapValueMapsTheParticlesVelocityOpacityAndRotation) {
         return read_velocity ? value.Read(subsystem.Attributes().velocity)
                              : value.Read(subsystem.Attributes().color);
     };
-    auto velocity = remap(R"({"name":"velocityrandom","min":"100 0 0","max":"100 0 0"})"_str,
-                          R"({"name":"remapvalue","input":"velocity","inputrangemax":200,"output":"color"})"_str);
+    auto velocity = remap(
+        R"({"name":"velocityrandom","min":"100 0 0","max":"100 0 0"})"_str,
+        R"({"name":"remapvalue","input":"velocity","inputrangemax":200,"output":"color"})"_str);
     EXPECT_NEAR(velocity.x(), 0.5f, 1e-4f);
     EXPECT_NEAR(velocity.y(), 0.0f, 1e-4f);
-    auto opacity = remap(R"({"name":"alpharandom","min":0.3,"max":0.3})"_str,
-                         R"({"name":"remapvalue","input":"opacity","inputrangemax":1,"output":"color"})"_str);
+    auto opacity =
+        remap(R"({"name":"alpharandom","min":0.3,"max":0.3})"_str,
+              R"({"name":"remapvalue","input":"opacity","inputrangemax":1,"output":"color"})"_str);
     EXPECT_NEAR(opacity.x(), 0.3f, 1e-4f);
     EXPECT_NEAR(opacity.z(), 0.3f, 1e-4f);
-    auto rotation = remap(R"({"name":"rotationrandom","min":"0 0 1","max":"0 0 1"})"_str,
-                          R"({"name":"remapvalue","input":"rotation","inputrangemax":4,"output":"color"})"_str);
+    auto rotation =
+        remap(R"({"name":"rotationrandom","min":"0 0 1","max":"0 0 1"})"_str,
+              R"({"name":"remapvalue","input":"rotation","inputrangemax":4,"output":"color"})"_str);
     EXPECT_NEAR(rotation.x(), 0.25f, 1e-4f);
     EXPECT_NEAR(rotation.y(), 0.25f, 1e-4f);
-    // the velocity output sets, adds and subtracts on each frame (particles-remap-velocity); its input is always 1 here
+    // the velocity output sets, adds and subtracts on each frame (particles-remap-velocity); its
+    // input is always 1 here
     auto velocity_after = [&](ref<str> operation, ref<str> start) {
         auto json = rstd::format(
             R"({{"name":"remapvalue","input":"lifetimefraction","inputrangemax":0.0001,"output":"velocity","operation":"{}","outputrangemax":"0.5 0 0"}})",
             operation);
-        auto init = rstd::format(R"({{"name":"velocityrandom","min":"{}","max":"{}"}})", start, start);
-        // the first step finds the particle at 0 of its life: the operator's second is the one that counts
+        auto init =
+            rstd::format(R"({{"name":"velocityrandom","min":"{}","max":"{}"}})", start, start);
+        // the first step finds the particle at 0 of its life: the operator's second is the one that
+        // counts
         return remap(init.as_str(), json.as_str(), true, 2);
     };
     EXPECT_NEAR(velocity_after("remap"_str, "10 0 0"_str).x(), 0.5f, 1e-4f);
     EXPECT_NEAR(velocity_after("add"_str, "10 0 0"_str).x(), 10.5f, 1e-4f);
     EXPECT_NEAR(velocity_after("subtract"_str, "10 0 0"_str).x(), 9.5f, 1e-4f);
-    auto spin = remap(R"({"name":"angularvelocityrandom","min":"0 0 1","max":"0 0 1"})"_str,
-                      R"({"name":"remapvalue","input":"angularspeed","inputrangemax":4,"output":"color"})"_str);
+    auto spin = remap(
+        R"({"name":"angularvelocityrandom","min":"0 0 1","max":"0 0 1"})"_str,
+        R"({"name":"remapvalue","input":"angularspeed","inputrangemax":4,"output":"color"})"_str);
     EXPECT_NEAR(spin.x(), 0.25f, 1e-4f);
 }
 
@@ -1657,8 +1726,9 @@ TEST(ParticleSubSystem, AppliesTurbulenceMaskAsAxisWeights) {
     EXPECT_FLOAT_EQ(defaults.z(), 0.0f);
 }
 
-// colorlist (particles-colorlist): the particle's colour is multiplied by a colour picked from the list, whatever
-// order the initializers come in (Wallpaper Engine paints a yellow colorrandom + list as yellow, red or dark green).
+// colorlist (particles-colorlist): the particle's colour is multiplied by a colour picked from the
+// list, whatever order the initializers come in (Wallpaper Engine paints a yellow colorrandom +
+// list as yellow, red or dark green).
 TEST(ParticleSubSystem, ColorlistMultipliesTheColourWhateverTheOrder) {
     auto spawn = [](ref<str> first, ref<str> second) -> Eigen::Vector3f {
         owe::Scene             scene;
@@ -1700,10 +1770,10 @@ TEST(ParticleSubSystem, ColorlistMultipliesTheColourWhateverTheOrder) {
     }
 }
 
-// collisionplane (particles-collisionplane): a particle may not go below the plane n . x = distance (n is the
-// "plane" key, up by default). One below it is put on the plane and its speed along n becomes |v_n| * bouncefactor
-// (so one already moving away is sent up the same); "slide" zeroes v_n, "delete" removes the particle. The sideways
-// speed is kept.
+// collisionplane (particles-collisionplane): a particle may not go below the plane n . x = distance
+// (n is the "plane" key, up by default). One below it is put on the plane and its speed along n
+// becomes |v_n| * bouncefactor (so one already moving away is sent up the same); "slide" zeroes
+// v_n, "delete" removes the particle. The sideways speed is kept.
 struct CollidedParticle {
     bool            alive { false };
     Eigen::Vector3f position;
@@ -1711,9 +1781,10 @@ struct CollidedParticle {
     float           alpha { 1.0f };
 };
 
-static CollidedParticle CollideWithPlane(ref<str> collision, Eigen::Vector3f origin, ref<str> velocity,
-                                        int ticks = 1, bool scene_bounds = false) {
-    owe::Scene             scene;
+static CollidedParticle CollideWithPlane(ref<str> collision, Eigen::Vector3f origin,
+                                         ref<str> velocity, int ticks = 1,
+                                         bool scene_bounds = false) {
+    owe::Scene scene;
     if (scene_bounds) scene.SetOrtho({ i32(1920), i32(1080) });
     auto                   mesh = Arc<owe::SceneMesh>::make();
     owe::ParticleSubSystem subsystem(scene,
@@ -1726,8 +1797,8 @@ static CollidedParticle CollideWithPlane(ref<str> collision, Eigen::Vector3f ori
                                      owe::ParticleAnimationSpec {});
     subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
         owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(1)));
-    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
-        owe::ParseJson(velocity).unwrap(), u32(1)));
+    subsystem.AddInitializer(
+        owe::ParticleParser::GenInitializer(owe::ParseJson(velocity).unwrap(), u32(1)));
     subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
         owe::BoxEmitterProgram(subsystem.SpawnPipeline(),
                                owe::ParticleBoxEmitterArgs {
@@ -1738,14 +1809,18 @@ static CollidedParticle CollideWithPlane(ref<str> collision, Eigen::Vector3f ori
     owe::ParticleInstanceModifiers modifiers(Arc<owe::wpscene::ParticleInstanceoverride>::make(),
                                              owe::wpscene::Particle::EFlags { 0 },
                                              false);
-    subsystem.AddOperator(owe::ParticleParser::GenOperator(
-        owe::ParseJson(R"({"name":"movement"})"_str).unwrap(), modifiers.Clone(), subsystem, usize()));
+    subsystem.AddOperator(
+        owe::ParticleParser::GenOperator(owe::ParseJson(R"({"name":"movement"})"_str).unwrap(),
+                                         modifiers.Clone(),
+                                         subsystem,
+                                         usize()));
     subsystem.AddOperator(owe::ParticleParser::GenOperator(
         owe::ParseJson(collision).unwrap(), modifiers.Clone(), subsystem, usize(1)));
     subsystem.Finalize();
     for (int tick = 0; tick < ticks; ++tick) subsystem.Tick(f64(1.0 / 60.0), false);
     CollidedParticle result;
-    result.alive = subsystem.System().Instance(usize()).Binding().Read().Positions().len() != usize();
+    result.alive =
+        subsystem.System().Instance(usize()).Binding().Read().Positions().len() != usize();
     if (! result.alive) return result;
     auto&                        storage = subsystem.System().Instance(usize()).Storage();
     particle::ParticleSlotReader value(storage, particle::ParticleSlot {});
@@ -1757,15 +1832,20 @@ static CollidedParticle CollideWithPlane(ref<str> collision, Eigen::Vector3f ori
 
 TEST(ParticleSubSystem, CollisionPlaneBouncesAParticleThatFellThrough) {
     const auto bounce = R"({"name":"collisionplane","distance":-100,"bouncefactor":0.5})"_str;
-    auto       hit    = CollideWithPlane(bounce, { 0, -100, 0 }, R"({"name":"velocityrandom","min":"20 -60 0","max":"20 -60 0"})"_str);
+    auto       hit =
+        CollideWithPlane(bounce,
+                         { 0, -100, 0 },
+                         R"({"name":"velocityrandom","min":"20 -60 0","max":"20 -60 0"})"_str);
     ASSERT_TRUE(hit.alive);
     EXPECT_NEAR(hit.position.y(), -100.0f, 1e-4f);
     EXPECT_NEAR(hit.velocity.y(), 30.0f, 1e-3f);
     EXPECT_NEAR(hit.velocity.x(), 20.0f, 1e-3f);
-    auto above = CollideWithPlane(bounce, { 0, -50, 0 }, R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
+    auto above = CollideWithPlane(
+        bounce, { 0, -50, 0 }, R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
     EXPECT_NEAR(above.position.y(), -51.0f, 1e-4f);
     EXPECT_NEAR(above.velocity.y(), -60.0f, 1e-3f);
-    auto under = CollideWithPlane(bounce, { 0, -150, 0 }, R"({"name":"velocityrandom","min":"0 40 0","max":"0 40 0"})"_str);
+    auto under = CollideWithPlane(
+        bounce, { 0, -150, 0 }, R"({"name":"velocityrandom","min":"0 40 0","max":"0 40 0"})"_str);
     EXPECT_NEAR(under.position.y(), -100.0f, 1e-4f);
     EXPECT_NEAR(under.velocity.y(), 20.0f, 1e-3f);
 }
@@ -1773,26 +1853,38 @@ TEST(ParticleSubSystem, CollisionPlaneBouncesAParticleThatFellThrough) {
 TEST(ParticleSubSystem, CollisionPlaneSlidesDeletesAndTakesAnyNormal) {
     auto slide = CollideWithPlane(
         R"({"name":"collisionplane","distance":-100,"bouncefactor":0.5,"collisionbehavior":"slide"})"_str,
-        { 0, -100, 0 }, R"({"name":"velocityrandom","min":"20 -60 0","max":"20 -60 0"})"_str);
+        { 0, -100, 0 },
+        R"({"name":"velocityrandom","min":"20 -60 0","max":"20 -60 0"})"_str);
     EXPECT_NEAR(slide.velocity.y(), 0.0f, 1e-3f);
     EXPECT_NEAR(slide.velocity.x(), 20.0f, 1e-3f);
     EXPECT_NEAR(slide.position.y(), -100.0f, 1e-4f);
     auto gone = CollideWithPlane(
-        R"({"name":"collisionplane","distance":-100,"collisionbehavior":"delete"})"_str, { 0, -100, 0 },
+        R"({"name":"collisionplane","distance":-100,"collisionbehavior":"delete"})"_str,
+        { 0, -100, 0 },
         R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
-    EXPECT_FLOAT_EQ(gone.alive ? gone.alpha : 0.0f, 0.0f); // hidden at once, removed with the lifecycle
-    auto wall = CollideWithPlane(R"({"name":"collisionplane","plane":"1 0 0","distance":-100,"bouncefactor":0.5})"_str,
-                                 { -100, 0, 0 }, R"({"name":"velocityrandom","min":"-60 7 0","max":"-60 7 0"})"_str);
+    EXPECT_FLOAT_EQ(gone.alive ? gone.alpha : 0.0f,
+                    0.0f); // hidden at once, removed with the lifecycle
+    auto wall = CollideWithPlane(
+        R"({"name":"collisionplane","plane":"1 0 0","distance":-100,"bouncefactor":0.5})"_str,
+        { -100, 0, 0 },
+        R"({"name":"velocityrandom","min":"-60 7 0","max":"-60 7 0"})"_str);
     EXPECT_NEAR(wall.position.x(), -100.0f, 1e-4f);
     EXPECT_NEAR(wall.velocity.x(), 30.0f, 1e-3f);
     EXPECT_NEAR(wall.velocity.y(), 7.0f, 1e-3f);
 }
 
-// collisionbounds (particles-collisionbounds-rest): the scene's edges, 0..1920 across and 0..1080 up
+// collisionbounds (particles-collisionbounds-rest): the scene's edges, 0..1920 across and 0..1080
+// up
 TEST(ParticleSubSystem, CollisionBoundsKeepParticlesInsideTheScene) {
-    const auto bounds = R"({"name":"collisionbounds","bouncefactor":0.5})"_str;
-    auto       velocity = [](ref<str> v) { return rstd::format(R"({{"name":"velocityrandom","min":"{}","max":"{}"}})", v, v); };
-    auto       run      = [&](Eigen::Vector3f origin, ref<str> v, ref<str> operator_json = R"({"name":"collisionbounds","bouncefactor":0.5})"_str) {
+    const auto bounds   = R"({"name":"collisionbounds","bouncefactor":0.5})"_str;
+    auto       velocity = [](ref<str> v) {
+        return rstd::format(R"({{"name":"velocityrandom","min":"{}","max":"{}"}})", v, v);
+    };
+    auto run = [&](Eigen::Vector3f origin,
+                   ref<str>
+                            v,
+                   ref<str> operator_json =
+                       R"({"name":"collisionbounds","bouncefactor":0.5})"_str) {
         auto json = velocity(v);
         return CollideWithPlane(operator_json, origin, json.as_str(), 1, true);
     };
@@ -1811,55 +1903,61 @@ TEST(ParticleSubSystem, CollisionBoundsKeepParticlesInsideTheScene) {
     EXPECT_NEAR(ceiling.velocity.y(), -60.0f, 1e-3f);
     auto inside = run({ 500, 500, 0 }, "120 0 0"_str);
     EXPECT_NEAR(inside.velocity.x(), 120.0f, 1e-3f);
-    auto gone = run({ 1919, 500, 0 }, "120 0 0"_str, R"({"name":"collisionbounds","collisionbehavior":"delete"})"_str);
+    auto gone = run({ 1919, 500, 0 },
+                    "120 0 0"_str,
+                    R"({"name":"collisionbounds","collisionbehavior":"delete"})"_str);
     EXPECT_FLOAT_EQ(gone.alive ? gone.alpha : 0.0f, 0.0f);
 }
 
 // collisionsphere / collisionquad (particles-collisionshapes, particles-collisionquad-sides)
 TEST(ParticleSubSystem, CollisionSphereKeepsParticlesOutAlongTheSurfaceNormal) {
-    const auto sphere = R"({"name":"collisionsphere","origin":"0 0 0","radius":100,"bouncefactor":0.5})"_str;
-    auto       top    = CollideWithPlane(sphere, { 0, 101, 0 },
-                                         R"({"name":"velocityrandom","min":"0 -120 0","max":"0 -120 0"})"_str);
+    const auto sphere =
+        R"({"name":"collisionsphere","origin":"0 0 0","radius":100,"bouncefactor":0.5})"_str;
+    auto top =
+        CollideWithPlane(sphere,
+                         { 0, 101, 0 },
+                         R"({"name":"velocityrandom","min":"0 -120 0","max":"0 -120 0"})"_str);
     EXPECT_NEAR(top.position.y(), 100.0f, 1e-3f);
     EXPECT_NEAR(top.velocity.y(), 60.0f, 1e-3f);
-    auto side = CollideWithPlane(sphere, { 60, 80, 0 },
-                                 R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
+    auto side = CollideWithPlane(
+        sphere, { 60, 80, 0 }, R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
     const Eigen::Vector3f moved(60.0f, 80.0f - 1.0f, 0.0f);
     const Eigen::Vector3f normal = moved.normalized();
     EXPECT_NEAR((side.position - normal * 100.0f).norm(), 0.0f, 1e-3f);
-    const float along = normal.dot(Eigen::Vector3f(0, -60, 0));
+    const float           along    = normal.dot(Eigen::Vector3f(0, -60, 0));
     const Eigen::Vector3f expected = Eigen::Vector3f(0, -60, 0) + normal * (-along * 0.5f - along);
     EXPECT_NEAR((side.velocity - expected).norm(), 0.0f, 1e-3f);
-    auto away = CollideWithPlane(sphere, { 0, 150, 0 },
-                                 R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
+    auto away = CollideWithPlane(
+        sphere, { 0, 150, 0 }, R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
     EXPECT_NEAR(away.velocity.y(), -60.0f, 1e-3f);
 }
 
 TEST(ParticleSubSystem, CollisionQuadCatchesAParticleFallingOnItButNotOneRisingThroughIt) {
     const auto quad =
         R"({"name":"collisionquad","origin":"0 -100 0","size":"200 100","bouncefactor":0.5})"_str;
-    auto landed = CollideWithPlane(quad, { 50, -100, 0 },
-                                   R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
+    auto landed = CollideWithPlane(
+        quad, { 50, -100, 0 }, R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
     EXPECT_NEAR(landed.position.y(), -100.0f, 1e-4f);
     EXPECT_NEAR(landed.velocity.y(), 30.0f, 1e-3f);
-    auto rising = CollideWithPlane(quad, { 50, -100.5f, 0 },
-                                   R"({"name":"velocityrandom","min":"0 60 0","max":"0 60 0"})"_str);
+    auto rising = CollideWithPlane(
+        quad, { 50, -100.5f, 0 }, R"({"name":"velocityrandom","min":"0 60 0","max":"0 60 0"})"_str);
     EXPECT_NEAR(rising.velocity.y(), 60.0f, 1e-3f);
-    auto beside = CollideWithPlane(quad, { 150, -100, 0 },
-                                   R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
+    auto beside = CollideWithPlane(
+        quad, { 150, -100, 0 }, R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
     EXPECT_NEAR(beside.velocity.y(), -60.0f, 1e-3f);
     auto angled = CollideWithPlane(
         R"({"name":"collisionquad","origin":"0 -100 0","size":"200 100","angles":"0 0 30","bouncefactor":0.5})"_str,
-        { 50, -100, 0 }, R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
+        { 50, -100, 0 },
+        R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
     EXPECT_NEAR(angled.velocity.y(), 30.0f, 1e-3f);
 }
 
-// inheritcontrolpointvelocity (particles-controlpoint-velocity): a particle starts with its control point's velocity
-// (how fast the object moves, per second) times a factor between min and max. The first frame has no earlier position
-// to measure from, so a particle born then gets none.
+// inheritcontrolpointvelocity (particles-controlpoint-velocity): a particle starts with its control
+// point's velocity (how fast the object moves, per second) times a factor between min and max. The
+// first frame has no earlier position to measure from, so a particle born then gets none.
 TEST(ParticleSubSystem, InheritControlpointVelocityTakesTheObjectsVelocity) {
     auto last_velocity = [](bool world_space) {
-        owe::Scene scene;
+        owe::Scene             scene;
         owe::ParticleSubSystem subsystem(scene,
                                          Arc<owe::SceneMesh>::make(),
                                          u32(64),
@@ -1874,9 +1972,11 @@ TEST(ParticleSubSystem, InheritControlpointVelocityTakesTheObjectsVelocity) {
                                          f64(),
                                          world_space);
         subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
-            owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(64)));
+            owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(),
+            u32(64)));
         subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
-            owe::ParseJson(R"({"name":"inheritcontrolpointvelocity","controlpoint":0,"min":0.5,"max":0.5})"_str)
+            owe::ParseJson(
+                R"({"name":"inheritcontrolpointvelocity","controlpoint":0,"min":0.5,"max":0.5})"_str)
                 .unwrap(),
             u32(64)));
         owe::wpscene::Emitter emitter;
@@ -2104,9 +2204,9 @@ TEST(ParticleShaders, ShadersWithoutAGeometryStageExpandTheirQuadsInTheVertexSha
     std::filesystem::remove_all(root);
 }
 
-// maintaindistancebetweencontrolpoints (particles-maintain-between): a particle stays between control points 0 and 1
-// along the axis joining them (clamped to the nearer end), drifts a little towards control point 0 (about 1.1 % a
-// second), and keeps its sideways place.
+// maintaindistancebetweencontrolpoints (particles-maintain-between): a particle stays between
+// control points 0 and 1 along the axis joining them (clamped to the nearer end), drifts a little
+// towards control point 0 (about 1.1 % a second), and keeps its sideways place.
 static Eigen::Vector3f KeepBetweenControlpoints(Eigen::Vector3f origin, int ticks = 1,
                                                 Eigen::Vector3d second = { 200.0, 0.0, 0.0 },
                                                 double          tick   = 1.0 / 60.0) {
@@ -2134,8 +2234,10 @@ static Eigen::Vector3f KeepBetweenControlpoints(Eigen::Vector3f origin, int tick
                                              owe::wpscene::Particle::EFlags { 0 },
                                              false);
     subsystem.AddOperator(owe::ParticleParser::GenOperator(
-        owe::ParseJson(R"({"name":"maintaindistancebetweencontrolpoints"})"_str).unwrap(), modifiers.Clone(),
-        subsystem, usize()));
+        owe::ParseJson(R"({"name":"maintaindistancebetweencontrolpoints"})"_str).unwrap(),
+        modifiers.Clone(),
+        subsystem,
+        usize()));
     subsystem.Finalize();
     for (int count = 0; count < ticks; ++count) subsystem.Tick(f64(tick), false);
     auto&                        storage = subsystem.System().Instance(usize()).Storage();
@@ -2144,16 +2246,22 @@ static Eigen::Vector3f KeepBetweenControlpoints(Eigen::Vector3f origin, int tick
 }
 
 TEST(ParticleSubSystem, MaintainDistanceBetweenControlpointsClampsAlongTheAxis) {
-    EXPECT_NEAR(KeepBetweenControlpoints({ 260, 100, 0 }).x(), 200.0f, 0.1f); // past control point 1
-    EXPECT_NEAR(KeepBetweenControlpoints({ -50, 100, 0 }).x(), 0.0f, 0.1f);   // behind control point 0
-    EXPECT_NEAR(KeepBetweenControlpoints({ 100, 100, 0 }).x(), 100.0f, 0.1f); // between: left (barely drifting)
-    EXPECT_NEAR(KeepBetweenControlpoints({ 100, 100, 0 }).y(), 100.0f, 1e-4f); // sideways place kept
+    EXPECT_NEAR(
+        KeepBetweenControlpoints({ 260, 100, 0 }).x(), 200.0f, 0.1f); // past control point 1
+    EXPECT_NEAR(
+        KeepBetweenControlpoints({ -50, 100, 0 }).x(), 0.0f, 0.1f); // behind control point 0
+    EXPECT_NEAR(KeepBetweenControlpoints({ 100, 100, 0 }).x(),
+                100.0f,
+                0.1f); // between: left (barely drifting)
+    EXPECT_NEAR(
+        KeepBetweenControlpoints({ 100, 100, 0 }).y(), 100.0f, 1e-4f); // sideways place kept
 }
 
-// Wallpaper Engine normalises the axis with the CPU's approximate reciprocal square root (rsqrtps), so every frame a
-// particle's place along the axis is scaled by |axis|^2, a little under or over 1 depending on the control points'
-// distance (particles-maintain-drift: 1 - 3.36e-4 for 100, 200 and 400 apart, 1 - 1.45e-4 for 150 and 300, and
-// 1 + 4.22e-4 for a 45 degree axis of length 200, which pushes particles away from control point 0).
+// Wallpaper Engine normalises the axis with the CPU's approximate reciprocal square root (rsqrtps),
+// so every frame a particle's place along the axis is scaled by |axis|^2, a little under or over 1
+// depending on the control points' distance (particles-maintain-drift: 1 - 3.36e-4 for 100, 200 and
+// 400 apart, 1 - 1.45e-4 for 150 and 300, and 1 + 4.22e-4 for a 45 degree axis of length 200, which
+// pushes particles away from control point 0).
 static float AxisScalePerFrame(Eigen::Vector3f span) {
 #if defined(__SSE__)
     float inverse = _mm_cvtss_f32(_mm_rsqrt_ss(_mm_set_ss(span.squaredNorm())));
@@ -2171,17 +2279,20 @@ TEST(ParticleSubSystem, MaintainDistanceBetweenControlpointsDriftsByFramesNotSec
 }
 
 TEST(ParticleSubSystem, MaintainDistanceBetweenControlpointsScalesByTheApproximateAxis) {
-    for (Eigen::Vector3f second : { Eigen::Vector3f { 200, 0, 0 }, Eigen::Vector3f { 150, 0, 0 },
+    for (Eigen::Vector3f second : { Eigen::Vector3f { 200, 0, 0 },
+                                    Eigen::Vector3f { 150, 0, 0 },
                                     Eigen::Vector3f { 141.421f, 141.421f, 0 } }) {
         double expected = 100.0;
         for (int frame = 0; frame < 600; ++frame) expected *= AxisScalePerFrame(second);
-        auto  after    = KeepBetweenControlpoints(second.normalized() * 100.0f, 600, second.cast<double>());
+        auto after =
+            KeepBetweenControlpoints(second.normalized() * 100.0f, 600, second.cast<double>());
         EXPECT_NEAR(after.norm(), expected, 0.02) << second.transpose();
     }
 }
 
-// Instantaneous emitters fire when the system has no particles; every one of them does, not only the first to run
-// (particles-instantaneous-emitters: Wallpaper Engine shows a particle from each of several such emitters).
+// Instantaneous emitters fire when the system has no particles; every one of them does, not only
+// the first to run (particles-instantaneous-emitters: Wallpaper Engine shows a particle from each
+// of several such emitters).
 TEST(ParticleSubSystem, EveryInstantaneousEmitterFiresIntoAnEmptySystem) {
     owe::Scene             scene;
     auto                   mesh = Arc<owe::SceneMesh>::make();
@@ -2211,19 +2322,21 @@ TEST(ParticleSubSystem, EveryInstantaneousEmitterFiresIntoAnEmptySystem) {
     EXPECT_EQ(LiveParticleCount(subsystem), usize(6)); // not again while particles live
 }
 
-// boids (particles-boids): particles at rest with only the boids operator; returns each particle's velocity, ordered by x.
-// Wallpaper Engine runs the operator on groups of four particles, and the unused places of the last group count as
-// particles at rest at the system's origin: a pair at -d/2 and d/2 has two such neighbours half way between them.
+// boids (particles-boids): particles at rest with only the boids operator; returns each particle's
+// velocity, ordered by x. Wallpaper Engine runs the operator on groups of four particles, and the
+// unused places of the last group count as particles at rest at the system's origin: a pair at -d/2
+// and d/2 has two such neighbours half way between them.
 struct BoidsResult {
     int             count {};
     Eigen::Vector3f velocity[4];
 };
 
-static BoidsResult BoidsVelocities(ref<str> config, std::initializer_list<float> xs, int ticks = 1,
-                                   double tick = 1.0 / 30.0,
-                                   ref<str> velocity = R"({"name":"velocityrandom","min":"0 0 0","max":"0 0 0"})"_str,
-                                   u32 target_fps = u32()) {
-    owe::Scene             scene;
+static BoidsResult
+BoidsVelocities(ref<str> config, std::initializer_list<float> xs, int ticks = 1,
+                double   tick     = 1.0 / 30.0,
+                ref<str> velocity = R"({"name":"velocityrandom","min":"0 0 0","max":"0 0 0"})"_str,
+                u32      target_fps = u32()) {
+    owe::Scene scene;
     if (target_fps > u32()) scene.SetTargetFps(target_fps);
     auto                   mesh = Arc<owe::SceneMesh>::make();
     owe::ParticleSubSystem subsystem(scene,
@@ -2236,7 +2349,8 @@ static BoidsResult BoidsVelocities(ref<str> config, std::initializer_list<float>
                                      owe::ParticleAnimationSpec {});
     subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
         owe::ParseJson(R"({"name":"lifetimerandom","min":100,"max":100})"_str).unwrap(), u32(1)));
-    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(owe::ParseJson(velocity).unwrap(), u32(2)));
+    subsystem.AddInitializer(
+        owe::ParticleParser::GenInitializer(owe::ParseJson(velocity).unwrap(), u32(2)));
     int emitter {};
     for (float x : xs) {
         subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
@@ -2263,7 +2377,8 @@ static BoidsResult BoidsVelocities(ref<str> config, std::initializer_list<float>
         usize slot {};
         for (const auto& state : subsystem.System().Instance(instance).Binding().Read().States()) {
             if (state.active && result.count < 4) {
-                particle::ParticleSlotReader value(storage, particle::ParticleSlot { .index = slot });
+                particle::ParticleSlotReader value(storage,
+                                                   particle::ParticleSlot { .index = slot });
                 place[result.count]           = value.Read(subsystem.Attributes().position).x();
                 result.velocity[result.count] = value.Read(subsystem.Attributes().velocity);
                 ++result.count;
@@ -2274,10 +2389,10 @@ static BoidsResult BoidsVelocities(ref<str> config, std::initializer_list<float>
     for (int i = 0; i < result.count; ++i) {
         for (int j = i + 1; j < result.count; ++j) {
             if (place[j] < place[i]) {
-                auto p = place[i];
-                place[i] = place[j];
-                place[j] = p;
-                auto v = result.velocity[i];
+                auto p             = place[i];
+                place[i]           = place[j];
+                place[j]           = p;
+                auto v             = result.velocity[i];
                 result.velocity[i] = result.velocity[j];
                 result.velocity[j] = v;
             }
@@ -2287,56 +2402,70 @@ static BoidsResult BoidsVelocities(ref<str> config, std::initializer_list<float>
     return result;
 }
 
-// One frame at 30 a second moves velocities by factor x average x dt x (0.025 x 30)^0.7 (Wallpaper Engine's frame-rate
-// compensation; at 40 frames a second and more the time step is used as it is).
+// One frame at 30 a second moves velocities by factor x average x dt x (0.025 x 30)^0.7 (Wallpaper
+// Engine's frame-rate compensation; at 40 frames a second and more the time step is used as it is).
 static constexpr double kBoidsStep30 = (1.0 / 30.0) * 0.81766;
 
 TEST(ParticleSubSystem, BoidsSeparationAveragesOverNeighboursIncludingTheEmptyPlaces) {
-    auto config = R"({"name":"boids","separationthreshold":60,"neighborthreshold":200,"separationfactor":1,
+    auto config =
+        R"({"name":"boids","separationthreshold":60,"neighborthreshold":200,"separationfactor":1,
                       "alignmentfactor":0,"cohesionfactor":0})"_str;
-    // 40 apart: the other particle (60 - 40) and two empty places 20 away (60 - 20 each), averaged over 3
+    // 40 apart: the other particle (60 - 40) and two empty places 20 away (60 - 20 each), averaged
+    // over 3
     auto near = BoidsVelocities(config, { -20.0f, 20.0f });
     EXPECT_NEAR(near.velocity[1].x(), kBoidsStep30 * 100.0 / 3.0, 0.01);
     EXPECT_NEAR(near.velocity[0].x(), -near.velocity[1].x(), 1e-4);
     // 100 apart: only the empty places 50 away (60 - 50)
-    EXPECT_NEAR(BoidsVelocities(config, { -50.0f, 50.0f }).velocity[1].x(), kBoidsStep30 * 10.0, 0.005);
+    EXPECT_NEAR(
+        BoidsVelocities(config, { -50.0f, 50.0f }).velocity[1].x(), kBoidsStep30 * 10.0, 0.005);
     // 130 apart: nothing within 60
     EXPECT_NEAR(BoidsVelocities(config, { -65.0f, 65.0f }).velocity[1].x(), 0.0, 1e-6);
 }
 
 TEST(ParticleSubSystem, BoidsCohesionPullsTowardsTheNeighboursMeanPosition) {
-    auto config = R"({"name":"boids","separationthreshold":60,"neighborthreshold":200,"separationfactor":0,
+    auto config =
+        R"({"name":"boids","separationthreshold":60,"neighborthreshold":200,"separationfactor":0,
                       "alignmentfactor":0,"cohesionfactor":1})"_str;
-    // 150 apart: the mean of the other particle and the two empty places is 25 from the origin, 100 from -75
-    EXPECT_NEAR(BoidsVelocities(config, { -75.0f, 75.0f }).velocity[0].x(), kBoidsStep30 * 100.0, 0.05);
+    // 150 apart: the mean of the other particle and the two empty places is 25 from the origin, 100
+    // from -75
+    EXPECT_NEAR(
+        BoidsVelocities(config, { -75.0f, 75.0f }).velocity[0].x(), kBoidsStep30 * 100.0, 0.05);
     // 250 apart: the other particle is out of reach, the empty places pull to the origin
-    EXPECT_NEAR(BoidsVelocities(config, { -125.0f, 125.0f }).velocity[0].x(), kBoidsStep30 * 125.0, 0.05);
+    EXPECT_NEAR(
+        BoidsVelocities(config, { -125.0f, 125.0f }).velocity[0].x(), kBoidsStep30 * 125.0, 0.05);
     // three particles: one empty place
     auto three = BoidsVelocities(config, { -60.0f, -40.0f, 60.0f });
     EXPECT_NEAR(three.velocity[0].x(), kBoidsStep30 * (20.0 / 3.0 + 60.0), 0.05);
 }
 
 TEST(ParticleSubSystem, BoidsAlignmentSteersTowardsTheNeighboursMeanVelocity) {
-    auto config = R"({"name":"boids","separationthreshold":1,"neighborthreshold":200,"separationfactor":0,
+    auto config =
+        R"({"name":"boids","separationthreshold":1,"neighborthreshold":200,"separationfactor":0,
                       "alignmentfactor":1,"cohesionfactor":0})"_str;
     // one particle moving at 10 with three empty places at rest: the mean velocity is 0
-    auto alone = BoidsVelocities(config, { 30.0f }, 1, 1.0 / 30.0,
+    auto alone = BoidsVelocities(config,
+                                 { 30.0f },
+                                 1,
+                                 1.0 / 30.0,
                                  R"({"name":"velocityrandom","min":"10 0 0","max":"10 0 0"})"_str);
     EXPECT_NEAR(alone.velocity[0].x(), 10.0 - kBoidsStep30 * 10.0, 0.005);
 }
 
 TEST(ParticleSubSystem, BoidsCompensatesForTheFrameRate) {
-    auto config = R"({"name":"boids","separationthreshold":60,"neighborthreshold":200,"separationfactor":1,
+    auto config =
+        R"({"name":"boids","separationthreshold":60,"neighborthreshold":200,"separationfactor":1,
                       "alignmentfactor":0,"cohesionfactor":0})"_str;
-    // at 60 frames a second each step uses the whole time step: one second gains 1 / 0.81766 times what it does at 30
+    // at 60 frames a second each step uses the whole time step: one second gains 1 / 0.81766 times
+    // what it does at 30
     auto at30 = BoidsVelocities(config, { -50.0f, 50.0f }, 30, 1.0 / 30.0).velocity[1].x();
     auto at60 = BoidsVelocities(config, { -50.0f, 50.0f }, 60, 1.0 / 60.0).velocity[1].x();
     EXPECT_NEAR(at60 / at30, 1.0 / 0.81766, 0.01);
 }
 
-// Low frame rates (particles-lowfps-substeps): the subsystem reads the scene's target frame rate. dt2 = dt x
-// min(0.025 / target frame time, 1)^0.7, from the target frame time, not the substep; at 1..20 frames a second the
-// operators run twice with half of both, the emitters and ages once with the whole step.
+// Low frame rates (particles-lowfps-substeps): the subsystem reads the scene's target frame rate.
+// dt2 = dt x min(0.025 / target frame time, 1)^0.7, from the target frame time, not the substep;
+// at 1..20 frames a second the operators run twice with half of both, the emitters and ages once
+// with the whole step.
 struct OperatorTrace {
     rstd::vec::Vec<double> deltas;
     rstd::vec::Vec<double> deltas2;
@@ -2376,7 +2505,8 @@ static OperatorTrace TraceOperators(u32 target_fps, double tick) {
         usize slot {};
         for (const auto& state : subsystem.System().Instance(instance).Binding().Read().States()) {
             if (state.active) {
-                particle::ParticleSlotReader value(storage, particle::ParticleSlot { .index = slot });
+                particle::ParticleSlotReader value(storage,
+                                                   particle::ParticleSlot { .index = slot });
                 trace.lifetime = value.Read(subsystem.Attributes().lifetime);
             }
             ++slot;
@@ -2413,14 +2543,14 @@ TEST(ParticleSubSystem, OperatorsRunOnceFromTwentyOneFramesASecond) {
         auto         trace = TraceOperators(fps, tick);
         ASSERT_EQ(trace.deltas.len(), usize(1)) << fps.to_primitive();
         EXPECT_NEAR(trace.deltas[usize()], tick, 1e-9);
-        EXPECT_NEAR(trace.deltas2[usize()],
-                    tick * Dt2Scale(static_cast<double>(fps.to_primitive())),
-                    1e-6);
+        EXPECT_NEAR(
+            trace.deltas2[usize()], tick * Dt2Scale(static_cast<double>(fps.to_primitive())), 1e-6);
     }
 }
 
 TEST(ParticleSubSystem, Dt2ComesFromTheTargetFrameTimeNotTheStep) {
-    // a 15 fps target with a longer step (speed, rate): two half steps, dt2 still scaled by 15 fps's factor
+    // a 15 fps target with a longer step (speed, rate): two half steps, dt2 still scaled by 15
+    // fps's factor
     auto trace = TraceOperators(u32(15), 0.1);
     ASSERT_EQ(trace.deltas.len(), usize(2));
     EXPECT_NEAR(trace.deltas2[usize()], 0.05 * Dt2Scale(15.0), 1e-6);
@@ -2431,11 +2561,17 @@ TEST(ParticleSubSystem, Dt2ComesFromTheTargetFrameTimeNotTheStep) {
 }
 
 TEST(ParticleSubSystem, BoidsTakesTwoHalfStepsAtFifteenFramesASecond) {
-    auto config = R"({"name":"boids","separationthreshold":1,"neighborthreshold":200,"separationfactor":0,
+    auto config =
+        R"({"name":"boids","separationthreshold":1,"neighborthreshold":200,"separationfactor":0,
                       "alignmentfactor":1,"cohesionfactor":0})"_str;
-    // one particle moving at 10 with three empty places at rest steers to 0 twice a frame by half of dt2
+    // one particle moving at 10 with three empty places at rest steers to 0 twice a frame by half
+    // of dt2
     const double step = (1.0 / 15.0) * Dt2Scale(15.0);
-    auto alone = BoidsVelocities(config, { 30.0f }, 1, 1.0 / 15.0,
-                                 R"({"name":"velocityrandom","min":"10 0 0","max":"10 0 0"})"_str, u32(15));
+    auto alone = BoidsVelocities(config,
+                                 { 30.0f },
+                                 1,
+                                 1.0 / 15.0,
+                                 R"({"name":"velocityrandom","min":"10 0 0","max":"10 0 0"})"_str,
+                                 u32(15));
     EXPECT_NEAR(alone.velocity[0].x(), 10.0 * (1.0 - step / 2.0) * (1.0 - step / 2.0), 1e-3);
 }

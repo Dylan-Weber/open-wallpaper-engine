@@ -842,11 +842,16 @@ TEST(ScriptBonePhysics, ImpulsesAndResetsReachTheLayersBones) {
         JsRuntime::BoneIndexResolver::make([](owe::SceneNode*, ref<str> name) -> uint32_t {
             return name == "hair"_str ? 5 : 0;
         }),
-        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t { return 0; }),
+        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t {
+            return 0;
+        }),
         JsRuntime::BoneTransformResolver::make(
-            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTransformData> { return None(); }),
+            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTransformData> {
+                return None();
+            }),
         JsRuntime::BoneSetTransformResolver::make(
-            [](owe::SceneNode*, uint32_t, const BoneTransformData&) {}));
+            [](owe::SceneNode*, uint32_t, const BoneTransformData&) {
+            }));
     rt.SetBonePhysicsHandler(JsRuntime::BonePhysicsHandler::make(
         [&requests](owe::SceneNode* target, const BonePhysicsRequest& request) {
             EXPECT_NE(target, nullptr);
@@ -900,7 +905,9 @@ TEST(ScriptBones, IndicesCountFromZero) {
             if (name == ""_str) return 1;
             return name == "hair"_str ? 5 : 0;
         }),
-        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t { return 5; }),
+        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t {
+            return 5;
+        }),
         JsRuntime::BoneTransformResolver::make(
             [&asked](owe::SceneNode*, uint32_t index, double) -> Option<BoneTransformData> {
                 asked = index;
@@ -909,7 +916,8 @@ TEST(ScriptBones, IndicesCountFromZero) {
                 return Some(bone);
             }),
         JsRuntime::BoneSetTransformResolver::make(
-            [](owe::SceneNode*, uint32_t, const BoneTransformData&) {}));
+            [](owe::SceneNode*, uint32_t, const BoneTransformData&) {
+            }));
     auto* fs = rt.MakeFieldScript(
         R"JS(
             const results = [
@@ -944,11 +952,16 @@ TEST(ScriptBones, CountAndParents) {
         JsRuntime::BoneIndexResolver::make([](owe::SceneNode*, ref<str> name) -> uint32_t {
             return name == "hair"_str ? 3 : 0;
         }),
-        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t { return 3; }),
+        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t {
+            return 3;
+        }),
         JsRuntime::BoneTransformResolver::make(
-            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTransformData> { return None(); }),
+            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTransformData> {
+                return None();
+            }),
         JsRuntime::BoneSetTransformResolver::make(
-            [](owe::SceneNode*, uint32_t, const BoneTransformData&) {}));
+            [](owe::SceneNode*, uint32_t, const BoneTransformData&) {
+            }));
     // three bones: a root, its child, and that child's child (1-based, 0 for none)
     rt.SetBoneParentsResolver(
         JsRuntime::BoneParentsResolver::make([](owe::SceneNode*) -> Vec<uint32_t> {
@@ -989,11 +1002,16 @@ TEST(ScriptBones, LocalOriginAndAngles) {
         JsRuntime::BoneIndexResolver::make([](owe::SceneNode*, ref<str> name) -> uint32_t {
             return name == "hand"_str ? 2 : 0;
         }),
-        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t { return 0; }),
+        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t {
+            return 0;
+        }),
         JsRuntime::BoneTransformResolver::make(
-            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTransformData> { return None(); }),
+            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTransformData> {
+                return None();
+            }),
         JsRuntime::BoneSetTransformResolver::make(
-            [](owe::SceneNode*, uint32_t, const BoneTransformData&) {}));
+            [](owe::SceneNode*, uint32_t, const BoneTransformData&) {
+            }));
     BoneLocalPose pose { .origin = { 1.0f, 2.0f, 3.0f }, .angles = { 0.0f, 0.0f, 0.5f } };
     uint32_t      asked = 0, set = 0;
     rt.SetBoneLocalResolvers(
@@ -1104,7 +1122,9 @@ TEST(ScriptBones, MatricesAreMat4s) {
         JsRuntime::BoneIndexResolver::make([](owe::SceneNode*, ref<str> name) -> uint32_t {
             return name == "hand"_str ? 2 : 0;
         }),
-        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t { return 2; }),
+        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t {
+            return 2;
+        }),
         // the bone in the scene (upstream's getBoneTransform)
         JsRuntime::BoneTransformResolver::make(
             [](owe::SceneNode*, uint32_t bone, double) -> Option<BoneTransformData> {
@@ -1133,13 +1153,17 @@ TEST(ScriptBones, MatricesAreMat4s) {
     JsRuntime::BoneMatrix set_local {};
     rt.SetBoneMatrixResolvers(
         JsRuntime::BoneMatrixGetter::make(
-            [&](owe::SceneNode*, uint32_t, double) -> Option<JsRuntime::BoneMatrix> { return None(); }),
+            [&](owe::SceneNode*, uint32_t, double) -> Option<JsRuntime::BoneMatrix> {
+                return None();
+            }),
         JsRuntime::BoneMatrixGetter::make(
             [&](owe::SceneNode*, uint32_t bone, double) -> Option<JsRuntime::BoneMatrix> {
                 if (bone != 2) return None();
                 return Some(JsRuntime::BoneMatrix(local));
             }),
-        JsRuntime::BoneMatrixSetter::make([&](owe::SceneNode*, uint32_t, JsRuntime::BoneMatrix, double) {}),
+        JsRuntime::BoneMatrixSetter::make(
+            [&](owe::SceneNode*, uint32_t, JsRuntime::BoneMatrix, double) {
+            }),
         JsRuntime::BoneMatrixSetter::make(
             [&](owe::SceneNode*, uint32_t bone, JsRuntime::BoneMatrix matrix, double) {
                 local_bone = bone;
@@ -1190,26 +1214,35 @@ TEST(ScriptBones, MatricesAreMat4s) {
 }
 
 TEST(ScriptBones, LocalBonesReadZeroAndTakeNothingInInit) {
-    // In a script's init Wallpaper Engine's bones read zero and setting them does nothing (puppet-bone-init); update sees them.
+    // In a script's init Wallpaper Engine's bones read zero and setting them does nothing
+    // (puppet-bone-init); update sees them.
     owe::SceneNode node;
     JsRuntime      rt;
     rt.SetBoneResolvers(
-        JsRuntime::BoneIndexResolver::make([](owe::SceneNode*, ref<str>) -> uint32_t { return 1; }),
-        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t { return 0; }),
+        JsRuntime::BoneIndexResolver::make([](owe::SceneNode*, ref<str>) -> uint32_t {
+            return 1;
+        }),
+        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t {
+            return 0;
+        }),
         JsRuntime::BoneTransformResolver::make(
-            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTransformData> { return None(); }),
+            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTransformData> {
+                return None();
+            }),
         JsRuntime::BoneSetTransformResolver::make(
-            [](owe::SceneNode*, uint32_t, const BoneTransformData&) {}));
+            [](owe::SceneNode*, uint32_t, const BoneTransformData&) {
+            }));
     BoneLocalPose pose { .origin = { 1.0f, 2.0f, 3.0f }, .angles = { 0.0f, 0.0f, 0.3f } };
     int           sets = 0;
-    rt.SetBoneLocalResolvers(
-        JsRuntime::BoneLocalGetter::make(
-            [&](owe::SceneNode*, uint32_t, double) -> Option<BoneLocalPose> { return Some(pose); }),
-        JsRuntime::BoneLocalSetter::make(
-            [&](owe::SceneNode*, uint32_t, BoneLocalPose value, double) {
-                ++sets;
-                pose = value;
-            }));
+    rt.SetBoneLocalResolvers(JsRuntime::BoneLocalGetter::make(
+                                 [&](owe::SceneNode*, uint32_t, double) -> Option<BoneLocalPose> {
+                                     return Some(pose);
+                                 }),
+                             JsRuntime::BoneLocalSetter::make(
+                                 [&](owe::SceneNode*, uint32_t, BoneLocalPose value, double) {
+                                     ++sets;
+                                     pose = value;
+                                 }));
     auto* fs = rt.MakeFieldScript(
         R"JS(
             let atInit = 'unset';
@@ -1921,10 +1954,11 @@ TEST(ScriptCursor, ClickRestartsNamedAnimationLayer) {
 }
 
 TEST(ScriptAnimationLayer, GetAnimationGivesNothing) {
-    // In Wallpaper Engine an animation layer has a getAnimation that returns undefined, whatever it is asked
-    // (puppet-layer-getanimation), and a layer's getAnimation(name) is undefined for a name no property animation
-    // has. Ocarina of Time's getAnimationLayer("Surprise").getAnimation("surprise").isPlaying() therefore throws, and
-    // Link keeps his angle.
+    // In Wallpaper Engine an animation layer has a getAnimation that returns undefined, whatever it
+    // is asked (puppet-layer-getanimation), and a layer's getAnimation(name) is undefined for a
+    // name no property animation has. Ocarina of Time's
+    // getAnimationLayer("Surprise").getAnimation("surprise").isPlaying() therefore throws, and Link
+    // keeps his angle.
     owe::SceneNode node;
     auto           clip     = Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {
         .name = String::make("Arona Drool"_str),
@@ -3294,8 +3328,8 @@ TEST(ScriptScene, CameraTransformsRoundTripThroughSceneOwner) {
     EXPECT_DOUBLE_EQ(LastScalar(script), 345.0);
 }
 
-// Measured in Wallpaper Engine: a script that calls setCameraTransforms in init (and returns its value) leaves the
-// camera where the scene put it; the same call in update moves it.
+// Measured in Wallpaper Engine: a script that calls setCameraTransforms in init (and returns its
+// value) leaves the camera where the scene put it; the same call in update moves it.
 TEST(ScriptScene, CameraTransformsSetInInitAreIgnored) {
     owe::Scene scene;
     auto       camera = Arc<owe::SceneCamera>::make(
@@ -5376,17 +5410,18 @@ TEST(ScriptVector, MethodsFollowTheSceneScriptReference) {
 }
 
 TEST(ScriptAnimation, AnAnglesScriptReturningANumberTurnsEveryAxisByThatManyRadians) {
-    // Wallpaper Engine spreads a number returned for angles over x, y and z and takes it as radians, not the degrees
-    // a vector is in (script-return-type: its 200 px square returning 30 covers exactly the area (30, 30, 30) radians
-    // gives)
+    // Wallpaper Engine spreads a number returned for angles over x, y and z and takes it as
+    // radians, not the degrees a vector is in (script-return-type: its 200 px square returning 30
+    // covers exactly the area (30, 30, 30) radians gives)
     auto      node = Arc<owe::SceneNode>::make();
     JsRuntime rt;
-    auto*     fs = rt.MakeFieldScript("export function update(value) { return 30; }"_str,
-                                      "test/angles_number"_str,
-                                      FieldKind::Vec3,
-                                      owe::MakeObject(),
-                                      owe::IntoJson("0 0 0"),
-                                      ScriptBindingContext::ForLayer(node.as_ptr(), "angles"_str, None()));
+    auto*     fs =
+        rt.MakeFieldScript("export function update(value) { return 30; }"_str,
+                           "test/angles_number"_str,
+                           FieldKind::Vec3,
+                           owe::MakeObject(),
+                           owe::IntoJson("0 0 0"),
+                           ScriptBindingContext::ForLayer(node.as_ptr(), "angles"_str, None()));
     ASSERT_NE(fs, nullptr);
     auto apply = MakeNodeTransformApply(node.clone(), NodeTransformTarget::Rotation);
     rt.TickAll();
@@ -5583,8 +5618,8 @@ TEST(ScriptAnimationLayer, CreateDestroyAndPlaySingle) {
     rt.SetFrameInputs(MakeFi());
     rt.SetAnimationLayerResolvers(
         JsRuntime::AnimationLayerCreator::make(
-            [&](owe::SceneNode* owner, JsRuntime::AnimationLayerRequest request)
-                -> Option<Arc<owe::SceneAnimationLayer>> {
+            [&](owe::SceneNode*                  owner,
+                JsRuntime::AnimationLayerRequest request) -> Option<Arc<owe::SceneAnimationLayer>> {
                 if (request.animation != "wave"_str) return None();
                 auto playback = Arc<owe::SceneAnimationPlayback>::make(
                     Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {

@@ -301,7 +301,7 @@ void LayerImageEmitterProgram::Emit(particle::ParticleEmitterContext& context) {
     // a layer (times the pixel) less than half opaque gives the image nothing to emit from
     const bool visible  = source.alpha >= 0.5f;
     auto       requests = context.Acquire(rstd::as_cast<usize>(visible ? emit_count : u32()),
-                                    EmitDuration(emit_speed));
+                                          EmitDuration(emit_speed));
     auto       columns  = m_pipeline->Bind(context.View());
     source.node->UpdateTrans();
     const Eigen::Matrix4d model = source.node->ModelTrans();
@@ -309,15 +309,18 @@ void LayerImageEmitterProgram::Emit(particle::ParticleEmitterContext& context) {
         Eigen::Vector4d point(0.0, 0.0, 0.0, 1.0);
         Eigen::Vector3f color = source.color;
         if (! source.points.is_empty()) {
-            auto pick   = static_cast<usize>(Random::get(0.0, 1.0) * static_cast<double>(source.points.len().to_primitive()));
+            auto pick = static_cast<usize>(Random::get(0.0, 1.0) *
+                                           static_cast<double>(source.points.len().to_primitive()));
             if (pick >= source.points.len()) pick = source.points.len() - usize(1);
             const auto& pixel = source.points[pick];
-            point.x() = pixel.x;
-            point.y() = pixel.y;
-            color     = pixel.color.cwiseProduct(source.color);
+            point.x()         = pixel.x;
+            point.y()         = pixel.y;
+            color             = pixel.color.cwiseProduct(source.color);
         } else {
-            point.x() = algorism::lerp(Random::get(0.0, 1.0), -source.half_width, source.half_width);
-            point.y() = algorism::lerp(Random::get(0.0, 1.0), -source.half_height, source.half_height);
+            point.x() =
+                algorism::lerp(Random::get(0.0, 1.0), -source.half_width, source.half_width);
+            point.y() =
+                algorism::lerp(Random::get(0.0, 1.0), -source.half_height, source.half_height);
         }
         Eigen::Vector3f world = (model * point).head<3>().cast<float>();
         columns.positions[request.slot.index] =

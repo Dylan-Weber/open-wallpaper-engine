@@ -273,20 +273,22 @@ void LoadOperator(ParticleSubSystem& system, const wpscene::Particle& particle,
     }
 }
 void LoadEmitter(ParticleSubSystem& system, const wpscene::Particle& particle,
-                 const ParticleInstanceModifiers&             modifiers,
+                 const ParticleInstanceModifiers&     modifiers,
                  const Option<Arc<LayerImageSource>>& layer_image) {
     usize emitter_index {};
     for (const auto& em : particle.emitters) {
         auto newEm = em.clone();
         newEm.rate *= modifiers.Count();
         system.AddEmitter(ParticleParser::GenEmitter(
-            newEm, system, emitter_index++,
+            newEm,
+            system,
+            emitter_index++,
             layer_image.is_some() ? Some((*layer_image).clone()) : None()));
     }
 }
 
-Vec<LayerImagePoint> LayerImageLattice(const unsigned char* data, int width, int height, int channels, bool bgra,
-                                       float layer_alpha) {
+Vec<LayerImagePoint> LayerImageLattice(const unsigned char* data, int width, int height,
+                                       int channels, bool bgra, float layer_alpha) {
     constexpr int        block = 4;
     Vec<LayerImagePoint> points;
     for (int top {}; top + block <= height; top += block) {
@@ -294,8 +296,10 @@ Vec<LayerImagePoint> LayerImageLattice(const unsigned char* data, int width, int
             float sum[4] {};
             for (int y = top; y < top + block; ++y) {
                 for (int x = left; x < left + block; ++x) {
-                    const auto* pixel = data + (static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
-                                                static_cast<std::size_t>(x)) * static_cast<std::size_t>(channels);
+                    const auto* pixel =
+                        data + (static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
+                                static_cast<std::size_t>(x)) *
+                                   static_cast<std::size_t>(channels);
                     for (int c {}; c < 3; ++c) sum[c] += static_cast<float>(pixel[c]);
                     sum[3] += channels == 4 ? static_cast<float>(pixel[3]) : 255.0f;
                 }
@@ -312,9 +316,10 @@ Vec<LayerImagePoint> LayerImageLattice(const unsigned char* data, int width, int
     return points;
 }
 
-// The lattice of a layer's texture (LayerImageLattice), for one stored as 8-bit colour with or without alpha; None for a
-// format not read (the layer then emits from its texture's rectangle).
-Option<Vec<LayerImagePoint>> LayerImagePixels(const TexImageParser& textures, ref<str> name, float layer_alpha) {
+// The lattice of a layer's texture (LayerImageLattice), for one stored as 8-bit colour with or
+// without alpha; None for a format not read (the layer then emits from its texture's rectangle).
+Option<Vec<LayerImagePoint>> LayerImagePixels(const TexImageParser& textures, ref<str> name,
+                                              float layer_alpha) {
     auto parsed = textures.Parse(name);
     if (parsed.is_err()) return None();
     const auto image = rstd::move(parsed).unwrap_unchecked();
@@ -325,16 +330,21 @@ Option<Vec<LayerImagePoint>> LayerImagePixels(const TexImageParser& textures, re
     case TextureFormat::RGB8: channels = 3; break;
     default: return None();
     }
-    if (image->content->slots.is_empty() || image->content->slots[usize()].mipmaps.is_empty()) return None();
+    if (image->content->slots.is_empty() || image->content->slots[usize()].mipmaps.is_empty())
+        return None();
     const auto& base = image->content->slots[usize()].mipmaps[usize()];
     if (! base.data || base.width <= 0 || base.height <= 0) return None();
-    return Some(LayerImageLattice(reinterpret_cast<const unsigned char*>(base.data.get()), base.width, base.height, channels,
-                                  image->header.format == TextureFormat::BGRA8, layer_alpha));
+    return Some(LayerImageLattice(reinterpret_cast<const unsigned char*>(base.data.get()),
+                                  base.width,
+                                  base.height,
+                                  channels,
+                                  image->header.format == TextureFormat::BGRA8,
+                                  layer_alpha));
 }
 
-// The layer a layerimage emitter emits from, by the object id of the particle object's emitterimage dependency: its
-// rectangle (a solid layer's size; for another image the size of its texture, whose pixels are not read), colour and
-// opacity (particles-layerimage).
+// The layer a layerimage emitter emits from, by the object id of the particle object's emitterimage
+// dependency: its rectangle (a solid layer's size; for another image the size of its texture, whose
+// pixels are not read), colour and opacity (particles-layerimage).
 Option<Arc<LayerImageSource>> BuildLayerImageSource(SceneParseContext& context, i32 id) {
     auto node_ref = context.layer_build.node_id_map.get(id);
     auto config   = context.initial_layer_configs.get(id);
@@ -363,7 +373,8 @@ Option<Arc<LayerImageSource>> BuildLayerImageSource(SceneParseContext& context, 
                         auto entries = (*names)->as_array();
                         if (entries.is_none()) break;
                         for (const auto& entry : **entries) {
-                            if (auto name = entry.as_str(); name.is_some()) texture = String::make(*name);
+                            if (auto name = entry.as_str(); name.is_some())
+                                texture = String::make(*name);
                             break;
                         }
                         break;
@@ -702,9 +713,9 @@ void BuildParticleObjectNode(ParticleObjectParseServices& services,
     // the parser's context knows the scene's layers; a layer a script creates has none to emit from
     if (! is_child && wppartobj.emitterimage_layer.is_some() &&
         ! services.construction_context.runtime_created)
-        layer_image = BuildLayerImageSource(
-            static_cast<SceneParseContext&>(services.construction_context),
-            *wppartobj.emitterimage_layer);
+        layer_image =
+            BuildLayerImageSource(static_cast<SceneParseContext&>(services.construction_context),
+                                  *wppartobj.emitterimage_layer);
     LoadEmitter(*particleSub, particle_obj, modifiers, layer_image);
     LoadInitializer(*particleSub, particle_obj, modifiers.Clone());
     LoadOperator(*particleSub, particle_obj, modifiers.Clone());

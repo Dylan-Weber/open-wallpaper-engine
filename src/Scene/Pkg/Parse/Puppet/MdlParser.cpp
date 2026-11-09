@@ -52,10 +52,10 @@ void ResetDefault(Vec<T>& values, usize length) {
 }
 
 // Vertex layout bits (mirror imhex/mdl.hexpat MdlFlagBit).
-constexpr uint32_t MDL_FLAG_NORMAL      = 0x00000002;
-constexpr uint32_t MDL_FLAG_TANGENT     = 0x00000004;
-constexpr uint32_t MDL_FLAG_UV          = 0x00000008;
-constexpr uint32_t MDL_FLAG_UV2         = 0x00000020;
+constexpr uint32_t MDL_FLAG_NORMAL  = 0x00000002;
+constexpr uint32_t MDL_FLAG_TANGENT = 0x00000004;
+constexpr uint32_t MDL_FLAG_UV      = 0x00000008;
+constexpr uint32_t MDL_FLAG_UV2     = 0x00000020;
 // The position has a fourth float, the vertex's blend shape index (wallpaper64.exe: 16 bytes).
 constexpr uint32_t MDL_FLAG_POSITION4   = 0x00010000;
 constexpr uint32_t MDL_FLAG_SKIN_BLEND  = 0x00800000;
@@ -919,7 +919,7 @@ bool ParseMDMP(fs::BinaryReader& f, Mdl& mdl, int version, ref<str> path) {
             shape.id = f.ReadUint32();
             (void)f.ReadUint32();
             shape.name              = f.ReadStr();
-            uint32_t length = f.ReadUint32();
+            uint32_t length         = f.ReadUint32();
             mesh.morph_vertex_count = rstd::cmp::min(mesh.morph_vertex_count, length / uint32_t(6));
             const uint32_t vertices = mesh.morph_vertex_count;
             if (length != vertices * 6) {

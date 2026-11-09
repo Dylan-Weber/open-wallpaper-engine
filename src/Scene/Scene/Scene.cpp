@@ -2067,7 +2067,8 @@ void Scene::CopyShaderUserBindings(const SceneMaterial& from, const Arc<SceneMat
             copies.push(Copy { .key = String::make(key), .uniform = binding.uniform.clone() });
     });
     for (auto& copy : copies)
-        RegisterShaderUserBinding(rstd::move(copy.key), to.clone(), rstd::move(copy.uniform), owner);
+        RegisterShaderUserBinding(
+            rstd::move(copy.key), to.clone(), rstd::move(copy.uniform), owner);
 }
 
 auto Scene::ShaderUserBindings(ref<str> key) const -> Vec<ShaderUserBinding> {
@@ -2926,8 +2927,8 @@ bool Scene::SetNodeVisible(SceneNode& node, bool visible) {
     const bool publishes_output     = node.HasLayer() && node.Layer()->PublishesOutput();
     node.m_visibility_affects_alpha = ! publishes_output;
     node.SetVisible(visible);
-    // a camera layer shown or hidden (a script's layer.visible) drives the camera or gives the scene's view back
-    // (camera-layer-restore)
+    // a camera layer shown or hidden (a script's layer.visible) drives the camera or gives the
+    // scene's view back (camera-layer-restore)
     for (const auto& path : m_camera_paths)
         if (path->node == &node) path->SetEnabled(visible);
     if (publishes_output) {
@@ -3138,8 +3139,8 @@ void Scene::SetActiveCameraViewOffset(const Eigen::Vector3d& offset) {
     if (camera.is_none()) return;
     (**camera).SetViewOffset(offset);
     UpdateLinkedCamera(name.as_str());
-    // an orthographic scene's layers with "perspective": true are drawn through the perspective camera, which the shake
-    // moves too
+    // an orthographic scene's layers with "perspective": true are drawn through the perspective
+    // camera, which the shake moves too
     if (name.as_str() == "global"_str) {
         if (auto perspective = CameraMut("global_perspective"_str); perspective.is_some()) {
             (**perspective).SetViewOffset(offset);

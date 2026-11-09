@@ -229,19 +229,20 @@ TEST(WebState, GeneralPropertiesSnippetGivesTheFrameRate) {
     EXPECT_TRUE(snippet.as_str().contains("typeof window.wallpaperPropertyListener"_str));
 }
 
-// The page API Wallpaper Engine defines on window besides wallpaperRegisterAudioListener (read over DevTools in its
-// CEF, VM 2026-11-08): owe defines each with the same type, so a page that calls one unguarded doesn't throw.
+// The page API Wallpaper Engine defines on window besides wallpaperRegisterAudioListener (read over
+// DevTools in its CEF, VM 2026-11-08): owe defines each with the same type, so a page that calls
+// one unguarded doesn't throw.
 TEST(WebState, PageApiSnippetDefinesWallpaperEnginesNames) {
-    auto snippet = BuildPageApiSnippet();
+    auto               snippet = BuildPageApiSnippet();
     array<ref<str>, 9> names { "wallpaperRegisterMediaPropertiesListener"_str,
-                       "wallpaperRegisterMediaThumbnailListener"_str,
-                       "wallpaperRegisterMediaPlaybackListener"_str,
-                       "wallpaperRegisterMediaTimelineListener"_str,
-                       "wallpaperRegisterMediaStatusListener"_str,
-                       "wallpaperGetUtilities"_str,
-                       "wallpaperRequestRandomFileForProperty"_str,
-                       "wallpaperOnVideoEnded"_str,
-                       "wallpaperRequestTakeScreenshotResponse"_str };
+                               "wallpaperRegisterMediaThumbnailListener"_str,
+                               "wallpaperRegisterMediaPlaybackListener"_str,
+                               "wallpaperRegisterMediaTimelineListener"_str,
+                               "wallpaperRegisterMediaStatusListener"_str,
+                               "wallpaperGetUtilities"_str,
+                               "wallpaperRequestRandomFileForProperty"_str,
+                               "wallpaperOnVideoEnded"_str,
+                               "wallpaperRequestTakeScreenshotResponse"_str };
     for (auto name : names) {
         auto definition = String::make("define('"_str);
         definition.push_str(name);

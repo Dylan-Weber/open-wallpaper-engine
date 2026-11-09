@@ -53,8 +53,7 @@ class RenderMsg final {
               (SetScene,
                (Arc<SceneLoadState> load; Box<Scene> scene; Arc<UniformRuntimeInput> uniform_input;
                 Option<SceneLoadBenchHandle> load_bench; Option<u64> random_seed;
-                Option<scene_audio::Buffers>                         fixed_audio;
-                PathBuf                                              camera_eye_log;)),
+                Option<scene_audio::Buffers> fixed_audio; PathBuf camera_eye_log;)),
               (SetFillMode, (FillMode mode;)), (SetSpeed, (f32 speed;)),
               (SetMouseParallax, (bool enabled;)), (SetUserProperty, (String key; Json property;)),
               (SetMediaStatus, (MediaStatus status;)),
@@ -365,9 +364,9 @@ private:
     bool                                      m_pending_view_config {};
     Option<RenderMsg::SwapchainReady_payload> m_pending_swapchain;
     // a spectrum held still instead of what is heard (SceneWallpaperConfig::fixed_audio)
-    Option<scene_audio::Buffers>              m_fixed_audio;
-    PathBuf                                   m_camera_eye_log;
-    String                                    m_camera_eye_lines;
+    Option<scene_audio::Buffers> m_fixed_audio;
+    PathBuf                      m_camera_eye_log;
+    String                       m_camera_eye_lines;
 
     Atomic<array<float, 2>> m_mouse_pos { array<float, 2> { 0.5f, 0.5f } };
     Atomic<u32>             m_buttons_down {};
@@ -665,7 +664,7 @@ void SceneRenderController::on(RenderMsg::SetScene_payload&& m) {
         using Seed = decltype(Random::max());
         Random::seed(static_cast<Seed>(m.random_seed->to_primitive()));
     }
-    m_fixed_audio = rstd::move(m.fixed_audio);
+    m_fixed_audio      = rstd::move(m.fixed_audio);
     m_camera_eye_log   = rstd::move(m.camera_eye_log);
     m_camera_eye_lines = String::make();
     detachSceneAudioResponseDemandCallback();

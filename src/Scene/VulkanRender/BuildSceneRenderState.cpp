@@ -644,7 +644,8 @@ static Option<bool> DepthDrawKind(SceneNode& node, Scene& scene) {
 static void FlushDepthDraws(ExtraInfo& extra) {
     // in the scene's order: Wallpaper Engine draws a translucent model before an opaque one that
     // comes after it, so the opaque one covers it (model-translucent-order, model-depth)
-    for (const auto& draw : extra.pending_depth_draws) ToGraphPass(draw.node, SpecTex_Default, extra);
+    for (const auto& draw : extra.pending_depth_draws)
+        ToGraphPass(draw.node, SpecTex_Default, extra);
     extra.pending_depth_draws.clear();
 }
 
@@ -729,12 +730,12 @@ static void EmitSceneNode(SceneNode* node, ref<str> inherited_output, ref<str> i
     const auto link_source = scene.ResolveLayerLinkSource(*node);
     const i32 layer_id = link_source.is_some() ? link_source->value
                                                : (wallpaper.is_some() ? wallpaper->value : i32(-1));
-    const bool elidable     = scene.IsLayerElidable(WallpaperLayerId { .value = layer_id });
-    const bool linked       = link_source.is_some() && linked_ids.contains(link_source->value);
+    const bool elidable = scene.IsLayerElidable(WallpaperLayerId { .value = layer_id });
+    const bool linked   = link_source.is_some() && linked_ids.contains(link_source->value);
     // a layer the parser hid for good (visibility elidable) hides its subtree like an invisible one
-    const bool self_hidden  = ! node->Visible() ||
-                             (layer_id >= i32() &&
-                              scene.IsLayerVisibilityElidable(WallpaperLayerId { .value = layer_id }));
+    const bool self_hidden =
+        ! node->Visible() || (layer_id >= i32() && scene.IsLayerVisibilityElidable(
+                                                       WallpaperLayerId { .value = layer_id }));
     const bool hidden       = hidden_ancestor || (self_hidden && ! linked);
     const bool child_hidden = linked ? false : hidden;
     bool       emit         = ! hidden || linked;
@@ -873,7 +874,7 @@ static void EmitShadowPasses(ExtraInfo& extra) {
             continue;
         const auto& definition = definitions[caster.definition];
         const auto  target     = definition.target.as_str();
-        auto draw = extra.scene->ResourceIndex().resolve(item->scene_draw_item);
+        auto        draw       = extra.scene->ResourceIndex().resolve(item->scene_draw_item);
         if (draw.is_none() || draw->node == nullptr || draw->mesh == nullptr) continue;
         extra.scene->ResolveMaterialTextureSources(*caster.material);
 

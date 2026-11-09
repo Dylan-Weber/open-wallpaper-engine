@@ -509,8 +509,9 @@ bool WaitForRegisteredReads(const owe::TexImageParser& parser, u64 count) {
     return true;
 }
 
-// Wallpaper Engine samples a texture with 8x anisotropic filtering (texture-anisotropy: a texture squeezed up to 6.4 times
-// keeps its full-size mipmap); a texture without interpolation (flag 1) is sampled from its nearest texel.
+// Wallpaper Engine samples a texture with 8x anisotropic filtering (texture-anisotropy: a texture
+// squeezed up to 6.4 times keeps its full-size mipmap); a texture without interpolation (flag 1) is
+// sampled from its nearest texel.
 TEST_F(ConditionalTextureTest, TexturesFilterAnisotropically) {
     WriteTexture(false, 0);
     {

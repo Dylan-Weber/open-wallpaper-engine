@@ -106,7 +106,7 @@ namespace
 struct FontBytes {
     const unsigned char* data;
     rstd::size_t         size;
-    auto U16(rstd::size_t at) const -> rstd::uint32_t {
+    auto                 U16(rstd::size_t at) const -> rstd::uint32_t {
         return at + 2 <= size ? (rstd::uint32_t(data[at]) << 8) | data[at + 1] : 0;
     }
     auto S16(rstd::size_t at) const -> rstd::int32_t {
@@ -129,20 +129,25 @@ auto ValueRecordSize(rstd::uint32_t format) -> rstd::size_t {
 
 // The glyph's index in an OpenType coverage table, or -1.
 auto CoverageIndex(const FontBytes& font, rstd::size_t at, rstd::uint32_t glyph) -> rstd::int64_t {
-    const auto format = font.U16(at), count = font.U16(at + 2);
-    rstd::int64_t low {}, high = rstd::int64_t(count) - 1;
+    const auto    format = font.U16(at), count = font.U16(at + 2);
+    rstd::int64_t low {}, high                 = rstd::int64_t(count) - 1;
     while (low <= high) {
         const auto mid = (low + high) / 2;
         if (format == 1) {
             const auto value = font.U16(at + 4 + rstd::size_t(mid) * 2);
             if (value == glyph) return mid;
-            if (value < glyph) low = mid + 1;
-            else high = mid - 1;
+            if (value < glyph)
+                low = mid + 1;
+            else
+                high = mid - 1;
         } else if (format == 2) {
             const auto range = at + 4 + rstd::size_t(mid) * 6;
-            if (glyph < font.U16(range)) high = mid - 1;
-            else if (glyph > font.U16(range + 2)) low = mid + 1;
-            else return rstd::int64_t(font.U16(range + 4) + glyph - font.U16(range));
+            if (glyph < font.U16(range))
+                high = mid - 1;
+            else if (glyph > font.U16(range + 2))
+                low = mid + 1;
+            else
+                return rstd::int64_t(font.U16(range + 4) + glyph - font.U16(range));
         } else
             return -1;
     }
@@ -161,16 +166,19 @@ auto GlyphClass(const FontBytes& font, rstd::size_t at, rstd::uint32_t glyph) ->
     while (low <= high) {
         const auto mid   = (low + high) / 2;
         const auto range = at + 4 + rstd::size_t(mid) * 6;
-        if (glyph < font.U16(range)) high = mid - 1;
-        else if (glyph > font.U16(range + 2)) low = mid + 1;
-        else return font.U16(range + 4);
+        if (glyph < font.U16(range))
+            high = mid - 1;
+        else if (glyph > font.U16(range + 2))
+            low = mid + 1;
+        else
+            return font.U16(range + 4);
     }
     return 0;
 }
 
 // A pair adjustment subtable's x advance for the pair, or None when the subtable doesn't cover it.
-auto PairAdjustment(const FontBytes& font, rstd::size_t at, rstd::uint32_t left, rstd::uint32_t right)
-    -> Option<rstd::int32_t> {
+auto PairAdjustment(const FontBytes& font, rstd::size_t at, rstd::uint32_t left,
+                    rstd::uint32_t right) -> Option<rstd::int32_t> {
     const auto coverage = CoverageIndex(font, at + font.U16(at + 2), left);
     if (coverage < 0) return None();
     const auto format1 = font.U16(at + 4), format2 = font.U16(at + 6);
@@ -181,16 +189,18 @@ auto PairAdjustment(const FontBytes& font, rstd::size_t at, rstd::uint32_t left,
     };
     if (font.U16(at) == 1) {
         if (rstd::uint32_t(coverage) >= font.U16(at + 8)) return None();
-        const auto set    = at + font.U16(at + 10 + rstd::size_t(coverage) * 2);
-        const auto stride = 2 + size1 + size2;
+        const auto    set    = at + font.U16(at + 10 + rstd::size_t(coverage) * 2);
+        const auto    stride = 2 + size1 + size2;
         rstd::int64_t low {}, high = rstd::int64_t(font.U16(set)) - 1;
         while (low <= high) {
             const auto mid    = (low + high) / 2;
             const auto record = set + 2 + rstd::size_t(mid) * stride;
             const auto second = font.U16(record);
             if (second == right) return Some(x_advance(record + 2));
-            if (second < right) low = mid + 1;
-            else high = mid - 1;
+            if (second < right)
+                low = mid + 1;
+            else
+                high = mid - 1;
         }
         return None();
     }
@@ -207,7 +217,8 @@ auto FontKerning::Read(slice<u8> bytes) -> FontKerning {
     FontKerning kerning;
     const auto* data = reinterpret_cast<const unsigned char*>(bytes.as_raw_ptr());
     const auto  size = rstd::size_t(bytes.len().to_primitive());
-    for (rstd::size_t i {}; i < size; ++i) kerning.m_bytes.push(static_cast<unsigned char>(data[i]));
+    for (rstd::size_t i {}; i < size; ++i)
+        kerning.m_bytes.push(static_cast<unsigned char>(data[i]));
     const FontBytes font { data, size };
 
     // a collection kerns as its first font
@@ -280,8 +291,8 @@ auto FontKerning::Empty() const -> bool {
 auto FontKerning::Pair(rstd::uint32_t left, rstd::uint32_t right) const -> rstd::int32_t {
     const FontBytes font { m_bytes.as_slice().as_raw_ptr(),
                            rstd::size_t(m_bytes.len().to_primitive()) };
-    rstd::int32_t total {};
-    rstd::size_t  first {};
+    rstd::int32_t   total {};
+    rstd::size_t    first {};
     for (const auto end : m_lookup_ends) {
         // within a lookup the first subtable that covers the pair applies
         for (auto i = first; i < end; ++i) {
@@ -304,21 +315,23 @@ auto FontKerning::Pair(rstd::uint32_t left, rstd::uint32_t right) const -> rstd:
                 total += font.S16(pair + 4);
                 break;
             }
-            if (here < key) low = mid + 1;
-            else high = mid - 1;
+            if (here < key)
+                low = mid + 1;
+            else
+                high = mid - 1;
         }
     }
     return total;
 }
 
 struct TextResources::Impl {
-    vectext::SystemTextService  service;
-    AtlasOptions                options;
-    Vec<Arc<AtlasPage>>         pages;
-    HashMap<String, AtlasGlyph> glyphs;
+    vectext::SystemTextService   service;
+    AtlasOptions                 options;
+    Vec<Arc<AtlasPage>>          pages;
+    HashMap<String, AtlasGlyph>  glyphs;
     HashMap<String, FontKerning> kerning; // by font source, for fonts that kern
-    rstd::uint64_t              id { vectext::new_identity() }, rasters {}, layouts {};
-    void                        Initialize() {
+    rstd::uint64_t               id { vectext::new_identity() }, rasters {}, layouts {};
+    void                         Initialize() {
         if (options.extent >= 8 && options.extent <= 8192 && options.max_pages &&
             options.max_pages <= 64 &&
             rstd::uint64_t(options.extent) * options.extent * options.max_pages <= 268435456)
@@ -344,8 +357,8 @@ auto TextResources::RegisterFont(slice<u8> bytes)
     if (source.is_ok()) {
         auto kerning = FontKerning::Read(bytes);
         if (! kerning.Empty())
-            (void)m_impl->kerning.insert(
-                rstd::format("{}:{}", source->collection, source->source), rstd::move(kerning));
+            (void)m_impl->kerning.insert(rstd::format("{}:{}", source->collection, source->source),
+                                         rstd::move(kerning));
     }
     return source;
 }
@@ -365,11 +378,12 @@ auto TextResources::RasterCount() const -> rstd::uint64_t { return m_impl->raste
 auto TextResources::LayoutCount() const -> rstd::uint64_t { return m_impl->layouts; }
 namespace
 {
-// Wallpaper Engine's text outline (text-outline-stroke): the glyph's outline stroked `radius` pixels to either side with
-// mitred joins, filled with the glyph, so square letters keep square outlines and points stay pointed. The glyph comes
-// rasterised `trace` times finer; its edge is traced at half coverage (marching squares), simplified, and the corners
-// that tracing cut off are put back. Each edge becomes a rectangle and each convex corner a mitre, drawn `trace` times
-// finer and averaged down.
+// Wallpaper Engine's text outline (text-outline-stroke): the glyph's outline stroked `radius`
+// pixels to either side with mitred joins, filled with the glyph, so square letters keep square
+// outlines and points stay pointed. The glyph comes rasterised `trace` times finer; its edge is
+// traced at half coverage (marching squares), simplified, and the corners that tracing cut off are
+// put back. Each edge becomes a rectangle and each convex corner a mitre, drawn `trace` times finer
+// and averaged down.
 constexpr int    kOutlineTrace      = 4;
 constexpr double kOutlineMiterLimit = 4;
 
@@ -381,7 +395,8 @@ auto Length(OutlinePoint a, OutlinePoint b) -> double {
 }
 auto Cross(OutlinePoint a, OutlinePoint b) -> double { return a.x * b.y - a.y * b.x; }
 
-// Closed loops around the glyph's ink, in its pixels (a pixel's centre at x + 0.5), with the ink on the left (y down)
+// Closed loops around the glyph's ink, in its pixels (a pixel's centre at x + 0.5), with the ink on
+// the left (y down)
 auto TraceGlyph(const vectext::GlyphBitmap& glyph) -> Vec<Vec<OutlinePoint>> {
     constexpr double iso = 127.5;
     const int        w = int(glyph.width), h = int(glyph.height), gw = w + 2;
@@ -394,9 +409,9 @@ auto TraceGlyph(const vectext::GlyphBitmap& glyph) -> Vec<Vec<OutlinePoint>> {
         rstd::uint64_t from {}, to {};
         OutlinePoint   start;
     };
-    Vec<Segment>                     segments;
-    HashMap<rstd::uint64_t, usize>   starting;
-    const int                        ci[4] { 0, 1, 1, 0 }, cj[4] { 0, 0, 1, 1 };
+    Vec<Segment>                   segments;
+    HashMap<rstd::uint64_t, usize> starting;
+    const int                      ci[4] { 0, 1, 1, 0 }, cj[4] { 0, 0, 1, 1 };
     for (int j = 0; j <= h; ++j)
         for (int i = 0; i <= w; ++i) {
             bool   in[4];
@@ -406,20 +421,25 @@ auto TraceGlyph(const vectext::GlyphBitmap& glyph) -> Vec<Vec<OutlinePoint>> {
                 in[k] = v[k] > iso;
             }
             if (in[0] == in[1] && in[1] == in[2] && in[2] == in[3]) continue;
-            // the crossing on edge k (corner k to corner k + 1), keyed by the edge's top-left sample and direction
+            // the crossing on edge k (corner k to corner k + 1), keyed by the edge's top-left
+            // sample and direction
             auto crossing = [&](int k, rstd::uint64_t& key) -> OutlinePoint {
                 const int    a = k, b = (k + 1) % 4;
-                const double t = (iso - v[a]) / (v[b] - v[a]);
-                const int    i0 = i + rstd::cmp::min(ci[a], ci[b]), j0 = j + rstd::cmp::min(cj[a], cj[b]);
-                key = (rstd::uint64_t(j0 * gw + i0) << 1) | (ci[a] == ci[b] ? 1u : 0u);
-                return { i + ci[a] + (ci[b] - ci[a]) * t - 0.5, j + cj[a] + (cj[b] - cj[a]) * t - 0.5 };
+                const double t  = (iso - v[a]) / (v[b] - v[a]);
+                const int    i0 = i + rstd::cmp::min(ci[a], ci[b]),
+                             j0 = j + rstd::cmp::min(cj[a], cj[b]);
+                key             = (rstd::uint64_t(j0 * gw + i0) << 1) | (ci[a] == ci[b] ? 1u : 0u);
+                return { i + ci[a] + (ci[b] - ci[a]) * t - 0.5,
+                         j + cj[a] + (cj[b] - cj[a]) * t - 0.5 };
             };
-            // a segment between edges ea and eb, oriented by corner c so that the ink is on its left
+            // a segment between edges ea and eb, oriented by corner c so that the ink is on its
+            // left
             auto add = [&](int ea, int eb, int c) {
                 rstd::uint64_t     ka {}, kb {};
                 auto               p = crossing(ea, ka), q = crossing(eb, kb);
                 const OutlinePoint corner { i + ci[c] - 0.5, j + cj[c] - 0.5 };
-                const bool left = Cross({ q.x - p.x, q.y - p.y }, { corner.x - p.x, corner.y - p.y }) < 0;
+                const bool         left =
+                    Cross({ q.x - p.x, q.y - p.y }, { corner.x - p.x, corner.y - p.y }) < 0;
                 if (left != in[c]) {
                     const auto point = p;
                     const auto key   = ka;
@@ -459,7 +479,8 @@ auto TraceGlyph(const vectext::GlyphBitmap& glyph) -> Vec<Vec<OutlinePoint>> {
     return loops;
 }
 
-// A closed loop with the points within `tolerance` of the line through their neighbours dropped (Douglas-Peucker)
+// A closed loop with the points within `tolerance` of the line through their neighbours dropped
+// (Douglas-Peucker)
 auto SimplifyLoop(const Vec<OutlinePoint>& loop, double tolerance) -> Vec<OutlinePoint> {
     const usize n = loop.len();
     if (n < usize(4)) return Vec<OutlinePoint>::from(loop.as_slice());
@@ -469,7 +490,9 @@ auto SimplifyLoop(const Vec<OutlinePoint>& loop, double tolerance) -> Vec<Outlin
     Vec<bool> keep;
     keep.resize(n + usize(1), false);
     keep[usize()] = keep[far] = keep[n] = true;
-    auto point = [&](usize i) { return loop[i % n]; };
+    auto point                          = [&](usize i) {
+        return loop[i % n];
+    };
     struct Span {
         usize a, b;
     };
@@ -484,10 +507,13 @@ auto SimplifyLoop(const Vec<OutlinePoint>& loop, double tolerance) -> Vec<Outlin
         double     worst {};
         usize      at {};
         for (usize i = span.a + usize(1); i < span.b; ++i) {
-            const auto p = point(i);
-            const double d = ab > 1e-9 ? rstd::cmp::max(Cross({ b.x - a.x, b.y - a.y }, { p.x - a.x, p.y - a.y }),
-                                                        -Cross({ b.x - a.x, b.y - a.y }, { p.x - a.x, p.y - a.y })) / ab
-                                       : Length(a, p);
+            const auto   p = point(i);
+            const double d =
+                ab > 1e-9
+                    ? rstd::cmp::max(Cross({ b.x - a.x, b.y - a.y }, { p.x - a.x, p.y - a.y }),
+                                     -Cross({ b.x - a.x, b.y - a.y }, { p.x - a.x, p.y - a.y })) /
+                          ab
+                    : Length(a, p);
             if (d > worst) {
                 worst = d;
                 at    = i;
@@ -505,13 +531,15 @@ auto SimplifyLoop(const Vec<OutlinePoint>& loop, double tolerance) -> Vec<Outlin
     return out;
 }
 
-// Tracing cuts a sharp corner off: a run of short edges (together shorter than `shortest`) between two long ones that
-// turn the same way becomes the long ones' meeting point
+// Tracing cuts a sharp corner off: a run of short edges (together shorter than `shortest`) between
+// two long ones that turn the same way becomes the long ones' meeting point
 auto SharpenLoop(Vec<OutlinePoint> loop, double shortest) -> Vec<OutlinePoint> {
     for (bool changed = true; changed && loop.len() > usize(4);) {
         changed     = false;
         const int n = int(loop.len().to_primitive());
-        auto      p = [&](int i) { return loop[usize(((i % n) + n) % n)]; };
+        auto      p = [&](int i) {
+            return loop[usize(((i % n) + n) % n)];
+        };
         for (int i {}; i < n && ! changed; ++i) {
             // a long edge a-b, then short ones from b to c, then a long one c-d
             const auto a = p(i - 1), b = p(i);
@@ -530,9 +558,9 @@ auto SharpenLoop(Vec<OutlinePoint> loop, double shortest) -> Vec<OutlinePoint> {
             // every short edge turns the same way as the corner
             bool same = true;
             for (int m = i - 1; m < k && same; ++m) {
-                const auto u = p(m), v = p(m + 1), w = p(m + 2);
+                const auto   u = p(m), v = p(m + 1), w = p(m + 2);
                 const double turn = Cross({ v.x - u.x, v.y - u.y }, { w.x - v.x, w.y - v.y });
-                same = turn == 0 || (turn > 0) == (den > 0);
+                same              = turn == 0 || (turn > 0) == (den > 0);
             }
             if (! same) continue;
             const double       s = Cross({ c.x - a.x, c.y - a.y }, d1) / den;
@@ -548,12 +576,14 @@ auto SharpenLoop(Vec<OutlinePoint> loop, double shortest) -> Vec<OutlinePoint> {
     return loop;
 }
 
-// `fine`: the glyph rasterised `trace` times finer than `scale`. The result is at `scale`, the stroke `radius` of its
-// pixels wide on each side.
-auto StrokeGlyph(const vectext::GlyphBitmap& fine, int trace, double radius, double scale) -> vectext::GlyphBitmap {
+// `fine`: the glyph rasterised `trace` times finer than `scale`. The result is at `scale`, the
+// stroke `radius` of its pixels wide on each side.
+auto StrokeGlyph(const vectext::GlyphBitmap& fine, int trace, double radius, double scale)
+    -> vectext::GlyphBitmap {
     const double f = trace;
     // the glyph's corner in whole fine pixels
-    const auto ox = f64(fine.origin.x + 0.5).floor().to_primitive(), oy = f64(fine.origin.y + 0.5).floor().to_primitive();
+    const auto             ox = f64(fine.origin.x + 0.5).floor().to_primitive(),
+                           oy = f64(fine.origin.y + 0.5).floor().to_primitive();
     Vec<Vec<OutlinePoint>> polygons;
     for (auto& traced : TraceGlyph(fine)) {
         // in the result's pixels
@@ -561,33 +591,37 @@ auto StrokeGlyph(const vectext::GlyphBitmap& fine, int trace, double radius, dou
             p.x = (p.x + ox) / f;
             p.y = (p.y + oy) / f;
         }
-        auto loop = SharpenLoop(SimplifyLoop(traced, 0.05), 1.5);
-        const usize n = loop.len();
+        auto        loop = SharpenLoop(SimplifyLoop(traced, 0.05), 1.5);
+        const usize n    = loop.len();
         if (n < usize(3)) continue;
         Vec<OutlinePoint> dir, out; // each edge's direction, and its normal away from the ink
         for (usize i {}; i < n; ++i) {
             const auto a = loop[i], b = loop[(i + usize(1)) % n];
             const auto l = Length(a, b);
-            dir.push(l > 1e-9 ? OutlinePoint { (b.x - a.x) / l, (b.y - a.y) / l } : OutlinePoint {});
+            dir.push(l > 1e-9 ? OutlinePoint { (b.x - a.x) / l, (b.y - a.y) / l }
+                              : OutlinePoint {});
             out.push(OutlinePoint { -dir[i].y, dir[i].x });
         }
-        auto at = [](OutlinePoint p, OutlinePoint d, double k) { return OutlinePoint { p.x + d.x * k, p.y + d.y * k }; };
+        auto at = [](OutlinePoint p, OutlinePoint d, double k) {
+            return OutlinePoint { p.x + d.x * k, p.y + d.y * k };
+        };
         for (usize i {}; i < n; ++i) {
-            const auto a = loop[i], b = loop[(i + usize(1)) % n], m = out[i];
+            const auto        a = loop[i], b = loop[(i + usize(1)) % n], m = out[i];
             Vec<OutlinePoint> edge;
             edge.push(at(a, m, radius));
             edge.push(at(b, m, radius));
             edge.push(at(b, m, -radius));
             edge.push(at(a, m, -radius));
             polygons.push(rstd::move(edge));
-            // the corner at b, where this edge meets the next: a mitre if it turns away from the ink
+            // the corner at b, where this edge meets the next: a mitre if it turns away from the
+            // ink
             const auto n0 = m, n1 = out[(i + usize(1)) % n], d1 = dir[(i + usize(1)) % n];
             if (d1.x * n0.x + d1.y * n0.y >= 0) continue;
             OutlinePoint mid { n0.x + n1.x, n0.y + n1.y };
             const double ml = f64(mid.x * mid.x + mid.y * mid.y).sqrt().to_primitive();
             if (ml < 1e-9) continue;
-            mid = { mid.x / ml, mid.y / ml };
-            const double reach = 1 / rstd::cmp::max(mid.x * n0.x + mid.y * n0.y, 1e-9);
+            mid                     = { mid.x / ml, mid.y / ml };
+            const double      reach = 1 / rstd::cmp::max(mid.x * n0.x + mid.y * n0.y, 1e-9);
             Vec<OutlinePoint> mitre;
             mitre.push(OutlinePoint(b));
             mitre.push(at(b, n0, radius));
@@ -606,7 +640,8 @@ auto StrokeGlyph(const vectext::GlyphBitmap& fine, int trace, double radius, dou
         }
     }
     // the result's box: the glyph's and every polygon's
-    double minx = ox / f, miny = oy / f, maxx = (ox + fine.width) / f, maxy = (oy + fine.height) / f;
+    double minx = ox / f, miny = oy / f, maxx = (ox + fine.width) / f,
+           maxy = (oy + fine.height) / f;
     for (auto& polygon : polygons)
         for (auto& p : polygon) {
             minx = rstd::cmp::min(minx, p.x);
@@ -615,15 +650,16 @@ auto StrokeGlyph(const vectext::GlyphBitmap& fine, int trace, double radius, dou
             maxy = rstd::cmp::max(maxy, p.y);
         }
     // (a whole pixel's edge, give or take rounding, doesn't add a pixel)
-    constexpr double slack = 1e-3;
-    const int        x0 = int(f64(minx + slack).floor().to_primitive()), y0 = int(f64(miny + slack).floor().to_primitive());
-    const int        w  = int(f64(maxx - slack).ceil().to_primitive()) - x0;
-    const int        h  = int(f64(maxy - slack).ceil().to_primitive()) - y0;
-    const int fw = w * trace, fh = h * trace;
+    constexpr double   slack = 1e-3;
+    const int          x0    = int(f64(minx + slack).floor().to_primitive()),
+                       y0    = int(f64(miny + slack).floor().to_primitive());
+    const int          w     = int(f64(maxx - slack).ceil().to_primitive()) - x0;
+    const int          h     = int(f64(maxy - slack).ceil().to_primitive()) - y0;
+    const int          fw = w * trace, fh = h * trace;
     Vec<unsigned char> stroke;
     stroke.resize(usize(fw * fh), static_cast<unsigned char>(0));
     for (auto& polygon : polygons) {
-        double area {}, lx = polygon[usize()].x, hx = lx, ly = polygon[usize()].y, hy = ly;
+        double      area {}, lx = polygon[usize()].x, hx = lx, ly = polygon[usize()].y, hy = ly;
         const usize n = polygon.len();
         for (usize k {}; k < n; ++k) {
             const auto a = polygon[k], b = polygon[(k + usize(1)) % n];
@@ -636,9 +672,9 @@ auto StrokeGlyph(const vectext::GlyphBitmap& fine, int trace, double radius, dou
         if (rstd::cmp::max(area, -area) < 1e-12) continue;
         const double sign = area > 0 ? 1 : -1;
         const int    sx0  = rstd::cmp::max(0, int(f64((lx - x0) * f - 0.5).floor().to_primitive()));
-        const int    sx1  = rstd::cmp::min(fw - 1, int(f64((hx - x0) * f - 0.5).ceil().to_primitive()));
-        const int    sy0  = rstd::cmp::max(0, int(f64((ly - y0) * f - 0.5).floor().to_primitive()));
-        const int    sy1  = rstd::cmp::min(fh - 1, int(f64((hy - y0) * f - 0.5).ceil().to_primitive()));
+        const int sx1 = rstd::cmp::min(fw - 1, int(f64((hx - x0) * f - 0.5).ceil().to_primitive()));
+        const int sy0 = rstd::cmp::max(0, int(f64((ly - y0) * f - 0.5).floor().to_primitive()));
+        const int sy1 = rstd::cmp::min(fh - 1, int(f64((hy - y0) * f - 0.5).ceil().to_primitive()));
         for (int sy = sy0; sy <= sy1; ++sy)
             for (int sx = sx0; sx <= sx1; ++sx) {
                 const OutlinePoint p { x0 + (sx + 0.5) / f, y0 + (sy + 0.5) / f };
@@ -653,22 +689,27 @@ auto StrokeGlyph(const vectext::GlyphBitmap& fine, int trace, double radius, dou
     // averaged down; the glyph's own coverage where the stroke misses
     Vec<unsigned char> coverage;
     coverage.resize(usize(w * h), static_cast<unsigned char>(0));
-    const int gx = x0 * trace - int(ox), gy = y0 * trace - int(oy); // a fine pixel's place in the glyph
+    const int gx = x0 * trace - int(ox),
+              gy = y0 * trace - int(oy); // a fine pixel's place in the glyph
     for (int y {}; y < h; ++y)
         for (int x {}; x < w; ++x) {
             int sum {};
             for (int sy = y * trace; sy < (y + 1) * trace; ++sy)
                 for (int sx = x * trace; sx < (x + 1) * trace; ++sx) {
-                    int v = stroke[usize(sy * fw + sx)];
+                    int       v = stroke[usize(sy * fw + sx)];
                     const int u = sx + gx, t = sy + gy;
                     if (v == 0 && u >= 0 && t >= 0 && u < int(fine.width) && t < int(fine.height))
                         v = fine.coverage[usize(t * int(fine.width) + u)];
                     sum += v;
                 }
-            coverage[usize(y * w + x)] = static_cast<unsigned char>((sum + trace * trace / 2) / (trace * trace));
+            coverage[usize(y * w + x)] =
+                static_cast<unsigned char>((sum + trace * trace / 2) / (trace * trace));
         }
-    return vectext::GlyphBitmap { static_cast<rstd::uint32_t>(w), static_cast<rstd::uint32_t>(h),
-                                  { double(x0), double(y0) }, scale, rstd::move(coverage) };
+    return vectext::GlyphBitmap { static_cast<rstd::uint32_t>(w),
+                                  static_cast<rstd::uint32_t>(h),
+                                  { double(x0), double(y0) },
+                                  scale,
+                                  rstd::move(coverage) };
 }
 } // namespace
 
@@ -693,7 +734,8 @@ auto TextResources::Rasterize(const vectext::FontInstance& font, vectext::Index 
     auto      raster = font.rasterize(glyph, scale * trace);
     if (raster.is_err()) return Err(raster.unwrap_err());
     auto bitmap = rstd::move(raster).unwrap();
-    if (outline > 0 && bitmap.width && bitmap.height) bitmap = StrokeGlyph(bitmap, trace, outline, scale);
+    if (outline > 0 && bitmap.width && bitmap.height)
+        bitmap = StrokeGlyph(bitmap, trace, outline, scale);
     auto extent = im.options.extent;
     if (extent < 8 || extent > 8192 || ! im.options.max_pages || im.options.max_pages > 64 ||
         rstd::uint64_t(extent) * extent * im.options.max_pages > 268435456 ||
@@ -924,12 +966,12 @@ Option<Arc<owe::SceneShader>> GetTextSceneShader() {
 
 auto NdcToTexture() -> Eigen::Matrix4d {
     Eigen::Matrix4d m = Eigen::Matrix4d::Zero();
-    m(0, 0) = 0.5;
-    m(0, 3) = 0.5;
-    m(1, 1) = -0.5;
-    m(1, 3) = 0.5;
-    m(2, 2) = 1.0;
-    m(3, 3) = 1.0;
+    m(0, 0)           = 0.5;
+    m(0, 3)           = 0.5;
+    m(1, 1)           = -0.5;
+    m(1, 3)           = 0.5;
+    m(2, 2)           = 1.0;
+    m(3, 3)           = 1.0;
     return m;
 }
 
@@ -1033,9 +1075,12 @@ auto TextAnchorOffset(ref<str> horizontal, ref<str> vertical, float width, float
     array<float, 2> offset { 0.0f, 0.0f };
     if (horizontal->contains("left"_str)) offset[usize(0)] += width * 0.5f;
     if (horizontal->contains("right"_str)) offset[usize(0)] -= width * 0.5f;
-    if (vertical->contains("top"_str)) offset[usize(1)] -= height * 0.5f;
-    else if (vertical->contains("bottom"_str)) offset[usize(1)] += height * 0.5f;
-    else offset[usize(1)] -= descent * 0.5f;
+    if (vertical->contains("top"_str))
+        offset[usize(1)] -= height * 0.5f;
+    else if (vertical->contains("bottom"_str))
+        offset[usize(1)] += height * 0.5f;
+    else
+        offset[usize(1)] -= descent * 0.5f;
     return offset;
 }
 
@@ -1063,8 +1108,8 @@ TextGeometry ResolveTextGeometry(const TextGeometryPolicy& policy,
     // The box reaches its background gap below the text; the render target is centred on the
     // text, so it reaches as far above, where the box leaves it clear.
     // Ink above the line grows the box upward; the target reaches as far below.
-    const float gap         = rstd::cmp::max(
-        rstd::cmp::max(metrics.background_gap, metrics.background_overflow), 0.0f);
+    const float gap =
+        rstd::cmp::max(rstd::cmp::max(metrics.background_gap, metrics.background_overflow), 0.0f);
     const float text_bbox_w = text_w + 2.0f * pad;
     const float text_bbox_h = text_h + 2.0f * pad_y + 2.0f * gap;
     const float src_bbox_w  = src_w + 2.0f * pad;
@@ -1235,17 +1280,17 @@ struct TextLayouter::Impl {
             }
             measured.text_width = ink_right - hang;
         }
-        measured.text_height     = float(bounds.height);
-        measured.source_width    = measured.text_width;
-        measured.source_height   = measured.text_height;
-        measured.padding         = style.padding;
-        measured.padding_y       = style.padding_y;
+        measured.text_height   = float(bounds.height);
+        measured.source_width  = measured.text_width;
+        measured.source_height = measured.text_height;
+        measured.padding       = style.padding;
+        measured.padding_y     = style.padding_y;
         if (style.opaquebackground)
             measured.background_gap =
                 rstd::cmp::max(float(output.logical_bounds().height - bounds.height), 0.0f);
         if (! output.lines().is_empty())
             measured.descent = float(output.lines()[output.lines().len() - usize(1)].descent);
-        auto pages               = resources->Pages();
+        auto pages = resources->Pages();
         if (pages.is_empty()) return Err(vectext::TextError::Limit);
         if (style.opaquebackground) {
             auto pad   = style.padding;
@@ -1260,12 +1305,12 @@ struct TextLayouter::Impl {
                                 style.background_color[usize(2)] * style.background_brightness,
                                 1.0f } });
         }
-        // Wallpaper Engine's outline: each letter grown by the thickness, in the outline colour, behind the letters
-        // (text-outline). It doesn't count towards the ink's bounds.
+        // Wallpaper Engine's outline: each letter grown by the thickness, in the outline colour,
+        // behind the letters (text-outline). It doesn't count towards the ink's bounds.
         const bool outlined = style.outline && style.outline_thickness > 0;
         Vec<Quad>  outlines;
-        bool  have_bounds {};
-        float minx {}, maxx {}, miny {}, maxy {};
+        bool       have_bounds {};
+        float      minx {}, maxx {}, miny {}, maxy {};
         for (usize index {}; index < glyphs.len(); ++index) {
             const auto& glyph = glyphs[index];
             if (! glyph.drawable) continue;
@@ -1295,9 +1340,9 @@ struct TextLayouter::Impl {
                 auto grown = resources->Rasterize(
                     output.fonts()[usize(glyph.font)], glyph.glyph, 1, style.outline_thickness);
                 if (grown.is_err()) return Err(grown.unwrap_err());
-                auto  outline   = grown.unwrap();
-                float out_left  = left + float(outline.origin.x - atlas.origin.x);
-                float out_top   = top - float(outline.origin.y - atlas.origin.y);
+                auto  outline  = grown.unwrap();
+                float out_left = left + float(outline.origin.x - atlas.origin.x);
+                float out_top  = top - float(outline.origin.y - atlas.origin.y);
                 outlines.push(Quad { outline,
                                      out_left,
                                      out_left + float(outline.width / outline.scale),

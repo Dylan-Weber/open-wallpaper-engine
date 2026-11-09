@@ -585,14 +585,18 @@ void ParticleSubSystem::UpdateFrameInput(f64 frame_time) {
     m_frame.local_from_world       = local_from_world;
     m_frame.scene_extent           = Eigen::Vector2d(m_scene.Ortho()[usize()].to_primitive(),
                                                      m_scene.Ortho()[usize(1)].to_primitive());
-    // only a real step measures velocity: the extract after it calls this with no time, and must not eat the move
+    // only a real step measures velocity: the extract after it calls this with no time, and must
+    // not eat the move
     if (frame_time.to_primitive() > 0.0) {
         Eigen::Matrix<double, 3, 8> world_positions;
         for (usize index {}; index < usize(8); ++index) {
             const Eigen::Vector3d offset = m_controlpoints[index].offset;
-            // a particle in its object's space moves with the object: its control points only move by their own offsets
+            // a particle in its object's space moves with the object: its control points only move
+            // by their own offsets
             world_positions.col(index.to_primitive()) =
-                m_world_space ? Eigen::Vector3d((world_from_spawn_space * offset.homogeneous()).head<3>()) : offset;
+                m_world_space
+                    ? Eigen::Vector3d((world_from_spawn_space * offset.homogeneous()).head<3>())
+                    : offset;
         }
         const double seconds          = frame_time.to_primitive();
         m_frame.controlpoint_velocity = Eigen::Matrix<double, 3, 8>::Zero();
@@ -706,8 +710,10 @@ void ParticleSubSystem::UpdateBoundedState(ParticleInstanceRef current) {
     if (bounded.particle_index >= isize() &&
         rstd::as_cast<usize>(bounded.particle_index) < parent_storage.Len()) {
         particle::ParticleSlot slot { .index = rstd::as_cast<usize>(bounded.particle_index) };
-        // eventspawn's child stays where the particle was born; follow's goes with it (particles-event-children)
-        if (m_spawn_type != SpawnType::STATIC_CONTROLPOINT && m_spawn_type != SpawnType::EVENT_SPAWN) {
+        // eventspawn's child stays where the particle was born; follow's goes with it
+        // (particles-event-children)
+        if (m_spawn_type != SpawnType::STATIC_CONTROLPOINT &&
+            m_spawn_type != SpawnType::EVENT_SPAWN) {
             bounded.position = OwnerWorldToLocal(bounded.parent_subsystem->FollowWorldPosition(
                 *bounded.parent, bounded.parent_instance_index, slot));
         }
@@ -727,10 +733,9 @@ void ParticleSubSystem::UpdateBoundedState(ParticleInstanceRef current) {
 }
 
 auto owe::ParticleOperatorStepsFor(u32 target_fps, f64 delta) -> particle::ParticleOperatorSteps {
-    const float step       = static_cast<float>(delta.to_primitive());
-    const float frame_time = target_fps > u32()
-                                 ? 1.0f / static_cast<float>(target_fps.to_primitive())
-                                 : step;
+    const float step = static_cast<float>(delta.to_primitive());
+    const float frame_time =
+        target_fps > u32() ? 1.0f / static_cast<float>(target_fps.to_primitive()) : step;
     const float scale =
         frame_time > 0.0f
             ? f32(rstd::cmp::min(0.025f / frame_time, 1.0f)).powf(f32(0.7f)).to_primitive()

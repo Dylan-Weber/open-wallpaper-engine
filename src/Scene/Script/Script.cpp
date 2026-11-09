@@ -65,8 +65,9 @@ struct ScriptLayerState {
 };
 
 struct EngineHostState {
-    // A field script's init is running: Wallpaper Engine leaves the camera alone for what it sets then.
-    bool in_field_init { false };
+    // A field script's init is running: Wallpaper Engine leaves the camera alone for what it sets
+    // then.
+    bool                            in_field_init { false };
     FrameInputs                     inputs;
     MediaStatus                     media;
     bool                            media_initialized { false };
@@ -123,11 +124,11 @@ struct EngineHostState {
     Option<JsRuntime::ModelLayerFactory>     model_layer_factory;
     // The meshes scripts built (createModelData), by id, and the layer showing each.
     struct ModelBinding {
-        ModelData        data;
-        owe::SceneNode*  node { nullptr };
+        ModelData       data;
+        owe::SceneNode* node { nullptr };
     };
-    Vec<ModelBinding> models;
-    Option<JsRuntime::LayerConfigFactory>    layer_config_factory;
+    Vec<ModelBinding>                     models;
+    Option<JsRuntime::LayerConfigFactory> layer_config_factory;
     // SceneNode -> text-content setter. Populated by text layers in the
     // parser; consulted by NodeSetText so `thisLayer.text = "..."` reaches
     // TextLayouter::SetText. Missing entry means the layer is not text-
@@ -165,21 +166,21 @@ struct EngineHostState {
     Option<JsRuntime::AnimationLayerDestroyer>   animation_layer_destroyer;
     // playSingleAnimation's layers, removed once they get to their end.
     struct SinglePlay {
-        owe::SceneNode*                node;
-        Arc<owe::SceneAnimationLayer>  layer;
+        owe::SceneNode*               node;
+        Arc<owe::SceneAnimationLayer> layer;
     };
-    Vec<SinglePlay> single_plays;
-    Option<JsRuntime::BoneParentsResolver>       bone_parents_resolver;
-    Option<JsRuntime::BoneLocalGetter>           bone_local_getter;
-    Option<JsRuntime::BoneLocalSetter>           bone_local_setter;
+    Vec<SinglePlay>                                single_plays;
+    Option<JsRuntime::BoneParentsResolver>         bone_parents_resolver;
+    Option<JsRuntime::BoneLocalGetter>             bone_local_getter;
+    Option<JsRuntime::BoneLocalSetter>             bone_local_setter;
     Option<JsRuntime::BoneMatrixGetter>            bone_world_matrix;
     Option<JsRuntime::BoneMatrixGetter>            bone_local_matrix;
     Option<JsRuntime::BoneMatrixSetter>            set_bone_world_matrix;
     Option<JsRuntime::BoneMatrixSetter>            set_bone_local_matrix;
     Option<JsRuntime::AttachmentIndexResolver>     attachment_index_resolver;
     Option<JsRuntime::AttachmentTransformResolver> attachment_transform_resolver;
-    Option<JsRuntime::BonePhysicsHandler>        bone_physics_handler;
-    owe::SceneNode*                              scene_root { nullptr };
+    Option<JsRuntime::BonePhysicsHandler>          bone_physics_handler;
+    owe::SceneNode*                                scene_root { nullptr };
 };
 
 class EngineBindingGuard : NoCopy, NoMove {
@@ -1708,7 +1709,8 @@ JSValue NodeSetHAlign(JSContext* ctx, JSValueConst this_val, JSValueConst val) {
 }
 JSValue NodeSetIgnore(JSContext*, JSValueConst, JSValueConst) { return JS_UNDEFINED; }
 
-// thisScene.fov is the scene's field of view; a camera layer's is the one it drives the camera with.
+// thisScene.fov is the scene's field of view; a camera layer's is the one it drives the camera
+// with.
 JSValue NodeGetFov(JSContext* ctx, JSValueConst this_val) {
     auto* node = GetLayerNode(this_val);
     auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
@@ -1723,7 +1725,7 @@ JSValue NodeSetFov(JSContext* ctx, JSValueConst this_val, JSValueConst value) {
     auto* node = GetLayerNode(this_val);
     auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
     if (node == nullptr || host == nullptr || host->scene == nullptr) return JS_UNDEFINED;
-    auto path = host->scene->CameraPathOfNode(node);
+    auto   path = host->scene->CameraPathOfNode(node);
     double fov {};
     if (path.is_none() || JS_ToFloat64(ctx, &fov, value) != 0 || ! (fov > 0.0)) return JS_UNDEFINED;
     (*path)->fov_base = static_cast<float>(fov);
@@ -1893,7 +1895,8 @@ static uint32_t ResolveBoneIndex(JSContext* ctx, owe::SceneNode* n, EngineHostSt
         if (! name) return 0;
         const auto bone_name = rstd::cppstd::as_str(name).unwrap();
         // the empty name finds no bone, unnamed ones included
-        uint32_t idx = bone_name.is_empty() ? 0 : (*host->bone_index_resolver)->operator()(n, bone_name);
+        uint32_t idx =
+            bone_name.is_empty() ? 0 : (*host->bone_index_resolver)->operator()(n, bone_name);
         JS_FreeCString(ctx, name);
         return idx;
     }
@@ -2034,7 +2037,7 @@ JSValue LocalBonePart(JSContext* ctx, JSValueConst this_val, int argc, JSValueCo
 
 JSValue SetLocalBonePart(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv,
                          bool angles) {
-    auto*    host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
     // and setting them does nothing there
     if (InFieldInit(ctx)) return JS_UNDEFINED;
     uint32_t bone = 0;
@@ -2566,7 +2569,8 @@ JSValue NodeSceneSetCameraTransforms(JSContext* ctx, JSValueConst, int argc, JSV
     if (! host || ! host->scene) return JS_ThrowTypeError(ctx, "scene camera is not available");
     if (argc < 1 || ! JS_IsObject(argv[0]))
         return JS_ThrowTypeError(ctx, "camera transforms must be an object");
-    // measured in Wallpaper Engine: the camera a script sets in init is the scene's again once it has loaded
+    // measured in Wallpaper Engine: the camera a script sets in init is the scene's again once it
+    // has loaded
     if (host->in_field_init) return JS_UNDEFINED;
     auto transforms = host->scene->ScriptCameraTransforms();
     if (transforms.is_none()) return JS_ThrowTypeError(ctx, "active scene camera is not available");
@@ -2598,7 +2602,7 @@ bool ReadTypedArray(JSContext* ctx, JSValueConst value, const uint8_t** data, si
 }
 
 bool ReadFloatArray(JSContext* ctx, JSValueConst value, Vec<float>& out) {
-    const uint8_t* data = nullptr;
+    const uint8_t* data   = nullptr;
     size_t         length = 0, element = 0;
     if (! ReadTypedArray(ctx, value, &data, &length, &element) || element != sizeof(float))
         return false;
@@ -2612,7 +2616,7 @@ bool ReadFloatArray(JSContext* ctx, JSValueConst value, Vec<float>& out) {
 }
 
 bool ReadIndexArray(JSContext* ctx, JSValueConst value, Vec<uint32_t>& out) {
-    const uint8_t* data = nullptr;
+    const uint8_t* data   = nullptr;
     size_t         length = 0, element = 0;
     if (! ReadTypedArray(ctx, value, &data, &length, &element) ||
         (element != sizeof(uint16_t) && element != sizeof(uint32_t)))
@@ -2644,7 +2648,7 @@ bool ReadModelShape(JSContext* ctx, JSValueConst shape, ModelShapeData& out) {
     JS_FreeValue(ctx, index);
     JSValue format = JS_GetPropertyStr(ctx, shape, "vertexFormat");
     if (JS_IsObject(format)) {
-        out.format = Vec<i32>::make();
+        out.format     = Vec<i32>::make();
         JSValue length = JS_GetPropertyStr(ctx, format, "length");
         int32_t count  = 0;
         JS_ToInt32(ctx, &count, length);
@@ -2657,10 +2661,14 @@ bool ReadModelShape(JSContext* ctx, JSValueConst shape, ModelShapeData& out) {
                 const char* text = JS_ToCString(ctx, item);
                 if (text != nullptr) {
                     const auto name = rstd::cppstd::as_str(text).unwrap();
-                    if (name == "position"_str) value = 0;
-                    else if (name == "normal"_str) value = 1;
-                    else if (name == "tangentSigned"_str || name == "tangent"_str) value = 2;
-                    else if (name == "uv"_str) value = 3;
+                    if (name == "position"_str)
+                        value = 0;
+                    else if (name == "normal"_str)
+                        value = 1;
+                    else if (name == "tangentSigned"_str || name == "tangent"_str)
+                        value = 2;
+                    else if (name == "uv"_str)
+                        value = 3;
                     JS_FreeCString(ctx, text);
                 }
             } else {
@@ -2734,8 +2742,8 @@ JSValue NodeSceneCreateModelData(JSContext* ctx, JSValueConst /*this_val*/, int 
     return created;
 }
 
-// modelData.applyData({shapes: [{vertexBuffer, ...}]}): what is given replaces what the shape had, and
-// the layer showing the model takes the new vertices on its next frame.
+// modelData.applyData({shapes: [{vertexBuffer, ...}]}): what is given replaces what the shape had,
+// and the layer showing the model takes the new vertices on its next frame.
 JSValue WwApplyModelData(JSContext* ctx, JSValueConst /*this_val*/, int argc, JSValueConst* argv) {
     auto*   host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
     int32_t id   = -1;
@@ -2780,8 +2788,8 @@ JSValue CreateModelLayer(JSContext* ctx, JSValueConst config, JSValueConst model
     if (! ok || id < 0 || usize(static_cast<size_t>(id)) >= host->models.len() ||
         host->model_layer_factory.is_none())
         return JS_ThrowReferenceError(ctx, "createLayer model is unavailable");
-    auto& binding = host->models[usize(static_cast<size_t>(id))];
-    JSValue name  = JS_GetPropertyStr(ctx, config, "name");
+    auto&   binding   = host->models[usize(static_cast<size_t>(id))];
+    JSValue name      = JS_GetPropertyStr(ctx, config, "name");
     binding.data.name = String::make();
     if (JS_IsString(name)) {
         const char* text = JS_ToCString(ctx, name);
@@ -3323,7 +3331,8 @@ JSValue NamedLayerStop(JSContext*, JSValueConst value, int, JSValueConst*) {
     return JS_UNDEFINED;
 }
 // an animation layer's addEndedCallback(fn): fn is called each time its animation gets to its end
-JSValue NamedLayerAddEndedCallback(JSContext* ctx, JSValueConst value, int argc, JSValueConst* argv) {
+JSValue NamedLayerAddEndedCallback(JSContext* ctx, JSValueConst value, int argc,
+                                   JSValueConst* argv) {
     if (argc < 1) return JS_UNDEFINED;
     if (auto* layer = GetNamedAnimationLayer(value))
         if (auto playback = layer->Playback(); playback.is_some())
@@ -3377,8 +3386,9 @@ JSValue NamedLayerSetFrame(JSContext* ctx, JSValueConst value, int argc, JSValue
 }
 
 // An animation layer's getAnimation returns undefined in Wallpaper Engine, whatever it is asked
-// (puppet-layer-getanimation): Ocarina of Time's getAnimationLayer("Surprise").getAnimation("surprise")
-// .isPlaying() throws, and Link keeps his angle.
+// (puppet-layer-getanimation): Ocarina of Time's
+// getAnimationLayer("Surprise").getAnimation("surprise") .isPlaying() throws, and Link keeps his
+// angle.
 JSValue NamedAnimationLayerGetAnimation(JSContext*, JSValueConst, int, JSValueConst*) {
     return JS_UNDEFINED;
 }
@@ -3524,7 +3534,8 @@ void RemoveFinishedSinglePlays(EngineHostState* host) {
     host->single_plays.retain([&](const EngineHostState::SinglePlay& play) {
         auto playback = play.layer->Playback();
         if (playback.is_none() || (*playback)->EndedCount() == u64()) return true;
-        finished.push(EngineHostState::SinglePlay { .node = play.node, .layer = play.layer.clone() });
+        finished.push(
+            EngineHostState::SinglePlay { .node = play.node, .layer = play.layer.clone() });
         return false;
     });
     for (const auto& play : finished)
@@ -4596,8 +4607,8 @@ void JsRuntime::TickAll(slice<owe::SceneAnimationEventDispatch> animation_events
             continue;
         }
         I->last_value = CoerceReturn(ctx, ret, I->kind);
-        // Wallpaper Engine turns every axis by a number returned for angles, in radians, where a vector is in
-        // degrees (script-return-type)
+        // Wallpaper Engine turns every axis by a number returned for angles, in radians, where a
+        // vector is in degrees (script-return-type)
         if (JS_IsNumber(ret) && I->last_value.is_Vec3() && I->property == "angles"_str) {
             const auto v  = I->last_value.as_Vec3().value;
             I->last_value = Vec3Value { v.x * kRadToDeg, v.y * kRadToDeg, v.z * kRadToDeg };
@@ -4730,10 +4741,10 @@ void RunFieldScriptInit(JSContext* ctx, JsRuntime::Impl* rt, FieldScript* fs) {
     BindFieldScriptContext(ctx, *I, rt->host.default_layer);
     if (! JS_IsUndefined(rt->wrapped_scene)) BindThisScene(ctx, rt->wrapped_scene);
     rt->host.active_field_script = fs;
-    JSValue arg                  = CopyFieldValue(ctx, I->current_value);
+    JSValue    arg               = CopyFieldValue(ctx, I->current_value);
     const bool was_in_init       = rt->host.in_field_init;
     rt->host.in_field_init       = true;
-    JSValue    r                 = JS_Call(ctx, I->init_fn, JS_UNDEFINED, 1, &arg);
+    JSValue r                    = JS_Call(ctx, I->init_fn, JS_UNDEFINED, 1, &arg);
     rt->host.in_field_init       = was_in_init;
     JS_FreeValue(ctx, arg);
     if (JS_IsException(r)) {

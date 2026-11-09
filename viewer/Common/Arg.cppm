@@ -173,9 +173,9 @@ SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
             .long_name("script-clock"_str)
             .help(
                 "Run the scripts' Date from this moment (milliseconds since 1970) as the scene starts"_str));
-    auto random_seed = command.add_arg(Arg<u64>::value("random-seed"_str, from_str_parser<u64>())
-                                           .long_name("random-seed"_str)
-                                           .help("Set the scene random seed"_str));
+    auto random_seed    = command.add_arg(Arg<u64>::value("random-seed"_str, from_str_parser<u64>())
+                                              .long_name("random-seed"_str)
+                                              .help("Set the scene random seed"_str));
     auto shadow_quality = command.add_arg(
         Arg<String>::value("shadow-quality"_str, string_parser())
             .long_name("shadow-quality"_str)
@@ -229,11 +229,12 @@ SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
             .help("The frame --capture writes, counted from 0: it shows the scene at N / fps s"_str)
             .default_value("0"_str));
 
-    auto capture_realtime = command.add_arg(
-        Arg<bool>::flag("capture-realtime"_str)
-            .long_name("capture-realtime"_str)
-            .help("With --capture, wait 1 / fps between frames as a window would (by default a capture draws as fast as "
-                  "frames finish: its clock is frame-exact either way)"_str));
+    auto capture_realtime =
+        command.add_arg(Arg<bool>::flag("capture-realtime"_str)
+                            .long_name("capture-realtime"_str)
+                            .help("With --capture, wait 1 / fps between frames as a window would "
+                                  "(by default a capture draws as fast as "
+                                  "frames finish: its clock is frame-exact either way)"_str));
 
     auto parsed = owe::cli::ParseArgs(rstd::move(command), argc, argv);
     if (parsed.is_err()) rstd::process::exit(i32(parsed.unwrap_err().code));

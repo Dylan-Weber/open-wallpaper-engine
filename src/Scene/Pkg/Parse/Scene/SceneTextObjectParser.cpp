@@ -184,10 +184,10 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
     bool has_text_effect    = ! obj.effects.is_empty();
     const bool linked_source        = context.IsLinkedSource(obj.id);
     const auto text_render_mode     = ResolveTextRenderMode(TextSurfaceRequirements {
-        .color_blend       = obj.colorBlendMode != i32(),
-        .has_effect        = has_text_effect,
-        .copy_background   = obj.copybackground,
-        .opaque_background = obj.opaquebackground,
+        .color_blend         = obj.colorBlendMode != i32(),
+        .has_effect          = has_text_effect,
+        .copy_background     = obj.copybackground,
+        .opaque_background   = obj.opaquebackground,
         .linked_source       = linked_source,
         .translucent_outline = obj.outline && obj.alpha < 1.0f,
     });
@@ -329,12 +329,12 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
 
     // Translucent outlined text is drawn opaque, in its whole box (its outline reaches past its
     // ink), and faded as a whole when it is laid on the scene.
-    const bool alpha_at_compose = obj.outline && obj.alpha < 1.0f && ! direct_text;
+    const bool            alpha_at_compose = obj.outline && obj.alpha < 1.0f && ! direct_text;
     text::TextLayoutStyle style;
-    style.mesh_origin           = direct_text || alpha_at_compose || has_bg || obj.copybackground ||
-                                          has_text_effect
-                                      ? text::TextMeshOrigin::Layout
-                                      : text::TextMeshOrigin::InkBounds;
+    style.mesh_origin =
+        direct_text || alpha_at_compose || has_bg || obj.copybackground || has_text_effect
+            ? text::TextMeshOrigin::Layout
+            : text::TextMeshOrigin::InkBounds;
     style.color                 = { obj.color[usize(0)], obj.color[usize(1)], obj.color[usize(2)] };
     style.alpha                 = direct_text || alpha_at_compose ? 1.0f : obj.alpha;
     style.brightness            = obj.brightness;
@@ -349,7 +349,7 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
                                     obj.outlinecolor[usize(2)] };
     style.outline_thickness     = obj.outlinethickness;
     style.halign  = (obj.horizontalalign.is_empty() ? obj.alignment : obj.horizontalalign).clone();
-    style.padding   = obj.padding[usize(0)];
+    style.padding = obj.padding[usize(0)];
     style.padding_y = obj.padding[usize(1)];
     if (obj.limitwidth && obj.maxwidth > 0.0f) style.wrap_width = obj.maxwidth;
     if (obj.limitrows && obj.maxrows > u32()) style.max_rows = obj.maxrows.to_primitive();
@@ -372,13 +372,13 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
     const float outline_room   = alpha_at_compose ? obj.outlinethickness + 2.0f : 0.0f;
     const float text_padding   = style.padding + outline_room;
     const float text_padding_y = style.padding_y + outline_room;
-    const float wrap_width   = style.wrap_width;
-    auto        layouter     = Arc<text::TextLayouter>::make(resources.clone(),
-                                                             rstd::move(font),
-                                                             sp_mesh.clone(),
-                                                             rstd::move(style),
-                                                             peak_quads,
-                                                             context.scene);
+    const float wrap_width     = style.wrap_width;
+    auto        layouter       = Arc<text::TextLayouter>::make(resources.clone(),
+                                                               rstd::move(font),
+                                                               sp_mesh.clone(),
+                                                               rstd::move(style),
+                                                               peak_quads,
+                                                               context.scene);
     if (layouter->SetText(s_text).is_err()) {
         rstd_error("text '{}': initial layout failed", obj.name);
         return;
@@ -610,10 +610,11 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
             SceneMaterial          mat;
             UniformNodeConfigDraft sv;
             ShaderInfo             si;
-            si.baseConstSvs      = effect_base.clone();
+            si.baseConstSvs = effect_base.clone();
             if (final_composite && alpha_at_compose)
-                (void)si.baseConstSvs.insert(rstd::into(G_COLOR4),
-                                             ShaderValue(array<float, 4> { 1.0f, 1.0f, 1.0f, obj.alpha }));
+                (void)si.baseConstSvs.insert(
+                    rstd::into(G_COLOR4),
+                    ShaderValue(array<float, 4> { 1.0f, 1.0f, 1.0f, obj.alpha }));
             auto material_result = BuildMaterial(*context.vfs,
                                                  *context.layer_resources->shader_cache,
                                                  context.layer_resources->shader_environment,
@@ -892,16 +893,15 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
     }
 
     auto layer_hold        = layer_node.clone();
-    auto apply_text_anchor =
-        Arc<dyn<Fn<void()>>>::make([layer_hold   = layer_hold.clone(),
-                                    anchor_state = anchor_state.clone()]() {
-            auto*      layer_ptr = layer_hold.as_ptr().as_raw_ptr();
+    auto apply_text_anchor = Arc<dyn<Fn<void()>>>::make(
+        [layer_hold = layer_hold.clone(), anchor_state = anchor_state.clone()]() {
+            auto* layer_ptr = layer_hold.as_ptr().as_raw_ptr();
             // measured: text-size, text-metrics
-            const auto anchor    = text::TextAnchorOffset(anchor_state->horizontal.as_str(),
-                                                       anchor_state->vertical.as_str(),
-                                                       anchor_state->width,
-                                                       anchor_state->height,
-                                                       anchor_state->descent);
+            const auto     anchor = text::TextAnchorOffset(anchor_state->horizontal.as_str(),
+                                                           anchor_state->vertical.as_str(),
+                                                           anchor_state->width,
+                                                           anchor_state->height,
+                                                           anchor_state->descent);
             const Vector3d offset(anchor[usize(0)], anchor[usize(1)], 0.0);
             // Alignment moves the text geometry, not the frame inherited by children.
             layer_ptr->SetGeometryTransform(Eigen::Affine3d(Eigen::Translation3d(offset)).matrix());
@@ -916,8 +916,8 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
          direct_text,
          text_padding,
          text_padding_y](text::TextLayoutMetrics metrics) {
-            auto* layer_ptr      = layer_hold.as_ptr().as_raw_ptr();
-            metrics.padding      = text_padding;
+            auto* layer_ptr       = layer_hold.as_ptr().as_raw_ptr();
+            metrics.padding       = text_padding;
             metrics.padding_y     = text_padding_y;
             anchor_state->width   = metrics.text_width;
             anchor_state->height  = metrics.text_height;
@@ -988,8 +988,7 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
          update_text_layout = update_text_layout.clone(),
          current_point_size = current_point_size.clone()](double next_point_size) {
             if (! f64(next_point_size).is_finite() || next_point_size <= 0) return false;
-            if (layouter->SetPixelSize(text::PointsToPixels(next_point_size))
-                    .is_err()) {
+            if (layouter->SetPixelSize(text::PointsToPixels(next_point_size)).is_err()) {
                 rstd_warn("text pointsize update failed");
                 return false;
             }

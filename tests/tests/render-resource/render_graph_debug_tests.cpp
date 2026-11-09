@@ -521,9 +521,9 @@ TEST(SceneRenderGraph, ShadowCastersMoveTheirDepthAwayFromTheLight) {
     EXPECT_FLOAT_EQ(pipeline.depth_bias_constant, -4.0f);
 }
 
-// A translucent or additive model casts no shadow (Wallpaper Engine's), but a scene whose casters are all like that
-// still has a shadow atlas its receivers sample: the model's caster is kept, drawing no pixels (a zero scissor), so
-// the first draw still clears the atlas.
+// A translucent or additive model casts no shadow (Wallpaper Engine's), but a scene whose casters
+// are all like that still has a shadow atlas its receivers sample: the model's caster is kept,
+// drawing no pixels (a zero scissor), so the first draw still clears the atlas.
 TEST(SceneRenderGraph, ASilentCasterKeepsTheAtlasWritten) {
     owe::Scene scene;
     scene.RegisterRenderTarget(String::make("_rt_default"_str),
@@ -544,14 +544,14 @@ TEST(SceneRenderGraph, ASilentCasterKeepsTheAtlasWritten) {
         .viewports = rstd::move(viewports),
     });
 
-    auto caster          = Arc<owe::SceneNode>::make();
-    caster->shadow.cast  = true;
-    auto caster_mesh     = Arc<owe::SceneMesh>::make();
-    auto caster_material = GraphMaterial();
-    caster_material.name = "caster-main"_Str;
+    auto caster                   = Arc<owe::SceneNode>::make();
+    caster->shadow.cast           = true;
+    auto caster_mesh              = Arc<owe::SceneMesh>::make();
+    auto caster_material          = GraphMaterial();
+    caster_material.name          = "caster-main"_Str;
     caster_material.shadow_silent = true;
-    auto variant  = Arc<owe::SceneMaterial>::make(GraphMaterial());
-    variant->name = "caster-shadow"_Str;
+    auto variant                  = Arc<owe::SceneMaterial>::make(GraphMaterial());
+    variant->name                 = "caster-shadow"_Str;
     caster_material.shadow_variants.push(rstd::move(variant));
     caster_mesh->AddMaterial(rstd::move(caster_material));
     caster_mesh->Submeshes().push(owe::SceneMesh::Submesh {});
@@ -566,8 +566,8 @@ TEST(SceneRenderGraph, ASilentCasterKeepsTheAtlasWritten) {
     EXPECT_TRUE(graph->graph.compile().is_ok());
 }
 
-// Silence belongs to a model's material, not the model: Ocarina of Time's courtyard is one model of 25 materials whose
-// last is a translucent window, and its walls still cast.
+// Silence belongs to a model's material, not the model: Ocarina of Time's courtyard is one model of
+// 25 materials whose last is a translucent window, and its walls still cast.
 TEST(SceneRenderGraph, OnlyTheTranslucentPartsOfAModelAreSilent) {
     owe::Scene scene;
     scene.RegisterRenderTarget(String::make("_rt_default"_str),
@@ -600,7 +600,8 @@ TEST(SceneRenderGraph, OnlyTheTranslucentPartsOfAModelAreSilent) {
         material.shadow_variants.push(rstd::move(variant));
         caster_mesh->AddMaterial(rstd::move(material));
         caster_mesh->Submeshes().push(owe::SceneMesh::Submesh {});
-        caster_mesh->Submeshes().last_mut().unwrap().get_mut().material_slot = silent ? u32(1) : u32(0);
+        caster_mesh->Submeshes().last_mut().unwrap().get_mut().material_slot =
+            silent ? u32(1) : u32(0);
     }
     caster->AddMesh(rstd::move(caster_mesh));
     scene.RootMut()->AppendChild(caster.clone());

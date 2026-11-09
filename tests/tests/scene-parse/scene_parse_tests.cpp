@@ -2289,8 +2289,8 @@ TEST(SceneLightParsing, RecognizesPrefixedKindsAndFullConeAngles) {
     EXPECT_NEAR(lights[rstd::usize()]->desc().outer_cone_cos, std::cos(77.94f * deg_to_rad), 1e-5f);
 }
 
-// Measured in Wallpaper Engine with ceilings over a lit floor under a sun: a model whose material is blended
-// translucent or additive casts no shadow; a normal one does.
+// Measured in Wallpaper Engine with ceilings over a lit floor under a sun: a model whose material
+// is blended translucent or additive casts no shadow; a normal one does.
 TEST(SceneShadowParsing, OnlyModelsWithoutBlendingCastShadows) {
     EXPECT_TRUE(owe::BlendingCastsShadow("normal"_str));
     EXPECT_TRUE(owe::BlendingCastsShadow("disabled"_str));
@@ -2750,7 +2750,7 @@ TEST(EffectFboJson, ReadsItsFixedSizeAndWrap) {
     EXPECT_EQ(tiles.uvs, "repeat"_str);
 
     owe::wpscene::EffectFbo plain;
-    auto                    other = owe::ParseJson(R"({"name":"_rt_x","format":"rgba8","scale":2})"_str);
+    auto other = owe::ParseJson(R"({"name":"_rt_x","format":"rgba8","scale":2})"_str);
     ASSERT_TRUE(other.is_ok());
     ASSERT_TRUE(plain.FromJson(*other));
     EXPECT_EQ(plain.width, rstd::u32());
@@ -2837,31 +2837,38 @@ TEST(ImageEffectJson, FailedEffectsAreAbsentFromParsedObjects) {
     EXPECT_FALSE(shape.effects[rstd::usize()].materials.is_empty());
 }
 
-// A model that says "autosize" is drawn at its first texture's size, whatever the layer's "size" (Wallpaper Engine draws
-// script-workshop-path's 256 x 256 layer of an autosize model at the gradient texture's 64 x 2).
+// A model that says "autosize" is drawn at its first texture's size, whatever the layer's "size"
+// (Wallpaper Engine draws script-workshop-path's 256 x 256 layer of an autosize model at the
+// gradient texture's 64 x 2).
 TEST(ImageObjectJson, AutosizeModelTakesItsTexturesSize) {
     const auto dir = std::filesystem::temp_directory_path() / "owe-autosize-test";
     std::filesystem::remove_all(dir);
     std::filesystem::create_directories(dir / "models");
     std::filesystem::create_directories(dir / "materials");
-    std::ofstream(dir / "models/sq.json") << R"({"autosize": true, "material": "materials/sq.json"})";
+    std::ofstream(dir / "models/sq.json")
+        << R"({"autosize": true, "material": "materials/sq.json"})";
     std::ofstream(dir / "models/plain.json") << R"({"material": "materials/sq.json"})";
     std::ofstream(dir / "materials/sq.json")
         << R"({"passes": [{"shader": "genericimage2", "textures": ["strip"]}]})";
     {
         std::ofstream tex(dir / "materials/strip.tex", std::ios::binary);
         tex.write("TEXV0005\0TEXI0001\0", 18);
-        const std::uint32_t header[] = { 0, 2, 64, 4, 50, 3, 0 };  // format, flags, texture and image sizes
+        const std::uint32_t header[] = {
+            0, 2, 64, 4, 50, 3, 0
+        }; // format, flags, texture and image sizes
         tex.write(reinterpret_cast<const char*>(header), sizeof(header));
     }
-    auto assets = owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(dir.string()).unwrap()));
+    auto assets =
+        owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(dir.string()).unwrap()));
     ASSERT_TRUE(assets.is_ok());
     owe::fs::VFS vfs;
     ASSERT_TRUE(vfs.mount("/assets"_str, std::move(assets).unwrap_unchecked()).is_ok());
 
     auto layer = [&](const char* model) {
-        auto json = owe::ParseJson(rstd::cppstd::as_str(std::string(R"({"image": ")") + model +
-                                                        R"(", "size": "256 256", "origin": "0 0 0"})").unwrap());
+        auto json =
+            owe::ParseJson(rstd::cppstd::as_str(std::string(R"({"image": ")") + model +
+                                                R"(", "size": "256 256", "origin": "0 0 0"})")
+                               .unwrap());
         owe::wpscene::ImageObject image;
         EXPECT_TRUE(image.FromJson(json.unwrap(), vfs));
         return image.size;
@@ -2872,15 +2879,17 @@ TEST(ImageObjectJson, AutosizeModelTakesItsTexturesSize) {
     const auto sized = layer("models/plain.json");
     EXPECT_EQ(sized[rstd::usize(0)], 256.0f);
     EXPECT_EQ(sized[rstd::usize(1)], 256.0f);
-    // a sprite sheet's image holds all its frames: autosize doesn't take it (Dino Run's 24 x 24 dinos are 144 x 24 sheets);
-    // the layer is drawn at one frame's size, which the image parser reads from the sheet's frames
-    std::ofstream(dir / "models/sprite.json") << R"({"autosize": true, "material": "materials/sprite.json"})";
+    // a sprite sheet's image holds all its frames: autosize doesn't take it (Dino Run's 24 x 24
+    // dinos are 144 x 24 sheets); the layer is drawn at one frame's size, which the image parser
+    // reads from the sheet's frames
+    std::ofstream(dir / "models/sprite.json")
+        << R"({"autosize": true, "material": "materials/sprite.json"})";
     std::ofstream(dir / "materials/sprite.json")
         << R"({"passes": [{"shader": "genericimage2", "textures": ["sheet"]}]})";
     {
         std::ofstream tex(dir / "materials/sheet.tex", std::ios::binary);
         tex.write("TEXV0005\0TEXI0001\0", 18);
-        const std::uint32_t header[] = { 0, 5, 256, 32, 144, 24, 0 };  // flags 4: a sprite sheet
+        const std::uint32_t header[] = { 0, 5, 256, 32, 144, 24, 0 }; // flags 4: a sprite sheet
         tex.write(reinterpret_cast<const char*>(header), sizeof(header));
     }
     const auto sprite = layer("models/sprite.json");
@@ -3148,9 +3157,10 @@ TEST(SceneAssetPaths, ModelCameraAndClipRetainTheirReparseSemantics) {
     EXPECT_TRUE(clip.name.is_empty());
 }
 
-// Wallpaper Engine draws the last pass of a layer's last effect straight onto the scene, at the screen's resolution,
-// whatever its shader (probes effect-repeat-scaled and effect-pass-resolution): a passthrough of the layer's effect
-// target is only for a layer none of whose effects loaded.
+// Wallpaper Engine draws the last pass of a layer's last effect straight onto the scene, at the
+// screen's resolution, whatever its shader (probes effect-repeat-scaled and
+// effect-pass-resolution): a passthrough of the layer's effect target is only for a layer none of
+// whose effects loaded.
 TEST(EffectFinalPassthrough, NotNeededAfterAnyLoadedEffect) {
     EXPECT_FALSE(owe::NeedsEffectFinalPassthrough({ .last_effect_loaded = true }));
 }
@@ -3166,8 +3176,8 @@ TEST(EffectFinalPassthrough, NeverForLayersDrawnAnotherWay) {
     EXPECT_FALSE(owe::NeedsEffectFinalPassthrough({ .source_composites_final = true }));
 }
 
-// Wallpaper Engine draws an image layer's texture 0.15 texel in from the quad's edges at each end, counted in the
-// texture's own texels (probes texture-uv-inset, -big and -size).
+// Wallpaper Engine draws an image layer's texture 0.15 texel in from the quad's edges at each end,
+// counted in the texture's own texels (probes texture-uv-inset, -big and -size).
 TEST(LayerTexCoordInset, IsAFixedShareOfATextureTexel) {
     auto inset = owe::LayerTexCoordInset(4.0f, 1.0f);
     EXPECT_FLOAT_EQ(inset[rstd::usize(0)], 0.15f / 4.0f);
@@ -3178,9 +3188,12 @@ TEST(LayerTexCoordInset, IsAFixedShareOfATextureTexel) {
 }
 
 TEST(LayerTexCoordInset, PutsTexelEdgesWhereWallpaperEngineDraws) {
-    // a 4-texel texture across a quad: Wallpaper Engine's texel edges at 0.919, 2.000 and 3.081 texels of the quad
+    // a 4-texel texture across a quad: Wallpaper Engine's texel edges at 0.919, 2.000 and 3.081
+    // texels of the quad
     auto       inset = owe::LayerTexCoordInset(4.0f, 4.0f)[rstd::usize(0)];
-    const auto edge  = [&](float u) { return (u - inset) / (1.0f - 2.0f * inset) * 4.0f; };
+    const auto edge  = [&](float u) {
+        return (u - inset) / (1.0f - 2.0f * inset) * 4.0f;
+    };
     EXPECT_NEAR(edge(0.25f), 0.919f, 0.003f);
     EXPECT_NEAR(edge(0.5f), 2.0f, 0.003f);
     EXPECT_NEAR(edge(0.75f), 3.081f, 0.003f);
@@ -3192,8 +3205,9 @@ TEST(LayerTexCoordInset, NoneForAnEmptyTexture) {
     EXPECT_EQ(inset[rstd::usize(1)], 0.0f);
 }
 
-// A model with "nopadding" draws its texture edge to edge (texture-uv-inset-nopadding: a 4-texel texture's edges at 1, 2
-// and 3 of the quad, where the same texture on a plain model starts 0.15 texel in; the videotex-* probes' models).
+// A model with "nopadding" draws its texture edge to edge (texture-uv-inset-nopadding: a 4-texel
+// texture's edges at 1, 2 and 3 of the quad, where the same texture on a plain model starts 0.15
+// texel in; the videotex-* probes' models).
 TEST(LayerTexCoordInset, NoneForANoPaddingModel) {
     auto inset = owe::ImageLayerTexCoordInset(4.0f, 4.0f, true);
     EXPECT_EQ(inset[rstd::usize(0)], 0.0f);
@@ -3779,8 +3793,9 @@ TEST(AnimationParsing, VectorAnimationsAddToTheValueAndAlphaReplacesIt) {
     EXPECT_FLOAT_EQ(node("alpha relative"_str)->EffectiveAlpha(), 0.25f);
 }
 
-// A light's animations follow the curve's `relative` (Wallpaper Engine's pictures of light-paused-animation: a colour
-// animation holding white keeps a white light white, where adding it to the light's colour doubles it).
+// A light's animations follow the curve's `relative` (Wallpaper Engine's pictures of
+// light-paused-animation: a colour animation holding white keeps a white light white, where adding
+// it to the light's colour doubles it).
 TEST(AnimationParsing, ALightsAnimationsFollowRelative) {
     auto document = owe::wpscene::ParseSceneDocumentJson(
         R"JSON({

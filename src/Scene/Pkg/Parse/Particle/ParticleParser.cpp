@@ -186,16 +186,18 @@ struct MapSequenceBetweenControlPointsProgram {
     }
 };
 
-// colorlist: a colour picked from a list, which multiplies the particle's colour (particles-colorlist: Wallpaper
-// Engine paints a yellow colorrandom and the list's cyan as dark green, its yellow as yellow, its magenta as red,
-// in either order, so the list is applied after the other initializers).
+// colorlist: a colour picked from a list, which multiplies the particle's colour
+// (particles-colorlist: Wallpaper Engine paints a yellow colorrandom and the list's cyan as dark
+// green, its yellow as yellow, its magenta as red, in either order, so the list is applied after
+// the other initializers).
 struct ColorListProgram {
     Vec<Eigen::Vector3f> colors;
 
     void Initialize(ParticleSpawnColumns& columns, particle::ParticleSpawnRequest request,
                     ref<dyn<rstd::any::Any>>) {
         if (colors.is_empty()) return;
-        auto pick = static_cast<usize>(Random::get(0.0, 1.0) * static_cast<double>(colors.len().to_primitive()));
+        auto pick = static_cast<usize>(Random::get(0.0, 1.0) *
+                                       static_cast<double>(colors.len().to_primitive()));
         if (pick >= colors.len()) pick = colors.len() - usize(1);
         auto& color                                = columns.colors[request.slot.index];
         color                                      = color.cwiseProduct(colors[pick]);
@@ -212,8 +214,9 @@ struct HsvColorRandomProgram {
 
     void Initialize(ParticleSpawnColumns& columns, particle::ParticleSpawnRequest request,
                     ref<dyn<rstd::any::Any>>) {
-        const double hue = hue_min == hue_max ? Random::get(0.0, 1.0)
-                                              : algorism::lerp(Random::get(0.0, 1.0), hue_min, hue_max);
+        const double hue = hue_min == hue_max
+                               ? Random::get(0.0, 1.0)
+                               : algorism::lerp(Random::get(0.0, 1.0), hue_min, hue_max);
         const double saturation =
             algorism::lerp(Random::get(0.0, 1.0), saturation_min, saturation_max);
         const double    value = algorism::lerp(Random::get(0.0, 1.0), value_min, value_max);
@@ -223,16 +226,19 @@ struct HsvColorRandomProgram {
     }
 };
 
-// the control point inputs, from a particle's position and the control points' (in the particles' space)
+// the control point inputs, from a particle's position and the control points' (in the particles'
+// space)
 inline auto RemapControlpointInput(const ParticleRemap& remap, const Eigen::Vector3d& position,
                                    const Eigen::Vector3d& first, const Eigen::Vector3d& second)
     -> Eigen::Vector3d {
     switch (remap.input) {
-    case ParticleRemap::Input::DistanceToControlPoint: return Eigen::Vector3d::Constant((position - first).norm());
+    case ParticleRemap::Input::DistanceToControlPoint:
+        return Eigen::Vector3d::Constant((position - first).norm());
     case ParticleRemap::Input::DeltaToControlPoint: return first - position;
     case ParticleRemap::Input::DirectionToControlPoint: {
         const Eigen::Vector3d delta = first - position;
-        return delta.norm() > 1e-12 ? Eigen::Vector3d(delta.normalized()) : Eigen::Vector3d(Eigen::Vector3d::Zero());
+        return delta.norm() > 1e-12 ? Eigen::Vector3d(delta.normalized())
+                                    : Eigen::Vector3d(Eigen::Vector3d::Zero());
     }
     case ParticleRemap::Input::PositionBetweenControlPoints: {
         const Eigen::Vector3d line = second - first;
@@ -244,10 +250,12 @@ inline auto RemapControlpointInput(const ParticleRemap& remap, const Eigen::Vect
 }
 
 // the values of remapvalue's inputs that don't come from the particle
-inline auto RemapFrameInput(const ParticleRemap& remap, const ParticleFrame& frame) -> Eigen::Vector3d {
+inline auto RemapFrameInput(const ParticleRemap& remap, const ParticleFrame& frame)
+    -> Eigen::Vector3d {
     switch (remap.input) {
     case ParticleRemap::Input::SystemTime:
-    case ParticleRemap::Input::LayerTime: return Eigen::Vector3d::Constant(frame.time.to_primitive());
+    case ParticleRemap::Input::LayerTime:
+        return Eigen::Vector3d::Constant(frame.time.to_primitive());
     case ParticleRemap::Input::Runtime:
         return Eigen::Vector3d::Constant(frame.subsystem->SceneRuntimeSeconds());
     case ParticleRemap::Input::TimeOfDay:
@@ -274,13 +282,16 @@ struct RemapInitialValueProgram {
         case ParticleRemap::Input::PositionBetweenControlPoints: {
             auto controlpoints = frame->subsystem->Controlpoints();
             input              = RemapControlpointInput(
-                remap, columns.positions[slot].cast<double>(),
+                remap,
+                columns.positions[slot].cast<double>(),
                 controlpoints[rstd::as_cast<usize>(remap.controlpoint)].offset,
                 controlpoints[rstd::as_cast<usize>(remap.controlpoint1)].offset);
             break;
         }
         case ParticleRemap::Input::Velocity: input = columns.velocities[slot].cast<double>(); break;
-        case ParticleRemap::Input::Opacity: input = Eigen::Vector3d::Constant(columns.alphas[slot]); break;
+        case ParticleRemap::Input::Opacity:
+            input = Eigen::Vector3d::Constant(columns.alphas[slot]);
+            break;
         case ParticleRemap::Input::Rotation:
             input = Eigen::Vector3d::Constant(columns.rotations[slot].z());
             break;
@@ -297,13 +308,15 @@ struct RemapInitialValueProgram {
             break;
         }
         case ParticleRemap::Output::Opacity: {
-            auto value = float(remap.Apply(Eigen::Vector3d::Constant(columns.alphas[slot]), input).x());
+            auto value =
+                float(remap.Apply(Eigen::Vector3d::Constant(columns.alphas[slot]), input).x());
             columns.alphas[slot]         = value;
             columns.initial_alphas[slot] = value;
             break;
         }
         case ParticleRemap::Output::Size: {
-            auto value = float(remap.Apply(Eigen::Vector3d::Constant(columns.sizes[slot]), input).x());
+            auto value =
+                float(remap.Apply(Eigen::Vector3d::Constant(columns.sizes[slot]), input).x());
             columns.sizes[slot]         = value;
             columns.initial_sizes[slot] = value;
             break;
@@ -373,26 +386,28 @@ struct NoopSpawnProgram {
                     ref<dyn<rstd::any::Any>>) {}
 };
 
-// inheritcontrolpointvelocity: the particle starts with its control point's velocity times a factor from min to max
-// (particles-controlpoint-velocity: a world-space particle gets the object's speed, half of it at 0.5; one in its object's
-// space moves with the object, so its control point is at rest and it gets none).
+// inheritcontrolpointvelocity: the particle starts with its control point's velocity times a factor
+// from min to max (particles-controlpoint-velocity: a world-space particle gets the object's speed,
+// half of it at 0.5; one in its object's space moves with the object, so its control point is at
+// rest and it gets none).
 struct InheritControlpointVelocityProgram {
     i32    controlpoint { 0 };
     double min { 0.0 }, max { 1.0 };
 
     void Initialize(ParticleSpawnColumns& columns, particle::ParticleSpawnRequest request,
                     ref<dyn<rstd::any::Any>> frame_context) {
-        auto frame = ParticleFrameFrom(frame_context);
-        const Eigen::Vector3d local =
-            frame->controlpoint_velocity.col(rstd::as_cast<usize>(controlpoint % i32(8)).to_primitive());
-        const double          factor = algorism::lerp(Random::get(0.0, 1.0), min, max);
+        auto                  frame = ParticleFrameFrom(frame_context);
+        const Eigen::Vector3d local = frame->controlpoint_velocity.col(
+            rstd::as_cast<usize>(controlpoint % i32(8)).to_primitive());
+        const double factor = algorism::lerp(Random::get(0.0, 1.0), min, max);
         columns.velocities[request.slot.index] =
             (columns.velocities[request.slot.index].cast<double>() + local * factor).cast<float>();
     }
 };
 
-// The colour and opacity of the parent particle a child system's instance was made for (inheritinitialvaluefromevent
-// takes only the colour, inheritvaluefromevent both; particles-inherit-event: not the size or velocity).
+// The colour and opacity of the parent particle a child system's instance was made for
+// (inheritinitialvaluefromevent takes only the colour, inheritvaluefromevent both;
+// particles-inherit-event: not the size or velocity).
 struct ParentLook {
     Eigen::Vector3f color;
     float           alpha {};
@@ -400,7 +415,8 @@ struct ParentLook {
 
 inline auto ParentParticleLook(const ParticleFrame& frame) -> Option<ParentLook> {
     const auto& bounded = frame.subsystem->InstanceState(frame.instance_index).bounded;
-    if (bounded.parent == nullptr || bounded.parent_subsystem == nullptr || bounded.particle_index < isize())
+    if (bounded.parent == nullptr || bounded.parent_subsystem == nullptr ||
+        bounded.particle_index < isize())
         return None();
     auto& storage = bounded.parent->Storage();
     auto  index   = rstd::as_cast<usize>(bounded.particle_index);
@@ -434,7 +450,8 @@ struct ColorRandomProgram {
             auto raw   = component.to_primitive();
             value[raw] = static_cast<float>(algorism::lerp(random, min[component], max[component]));
         }
-        // times the colour the emitter gave (a layer image's pixels; white for the others), not instead of it
+        // times the colour the emitter gave (a layer image's pixels; white for the others), not
+        // instead of it
         const Eigen::Vector3f base                 = columns.colors[request.slot.index];
         const Eigen::Vector3f tinted               = base.cwiseProduct(value);
         columns.colors[request.slot.index]         = tinted;
@@ -573,8 +590,7 @@ class ParticleSpawnInstructionValue {
               (TurbulentVelocityRandom, (TurbulentVelocityRandomProgram value;)),
               (MapSequenceAroundControlPoint, (MapSequenceAroundControlPointProgram value;)),
               (MapSequenceBetweenControlPoints, (MapSequenceBetweenControlPointsProgram value;)),
-              (Override, (OverrideSpawnProgram value;)),
-              (ColorList, (ColorListProgram value;)),
+              (Override, (OverrideSpawnProgram value;)), (ColorList, (ColorListProgram value;)),
               (InheritControlpointVelocity, (InheritControlpointVelocityProgram value;)),
               (InheritInitialValueFromEvent, (InheritInitialValueFromEventProgram value;)),
               (HsvColorRandom, (HsvColorRandomProgram value;)),
@@ -678,7 +694,9 @@ void ParticleSpawnInstruction::Initialize(ParticleSpawnColumns&          columns
             instruction.Initialize(columns, request, frame);
         }
         RSTD_CASE(HsvColorRandom, instruction) { instruction.Initialize(columns, request, frame); }
-        RSTD_CASE(RemapInitialValue, instruction) { instruction.Initialize(columns, request, frame); }
+        RSTD_CASE(RemapInitialValue, instruction) {
+            instruction.Initialize(columns, request, frame);
+        }
         RSTD_CASE(Override, instruction) { instruction.Initialize(columns, request, frame); }
         RSTD_CASE(ColorList, instruction) { instruction.Initialize(columns, request, frame); }
         RSTD_CASE(InheritControlpointVelocity, instruction) {
@@ -758,11 +776,13 @@ ParticleSpawnInstruction ParticleParser::GenInitializer(const Json& wpj,
                     for (const auto& item : **items) {
                         array<float, 3> color { 1.0f, 1.0f, 1.0f };
                         owe::GetJsonValue(item, color);
-                        colors.push(Eigen::Vector3f(color[usize(0)], color[usize(1)], color[usize(2)]));
+                        colors.push(
+                            Eigen::Vector3f(color[usize(0)], color[usize(1)], color[usize(2)]));
                     }
                 }
             }
-            return ParticleSpawnInstruction::Make(ColorListProgram { .colors = rstd::move(colors) });
+            return ParticleSpawnInstruction::Make(
+                ColorListProgram { .colors = rstd::move(colors) });
         } else if (name == "inheritcontrolpointvelocity"_str) {
             i32   controlpoint { 0 };
             float min { 0.0f }, max { 1.0f };
@@ -774,8 +794,8 @@ ParticleSpawnInstruction ParticleParser::GenInitializer(const Json& wpj,
         } else if (name == "inheritinitialvaluefromevent"_str) {
             return ParticleSpawnInstruction::Make(InheritInitialValueFromEventProgram {});
         } else if (name == "hsvcolorrandom"_str) {
-            float hue_min { 0.0f }, hue_max { 1.0f }, saturation_min { 1.0f }, saturation_max { 1.0f },
-                value_min { 1.0f }, value_max { 1.0f };
+            float hue_min { 0.0f }, hue_max { 1.0f }, saturation_min { 1.0f },
+                saturation_max { 1.0f }, value_min { 1.0f }, value_max { 1.0f };
             owe::GetJsonValue(wpj, "huemin"_str, hue_min, false);
             owe::GetJsonValue(wpj, "huemax"_str, hue_max, false);
             owe::GetJsonValue(wpj, "saturationmin"_str, saturation_min, false);
@@ -793,7 +813,8 @@ ParticleSpawnInstruction ParticleParser::GenInitializer(const Json& wpj,
         } else if (name == "remapinitialvalue"_str) {
             auto remap = ParticleRemap::FromJson(wpj);
             if (remap.is_none()) break;
-            return ParticleSpawnInstruction::Make(RemapInitialValueProgram { .remap = rstd::move(*remap) });
+            return ParticleSpawnInstruction::Make(
+                RemapInitialValueProgram { .remap = rstd::move(*remap) });
         } else if (name == "lifetimerandom"_str) {
             SingleRandom r = { 0.0f, 1.0f };
             SingleRandom::ReadFromJson(wpj, r);
@@ -1651,8 +1672,9 @@ struct MaintainDistanceOperator {
     }
 };
 
-// What the collision operators do to a particle on a surface with this normal (particles-collisionplane): bounce makes
-// its speed along the normal |v_n| * bouncefactor, slide 0, delete removes it; the sideways speed stays.
+// What the collision operators do to a particle on a surface with this normal
+// (particles-collisionplane): bounce makes its speed along the normal |v_n| * bouncefactor, slide
+// 0, delete removes it; the sideways speed stays.
 enum class CollisionBehavior
 {
     Bounce,
@@ -1670,8 +1692,8 @@ inline CollisionBehavior ReadCollisionBehavior(const Json& wpj) {
                                       : CollisionBehavior::Bounce;
 }
 
-inline Eigen::Vector3d AfterContact(CollisionBehavior behavior, double bounce, const Eigen::Vector3d& normal,
-                                    const Eigen::Vector3d& v) {
+inline Eigen::Vector3d AfterContact(CollisionBehavior behavior, double bounce,
+                                    const Eigen::Vector3d& normal, const Eigen::Vector3d& v) {
     const double along   = normal.dot(v);
     const double rebound = behavior == CollisionBehavior::Slide ? 0.0 : Abs(along) * bounce;
     return v + normal * (rebound - along);
@@ -1679,9 +1701,9 @@ inline Eigen::Vector3d AfterContact(CollisionBehavior behavior, double bounce, c
 
 // the shape a collision operator keeps particles out of, as far as the shape is concerned
 struct CollisionState {
-    ParticleAttributes                                        attributes;
-    CollisionBehavior                                         behavior { CollisionBehavior::Bounce };
-    double                                                    bounce { 1.0 };
+    ParticleAttributes attributes;
+    CollisionBehavior  behavior { CollisionBehavior::Bounce };
+    double             bounce { 1.0 };
     particle::ParticleWriteIndex<particle::VelocityAttribute> velocity;
     particle::ParticleWriteIndex<particle::LifetimeAttribute> lifetime;
     particle::ParticleWriteIndex<particle::AlphaAttribute>    alpha;
@@ -1693,7 +1715,8 @@ struct CollisionState {
         alpha    = compiler.Write(attributes.alpha);
     }
 
-    // runs `hit(position, velocity, delta) -> Option<normal and the point the particle is put on>` per particle
+    // runs `hit(position, velocity, delta) -> Option<normal and the point the particle is put on>`
+    // per particle
     template<typename Hit>
     void Collide(particle::ParticleUpdateContext& context, Hit&& hit) {
         auto positions  = context.view.PositionsMut();
@@ -1707,8 +1730,9 @@ struct CollisionState {
             Eigen::Vector3d       normal, on;
             if (! hit(position, v, delta, normal, on)) continue;
             if (behavior == CollisionBehavior::Delete) {
-                lifetimes[slot.index] = 0.0f; // the lifecycle removes it next frame; unseen till then
-                alphas[slot.index]    = 0.0f;
+                lifetimes[slot.index] =
+                    0.0f; // the lifecycle removes it next frame; unseen till then
+                alphas[slot.index] = 0.0f;
                 continue;
             }
             positions[slot.index]  = on.cast<float>();
@@ -1717,7 +1741,8 @@ struct CollisionState {
     }
 };
 
-// collisionplane: a particle may not go below the plane normal . x = distance (particles-collisionplane).
+// collisionplane: a particle may not go below the plane normal . x = distance
+// (particles-collisionplane).
 struct CollisionPlaneOperator {
     CollisionState  state;
     Eigen::Vector3d normal { 0.0, 1.0, 0.0 };
@@ -1726,14 +1751,18 @@ struct CollisionPlaneOperator {
     void Compile(particle::ParticleViewCompiler& compiler) { state.Compile(compiler); }
 
     void Update(particle::ParticleUpdateContext& context) {
-        state.Collide(context, [&](const Eigen::Vector3d& position, const Eigen::Vector3d&, double,
-                                   Eigen::Vector3d& n, Eigen::Vector3d& on) {
-            const double depth = normal.dot(position) - distance;
-            if (depth >= 0.0) return false;
-            n  = normal;
-            on = position - normal * depth;
-            return true;
-        });
+        state.Collide(context,
+                      [&](const Eigen::Vector3d& position,
+                          const Eigen::Vector3d&,
+                          double,
+                          Eigen::Vector3d& n,
+                          Eigen::Vector3d& on) {
+                          const double depth = normal.dot(position) - distance;
+                          if (depth >= 0.0) return false;
+                          n  = normal;
+                          on = position - normal * depth;
+                          return true;
+                      });
     }
 };
 
@@ -1746,24 +1775,29 @@ struct CollisionSphereOperator {
     void Compile(particle::ParticleViewCompiler& compiler) { state.Compile(compiler); }
 
     void Update(particle::ParticleUpdateContext& context) {
-        state.Collide(context, [&](const Eigen::Vector3d& position, const Eigen::Vector3d& v, double,
-                                   Eigen::Vector3d& n, Eigen::Vector3d& on) {
-            Eigen::Vector3d offset   = position - origin;
-            const double    distance = offset.norm();
-            if (distance >= radius) return false;
-            if (distance > 1e-9)
-                n = offset / distance;
-            else
-                n = v.norm() > 1e-9 ? Eigen::Vector3d(v.normalized()) : Eigen::Vector3d(1.0, 0.0, 0.0);
-            on = origin + n * radius;
-            return true;
-        });
+        state.Collide(context,
+                      [&](const Eigen::Vector3d& position,
+                          const Eigen::Vector3d& v,
+                          double,
+                          Eigen::Vector3d& n,
+                          Eigen::Vector3d& on) {
+                          Eigen::Vector3d offset   = position - origin;
+                          const double    distance = offset.norm();
+                          if (distance >= radius) return false;
+                          if (distance > 1e-9)
+                              n = offset / distance;
+                          else
+                              n = v.norm() > 1e-9 ? Eigen::Vector3d(v.normalized())
+                                                  : Eigen::Vector3d(1.0, 0.0, 0.0);
+                          on = origin + n * radius;
+                          return true;
+                      });
     }
 };
 
-// collisionquad: a flat rectangle, size.x across and size.y deep, facing up (its angles do nothing), that a particle
-// falling through from above lands on (particles-collisionshapes, -quad-sides: one rising through it from below
-// passes).
+// collisionquad: a flat rectangle, size.x across and size.y deep, facing up (its angles do
+// nothing), that a particle falling through from above lands on (particles-collisionshapes,
+// -quad-sides: one rising through it from below passes).
 struct CollisionQuadOperator {
     CollisionState  state;
     Eigen::Vector3d origin { 0.0, -200.0, 0.0 };
@@ -1772,22 +1806,27 @@ struct CollisionQuadOperator {
     void Compile(particle::ParticleViewCompiler& compiler) { state.Compile(compiler); }
 
     void Update(particle::ParticleUpdateContext& context) {
-        state.Collide(context, [&](const Eigen::Vector3d& position, const Eigen::Vector3d& v, double delta,
-                                   Eigen::Vector3d& n, Eigen::Vector3d& on) {
-            const double below = position.y() - origin.y();
-            if (below >= 0.0 || below - v.y() * delta < 0.0) return false;
-            if (Abs(position.x() - origin.x()) > width * 0.5 ||
-                Abs(position.z() - origin.z()) > depth * 0.5)
-                return false;
-            n  = Eigen::Vector3d(0.0, 1.0, 0.0);
-            on = Eigen::Vector3d(position.x(), origin.y(), position.z());
-            return true;
-        });
+        state.Collide(context,
+                      [&](const Eigen::Vector3d& position,
+                          const Eigen::Vector3d& v,
+                          double                 delta,
+                          Eigen::Vector3d&       n,
+                          Eigen::Vector3d&       on) {
+                          const double below = position.y() - origin.y();
+                          if (below >= 0.0 || below - v.y() * delta < 0.0) return false;
+                          if (Abs(position.x() - origin.x()) > width * 0.5 ||
+                              Abs(position.z() - origin.z()) > depth * 0.5)
+                              return false;
+                          n  = Eigen::Vector3d(0.0, 1.0, 0.0);
+                          on = Eigen::Vector3d(position.x(), origin.y(), position.z());
+                          return true;
+                      });
     }
 };
 
-// collisionbounds: particles stay inside the scene, 0..width across and 0..height up (particles-collisionbounds-rest:
-// single particles bouncing between the walls and the ceiling and floor at 0.5).
+// collisionbounds: particles stay inside the scene, 0..width across and 0..height up
+// (particles-collisionbounds-rest: single particles bouncing between the walls and the ceiling and
+// floor at 0.5).
 struct CollisionBoundsOperator {
     CollisionState state;
 
@@ -1797,12 +1836,13 @@ struct CollisionBoundsOperator {
         auto frame = ParticleFrameFrom(context.frame);
         if (frame->scene_extent.x() <= 0.0 || frame->scene_extent.y() <= 0.0) return;
         const Eigen::Matrix4d world_from_local =
-            frame->world_space ? Eigen::Matrix4d::Identity() : Eigen::Matrix4d(frame->local_from_world.inverse());
+            frame->world_space ? Eigen::Matrix4d::Identity()
+                               : Eigen::Matrix4d(frame->local_from_world.inverse());
         const Eigen::Matrix4d local_from_world =
             frame->world_space ? Eigen::Matrix4d::Identity() : frame->local_from_world;
-        const Eigen::Matrix3d world_dir = world_from_local.block<3, 3>(0, 0);
-        const Eigen::Matrix3d local_dir = world_dir.inverse();
-        const Eigen::Vector2d extent    = frame->scene_extent;
+        const Eigen::Matrix3d world_dir  = world_from_local.block<3, 3>(0, 0);
+        const Eigen::Matrix3d local_dir  = world_dir.inverse();
+        const Eigen::Vector2d extent     = frame->scene_extent;
         auto                  positions  = context.view.PositionsMut();
         auto                  velocities = context.view.Write(state.velocity);
         auto                  lifetimes  = context.view.Write(state.lifetime);
@@ -1814,11 +1854,11 @@ struct CollisionBoundsOperator {
             bool            hit      = false;
             auto            wall     = [&](int axis, double edge, double sign) {
                 if ((position[axis] - edge) * sign >= 0.0) return;
-                hit             = true;
-                position[axis]  = edge;
+                hit                    = true;
+                position[axis]         = edge;
                 Eigen::Vector3d normal = Eigen::Vector3d::Zero();
-                normal[axis]    = sign;
-                velocity        = AfterContact(state.behavior, state.bounce, normal, velocity);
+                normal[axis]           = sign;
+                velocity = AfterContact(state.behavior, state.bounce, normal, velocity);
             };
             wall(0, 0.0, 1.0);
             wall(0, extent.x(), -1.0);
@@ -1830,7 +1870,8 @@ struct CollisionBoundsOperator {
                 alphas[slot.index]    = 0.0f;
                 continue;
             }
-            positions[slot.index]  = (local_from_world * position.homogeneous()).head<3>().cast<float>();
+            positions[slot.index] =
+                (local_from_world * position.homogeneous()).head<3>().cast<float>();
             velocities[slot.index] = (local_dir * velocity).cast<float>();
         }
     }
@@ -1914,8 +1955,8 @@ struct InheritValueFromEventOperator {
     }
 };
 
-// The CPU's approximate reciprocal square root (rsqrtss: about 12 bits), which Wallpaper Engine normalises some
-// vectors with; without SSE, the exact one.
+// The CPU's approximate reciprocal square root (rsqrtss: about 12 bits), which Wallpaper Engine
+// normalises some vectors with; without SSE, the exact one.
 static float ApproximateReciprocalSqrt(float value) {
 #if defined(__SSE__)
     return _mm_cvtss_f32(_mm_rsqrt_ss(_mm_set_ss(value)));
@@ -1924,33 +1965,37 @@ static float ApproximateReciprocalSqrt(float value) {
 #endif
 }
 
-// maintaindistancebetweencontrolpoints (particles-maintain-between, particles-maintain-drift): along the axis from
-// control point 0 to control point 1 a particle is held between them (clamped to the nearer end); its place across the
-// axis does not change. Wallpaper Engine normalises the axis with the approximate reciprocal square root and projects
-// with it, so every frame (not every second) the place along the axis is scaled by |axis|^2: 1 - 3.36e-4 for control
-// points 100, 200 or 400 apart, 1 - 1.45e-4 for 150 or 300, 1 + 4.2e-4 for a 45 degree axis 200 long (moving away
+// maintaindistancebetweencontrolpoints (particles-maintain-between, particles-maintain-drift):
+// along the axis from control point 0 to control point 1 a particle is held between them (clamped
+// to the nearer end); its place across the axis does not change. Wallpaper Engine normalises the
+// axis with the approximate reciprocal square root and projects with it, so every frame (not every
+// second) the place along the axis is scaled by |axis|^2: 1 - 3.36e-4 for control points 100, 200
+// or 400 apart, 1 - 1.45e-4 for 150 or 300, 1 + 4.2e-4 for a 45 degree axis 200 long (moving away
 // from control point 0).
 struct MaintainDistanceBetweenOperator {
     ParticleAttributes attributes;
 
-    void Compile(particle::ParticleViewCompiler& compiler) { compiler.WriteBase(attributes.position); }
+    void Compile(particle::ParticleViewCompiler& compiler) {
+        compiler.WriteBase(attributes.position);
+    }
 
     void Update(particle::ParticleUpdateContext& context) {
-        auto       frame     = ParticleFrameFrom(context.frame);
-        auto       positions = context.view.PositionsMut();
-        const auto first     = frame->subsystem->SimulationControlpoint(usize()).center;
-        const auto second    = frame->subsystem->SimulationControlpoint(usize(1)).center;
-        const Eigen::Vector3d span   = second - first;
-        const double          length = span.norm();
+        auto                  frame     = ParticleFrameFrom(context.frame);
+        auto                  positions = context.view.PositionsMut();
+        const auto            first     = frame->subsystem->SimulationControlpoint(usize()).center;
+        const auto            second    = frame->subsystem->SimulationControlpoint(usize(1)).center;
+        const Eigen::Vector3d span      = second - first;
+        const double          length    = span.norm();
         if (length <= 1e-9) return;
-        const Eigen::Vector3d axis   = span / length;
-        const Eigen::Vector3f approx = span.cast<float>() * ApproximateReciprocalSqrt(span.cast<float>().squaredNorm());
-        const double          scale  = approx.squaredNorm();
+        const Eigen::Vector3d axis = span / length;
+        const Eigen::Vector3f approx =
+            span.cast<float>() * ApproximateReciprocalSqrt(span.cast<float>().squaredNorm());
+        const double scale = approx.squaredNorm();
         for (auto slot : context.slots) {
             const Eigen::Vector3d relative = positions[slot.index].cast<double>() - first;
             const double          along    = relative.dot(axis);
-            const double          held     = rstd::cmp::min(rstd::cmp::max(along, 0.0), length) * scale;
-            positions[slot.index]          = (first + relative + axis * (held - along)).cast<float>();
+            const double          held = rstd::cmp::min(rstd::cmp::max(along, 0.0), length) * scale;
+            positions[slot.index]      = (first + relative + axis * (held - along)).cast<float>();
         }
     }
 };
@@ -1959,10 +2004,10 @@ struct MaintainDistanceBetweenOperator {
 // distanceinner, falling to reductionouter at distanceouter by the squared distance, applied as
 // v / (1 + reduction dt) (particles-reduce-near).
 struct ReduceMovementNearControlPointOperator {
-    ParticleAttributes                                        attributes;
-    i32                                                       controlpoint { 0 };
-    double                                                    inner { 0 }, outer { 0 };
-    double                                                    reduction_inner { 0 }, reduction_outer { 0 };
+    ParticleAttributes attributes;
+    i32                controlpoint { 0 };
+    double             inner { 0 }, outer { 0 };
+    double             reduction_inner { 0 }, reduction_outer { 0 };
     particle::ParticleWriteIndex<particle::VelocityAttribute> velocity;
 
     void Compile(particle::ParticleViewCompiler& compiler) {
@@ -1986,8 +2031,7 @@ struct ReduceMovementNearControlPointOperator {
                 reach = (outer * outer - d2) / (outer * outer - inner * inner);
             else
                 continue;
-            const double reduction =
-                reduction_outer + (reduction_inner - reduction_outer) * reach;
+            const double reduction = reduction_outer + (reduction_inner - reduction_outer) * reach;
             if (reduction <= 0.0) continue;
             velocities[slot.index] =
                 (velocities[slot.index].cast<double>() / (1.0 + reduction * delta)).cast<float>();
@@ -2016,8 +2060,10 @@ struct RemapValueOperator {
         rotation         = compiler.Read(attributes.rotation);
         angular_velocity = compiler.Read(attributes.angular_velocity);
         // the output attribute is written, so an input from the same attribute reads it there
-        if (remap.output != ParticleRemap::Output::Velocity) velocity = compiler.Read(attributes.velocity);
-        if (remap.output != ParticleRemap::Output::Opacity) input_alpha = compiler.Read(attributes.alpha);
+        if (remap.output != ParticleRemap::Output::Velocity)
+            velocity = compiler.Read(attributes.velocity);
+        if (remap.output != ParticleRemap::Output::Opacity)
+            input_alpha = compiler.Read(attributes.alpha);
         switch (remap.output) {
         case ParticleRemap::Output::Color: color = compiler.Write(attributes.color); break;
         case ParticleRemap::Output::Opacity: alpha = compiler.Write(attributes.alpha); break;
@@ -2029,16 +2075,18 @@ struct RemapValueOperator {
     }
 
     void Update(particle::ParticleUpdateContext& context) {
-        auto frame      = ParticleFrameFrom(context.frame);
-        auto positions  = context.view.Positions();
-        auto lifetimes  = context.view.Read(lifetime);
-        auto initial    = context.view.Read(initial_lifetime);
-        auto rotations  = context.view.Read(rotation);
-        auto spins      = context.view.Read(angular_velocity);
+        auto                  frame     = ParticleFrameFrom(context.frame);
+        auto                  positions = context.view.Positions();
+        auto                  lifetimes = context.view.Read(lifetime);
+        auto                  initial   = context.view.Read(initial_lifetime);
+        auto                  rotations = context.view.Read(rotation);
+        auto                  spins     = context.view.Read(angular_velocity);
         const Eigen::Vector3d center =
-            frame->subsystem->SimulationControlpoint(rstd::as_cast<usize>(remap.controlpoint)).center;
+            frame->subsystem->SimulationControlpoint(rstd::as_cast<usize>(remap.controlpoint))
+                .center;
         const Eigen::Vector3d center1 =
-            frame->subsystem->SimulationControlpoint(rstd::as_cast<usize>(remap.controlpoint1)).center;
+            frame->subsystem->SimulationControlpoint(rstd::as_cast<usize>(remap.controlpoint1))
+                .center;
         const Eigen::Vector3d frame_input = RemapFrameInput(remap, *frame);
         auto                  input       = [&](particle::ParticleSlot slot) -> Eigen::Vector3d {
             switch (remap.input) {
@@ -2049,11 +2097,14 @@ struct RemapValueOperator {
             case ParticleRemap::Input::DeltaToControlPoint:
             case ParticleRemap::Input::DirectionToControlPoint:
             case ParticleRemap::Input::PositionBetweenControlPoints:
-                return RemapControlpointInput(remap, positions[slot.index].cast<double>(), center, center1);
+                return RemapControlpointInput(
+                    remap, positions[slot.index].cast<double>(), center, center1);
             case ParticleRemap::Input::Velocity:
                 return remap.output == ParticleRemap::Output::Velocity
-                           ? Eigen::Vector3d(context.view.Write(output_velocity)[slot.index].cast<double>())
-                           : Eigen::Vector3d(context.view.Read(velocity)[slot.index].cast<double>());
+                           ? Eigen::Vector3d(
+                                 context.view.Write(output_velocity)[slot.index].cast<double>())
+                           : Eigen::Vector3d(
+                                 context.view.Read(velocity)[slot.index].cast<double>());
             case ParticleRemap::Input::Opacity:
                 return Eigen::Vector3d::Constant(remap.output == ParticleRemap::Output::Opacity
                                                      ? context.view.Write(alpha)[slot.index]
@@ -2076,19 +2127,20 @@ struct RemapValueOperator {
         case ParticleRemap::Output::Opacity: {
             auto values = context.view.Write(alpha);
             for (auto slot : context.slots)
-                values[slot.index] =
-                    float(remap.Apply(Eigen::Vector3d::Constant(values[slot.index]), input(slot)).x());
+                values[slot.index] = float(
+                    remap.Apply(Eigen::Vector3d::Constant(values[slot.index]), input(slot)).x());
             break;
         }
         case ParticleRemap::Output::Size: {
             auto values = context.view.Write(size);
             for (auto slot : context.slots)
-                values[slot.index] =
-                    float(remap.Apply(Eigen::Vector3d::Constant(values[slot.index]), input(slot)).x());
+                values[slot.index] = float(
+                    remap.Apply(Eigen::Vector3d::Constant(values[slot.index]), input(slot)).x());
             break;
         }
         case ParticleRemap::Output::Velocity: {
-            // added or taken each frame, whatever its length (particles-remap-velocity: add 0.01 gave 0.01 a frame)
+            // added or taken each frame, whatever its length (particles-remap-velocity: add 0.01
+            // gave 0.01 a frame)
             auto values = context.view.Write(output_velocity);
             for (auto slot : context.slots)
                 values[slot.index] =
@@ -2099,14 +2151,16 @@ struct RemapValueOperator {
     }
 };
 
-// boids (particles-boids), as Wallpaper Engine runs it: particles are taken four at a time and each one looks at every
-// particle of every group, including the unused places of the last group of four, which count as particles at rest at
-// the system's origin. A neighbour closer than separationthreshold pushes away by (threshold - distance) and one closer
-// than neighborthreshold adds its velocity and position; the separation push and the differences from the mean velocity
-// and position are averaged (with the CPU's approximate reciprocals) and scaled by their factors and dt2, the time step
-// shortened below 40 frames a second by (0.025 / frame time)^0.7. Above 200 particles only every n-th group is
-// updated a frame (n = count / 200 + 1), looking at every n-th group, with the factors multiplied by n. With flags bit 1
-// a particle that speeds up past maxspeed is slowed to it (unless it was already faster).
+// boids (particles-boids), as Wallpaper Engine runs it: particles are taken four at a time and each
+// one looks at every particle of every group, including the unused places of the last group of
+// four, which count as particles at rest at the system's origin. A neighbour closer than
+// separationthreshold pushes away by (threshold - distance) and one closer than neighborthreshold
+// adds its velocity and position; the separation push and the differences from the mean velocity
+// and position are averaged (with the CPU's approximate reciprocals) and scaled by their factors
+// and dt2, the time step shortened below 40 frames a second by (0.025 / frame time)^0.7. Above 200
+// particles only every n-th group is updated a frame (n = count / 200 + 1), looking at every n-th
+// group, with the factors multiplied by n. With flags bit 1 a particle that speeds up past maxspeed
+// is slowed to it (unless it was already faster).
 struct Boids {
     float separation_threshold { 20.0f };
     float neighbor_threshold { 50.0f };
@@ -2157,9 +2211,9 @@ struct BoidsOperator {
     }
 
     void Update(particle::ParticleUpdateContext& context) {
-        using index_t   = rstd::size_t;
-        auto positions  = context.view.Positions();
-        auto velocities = context.view.Write(velocity);
+        using index_t         = rstd::size_t;
+        auto       positions  = context.view.Positions();
+        auto       velocities = context.view.Write(velocity);
         Vec<usize> slots;
         for (auto slot : context.slots) slots.push(usize(slot.index.to_primitive()));
         const index_t count = slots.len().to_primitive();
@@ -2177,7 +2231,7 @@ struct BoidsOperator {
                 speed.push(Eigen::Vector3f::Zero());
             }
         }
-        const float scaled = static_cast<float>(context.delta2.to_primitive());
+        const float   scaled = static_cast<float>(context.delta2.to_primitive());
         const index_t groups = lanes / 4;
         const index_t stride = count / 200 + 1;
         const index_t phase  = static_cast<index_t>(frame % stride);
@@ -2190,11 +2244,12 @@ struct BoidsOperator {
             // the four of a group are worked out together from the velocities before the group
             Eigen::Vector3f result[4];
             for (index_t lane = group * 4; lane < group * 4 + 4; ++lane) {
-                const Eigen::Vector3f here = place[usize(lane)];
-                Eigen::Vector3f apart = Eigen::Vector3f::Zero(), mean_speed = Eigen::Vector3f::Zero(),
-                                mean_place = Eigen::Vector3f::Zero();
-                float near {}, neighbours {};
-                const index_t first = static_cast<index_t>((frame + group * 4) % stride);
+                const Eigen::Vector3f here       = place[usize(lane)];
+                Eigen::Vector3f       apart      = Eigen::Vector3f::Zero(),
+                                      mean_speed = Eigen::Vector3f::Zero(),
+                                      mean_place = Eigen::Vector3f::Zero();
+                float                 near {}, neighbours {};
+                const index_t         first = static_cast<index_t>((frame + group * 4) % stride);
                 for (index_t other_group = first; other_group < groups; other_group += stride) {
                     for (index_t other = other_group * 4; other < other_group * 4 + 4; ++other) {
                         const Eigen::Vector3f d  = here - place[usize(other)];
@@ -2218,7 +2273,8 @@ struct BoidsOperator {
                 if (near != 0.0f) change += apart * (Reciprocal(near) * push);
                 if (neighbours != 0.0f) {
                     const float share = Reciprocal(neighbours);
-                    change += (mean_speed * share - before) * align + (mean_place * share - here) * pull;
+                    change +=
+                        (mean_speed * share - before) * align + (mean_place * share - here) * pull;
                 }
                 Eigen::Vector3f next = before + change;
                 if ((config.flags & u32(1)) != u32()) {
@@ -2358,7 +2414,8 @@ ParticleParser::GenOperator(const Json& wpj, ParticleInstanceModifiers modifiers
             });
         } else if (name == "collisionplane"_str || name == "collisionsphere"_str ||
                    name == "collisionquad"_str) {
-            CollisionState state { .attributes = attributes, .behavior = ReadCollisionBehavior(wpj) };
+            CollisionState state { .attributes = attributes,
+                                   .behavior   = ReadCollisionBehavior(wpj) };
             float          bounce { 1.0f };
             owe::GetJsonValue(wpj, "bouncefactor"_str, bounce, false);
             state.bounce = double(bounce);
@@ -2385,11 +2442,14 @@ ParticleParser::GenOperator(const Json& wpj, ParticleInstanceModifiers modifiers
             }
             array<float, 2> size { 200.0f, 200.0f };
             owe::GetJsonValue(wpj, "size"_str, size, false);
-            return Box<dyn<particle::ParticleUpdateProgram>>::make(CollisionQuadOperator {
-                .state = rstd::move(state), .origin = center, .width = double(size[usize(0)]),
-                .depth = double(size[usize(1)]) });
+            return Box<dyn<particle::ParticleUpdateProgram>>::make(
+                CollisionQuadOperator { .state  = rstd::move(state),
+                                        .origin = center,
+                                        .width  = double(size[usize(0)]),
+                                        .depth  = double(size[usize(1)]) });
         } else if (name == "collisionbounds"_str) {
-            CollisionState state { .attributes = attributes, .behavior = ReadCollisionBehavior(wpj) };
+            CollisionState state { .attributes = attributes,
+                                   .behavior   = ReadCollisionBehavior(wpj) };
             float          bounce { 1.0f };
             owe::GetJsonValue(wpj, "bouncefactor"_str, bounce, false);
             state.bounce = double(bounce);
@@ -2410,7 +2470,8 @@ ParticleParser::GenOperator(const Json& wpj, ParticleInstanceModifiers modifiers
             });
         } else if (name == "reducemovementnearcontrolpoint"_str) {
             i32   controlpoint { 0 };
-            float inner { 0.0f }, outer { 0.0f }, reduction_inner { 0.0f }, reduction_outer { 0.0f };
+            float inner { 0.0f }, outer { 0.0f }, reduction_inner { 0.0f },
+                reduction_outer { 0.0f };
             owe::GetJsonValue(wpj, "controlpoint"_str, controlpoint, false);
             owe::GetJsonValue(wpj, "distanceinner"_str, inner, false);
             owe::GetJsonValue(wpj, "distanceouter"_str, outer, false);

@@ -200,16 +200,17 @@ struct ParticleUpdateContext {
     f64                      delta {};
     f64                      elapsed {};
     // Wallpaper Engine's frame-rate compensated step (dt2, used by boids), split like delta
-    f64                      delta2 {};
+    f64 delta2 {};
     // false on the first of two operator passes, for state that advances once a frame
-    bool                     last_pass { true };
+    bool last_pass { true };
 };
 
-// How Wallpaper Engine runs the operators in a frame (FUN_140236cd0): once, or at 1..20 target frames a second twice
-// with half dt and half dt2. delta2 is the whole frame's dt2; when it is none the step is used.
+// How Wallpaper Engine runs the operators in a frame (FUN_140236cd0): once, or at 1..20 target
+// frames a second twice with half dt and half dt2. delta2 is the whole frame's dt2; when it is none
+// the step is used.
 struct ParticleOperatorSteps {
-    u32           passes { 1 };
-    Option<f64>   delta2;
+    u32         passes { 1 };
+    Option<f64> delta2;
 };
 
 class ParticleProgram {
@@ -330,8 +331,8 @@ struct ParticleExtractContext {
 
 class ParticleEmitterContext {
 public:
-    // Whether the system had no particles when this frame's emitters started: every instantaneous emitter fires into
-    // an empty system, not only the first to run.
+    // Whether the system had no particles when this frame's emitters started: every instantaneous
+    // emitter fires into an empty system, not only the first to run.
     bool Empty() const noexcept { return m_empty; }
     auto Frame() const noexcept -> ref<dyn<rstd::any::Any>> { return m_frame; }
     f64  Delta() const noexcept { return m_delta; }
@@ -416,8 +417,8 @@ public:
     ParticleDefinition&       Definition() noexcept { return m_definition; }
     const ParticleDefinition& Definition() const noexcept { return m_definition; }
 
-    void Advance(ParticleInstance& instance, ref<dyn<rstd::any::Any>> frame, f64 delta,
-                 f64 elapsed, ParticleOperatorSteps steps = {}) {
+    void Advance(ParticleInstance& instance, ref<dyn<rstd::any::Any>> frame, f64 delta, f64 elapsed,
+                 ParticleOperatorSteps steps = {}) {
         if (! instance.Active()) return;
 
         auto& storage = instance.Storage();
@@ -463,8 +464,8 @@ public:
         auto states = binding.Write().StatesMut();
         for (auto slot : instance.ActiveSlots()) states[slot.index].fresh = false;
 
-        const auto passes = rstd::cmp::max(steps.passes, u32(1));
-        const auto split  = static_cast<double>(passes.to_primitive());
+        const auto            passes = rstd::cmp::max(steps.passes, u32(1));
+        const auto            split  = static_cast<double>(passes.to_primitive());
         ParticleUpdateContext update_context {
             .view    = binding.Write(),
             .slots   = instance.ActiveSlots(),

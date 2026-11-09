@@ -638,8 +638,8 @@ TEST(LightUniformSource, HiddenAncestorsDoNotConsumeLightSlots) {
     EXPECT_FLOAT_EQ(color[usize(1)], 0.0f);
 }
 
-// A tube light takes the light config's tube count, not the point lights': a scene with one tube light and no
-// point lights still lights through the newer interface.
+// A tube light takes the light config's tube count, not the point lights': a scene with one tube
+// light and no point lights still lights through the newer interface.
 TEST(LightUniformSource, ATubeLightTakesTheTubeCount) {
     auto node = Arc<owe::SceneNode>::make();
 
@@ -661,11 +661,12 @@ TEST(LightUniformSource, ATubeLightTakesTheTubeCount) {
     EXPECT_FLOAT_EQ(color[usize()], 2.0f);
 }
 
-// Scripts' thisScene.getCameraTransforms() is the scene's own camera and what scripts set, not where a camera path
-// has moved the view (Wallpaper Engine's camera-script-read: a path holds the eye 3 to the side, scripts see 0).
+// Scripts' thisScene.getCameraTransforms() is the scene's own camera and what scripts set, not
+// where a camera path has moved the view (Wallpaper Engine's camera-script-read: a path holds the
+// eye 3 to the side, scripts see 0).
 TEST(SceneCamera, ScriptsSeeTheScenesCameraNotItsPath) {
     owe::Scene scene;
-    auto camera =
+    auto       camera =
         Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000.0, 50.0));
     camera->SetLookAt(Eigen::Vector3d(0, 0, 12), Eigen::Vector3d::Zero(), Eigen::Vector3d::UnitY());
     scene.RegisterCamera("global_perspective"_Str, camera.clone());
@@ -673,7 +674,8 @@ TEST(SceneCamera, ScriptsSeeTheScenesCameraNotItsPath) {
     scene.SetScriptCameraTransforms(camera->AuthoredTransforms());
 
     // a camera path moves the view
-    camera->SetLookAt(Eigen::Vector3d(3, 0, 12), Eigen::Vector3d(3, 0, 0), Eigen::Vector3d::UnitY());
+    camera->SetLookAt(
+        Eigen::Vector3d(3, 0, 12), Eigen::Vector3d(3, 0, 0), Eigen::Vector3d::UnitY());
     auto seen = scene.ScriptCameraTransforms();
     ASSERT_TRUE(seen.is_some());
     EXPECT_DOUBLE_EQ(seen->eye.x(), 0.0);
@@ -690,7 +692,7 @@ TEST(SceneCamera, ScriptsSeeTheScenesCameraNotItsPath) {
 // Without a camera of its own recorded (a 2D scene), scripts see the active camera.
 TEST(SceneCamera, ScriptsSeeTheActiveCameraWithoutASceneCamera) {
     owe::Scene scene;
-    auto camera =
+    auto       camera =
         Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000.0, 50.0));
     camera->SetLookAt(Eigen::Vector3d(1, 2, 3), Eigen::Vector3d::Zero(), Eigen::Vector3d::UnitY());
     scene.RegisterCamera("global"_Str, camera.clone());
@@ -874,8 +876,8 @@ TEST(ShadowUniformSource, EachShadowedLightHasItsViews) {
     auto                  point_node = Arc<owe::SceneNode>::make();
     owe::SceneLight::Desc point_desc;
     point_desc.type = owe::SceneLightType::Point;
-    owe::Scene            scene;
-    auto                  point = Box<owe::SceneLight>::make(point_desc);
+    owe::Scene scene;
+    auto       point = Box<owe::SceneLight>::make(point_desc);
     point->setNode(point_node.as_ptr());
     (void)scene.RegisterLight(rstd::move(point));
     auto                  sun_node = Arc<owe::SceneNode>::make();
@@ -999,8 +1001,10 @@ TEST(ShadowUniformSource, PointLightSeesSixFacesFromItsSizeToRadius) {
         auto       point = Box<owe::SceneLight>::make(desc);
         point->setNode(point_node.as_ptr());
         (void)scene.RegisterLight(rstd::move(point));
-        owe::ShadowUniformSource source(
-            rstd::move(camera), ref<owe::Scene>::from_raw_parts(&scene), Vec<float>::make(), quality);
+        owe::ShadowUniformSource source(rstd::move(camera),
+                                        ref<owe::Scene>::from_raw_parts(&scene),
+                                        Vec<float>::make(),
+                                        quality);
 
         owe::SceneFrame frame;
         auto slots = scene_test::Capture(frame, source, owe::ShadowUniformOutput::LightViews);
@@ -1267,7 +1271,8 @@ TEST(SceneParserBindings, OwnsKeysAndNamesAfterDocumentDestruction) {
 
 namespace
 {
-// `count` point lights by the origin and then a sun, as Ocarina of Time's courtyard lists its torches before its sun.
+// `count` point lights by the origin and then a sun, as Ocarina of Time's courtyard lists its
+// torches before its sun.
 struct PointsThenSun {
     Vec<Arc<owe::SceneNode>> nodes;
     owe::Scene               scene;
@@ -1299,17 +1304,19 @@ struct PointsThenSun {
 };
 } // namespace
 
-// Wallpaper Engine lights every light its light config counts through the newer interface, not the first four: four
-// point lights listed before a sun, with a config of four points and a directional, light with the sun too.
+// Wallpaper Engine lights every light its light config counts through the newer interface, not the
+// first four: four point lights listed before a sun, with a config of four points and a
+// directional, light with the sun too.
 TEST(LightUniformSource, LightingV1LightsEveryLightTheConfigCounts) {
-    PointsThenSun scene(4);
+    PointsThenSun        scene(4);
     owe::LightKindLimits limits;
     limits.point       = u32(4);
     limits.directional = u32(1);
     owe::LightUniformSource source(scene.refs(), Some(limits));
     owe::SceneFrame         frame;
 
-    auto types = scene_test::Capture(frame, source, owe::LightUniformOutput::LightingV1DirectionType);
+    auto types =
+        scene_test::Capture(frame, source, owe::LightUniformOutput::LightingV1DirectionType);
     ASSERT_EQ(types.size(), usize(32));
     for (usize slot {}; slot < usize(4); ++slot)
         EXPECT_FLOAT_EQ(types[slot * usize(4) + usize(3)], 0.0f) << "slot " << slot.to_primitive();
@@ -1328,14 +1335,15 @@ TEST(LightUniformSource, LightingV1LightsEveryLightTheConfigCounts) {
 
 // A light the config has no more of its kind for takes no slot: the next light that fits takes it.
 TEST(LightUniformSource, LightingV1SlotsSkipLightsBeyondTheirKindsCount) {
-    PointsThenSun scene(3);
+    PointsThenSun        scene(3);
     owe::LightKindLimits limits;
     limits.point       = u32(2);
     limits.directional = u32(1);
     owe::LightUniformSource source(scene.refs(), Some(limits));
     owe::SceneFrame         frame;
 
-    auto types = scene_test::Capture(frame, source, owe::LightUniformOutput::LightingV1DirectionType);
+    auto types =
+        scene_test::Capture(frame, source, owe::LightUniformOutput::LightingV1DirectionType);
     ASSERT_EQ(types.size(), usize(32));
     EXPECT_FLOAT_EQ(types[usize(3)], 0.0f);
     EXPECT_FLOAT_EQ(types[usize(7)], 0.0f);
@@ -1343,25 +1351,30 @@ TEST(LightUniformSource, LightingV1SlotsSkipLightsBeyondTheirKindsCount) {
     EXPECT_FLOAT_EQ(types[usize(15)], -1.0f);
 }
 
-// A light's shadow views sit in the slot it takes in the newer interface: the sun after four point lights, the fifth slot.
+// A light's shadow views sit in the slot it takes in the newer interface: the sun after four point
+// lights, the fifth slot.
 TEST(ShadowUniformSource, ALightsViewsFollowItsLightingV1Slot) {
     auto camera =
         Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000.0, 50.0));
     camera->SetLookAt(Eigen::Vector3d::Zero(), -Eigen::Vector3d::UnitZ(), Eigen::Vector3d::UnitY());
-    PointsThenSun scene(4, true);
+    PointsThenSun        scene(4, true);
     owe::LightKindLimits limits;
     limits.point       = u32(4);
     limits.directional = u32(1);
-    auto transforms = Vec<float>::make();
+    auto transforms    = Vec<float>::make();
     for (int value = 0; value < 12; ++value) transforms.push(float(value) / 12.0f);
-    owe::ShadowUniformSource source(
-        rstd::move(camera), scene.refs(), rstd::move(transforms), owe::ShadowQuality::Medium, Some(limits));
+    owe::ShadowUniformSource source(rstd::move(camera),
+                                    scene.refs(),
+                                    rstd::move(transforms),
+                                    owe::ShadowQuality::Medium,
+                                    Some(limits));
 
     owe::SceneFrame frame;
     auto slots = scene_test::Capture(frame, source, owe::ShadowUniformOutput::LightViews);
     ASSERT_EQ(slots.size(), usize(8));
     for (usize slot {}; slot < usize(8); ++slot)
-        EXPECT_FLOAT_EQ(slots[slot], slot == usize(4) ? 0.0f : -1.0f) << "slot " << slot.to_primitive();
+        EXPECT_FLOAT_EQ(slots[slot], slot == usize(4) ? 0.0f : -1.0f)
+            << "slot " << slot.to_primitive();
 }
 // namespace
 
@@ -1477,9 +1490,9 @@ TEST(SceneParserScript, DynamicObjectsUseSceneIdentity) {
     EXPECT_TRUE(scene.scene->ConsumeRenderGraphDirty());
 }
 
-// A layer a script creates from a registered model keeps its material's user property bindings: Reze's audio visualizer
-// bars have their Alpha bound to "opacity" (0) and Wallpaper Engine draws them transparent (material-user-alpha); owe's
-// copies kept Alpha 1.
+// A layer a script creates from a registered model keeps its material's user property bindings:
+// Reze's audio visualizer bars have their Alpha bound to "opacity" (0) and Wallpaper Engine draws
+// them transparent (material-user-alpha); owe's copies kept Alpha 1.
 TEST(SceneParserScript, CreatedLayerKeepsMaterialUserBindings) {
     const auto dir = std::filesystem::temp_directory_path() / "owe-created-user-binding";
     std::filesystem::remove_all(dir);
@@ -1510,7 +1523,8 @@ TEST(SceneParserScript, CreatedLayerKeepsMaterialUserBindings) {
 
     auto assets = owe::fs::make_physical_fs(
         owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
-    auto own = owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(dir.string()).unwrap()));
+    auto own =
+        owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(dir.string()).unwrap()));
     ASSERT_TRUE(assets.is_ok());
     ASSERT_TRUE(own.is_ok());
     owe::fs::VFS vfs;
@@ -1539,8 +1553,8 @@ TEST(SceneParserScript, CreatedLayerKeepsMaterialUserBindings) {
     std::filesystem::remove_all(dir);
 }
 
-// A solid layer created by its path has no texture to take a size from: Wallpaper Engine makes it 1 x 1 (scaled by 20 it is
-// 20 x 20, script-layer-alignment); owe made none.
+// A solid layer created by its path has no texture to take a size from: Wallpaper Engine makes it 1
+// x 1 (scaled by 20 it is 20 x 20, script-layer-alignment); owe made none.
 TEST(SceneParserScript, SolidLayerCreatedByPathIsOneByOne) {
     auto document = owe::wpscene::ParseSceneDocumentJson(
         R"JSON({
@@ -1582,15 +1596,17 @@ TEST(SceneParserScript, SolidLayerCreatedByPathIsOneByOne) {
     EXPECT_FLOAT_EQ(created->Size().y(), 1.0f);
 }
 
-// A layer created by its path takes its texture's size only when its model says "autosize"; otherwise it is 1 x 1, as a solid
-// layer (Wallpaper Engine draws material-user-alpha's created 64 x 2 gradient layer, scaled by 5 x 150, as a 5 x 150 line).
+// A layer created by its path takes its texture's size only when its model says "autosize";
+// otherwise it is 1 x 1, as a solid layer (Wallpaper Engine draws material-user-alpha's created 64
+// x 2 gradient layer, scaled by 5 x 150, as a 5 x 150 line).
 TEST(SceneParserScript, CreatedLayerIsOneByOneUnlessAutosize) {
     const auto dir = std::filesystem::temp_directory_path() / "owe-created-size";
     std::filesystem::remove_all(dir);
     std::filesystem::create_directories(dir / "models");
     std::filesystem::create_directories(dir / "materials");
     std::ofstream(dir / "models/plain.json") << R"({"material": "materials/strip.json"})";
-    std::ofstream(dir / "models/autosized.json") << R"({"autosize": true, "material": "materials/strip.json"})";
+    std::ofstream(dir / "models/autosized.json")
+        << R"({"autosize": true, "material": "materials/strip.json"})";
     std::ofstream(dir / "materials/strip.json")
         << R"({"passes": [{"shader": "genericimage2", "textures": ["gradient/gradient_rainbow"]}]})";
 
@@ -1614,7 +1630,8 @@ TEST(SceneParserScript, CreatedLayerIsOneByOneUnlessAutosize) {
 
     auto assets = owe::fs::make_physical_fs(
         owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
-    auto own = owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(dir.string()).unwrap()));
+    auto own =
+        owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(dir.string()).unwrap()));
     ASSERT_TRUE(assets.is_ok());
     ASSERT_TRUE(own.is_ok());
     owe::fs::VFS vfs;
@@ -2279,8 +2296,10 @@ TEST(SceneCameraState, ReflectionMirrorsATiltedUp) {
     const Eigen::Vector3d eye(3, 4, 9), center(0, 0, 0), up(-0.25, 0.92, -0.3);
     camera.SetLookAt(eye, center, up);
     const auto            reflected = camera.CameraSnapshot(owe::SceneRenderViewKind::Reflection);
-    const Eigen::Vector3d reflected_eye(3, -4, 9), reflected_center(0, 0, 0), reflected_up(0.25, 0.92, 0.3);
-    EXPECT_TRUE(reflected.view.isApprox(Eigen::LookAt(reflected_eye, reflected_center, reflected_up)));
+    const Eigen::Vector3d reflected_eye(3, -4, 9), reflected_center(0, 0, 0),
+        reflected_up(0.25, 0.92, 0.3);
+    EXPECT_TRUE(
+        reflected.view.isApprox(Eigen::LookAt(reflected_eye, reflected_center, reflected_up)));
 }
 
 TEST(FrameUniformSource, PublishesUpdatedAmbientAndSkylightColors) {
@@ -2597,7 +2616,7 @@ TEST(ShadowUniformSource, CascadeCentersUseFinalCameraPosition) {
     (void)scene.RegisterLight(rstd::move(light));
     owe::ShadowUniformSource source(
         camera.clone(), ref<owe::Scene>::from_raw_parts(&scene), Vec<float>::make());
-    auto                     translated = scene_test::Capture(
+    auto translated = scene_test::Capture(
         owe::SceneFrame {}, source, owe::ShadowUniformOutput::ViewProjectionMatrices);
     camera->SetViewOffset(Eigen::Vector3d::Zero());
     camera->SetLookAt(
@@ -2923,8 +2942,9 @@ TEST(UniformSourceParallax, HostSwitchOnlyRemovesMouseContribution) {
 }
 
 TEST(UniformSourceParallax, APointerOutsideTheWindowParallaxesFromItsEdge) {
-    // camera-parallax: with the pointer parked outside the window (the probe reads 2.87, 1.79), Wallpaper Engine's layers
-    // move as if it were at the window's corner; the shaders' pointer stays outside
+    // camera-parallax: with the pointer parked outside the window (the probe reads 2.87, 1.79),
+    // Wallpaper Engine's layers move as if it were at the window's corner; the shaders' pointer
+    // stays outside
     auto state = Arc<owe::UniformSceneState>::make(Arc<owe::AudioResponseDemand>::make());
     state->CameraParallax() = { true, 0.5f, 0.0f, 0.25f };
     state->SetOrtho(100.0f, 80.0f);
@@ -2952,7 +2972,8 @@ TEST(UniformSourceParallax, APointerOutsideTheWindowParallaxesFromItsEdge) {
     const auto outside = offset();
     EXPECT_FLOAT_EQ(outside[usize()], corner[usize()]);
     EXPECT_FLOAT_EQ(outside[usize(1)], corner[usize(1)]);
-    auto pointer = scene_test::Capture(owe::SceneFrame {}, frame_source, owe::FrameUniformOutput::PointerPosition);
+    auto pointer = scene_test::Capture(
+        owe::SceneFrame {}, frame_source, owe::FrameUniformOutput::PointerPosition);
     EXPECT_FLOAT_EQ(pointer[usize()], 2.0f);
     EXPECT_FLOAT_EQ(pointer[usize(1)], 1.5f);
 }
@@ -3620,8 +3641,9 @@ TEST(UniformSourceParallax, PerspectiveWithAuthoredParallaxDepthAppliesShift) {
                          mvp_with_parallax[rstd::usize(13)]) > 1e-5f);
 }
 
-// A layer scaled to no area (More Physics' sky gradient layer, 0 x 0) still makes its composite in Wallpaper Engine: the
-// matrices an effect pass uses must not collapse with the layer's scale (owe's were singular, so the composite came out black).
+// A layer scaled to no area (More Physics' sky gradient layer, 0 x 0) still makes its composite in
+// Wallpaper Engine: the matrices an effect pass uses must not collapse with the layer's scale
+// (owe's were singular, so the composite came out black).
 TEST(TransformUniformSource, EffectMatricesOfALayerWithNoAreaStayInvertible) {
     auto camera =
         Arc<owe::SceneCamera>::make(owe::SceneCamera::MakeOrthographic(200, 100, -1.0, 1.0));
@@ -3644,8 +3666,10 @@ TEST(TransformUniformSource, EffectMatricesOfALayerWithNoAreaStayInvertible) {
     // as a layer of scale 1 (the existing test shows 0.4 and 0.6 for a scale of 2 and 3)
     EXPECT_FLOAT_EQ(projected[usize()], 0.2f);
     EXPECT_FLOAT_EQ(projected[usize(5)], 0.2f);
-    auto inverse = scene_test::Capture(
-        owe::SceneFrame {}, transform_source, owe::TransformUniformOutput::EffectModelViewProjectionInverse);
+    auto inverse =
+        scene_test::Capture(owe::SceneFrame {},
+                            transform_source,
+                            owe::TransformUniformOutput::EffectModelViewProjectionInverse);
     ASSERT_EQ(inverse.size(), usize(16));
     for (usize i {}; i < inverse.size(); ++i) EXPECT_TRUE(std::isfinite(inverse[i]));
     EXPECT_FLOAT_EQ(inverse[usize()], 5.0f);
@@ -3682,8 +3706,8 @@ TEST(LightUniformSource, PublishesTheSegmentOfATubeLight) {
     EXPECT_FLOAT_EQ(segment[usize(3)], static_cast<float>(owe::SceneLightType::Tube));
 }
 
-// A script can build a mesh of its own (thisScene.createModelData) and show it as a layer; it later rewrites
-// the vertices with applyData. More Physics draws its cloth this way.
+// A script can build a mesh of its own (thisScene.createModelData) and show it as a layer; it later
+// rewrites the vertices with applyData. More Physics draws its cloth this way.
 TEST(SceneParserScript, ScriptBuiltModelBecomesAMeshLayerWhoseVerticesItRewrites) {
     const auto dir = std::filesystem::temp_directory_path() / "owe-script-model-data";
     std::filesystem::remove_all(dir);
@@ -3711,7 +3735,8 @@ TEST(SceneParserScript, ScriptBuiltModelBecomesAMeshLayerWhoseVerticesItRewrites
 
     auto assets = owe::fs::make_physical_fs(
         owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
-    auto own = owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(dir.string()).unwrap()));
+    auto own =
+        owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(dir.string()).unwrap()));
     ASSERT_TRUE(assets.is_ok());
     ASSERT_TRUE(own.is_ok());
     owe::fs::VFS vfs;
@@ -3749,10 +3774,11 @@ TEST(SceneParserScript, ScriptBuiltModelBecomesAMeshLayerWhoseVerticesItRewrites
     std::filesystem::remove_all(dir);
 }
 
-// A script's applyUserProperties is first called with every user property at once (Wallpaper Engine passes all of them when
-// the script starts, only the changed ones afterwards). owe called it for the scene's properties one at a time, before the
-// script existed or never, so a script that reads two properties (the Outer Wilds sun's supernova loop and its duration)
-// saw the second one missing and switched itself off.
+// A script's applyUserProperties is first called with every user property at once (Wallpaper Engine
+// passes all of them when the script starts, only the changed ones afterwards). owe called it for
+// the scene's properties one at a time, before the script existed or never, so a script that reads
+// two properties (the Outer Wilds sun's supernova loop and its duration) saw the second one missing
+// and switched itself off.
 TEST(SceneParserScript, ApplyUserPropertiesFirstGetsEveryPropertyAtOnce) {
     auto document = owe::wpscene::ParseSceneDocumentJson(
         R"JSON({
@@ -3771,11 +3797,10 @@ TEST(SceneParserScript, ApplyUserPropertiesFirstGetsEveryPropertyAtOnce) {
     ASSERT_TRUE(document.is_some());
 
     auto user_properties = rstd::json::Map::make();
-    user_properties.insert(
-        String::make("loop_on"_str), owe::ParseJson(R"({"type":"bool","value":true})"_str).unwrap());
-    user_properties.insert(
-        String::make("loop_length"_str),
-        owe::ParseJson(R"({"type":"slider","value":1320})"_str).unwrap());
+    user_properties.insert(String::make("loop_on"_str),
+                           owe::ParseJson(R"({"type":"bool","value":true})"_str).unwrap());
+    user_properties.insert(String::make("loop_length"_str),
+                           owe::ParseJson(R"({"type":"slider","value":1320})"_str).unwrap());
 
     owe::fs::VFS                vfs;
     wavsen::audio::SoundManager sound_manager;
@@ -3800,8 +3825,9 @@ TEST(SceneParserScript, ApplyUserPropertiesFirstGetsEveryPropertyAtOnce) {
     EXPECT_FLOAT_EQ(reader->Scale().x(), 3.0f);
 }
 
-// A script that creates a layer from a model layer's initial configuration (More Physics spawns its spheres this
-// way) gets another model layer of the same model; owe made a plain 2 x 2 solid layer of it (hundreds of white squares).
+// A script that creates a layer from a model layer's initial configuration (More Physics spawns its
+// spheres this way) gets another model layer of the same model; owe made a plain 2 x 2 solid layer
+// of it (hundreds of white squares).
 TEST(SceneParserScript, ACreatedLayerFromAModelConfigurationIsAModelLayer) {
     auto document = owe::wpscene::ParseSceneDocumentJson(
         R"JSON({
@@ -3853,7 +3879,8 @@ TEST(SceneParserScript, ACreatedLayerFromAModelConfigurationIsAModelLayer) {
     usize solids {};
     bool  moved = false;
     for (const auto& child : scene.scene->RootMut()->GetChildren()) {
-        if ((child->Name() == "Source"_str || child->Name() == "Copy"_str) && child->Mesh() != nullptr) {
+        if ((child->Name() == "Source"_str || child->Name() == "Copy"_str) &&
+            child->Mesh() != nullptr) {
             ++models;
             if (child->Translate().x() == 5.0f) moved = true;
         }
@@ -3864,8 +3891,9 @@ TEST(SceneParserScript, ACreatedLayerFromAModelConfigurationIsAModelLayer) {
     EXPECT_TRUE(moved);
 }
 
-// A script can read the scene's field of view (thisScene.fov) and set a camera layer's (thisLayer.fov): More Physics'
-// camera layer says 60 and its script copies the scene's 80 into it in init, so the view is drawn with 80.
+// A script can read the scene's field of view (thisScene.fov) and set a camera layer's
+// (thisLayer.fov): More Physics' camera layer says 60 and its script copies the scene's 80 into it
+// in init, so the view is drawn with 80.
 TEST(SceneParserScript, ACameraLayerTakesTheScenesFieldOfViewFromItsScript) {
     auto document = owe::wpscene::ParseSceneDocumentJson(
         R"JSON({
@@ -4035,9 +4063,9 @@ TEST(SceneParserText, CentredTextSitsBelowItsOrigin) {
     EXPECT_NEAR(top->GeometryTransform()(1, 3), -top->Size().y() * 0.5, 1e-3);
 }
 
-
 TEST(SceneCameraPath, ACameraLayerAScriptHidesGivesTheScenesViewBack) {
-    // camera-layer-restore: a script's init hides a visible camera layer, and Wallpaper Engine shows the scene's view
+    // camera-layer-restore: a script's init hides a visible camera layer, and Wallpaper Engine
+    // shows the scene's view
     auto document = owe::wpscene::ParseSceneDocumentJson(
         R"JSON({
             "camera": { "center": "0 0 0", "eye": "0 1 5", "up": "0 1 0" },

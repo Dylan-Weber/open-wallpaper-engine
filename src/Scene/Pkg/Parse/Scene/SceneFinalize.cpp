@@ -192,9 +192,9 @@ void FinalizeUniformSources(SceneParseContext& context) {
         .tube        = context.layer_resources->shader_environment.tube_lights,
     };
 
-    const auto light_source = registrar->Register(Box<dyn<UniformSource>>::make(
+    const auto light_source     = registrar->Register(Box<dyn<UniformSource>>::make(
         LightUniformSource { ref<Scene>::from_raw_parts(&scene), Some(light_limits) }));
-    auto lighting_sources = Vec<UniformSourceAttachment>::make();
+    auto       lighting_sources = Vec<UniformSourceAttachment>::make();
     lighting_sources.push(UniformSourceAttachment { .source = light_source });
     auto atlas = scene.RenderTarget(WE_SHADOW_ATLAS_PREFIX);
     if (context.layer_resources->shader_environment.shadow_mapping && atlas.is_some()) {

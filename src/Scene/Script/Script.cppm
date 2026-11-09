@@ -235,14 +235,15 @@ enum class FieldScriptInitialization
     Deferred
 };
 
-// A mesh a script builds (thisScene.createModelData): shapes of interleaved vertex floats and indices, each with
-// its material asset. The vertex format lists IModelData attributes (POSITION 0, NORMAL 1, TANGENT 2, UV 3).
+// A mesh a script builds (thisScene.createModelData): shapes of interleaved vertex floats and
+// indices, each with its material asset. The vertex format lists IModelData attributes (POSITION 0,
+// NORMAL 1, TANGENT 2, UV 3).
 struct ModelShapeData {
-    Vec<float>          vertices;
-    Vec<uint32_t>       indices;
-    Vec<i32>            format;
-    String              material;
-    bool                dynamic_vertices { false };
+    Vec<float>    vertices;
+    Vec<uint32_t> indices;
+    Vec<i32>      format;
+    String        material;
+    bool          dynamic_vertices { false };
 };
 
 struct ModelData {
@@ -302,8 +303,8 @@ public:
     // `property` should be the descriptor object shape used by project.json
     // (`{value: ...}` plus optional metadata).
     void SetUserProperty(ref<str> key, const Json& property);
-    // The scene's user properties as it starts: every script's applyUserProperties gets them all in one call
-    // (afterwards SetUserProperty passes only the changed one).
+    // The scene's user properties as it starts: every script's applyUserProperties gets them all in
+    // one call (afterwards SetUserProperty passes only the changed one).
     void SetUserProperties(const rstd::json::Map& properties);
 
     // Merge changed general settings and notify initialized scripts.
@@ -361,8 +362,8 @@ public:
         bool                  additive { false };
         bool                  single { false };
     };
-    using AnimationLayerCreator = Box<dyn<
-        FnMut<Option<Arc<owe::SceneAnimationLayer>>(owe::SceneNode*, AnimationLayerRequest)>>>;
+    using AnimationLayerCreator = Box<
+        dyn<FnMut<Option<Arc<owe::SceneAnimationLayer>>(owe::SceneNode*, AnimationLayerRequest)>>>;
     // destroyAnimationLayer: false when the layer isn't one of the node's animation layers.
     using AnimationLayerDestroyer =
         Box<dyn<FnMut<bool(owe::SceneNode*, const owe::SceneAnimationLayer&)>>>;
@@ -415,7 +416,8 @@ public:
     void SetLayerFactory(LayerFactory factory);
     using LayerConfigFactory = Arc<dyn<FnMut<Option<Arc<owe::SceneNode>>(owe::SceneNode*, Json)>>>;
     void SetLayerConfigFactory(LayerConfigFactory factory);
-    // Makes the layer of a script-built mesh (createLayer({model})); its shapes become the layer's submeshes.
+    // Makes the layer of a script-built mesh (createLayer({model})); its shapes become the layer's
+    // submeshes.
     using ModelLayerFactory =
         Arc<dyn<FnMut<Option<Arc<owe::SceneNode>>(owe::SceneNode*, const ModelData&)>>>;
     void SetModelLayerFactory(ModelLayerFactory factory);

@@ -2609,9 +2609,9 @@ TEST(SceneTextures, CapturedImageSourcesReuseParsedContentAndPreserveOldRuntimeI
     EXPECT_TRUE(Arc<owe::Image>::ptr_eq(parsed, before->Parse("asset"_str).unwrap()));
 }
 
-// A camera attached to a layer node that is scaled to no area (the sky gradient layer, 0 x 0) still looks at the layer's
-// own frame: the node's collapsed axes count as scale 1. A singular frame fell back to the identity, a view that doesn't
-// see the layer at all.
+// A camera attached to a layer node that is scaled to no area (the sky gradient layer, 0 x 0) still
+// looks at the layer's own frame: the node's collapsed axes count as scale 1. A singular frame fell
+// back to the identity, a view that doesn't see the layer at all.
 TEST(SceneCameras, ANodeCameraOfALayerWithNoAreaStillLooksAtTheLayer) {
     auto node = Arc<owe::SceneNode>::make();
     node->SetTranslate({ 100.0f, 50.0f, 0.0f });
@@ -2622,16 +2622,17 @@ TEST(SceneCameras, ANodeCameraOfALayerWithNoAreaStillLooksAtTheLayer) {
     camera->Update();
 
     const Eigen::Matrix4d view_projection = camera->GetViewProjectionMatrix();
-    const Eigen::Vector4d at_node         = view_projection * Eigen::Vector4d(100.0, 50.0, 0.0, 1.0);
-    const Eigen::Vector4d beside_node     = view_projection * Eigen::Vector4d(110.0, 50.0, 0.0, 1.0);
+    const Eigen::Vector4d at_node     = view_projection * Eigen::Vector4d(100.0, 50.0, 0.0, 1.0);
+    const Eigen::Vector4d beside_node = view_projection * Eigen::Vector4d(110.0, 50.0, 0.0, 1.0);
     EXPECT_NEAR(at_node.x() / at_node.w(), 0.0, 1e-9);
     EXPECT_NEAR(at_node.y() / at_node.w(), 0.0, 1e-9);
     EXPECT_NEAR(beside_node.x() / beside_node.w(), 0.1, 1e-9);
 }
 
-// A sprite sheet's animation plays at the rate its frames say: frames of 0.1 s show 10 a second whatever the update rate.
-// owe moved on at most one frame an update and threw the overshoot away, so at 30 updates a second a frame lasted four
-// updates (7.5 frames a second) and at 60 seven (8.6).
+// A sprite sheet's animation plays at the rate its frames say: frames of 0.1 s show 10 a second
+// whatever the update rate. owe moved on at most one frame an update and threw the overshoot away,
+// so at 30 updates a second a frame lasted four updates (7.5 frames a second) and at 60 seven
+// (8.6).
 TEST(SpriteAnimation, PlaysAtTheRateOfItsFramesWhateverTheUpdateRate) {
     auto make = [] {
         owe::SpriteAnimation animation;
@@ -2647,10 +2648,11 @@ TEST(SpriteAnimation, PlaysAtTheRateOfItsFramesWhateverTheUpdateRate) {
         // two seconds and a little over, as updates of equal length
         const int steps = updates_per_second * 2 + 1;
         for (int i = 0; i < steps; ++i) (void)animation.GetAnimateFrame(1.0 / updates_per_second);
-        EXPECT_EQ(animation.CurrentFrameIndex(), usize(20)) << updates_per_second << " updates a second";
+        EXPECT_EQ(animation.CurrentFrameIndex(), usize(20))
+            << updates_per_second << " updates a second";
     }
-    // a frame can last less than an update: still only one goes by in it (Wallpaper Engine's gifs of 0.03 s frames play
-    // at the update rate, not 33 a second)
+    // a frame can last less than an update: still only one goes by in it (Wallpaper Engine's gifs
+    // of 0.03 s frames play at the update rate, not 33 a second)
     auto fast = owe::SpriteAnimation();
     for (int i = 0; i < 10; ++i) {
         owe::SpriteFrame frame;
@@ -2663,15 +2665,17 @@ TEST(SpriteAnimation, PlaysAtTheRateOfItsFramesWhateverTheUpdateRate) {
     EXPECT_EQ(fast.CurrentFrameIndex(), usize(2));
 }
 
-// Camera shake moves the view of the layers drawn through the perspective camera too (an orthographic scene's layers with
-// "perspective": true): owe shook only the active orthographic camera, so those layers sat a few pixels from where
-// Wallpaper Engine draws them (ws2959390130's orbs, 7 px).
+// Camera shake moves the view of the layers drawn through the perspective camera too (an
+// orthographic scene's layers with "perspective": true): owe shook only the active orthographic
+// camera, so those layers sat a few pixels from where Wallpaper Engine draws them (ws2959390130's
+// orbs, 7 px).
 TEST(SceneCameras, TheViewOffsetOfTheActiveCameraAlsoMovesThePerspectiveCamera) {
     owe::Scene scene;
-    scene.RegisterCamera(
-        String::make("global"_str),
-        Arc<owe::SceneCamera>::make(owe::SceneCamera::MakeOrthographic(1920.0, 1080.0, -5000.0, 5000.0)));
-    auto perspective = Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.7778, 15000.0, 5.0, 50.0));
+    scene.RegisterCamera(String::make("global"_str),
+                         Arc<owe::SceneCamera>::make(
+                             owe::SceneCamera::MakeOrthographic(1920.0, 1080.0, -5000.0, 5000.0)));
+    auto perspective =
+        Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.7778, 15000.0, 5.0, 50.0));
     perspective->SetLookAt({ 960.0, 540.0, 1000.0 }, { 960.0, 540.0, 0.0 }, { 0.0, 1.0, 0.0 });
     scene.RegisterCamera(String::make("global_perspective"_str), perspective.clone());
     ASSERT_TRUE(scene.SetActiveCamera("global"_str));
@@ -2686,8 +2690,9 @@ TEST(SceneCameras, TheViewOffsetOfTheActiveCameraAlsoMovesThePerspectiveCamera) 
     EXPECT_NEAR(after.z() - before.z(), 0.0, 1e-9);
 }
 
-// A perspective camera that looks at the layers from a distance (a scene's perspectiveoverridefov) is refitted when the
-// window crops the projection: it must see the cropped height at the layers' plane, as the ortho camera does.
+// A perspective camera that looks at the layers from a distance (a scene's perspectiveoverridefov)
+// is refitted when the window crops the projection: it must see the cropped height at the layers'
+// plane, as the ortho camera does.
 TEST(SceneCameras, ALookAtCameraRefitsItsFovToTheHeightAtItsCenter) {
     auto camera = owe::SceneCamera::MakePerspective(1.6, 15000.0, 5.0, 30.0);
     camera.SetLookAt(Eigen::Vector3d(256.0, 160.0, 600.0),
@@ -2710,7 +2715,8 @@ TEST(SceneCameras, ALookAtCameraRefitsItsFovToTheHeightAtItsCenter) {
     EXPECT_DOUBLE_EQ(flat.Fov(), 30.0);
     // nor does a look-at camera of a scene without the override
     auto authored = owe::SceneCamera::MakePerspective(1.6, 15000.0, 5.0, 30.0);
-    authored.SetLookAt(Eigen::Vector3d(0.0, 0.0, 6.0), Eigen::Vector3d::Zero(), Eigen::Vector3d::UnitY());
+    authored.SetLookAt(
+        Eigen::Vector3d(0.0, 0.0, 6.0), Eigen::Vector3d::Zero(), Eigen::Vector3d::UnitY());
     authored.FitFovToHeightAtCenter(288.0);
     EXPECT_DOUBLE_EQ(authored.Fov(), 30.0);
 }

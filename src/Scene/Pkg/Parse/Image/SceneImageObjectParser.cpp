@@ -75,9 +75,9 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
         auto size = ResolveTextureSize(*context.scene, image_wpmat.textures[usize()].as_str());
         if (size.is_some()) wpimgobj.size = *size;
     }
-    const bool alpha_can_change   = ! wpimgobj.alpha_user_key.is_empty() ||
-                                    wpimgobj.field_bindings.HasAnimation("alpha"_str) ||
-                                    wpimgobj.field_bindings.HasScript("alpha"_str);
+    const bool alpha_can_change = ! wpimgobj.alpha_user_key.is_empty() ||
+                                  wpimgobj.field_bindings.HasAnimation("alpha"_str) ||
+                                  wpimgobj.field_bindings.HasScript("alpha"_str);
     if (wpimgobj.autosize_sprite_sheet && ! wpimgobj.material.textures.is_empty()) {
         auto header = context.scene->ParseImageHeader(wpimgobj.material.textures[usize()].as_str());
         if (header.is_ok())
@@ -175,10 +175,12 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
                                           Vector3f(wpimgobj.angles.data()),
                                           wpimgobj.name.as_str());
     context.TrackCreatedNode(spImgNode);
-    // the scene's first layer of each image asset, whose bindings a layer a script creates from it keeps
+    // the scene's first layer of each image asset, whose bindings a layer a script creates from it
+    // keeps
     if (! context.runtime_created && wpimgobj.id >= i32() &&
         ! context.layer_resources->asset_layers.contains_key(wpimgobj.image.as_str()))
-        (void)context.layer_resources->asset_layers.insert(wpimgobj.image.clone(), spImgNode.clone());
+        (void)context.layer_resources->asset_layers.insert(wpimgobj.image.clone(),
+                                                           spImgNode.clone());
     const Vector3f alignment_offset =
         wpimgobj.fullscreen ? Vector3f::Zero()
                             : AlignmentOffset(wpimgobj.alignment.as_str(),
@@ -203,8 +205,8 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
     Option<Arc<PuppetLayer>> image_puppet_layer;
     if (puppet.is_some() && has_bones) {
         auto span = SceneLoadSpan(context.load_bench, &SceneLoadProbeIds::image_puppet_layer);
-        image_puppet_layer =
-            Some(MakePuppetLayer((*(*puppet)->puppet).clone(), wpimgobj.puppet_layers.as_slice(), wpimgobj.scale));
+        image_puppet_layer = Some(MakePuppetLayer(
+            (*(*puppet)->puppet).clone(), wpimgobj.puppet_layers.as_slice(), wpimgobj.scale));
         RegisterPuppetLayer(context, spImgNode.as_ptr(), (*image_puppet_layer).clone());
     }
 
@@ -299,8 +301,8 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
     SceneMesh effct_final_mesh {};
     // where the puppet's own geometry goes (in effct_final_mesh with effects), for its blend shapes
     Option<usize>         puppet_submesh;
-    auto      spMesh              = Arc<SceneMesh>::make();
-    auto&     mesh                = *spMesh;
+    auto                  spMesh  = Arc<SceneMesh>::make();
+    auto&                 mesh    = *spMesh;
     const array<float, 2> mapRate = Texture0UvScale(material, wpimgobj.nopadding);
     const bool            source_uses_framebuffer_space = hasEffect && wpimgobj.composite_layer;
     const Vector3f        source_alignment_offset = hasEffect ? Vector3f::Zero() : alignment_offset;
@@ -400,21 +402,24 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
             mesh.SetGeometryTransform(
                 Affine3d(Translation3d(alignment_offset.cast<double>())).matrix());
         }
-        // Wallpaper Engine samples the texture of the quad it draws on screen 0.15 texel in from its edges:
-        // the layer's own quad without effects, else the effects' final quad (in the effect target's texels)
+        // Wallpaper Engine samples the texture of the quad it draws on screen 0.15 texel in from
+        // its edges: the layer's own quad without effects, else the effects' final quad (in the
+        // effect target's texels)
         GenCardMesh(mesh,
                     { geometry_size[usize(0)], geometry_size[usize(1)] },
                     mapRate,
                     source_alignment_offset,
-                    hasEffect ? array<float, 2> { 0.0f, 0.0f } : Texture0TexCoordInset(material, wpimgobj.nopadding));
+                    hasEffect ? array<float, 2> { 0.0f, 0.0f }
+                              : Texture0TexCoordInset(material, wpimgobj.nopadding));
         if (parse_geometry.final_mesh.is_some()) {
             effct_final_mesh.ChangeMeshDataFrom(**parse_geometry.final_mesh);
         } else {
-            GenCardMesh(effct_final_mesh,
-                        { geometry_size[usize(0)], geometry_size[usize(1)] },
-                        { 1.0f, 1.0f },
-                        alignment_offset,
-                        LayerTexCoordInset(effect_target_size[usize(0)], effect_target_size[usize(1)]));
+            GenCardMesh(
+                effct_final_mesh,
+                { geometry_size[usize(0)], geometry_size[usize(1)] },
+                { 1.0f, 1.0f },
+                alignment_offset,
+                LayerTexCoordInset(effect_target_size[usize(0)], effect_target_size[usize(1)]));
         }
     }
     // The final pass owns the authored blend mode.
@@ -789,9 +794,11 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
                     // how the target's texture coordinates wrap where an effect samples it past
                     // [0, 1]: Wallpaper Engine repeats them unless the target says "uvs": "clamp"
                     // (effect-fbo-wrap: targets with no "uvs" tile as ones with "repeat" do)
-                    const auto wrap = wpfbo.uvs == "clamp"_str ? TextureWrap::CLAMP_TO_EDGE
-                                                               : TextureWrap::REPEAT;
-                    const TextureSample sample { wrap, wrap, TextureFilter::LINEAR, TextureFilter::LINEAR };
+                    const auto wrap =
+                        wpfbo.uvs == "clamp"_str ? TextureWrap::CLAMP_TO_EDGE : TextureWrap::REPEAT;
+                    const TextureSample sample {
+                        wrap, wrap, TextureFilter::LINEAR, TextureFilter::LINEAR
+                    };
                     if (wpfbo.width > u32() && wpfbo.height > u32()) {
                         // a target of a size of its own
                         (void)scene.RegisterNodeRenderTarget(
@@ -965,7 +972,8 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
                             image_puppet_layer.is_some()
                                 ? (*image_puppet_layer).clone()
                                 : MakePuppetLayer((*(*puppet)->puppet).clone(),
-                                                  wpimgobj.puppet_layers.as_slice(), wpimgobj.scale);
+                                                  wpimgobj.puppet_layers.as_slice(),
+                                                  wpimgobj.scale);
                         RegisterPuppetLayer(
                             context, spEffNode.as_ptr(), rstd::move(effect_puppet_layer));
                     }
@@ -1192,11 +1200,12 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
             }
         }
 
-        if (NeedsEffectFinalPassthrough({ .linked_source           = is_linked_source,
-                                          .fullscreen              = wpimgobj.fullscreen,
-                                          .copybackground          = wpimgobj.copybackground,
-                                          .source_composites_final = passthrough_can_composite_final,
-                                          .last_effect_loaded      = last_effect_loaded })) {
+        if (NeedsEffectFinalPassthrough(
+                { .linked_source           = is_linked_source,
+                  .fullscreen              = wpimgobj.fullscreen,
+                  .copybackground          = wpimgobj.copybackground,
+                  .source_composites_final = passthrough_can_composite_final,
+                  .last_effect_loaded      = last_effect_loaded })) {
             wpscene::Material passthrough_mat;
             auto json = LoadJsonFile(vfs, "/assets/materials/util/effectpassthrough.json"_str);
             if (! json) {

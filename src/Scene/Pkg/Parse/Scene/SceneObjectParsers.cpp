@@ -85,7 +85,8 @@ void ParseCamera(SceneParseContext& context, const wpscene::SceneMetadata& sc) {
         const Vector3d eye { cperori.x(), cperori.y(), cperori.z() };
         const Vector3d center { cori.x(), cori.y(), 0.0 };
         perspective_camera->SetLookAt(eye, center, Vector3d::UnitY());
-        perspective_camera->SetFitsProjectionHeight(static_cast<double>(projection_extent[usize(1)]));
+        perspective_camera->SetFitsProjectionHeight(
+            static_cast<double>(projection_extent[usize(1)]));
     }
     scene.RegisterCamera("global_perspective"_Str, perspective_camera.clone());
     scene.RootMut()->AppendChild((*context.global_perspective_camera_node).clone());
@@ -423,7 +424,8 @@ void ParseModelObjImpl(SceneLayerBuildContext& context, wpscene::ModelObject& mo
     node->SetDrawsAsModel(true);
     node->SetPerspective(model_obj.perspective);
     node->SetReflected(model_obj.reflected);
-    node->shadow.cast = context.layer_resources->shader_environment.shadow_mapping && model_obj.castshadow;
+    node->shadow.cast =
+        context.layer_resources->shader_environment.shadow_mapping && model_obj.castshadow;
     if (! model_obj.visible) {
         node->SetVisible(false);
         if (model_obj.id >= i32())
@@ -447,8 +449,8 @@ void ParseModelObjImpl(SceneLayerBuildContext& context, wpscene::ModelObject& mo
     }
     Option<Arc<PuppetLayer>> model_puppet_layer;
     if (mdl.puppet.is_some() && ! (*mdl.puppet)->bones.is_empty()) {
-        model_puppet_layer =
-            Some(MakePuppetLayer((*mdl.puppet).clone(), model_obj.puppet_layers.as_slice(), model_obj.scale));
+        model_puppet_layer = Some(MakePuppetLayer(
+            (*mdl.puppet).clone(), model_obj.puppet_layers.as_slice(), model_obj.scale));
         RegisterPuppetLayer(context, node.as_ptr(), (*model_puppet_layer).clone());
     }
 
@@ -498,7 +500,7 @@ void ParseModelObjImpl(SceneLayerBuildContext& context, wpscene::ModelObject& mo
         if (context.scene->TransparentSorting() && wpmat->blending == "translucent"_str &&
             wpmat->depthwrite == "enabled"_str)
             (void)scene_mat.SetDepthWrite(true);
-        shader_info         = rstd::move(material_build.shader_info);
+        shader_info = rstd::move(material_build.shader_info);
         LoadConstvalue(context, scene_mat, *wpmat, shader_info);
 
         if (node->shadow.cast) {
@@ -533,14 +535,14 @@ void ParseModelObjImpl(SceneLayerBuildContext& context, wpscene::ModelObject& mo
                                                    rstd::as_cast<i32>(definition.view_offset));
                 ShaderInfo shadow_info;
                 shadow_info.baseConstSvs = context.layer_resources->global_base_uniforms.clone();
-                auto shadow_result       = BuildMaterial(vfs,
-                                                         *context.layer_resources->shader_cache,
-                                                         context.layer_resources->shader_environment,
-                                                         light_material,
-                                                         *context.scene,
-                                                         rstd::move(shadow_info),
-                                                         GeometryStageRequirement::None,
-                                                         context.load_bench);
+                auto shadow_result = BuildMaterial(vfs,
+                                                   *context.layer_resources->shader_cache,
+                                                   context.layer_resources->shader_environment,
+                                                   light_material,
+                                                   *context.scene,
+                                                   rstd::move(shadow_info),
+                                                   GeometryStageRequirement::None,
+                                                   context.load_bench);
                 if (shadow_result.is_err()) {
                     rstd_warn("load shadow material '{}' failed for '{}'",
                               light_material.shader,
@@ -683,16 +685,21 @@ Option<Arc<SceneNode>> InstantiateScriptModel(SceneParseContext& context, SceneN
         Vec<VertexAttrSpec> specs;
         for (auto attribute : shape.format) {
             VertexAttrSpec spec = VAttr::Position;
-            if (attribute == i32(0)) spec = VAttr::Position;
-            else if (attribute == i32(1)) spec = VAttr::Normal;
-            else if (attribute == i32(2)) spec = VAttr::Tangent4;
-            else if (attribute == i32(3)) spec = VAttr::TexCoord;
-            else continue;
+            if (attribute == i32(0))
+                spec = VAttr::Position;
+            else if (attribute == i32(1))
+                spec = VAttr::Normal;
+            else if (attribute == i32(2))
+                spec = VAttr::Tangent4;
+            else if (attribute == i32(3))
+                spec = VAttr::TexCoord;
+            else
+                continue;
             spec.padding = false;
             specs.push(rstd::move(spec));
         }
         if (specs.is_empty()) continue;
-        auto attributes = MakeAttrSet(specs.as_slice());
+        auto  attributes = MakeAttrSet(specs.as_slice());
         usize stride {};
         for (const auto& attribute : attributes)
             stride += SceneVertexArray::RealAttributeSize(attribute);
@@ -705,13 +712,13 @@ Option<Arc<SceneNode>> InstantiateScriptModel(SceneParseContext& context, SceneN
         ShaderInfo shader_info;
         shader_info.baseConstSvs = context.layer_resources->global_base_uniforms.clone();
         auto material_result     = BuildMaterial(vfs,
-                                             *context.layer_resources->shader_cache,
-                                             context.layer_resources->shader_environment,
-                                             *wpmat,
-                                             *context.scene,
-                                             rstd::move(shader_info),
-                                             GeometryStageRequirement::None,
-                                             context.load_bench);
+                                                 *context.layer_resources->shader_cache,
+                                                 context.layer_resources->shader_environment,
+                                                 *wpmat,
+                                                 *context.scene,
+                                                 rstd::move(shader_info),
+                                                 GeometryStageRequirement::None,
+                                                 context.load_bench);
         if (material_result.is_err()) {
             rstd_error("script model material '{}' failed to build", shape.material);
             continue;
@@ -805,18 +812,19 @@ BuildContext(Scene& scene, fs::VFS& vfs, ref<str> scene_id, const wpscene::Scene
     InitContext(
         context, vfs, sc, ortho_extent, rstd::move(image_ready), rstd::move(texture_memory));
     ParseCamera(context, sc);
-    context.layer_resources->pkg_version  = sc.pkg_version;
+    context.layer_resources->pkg_version = sc.pkg_version;
     context.scene->SetTransparentSorting(sc.general.transparentsorting);
     context.user_properties               = user_properties;
     context.layer_resources->shader_cache = Arc<ShaderCache>::make(rstd::move(shader_cache_dir));
-    context.layer_resources->geometry_shader_limits    = geometry_limits;
-    context.layer_resources->geometry_shader_supported = geometry_shader_supported;
+    context.layer_resources->geometry_shader_limits            = geometry_limits;
+    context.layer_resources->geometry_shader_supported         = geometry_shader_supported;
     context.layer_resources->shader_environment.shadow_mapping = ! shadow_lights.is_empty();
     context.layer_resources->shader_environment.shadow_quality = shadow_quality;
-    context.layer_resources->shader_environment.point_lights       = sc.general.lightconfig.point;
-    context.layer_resources->shader_environment.spot_lights        = sc.general.lightconfig.spot;
-    context.layer_resources->shader_environment.directional_lights = sc.general.lightconfig.directional;
-    context.layer_resources->shader_environment.tube_lights        = sc.general.lightconfig.tube;
+    context.layer_resources->shader_environment.point_lights   = sc.general.lightconfig.point;
+    context.layer_resources->shader_environment.spot_lights    = sc.general.lightconfig.spot;
+    context.layer_resources->shader_environment.directional_lights =
+        sc.general.lightconfig.directional;
+    context.layer_resources->shader_environment.tube_lights = sc.general.lightconfig.tube;
 
     context.scene->RegisterRenderTarget(String::make(SpecTex_Default),
                                         SceneRenderTarget {
@@ -839,8 +847,8 @@ BuildContext(Scene& scene, fs::VFS& vfs, ref<str> scene_id, const wpscene::Scene
     if (context.layer_resources->shader_environment.shadow_mapping) {
         // a square of the atlas for each spot light, each cascade and each point light, in rows
         // of a near square: the spots' first, the points' last
-        const int     tile       = ShadowTileSize(shadow_quality);
-        const auto    squares_of = [](SceneLightType type) {
+        const int  tile       = ShadowTileSize(shadow_quality);
+        const auto squares_of = [](SceneLightType type) {
             return type == SceneLightType::Directional ? 3 : 1;
         };
         int squares {};

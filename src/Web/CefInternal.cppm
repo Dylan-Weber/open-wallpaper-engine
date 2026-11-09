@@ -105,7 +105,7 @@ struct ClientOptions {
     // the page's audio listeners are fed (project.json general.supportsaudioprocessing)
     bool audio_allowed { true };
     // applyGeneralProperties({fps}) after the page loads; 0 leaves it out
-    int  general_fps { 0 };
+    int general_fps { 0 };
 };
 
 class ClientHandler : public CefClient,

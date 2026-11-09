@@ -98,11 +98,12 @@ String BuildGeneralPropertiesSnippet(int fps) {
     return snippet;
 }
 
-// The rest of the page API Wallpaper Engine puts on window (read over DevTools in its CEF): media integration
-// listeners, utilities, random files from a directory property, video-ended and screenshot responses. owe has none of
-// those services, so each is defined with the same type and does nothing: a registration keeps nothing and never
-// calls back, so a page that calls one without checking for it doesn't throw. The playback constants are the names
-// pages compare media states with (their values weren't measured; owe never sends a state).
+// The rest of the page API Wallpaper Engine puts on window (read over DevTools in its CEF): media
+// integration listeners, utilities, random files from a directory property, video-ended and
+// screenshot responses. owe has none of those services, so each is defined with the same type and
+// does nothing: a registration keeps nothing and never calls back, so a page that calls one without
+// checking for it doesn't throw. The playback constants are the names pages compare media states
+// with (their values weren't measured; owe never sends a state).
 String BuildPageApiSnippet() {
     return "(function(){"
            "  function define(name, value) {"
