@@ -2027,7 +2027,8 @@ void Scene::CopyShaderUserBindings(const SceneMaterial& from, const Arc<SceneMat
             copies.push(Copy { .key = String::make(key), .uniform = binding.uniform.clone() });
     });
     for (auto& copy : copies)
-        RegisterShaderUserBinding(rstd::move(copy.key), to.clone(), rstd::move(copy.uniform), owner);
+        RegisterShaderUserBinding(
+            rstd::move(copy.key), to.clone(), rstd::move(copy.uniform), owner);
 }
 
 auto Scene::ShaderUserBindings(ref<str> key) const -> Vec<ShaderUserBinding> {
