@@ -80,23 +80,25 @@ constexpr auto ResolveTextRenderMode(TextSurfaceRequirements requirements) -> Te
                : TextRenderMode::Direct;
 }
 
-// How a layer with effects reaches the scene. Wallpaper Engine draws the last pass of the last effect straight onto
-// the scene, at the screen's resolution, whatever its shader (probes effect-repeat-scaled and effect-pass-resolution:
-// a 32 x 32 layer drawn 288 wide shows every texel of a one-pass effect, while an effect with another after it runs at
-// the layer's 32 x 32). A passthrough draws the layer's effect target instead only when none of its effects loaded
-// and nothing else draws the layer.
+// How a layer with effects reaches the scene. Wallpaper Engine draws the last pass of the last
+// effect straight onto the scene, at the screen's resolution, whatever its shader (probes
+// effect-repeat-scaled and effect-pass-resolution: a 32 x 32 layer drawn 288 wide shows every texel
+// of a one-pass effect, while an effect with another after it runs at the layer's 32 x 32). A
+// passthrough draws the layer's effect target instead only when none of its effects loaded and
+// nothing else draws the layer.
 struct EffectFinalDraw {
     bool linked_source { false };
     bool fullscreen { false };
     bool copybackground { false };
-    // the layer's source draws itself on the scene (a passthrough layer, or one without a source draw)
+    // the layer's source draws itself on the scene (a passthrough layer, or one without a source
+    // draw)
     bool source_composites_final { false };
     bool last_effect_loaded { false };
 };
 
 constexpr auto NeedsEffectFinalPassthrough(EffectFinalDraw draw) -> bool {
-    return ! draw.linked_source && ! draw.fullscreen && ! draw.copybackground && ! draw.source_composites_final &&
-           ! draw.last_effect_loaded;
+    return ! draw.linked_source && ! draw.fullscreen && ! draw.copybackground &&
+           ! draw.source_composites_final && ! draw.last_effect_loaded;
 }
 
 // Compatibility entry for callers with an already-parsed raw value.
