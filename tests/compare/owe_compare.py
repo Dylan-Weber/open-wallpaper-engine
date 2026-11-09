@@ -92,12 +92,32 @@ def probe_boxes(size, inputs=None, bands=(), mirrored=False):
     return boxes
 
 
+# made by make-wallpapers.py and not committed, but not needed to draw the wallpaper: the sound the VM plays while it
+# takes the reference, and the picture a test clip is encoded from
+NOT_DRAWN = {'audio.wav', 'still.png'}
+
+
+def missing_generated(name):
+    """The files the wallpaper's .gitignore lists (made by make-wallpapers.py, e.g. a video texture or copied shipped
+    effects) that aren't there."""
+    folder = os.path.join(WALLPAPERS, name)
+    try:
+        with open(os.path.join(folder, '.gitignore')) as f:
+            ignored = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+    except OSError:
+        return []
+    return [path for path in ignored if path not in NOT_DRAWN and not os.path.exists(os.path.join(folder, path))]
+
+
 def skipped(name):
     """Why the wallpaper is left out, or None."""
     with open(os.path.join(WALLPAPERS, name, 'project.json')) as f:
         kind = json.load(f).get('type', 'scene').lower()
     if kind != 'scene':
         return 'a %s wallpaper' % kind
+    missing = missing_generated(name)
+    if missing:
+        return 'its generated %s missing: run make-wallpapers.py (they are not committed)' % ', '.join(missing)
     if os.path.exists(os.path.join(WALLPAPERS, name, 'audio.wav')) and \
             not settings_of(name).get('probe_bands'):
         return 'its bars follow a test sound the viewer does not hear (stamp it to record the bands)'
