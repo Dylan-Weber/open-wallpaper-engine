@@ -141,12 +141,13 @@ auto TextResources::RasterCount() const -> rstd::uint64_t { return m_impl->raste
 auto TextResources::LayoutCount() const -> rstd::uint64_t { return m_impl->layouts; }
 namespace
 {
-// The glyph grown by `radius` pixels (a text outline): each pixel takes the most ink within that distance, fading out
-// over the pixel past it. The bitmap grows by the radius and a pixel on every side.
+// The glyph grown by `radius` pixels (a text outline): each pixel takes the most ink within that
+// distance, fading out over the pixel past it. The bitmap grows by the radius and a pixel on every
+// side.
 auto GrowGlyph(const vectext::GlyphBitmap& glyph, double radius) -> vectext::GlyphBitmap {
-    const int pad = int(f64(radius).ceil().to_primitive()) + 1;
-    const int w = int(glyph.width), h = int(glyph.height);
-    const int gw = w + 2 * pad, gh = h + 2 * pad;
+    const int          pad = int(f64(radius).ceil().to_primitive()) + 1;
+    const int          w = int(glyph.width), h = int(glyph.height);
+    const int          gw = w + 2 * pad, gh = h + 2 * pad;
     Vec<unsigned char> grown;
     grown.resize(usize(gw * gh), static_cast<unsigned char>(0));
     for (int y = 0; y < h; ++y)
@@ -158,16 +159,19 @@ auto GrowGlyph(const vectext::GlyphBitmap& glyph, double radius) -> vectext::Gly
                     const double d     = f64(double(dx * dx + dy * dy)).sqrt().to_primitive();
                     const double reach = rstd::cmp::min(rstd::cmp::max(radius + 1.0 - d, 0.0), 1.0);
                     if (reach <= 0) continue;
-                    auto& out   = grown[usize((y + pad + dy) * gw + x + pad + dx)];
-                    const int v = int(double(ink) * reach + 0.5);
+                    auto&     out = grown[usize((y + pad + dy) * gw + x + pad + dx)];
+                    const int v   = int(double(ink) * reach + 0.5);
                     if (v > out) out = static_cast<unsigned char>(v);
                 }
         }
     auto origin = glyph.origin;
     origin.x -= pad / glyph.scale;
     origin.y -= pad / glyph.scale;
-    return vectext::GlyphBitmap { static_cast<rstd::uint32_t>(gw), static_cast<rstd::uint32_t>(gh), origin,
-                                  glyph.scale, rstd::move(grown) };
+    return vectext::GlyphBitmap { static_cast<rstd::uint32_t>(gw),
+                                  static_cast<rstd::uint32_t>(gh),
+                                  origin,
+                                  glyph.scale,
+                                  rstd::move(grown) };
 }
 } // namespace
 
@@ -646,12 +650,12 @@ struct TextLayouter::Impl {
                                 style.background_color[usize(2)] * style.background_brightness,
                                 1.0f } });
         }
-        // Wallpaper Engine's outline: each letter grown by the thickness, in the outline colour, behind the letters
-        // (text-outline). It doesn't count towards the ink's bounds.
+        // Wallpaper Engine's outline: each letter grown by the thickness, in the outline colour,
+        // behind the letters (text-outline). It doesn't count towards the ink's bounds.
         const bool outlined = style.outline && style.outline_thickness > 0;
         Vec<Quad>  outlines;
-        bool  have_bounds {};
-        float minx {}, maxx {}, miny {}, maxy {};
+        bool       have_bounds {};
+        float      minx {}, maxx {}, miny {}, maxy {};
         for (auto& glyph : output.glyphs()) {
             if (! glyph.drawable) continue;
             auto raster = resources->Rasterize(output.fonts()[usize(glyph.font)], glyph.glyph);
@@ -679,9 +683,9 @@ struct TextLayouter::Impl {
                 auto grown = resources->Rasterize(
                     output.fonts()[usize(glyph.font)], glyph.glyph, 1, style.outline_thickness);
                 if (grown.is_err()) return Err(grown.unwrap_err());
-                auto  outline   = grown.unwrap();
-                float out_left  = left + float(outline.origin.x - atlas.origin.x);
-                float out_top   = top - float(outline.origin.y - atlas.origin.y);
+                auto  outline  = grown.unwrap();
+                float out_left = left + float(outline.origin.x - atlas.origin.x);
+                float out_top  = top - float(outline.origin.y - atlas.origin.y);
                 outlines.push(Quad { outline,
                                      out_left,
                                      out_left + float(outline.width / outline.scale),
