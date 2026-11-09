@@ -299,7 +299,7 @@ bool BrowserHost::OpenWallpaper(const WebManifest& manifest, ref<Path> workshop_
         manifest.user_props.clone(),
         impl_->osr,
         opts.initially_muted,
-        { .audio_allowed = manifest.supports_audio, .general_fps = opts.frame_rate });
+        { .audio_allowed = manifest.supports_audio, .general_fps = ToldFrameRate(opts) });
     impl_->client->SetAudioDemandCallback(impl_->audio_demand_cb.clone());
     auto        entry = PathBuf::from(workshop_dir).join(manifest.entry_html.as_str());
     std::string url   = "file://" + CefPath(entry.as_path());
@@ -433,6 +433,10 @@ void BrowserHost::ApplyVolume(float volume) {
     object.insert("value"_Str, rstd::into<owe::Json>(f32(volume)));
     auto v = owe::Json::Object(rstd::move(object));
     ApplyUserProperty("audio"_str, v);
+}
+
+int ToldFrameRate(const BrowserHost::OpenOptions& opts) {
+    return opts.general_fps > 0 ? opts.general_fps : opts.frame_rate;
 }
 
 void BrowserHost::SetFrameRate(int fps) {

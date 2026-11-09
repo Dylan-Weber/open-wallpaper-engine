@@ -31,9 +31,13 @@ public:
     };
 
     struct OpenOptions {
-        bool  shared_texture_enabled { true };
-        bool  initially_muted { false };
-        int   frame_rate { 60 };
+        bool shared_texture_enabled { true };
+        bool initially_muted { false };
+        // the rate CEF draws the page at (its requestAnimationFrame rate)
+        int frame_rate { 60 };
+        // the frame rate the page is told (applyGeneralProperties({fps})): Wallpaper Engine's
+        // setting, which doesn't change how often it draws the page; 0 tells it frame_rate
+        int   general_fps { 0 };
         float device_scale_factor { 1.0f };
     };
 
@@ -100,5 +104,8 @@ private:
     struct Impl;
     Box<Impl> impl_;
 };
+
+// The fps applyGeneralProperties gives the page
+int ToldFrameRate(const BrowserHost::OpenOptions& opts);
 
 } // namespace weweb
