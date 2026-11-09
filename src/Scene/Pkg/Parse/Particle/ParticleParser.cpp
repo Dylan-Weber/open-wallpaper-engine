@@ -1351,12 +1351,14 @@ struct MaintainDistanceOperator {
 
 // What the collision operators do to a particle on a surface with this normal
 // (particles-collisionplane): bounce makes its speed along the normal |v_n| * bouncefactor, slide
-// 0, delete removes it; the sideways speed stays.
+// 0, delete removes it; the sideways speed stays. stop takes all its speed (particles-collisionbounds-single:
+// Wallpaper Engine's fourth collision kernel).
 enum class CollisionBehavior
 {
     Bounce,
     Slide,
     Delete,
+    Stop,
 };
 
 inline double Abs(double value) { return value < 0.0 ? -value : value; }
@@ -1366,11 +1368,13 @@ inline CollisionBehavior ReadCollisionBehavior(const Json& wpj) {
     owe::GetJsonValue(wpj, "collisionbehavior"_str, behavior, false);
     return behavior == "slide"_str    ? CollisionBehavior::Slide
            : behavior == "delete"_str ? CollisionBehavior::Delete
+           : behavior == "stop"_str   ? CollisionBehavior::Stop
                                       : CollisionBehavior::Bounce;
 }
 
 inline Eigen::Vector3d AfterContact(CollisionBehavior behavior, double bounce,
                                     const Eigen::Vector3d& normal, const Eigen::Vector3d& v) {
+    if (behavior == CollisionBehavior::Stop) return Eigen::Vector3d::Zero();
     const double along   = normal.dot(v);
     const double rebound = behavior == CollisionBehavior::Slide ? 0.0 : Abs(along) * bounce;
     return v + normal * (rebound - along);
