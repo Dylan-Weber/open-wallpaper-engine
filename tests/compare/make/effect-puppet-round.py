@@ -37,10 +37,10 @@ def puppet_layers(name, title, scene, cells, tex_w, tex_h, img_w, img_h, layer_w
     # the skinned quad covers the layer less `inset` on each side (Gun Girl's mesh stops 41 and 26 pixels short of her
     # layer's edges); the picture's pixel at x, y of the layer is the texture's at x + w/2, h/2 - y
     hw, hh = layer_w / 2, layer_h / 2
-    ix, iy = inset
+    il, ir, it, ib = inset if len(inset) == 4 else (inset[0], inset[0], inset[1], inset[1])  # left, right, top, bottom
     def vertex(x, y):
         return (x, y, 0, (x + hw) / tex_w, (hh - y) / tex_h, [0, 0, 0, 0], [1, 0, 0, 0])
-    vertices = [vertex(-hw + ix, -hh + iy), vertex(hw - ix, -hh + iy), vertex(hw - ix, hh - iy), vertex(-hw + ix, hh - iy)]
+    vertices = [vertex(-hw + il, -hh + ib), vertex(hw - ir, -hh + ib), vertex(hw - ir, hh - it), vertex(-hw + il, hh - it)]
     if mask:
         tex_file(w, 'masks/white_mask', mask[0], mask[1], bytes([255]) * (mask[0] * mask[1]), binary.R8)
     write_binary(os.path.join(name, 'models/picture_puppet.mdl'),
@@ -101,3 +101,6 @@ for name, size, scene, tex, img, inset in (
 # the same with the mesh's normals and tangents (Gun Girl's mesh flags are 0xf: position, normal, tangent, texture coordinates)
 puppet_layers('effect-puppet-layer-shaded', 'a shaded autosize puppet with and without an animation layer at blend 0', (2400, 1350),
               [(600, 675, False), (1800, 675, False, 'additive')], 1024, 832, 1000, 800, 1000, 800, inset=(12, 8), shading=True)
+# Gun Girl's mesh: 41 px short of the layer's left edge, 35 of the right, 26 of the top and 36 of the bottom
+puppet_layers('effect-puppet-layer-asym', 'an asymmetric inset puppet with and without an animation layer at blend 0', (8000, 4500),
+              [(2000, 2250, False), (6000, 2250, False, 'additive')], 3840, 3008, 3800, 3000, 3800, 3000, inset=(41, 35, 26, 36), shading=True)
