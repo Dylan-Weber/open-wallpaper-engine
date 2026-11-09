@@ -172,7 +172,11 @@ void BoxEmitterProgram::Emit(particle::ParticleEmitterContext& context) {
         return;
     // Cursor-bound emitters run even while stationary, but must not accrue
     // an emission backlog while the cursor is outside this output.
-    const bool timed_emission = TimedEmissionEnabled(frame, m_args.controlpoint);
+    const bool timing_on =
+        AdvanceEmitterTiming(emitter, m_args.timing, frame->emitter_delta.to_primitive());
+    // an emitter that is off keeps no backlog
+    if (! timing_on) emitter.timer = f64();
+    const bool timed_emission = timing_on && TimedEmissionEnabled(frame, m_args.controlpoint);
     if (timed_emission) emitter.timer += frame->emitter_delta;
 
     auto  controlpoints = frame->subsystem->Controlpoints();
@@ -185,6 +189,7 @@ void BoxEmitterProgram::Emit(particle::ParticleEmitterContext& context) {
                                                                m_args.one_per_frame,
                                                                context.Empty())
                                             : u32();
+    timed_emit_count = EmitterTimingAllowance(emitter, m_args.timing, timed_emit_count);
     auto  emit_count       = timed_emit_count.saturating_add(pending_count);
     auto  requests = context.Acquire(rstd::as_cast<usize>(emit_count), EmitDuration(emit_speed));
     auto  columns  = m_pipeline->Bind(context.View());
@@ -211,6 +216,7 @@ void BoxEmitterProgram::Emit(particle::ParticleEmitterContext& context) {
     }
     auto emitted       = rstd::as_cast<u32>(requests.len());
     auto timed_emitted = emitted.saturating_sub(pending_count);
+    emitter.period_emitted = emitter.period_emitted.saturating_add(timed_emitted);
     CommitEmitCount(
         emitter.timer, emit_speed, timed_emit_count, timed_emitted, m_args.one_per_frame);
 }
@@ -229,7 +235,11 @@ void SphereEmitterProgram::Emit(particle::ParticleEmitterContext& context) {
     emitter.elapsed += frame->emitter_delta;
     if (m_args.duration > 0.0f && emitter.elapsed > f64(m_args.duration) && pending_count == u32())
         return;
-    const bool timed_emission = TimedEmissionEnabled(frame, m_args.controlpoint);
+    const bool timing_on =
+        AdvanceEmitterTiming(emitter, m_args.timing, frame->emitter_delta.to_primitive());
+    // an emitter that is off keeps no backlog
+    if (! timing_on) emitter.timer = f64();
+    const bool timed_emission = timing_on && TimedEmissionEnabled(frame, m_args.controlpoint);
     if (timed_emission) emitter.timer += frame->emitter_delta;
 
     auto controlpoints = frame->subsystem->Controlpoints();
@@ -244,6 +254,7 @@ void SphereEmitterProgram::Emit(particle::ParticleEmitterContext& context) {
                                                                m_args.one_per_frame,
                                                                context.Empty())
                                             : u32();
+    timed_emit_count = EmitterTimingAllowance(emitter, m_args.timing, timed_emit_count);
     auto  emit_count       = timed_emit_count.saturating_add(pending_count);
     auto  requests = context.Acquire(rstd::as_cast<usize>(emit_count), EmitDuration(emit_speed));
     auto  columns  = m_pipeline->Bind(context.View());
@@ -267,6 +278,7 @@ void SphereEmitterProgram::Emit(particle::ParticleEmitterContext& context) {
     }
     auto emitted       = rstd::as_cast<u32>(requests.len());
     auto timed_emitted = emitted.saturating_sub(pending_count);
+    emitter.period_emitted = emitter.period_emitted.saturating_add(timed_emitted);
     CommitEmitCount(
         emitter.timer, emit_speed, timed_emit_count, timed_emitted, m_args.one_per_frame);
 }
