@@ -491,8 +491,8 @@ TextGeometry ResolveTextGeometry(const TextGeometryPolicy& policy,
     // The box reaches its background gap below the text; the render target is centred on the
     // text, so it reaches as far above, where the box leaves it clear.
     // Ink above the line grows the box upward; the target reaches as far below.
-    const float gap         = rstd::cmp::max(
-        rstd::cmp::max(metrics.background_gap, metrics.background_overflow), 0.0f);
+    const float gap =
+        rstd::cmp::max(rstd::cmp::max(metrics.background_gap, metrics.background_overflow), 0.0f);
     const float text_bbox_w = text_w + 2.0f * pad;
     const float text_bbox_h = text_h + 2.0f * pad + 2.0f * gap;
     const float src_bbox_w  = src_w + 2.0f * pad;
