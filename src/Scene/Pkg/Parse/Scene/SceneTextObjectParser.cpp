@@ -188,10 +188,10 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
     bool has_text_effect    = ! obj.effects.is_empty();
     const bool linked_source        = context.IsLinkedSource(obj.id);
     const auto text_render_mode     = ResolveTextRenderMode(TextSurfaceRequirements {
-        .color_blend       = obj.colorBlendMode != i32(),
-        .has_effect        = has_text_effect,
-        .copy_background   = obj.copybackground,
-        .opaque_background = obj.opaquebackground,
+        .color_blend         = obj.colorBlendMode != i32(),
+        .has_effect          = has_text_effect,
+        .copy_background     = obj.copybackground,
+        .opaque_background   = obj.opaquebackground,
         .linked_source       = linked_source,
         .translucent_outline = obj.outline && obj.alpha < 1.0f,
     });
@@ -333,7 +333,7 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
 
     // Translucent outlined text is drawn opaque, in its whole box (its outline reaches past its
     // ink), and faded as a whole when it is laid on the scene.
-    const bool alpha_at_compose = obj.outline && obj.alpha < 1.0f && ! direct_text;
+    const bool            alpha_at_compose = obj.outline && obj.alpha < 1.0f && ! direct_text;
     text::TextLayoutStyle style;
     style.mesh_origin           = direct_text || alpha_at_compose ? text::TextMeshOrigin::Layout
                                                                   : text::TextMeshOrigin::InkBounds;
@@ -372,13 +372,13 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
     // ...with room for the outline in its box
     const float text_padding =
         style.padding + (alpha_at_compose ? obj.outlinethickness + 2.0f : 0.0f);
-    const float wrap_width   = style.wrap_width;
-    auto        layouter     = Arc<text::TextLayouter>::make(resources.clone(),
-                                                             rstd::move(font),
-                                                             sp_mesh.clone(),
-                                                             rstd::move(style),
-                                                             peak_quads,
-                                                             context.scene);
+    const float wrap_width = style.wrap_width;
+    auto        layouter   = Arc<text::TextLayouter>::make(resources.clone(),
+                                                           rstd::move(font),
+                                                           sp_mesh.clone(),
+                                                           rstd::move(style),
+                                                           peak_quads,
+                                                           context.scene);
     if (layouter->SetText(s_text).is_err()) {
         rstd_error("text '{}': initial layout failed", obj.name);
         return;
@@ -608,10 +608,11 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
             SceneMaterial          mat;
             UniformNodeConfigDraft sv;
             ShaderInfo             si;
-            si.baseConstSvs      = effect_base.clone();
+            si.baseConstSvs = effect_base.clone();
             if (final_composite && alpha_at_compose)
-                (void)si.baseConstSvs.insert(rstd::into(G_COLOR4),
-                                             ShaderValue(array<float, 4> { 1.0f, 1.0f, 1.0f, obj.alpha }));
+                (void)si.baseConstSvs.insert(
+                    rstd::into(G_COLOR4),
+                    ShaderValue(array<float, 4> { 1.0f, 1.0f, 1.0f, obj.alpha }));
             auto material_result = BuildMaterial(*context.vfs,
                                                  *context.layer_resources->shader_cache,
                                                  context.layer_resources->shader_environment,
