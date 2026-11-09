@@ -1865,8 +1865,10 @@ TEST(ParticleSubSystem, ColorlistMultipliesTheColourWhateverTheOrder) {
 
 // collisionplane (particles-collisionplane): a particle may not go below the plane n . x = distance
 // (n is the "plane" key, up by default). One below it is put on the plane and its speed along n
-// becomes |v_n| * bouncefactor (so one already moving away is sent up the same); "slide" zeroes
-// v_n, "delete" removes the particle. The sideways speed is kept.
+// becomes -bouncefactor * v_n, whichever way it moves: Wallpaper Engine's kernel (0x140251f30) adds
+// n (v . n) x factor under the plane without looking at the sign, so one already moving away is
+// turned back into the plane (ft-collisionplane, plane 5: born under it). "slide" zeroes v_n,
+// "delete" removes the particle. The sideways speed is kept.
 struct CollidedParticle {
     bool            alive { false };
     Eigen::Vector3f position;
@@ -1940,7 +1942,7 @@ TEST(ParticleSubSystem, CollisionPlaneBouncesAParticleThatFellThrough) {
     auto under = CollideWithPlane(
         bounce, { 0, -150, 0 }, R"({"name":"velocityrandom","min":"0 40 0","max":"0 40 0"})"_str);
     EXPECT_NEAR(under.position.y(), -100.0f, 1e-4f);
-    EXPECT_NEAR(under.velocity.y(), 20.0f, 1e-3f);
+    EXPECT_NEAR(under.velocity.y(), -20.0f, 1e-3f);
 }
 
 TEST(ParticleSubSystem, CollisionPlaneSlidesDeletesAndTakesAnyNormal) {
