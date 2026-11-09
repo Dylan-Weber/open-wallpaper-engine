@@ -1,4 +1,5 @@
 #include <rstd/test/gtest.hpp>
+#include <xmmintrin.h>
 
 import rstd;
 import rstd.cppstd;
@@ -1031,16 +1032,27 @@ TEST(ParticleSubSystem, CollisionSphereKeepsParticlesOutAlongTheSurfaceNormal) {
         CollideWithPlane(sphere,
                          { 0, 101, 0 },
                          R"({"name":"velocityrandom","min":"0 -120 0","max":"0 -120 0"})"_str);
-    EXPECT_NEAR(top.position.y(), 100.0f, 1e-3f);
-    EXPECT_NEAR(top.velocity.y(), 60.0f, 1e-3f);
+    auto kernel = [](Eigen::Vector3f at, Eigen::Vector3f v, Eigen::Vector3f& place) {
+        // Wallpaper Engine's kernel (0x140252de0) in float: r = rsqrtps(|d|^2), n = d r (not quite
+        // unit), the particle moved out by r |d|^2 - radius along n, then v + n (n . v) x factor
+        const float           d2     = at.squaredNorm();
+        const float           r      = _mm_cvtss_f32(_mm_rsqrt_ss(_mm_set_ss(d2)));
+        const Eigen::Vector3f normal = at * r;
+        place                        = at - normal * (r * d2 - 100.0f);
+        return Eigen::Vector3f(v + normal * (normal.dot(v) * (-1.0f - 0.5f)));
+    };
+    Eigen::Vector3f top_place;
+    const auto      top_velocity = kernel({ 0, 99, 0 }, { 0, -120, 0 }, top_place);
+    EXPECT_NEAR((top.position - top_place).norm(), 0.0f, 2e-5f);
+    EXPECT_NEAR((top.velocity - top_velocity).norm(), 0.0f, 2e-5f);
+    EXPECT_NEAR(top.position.y(), 100.0f, 0.05f);
+    EXPECT_NEAR(top.velocity.y(), 60.0f, 0.2f);
     auto side = CollideWithPlane(
         sphere, { 60, 80, 0 }, R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
-    const Eigen::Vector3f moved(60.0f, 80.0f - 1.0f, 0.0f);
-    const Eigen::Vector3f normal = moved.normalized();
-    EXPECT_NEAR((side.position - normal * 100.0f).norm(), 0.0f, 1e-3f);
-    const float           along    = normal.dot(Eigen::Vector3f(0, -60, 0));
-    const Eigen::Vector3f expected = Eigen::Vector3f(0, -60, 0) + normal * (-along * 0.5f - along);
-    EXPECT_NEAR((side.velocity - expected).norm(), 0.0f, 1e-3f);
+    Eigen::Vector3f side_place;
+    const auto      side_velocity = kernel({ 60, 79, 0 }, { 0, -60, 0 }, side_place);
+    EXPECT_NEAR((side.position - side_place).norm(), 0.0f, 2e-5f);
+    EXPECT_NEAR((side.velocity - side_velocity).norm(), 0.0f, 2e-5f);
     auto away = CollideWithPlane(
         sphere, { 0, 150, 0 }, R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
     EXPECT_NEAR(away.velocity.y(), -60.0f, 1e-3f);
