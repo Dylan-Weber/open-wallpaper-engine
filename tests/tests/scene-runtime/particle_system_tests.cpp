@@ -1364,3 +1364,56 @@ TEST(ParticleSubSystem, BoidsTakesTwoHalfStepsAtFifteenFramesASecond) {
                                  R"({"name":"velocityrandom","min":"10 0 0","max":"10 0 0"})"_str, u32(15));
     EXPECT_NEAR(alone.velocity[0].x(), 10.0 * (1.0 - step / 2.0) * (1.0 - step / 2.0), 1e-3);
 }
+
+// movement, as Wallpaper Engine runs it (FUN_14023fbc0 case 1): gravity is added (v += g dt), the particle moves
+// (p += v dt), then drag takes min(drag dt2, 1) of the speed, dt2 = dt x min(0.025 / frame time, 1)^0.7.
+// particles-drag-rest: a thrown particle stops at 0.503, 0.818 and 1.0 x (speed / drag) at 15, 30 and 60 fps.
+static Eigen::Vector3f MovedVelocity(ref<str> movement, ref<str> velocity, int ticks, double tick,
+                                     Eigen::Vector3f* place = nullptr) {
+    owe::Scene             scene;
+    auto                   mesh = Arc<owe::SceneMesh>::make();
+    owe::ParticleSubSystem subsystem(scene,
+                                     mesh.clone(),
+                                     u32(1),
+                                     f64(1.0),
+                                     u32(1),
+                                     f64(1.0),
+                                     owe::ParticleSubSystem::SpawnType::STATIC,
+                                     owe::ParticleAnimationSpec {});
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"lifetimerandom","min":100,"max":100})"_str).unwrap(), u32(1)));
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(owe::ParseJson(velocity).unwrap(), u32(2)));
+    subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(owe::BoxEmitterProgram(
+        subsystem.SpawnPipeline(), owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) }, usize())));
+    subsystem.AddOperator(owe::ParticleParser::GenOperator(
+        owe::ParseJson(movement).unwrap(),
+        owe::ParticleInstanceModifiers(Arc<owe::wpscene::ParticleInstanceoverride>::make(),
+                                       owe::wpscene::Particle::EFlags { 0 },
+                                       false),
+        subsystem,
+        usize()));
+    subsystem.Finalize();
+    for (int count = 0; count < ticks; ++count) subsystem.Tick(f64(tick), false);
+    auto&                        storage = subsystem.System().Instance(usize()).Storage();
+    particle::ParticleSlotReader value(storage, particle::ParticleSlot {});
+    if (place) *place = value.Read(subsystem.Attributes().position);
+    return value.Read(subsystem.Attributes().velocity);
+}
+
+TEST(ParticleSubSystem, MovementDragTakesDragTimesTheCompensatedStep) {
+    auto thrown = R"({"name":"velocityrandom","min":"300 0 0","max":"300 0 0"})"_str;
+    // 30 fps: 1 - 2 x (1/30 x 0.81766) a frame
+    EXPECT_NEAR(MovedVelocity(R"({"name":"movement","drag":2})"_str, thrown, 1, 1.0 / 30.0).x(),
+                300.0 * (1.0 - 2.0 * (1.0 / 30.0) * 0.81766), 0.02);
+    // 60 fps: the whole step, 1 - 2/60 a frame
+    EXPECT_NEAR(MovedVelocity(R"({"name":"movement","drag":2})"_str, thrown, 2, 1.0 / 60.0).x(),
+                300.0 * (1.0 - 2.0 / 60.0) * (1.0 - 2.0 / 60.0), 0.02);
+}
+
+TEST(ParticleSubSystem, MovementMovesBeforeTheDragAndAddsGravityFirst) {
+    Eigen::Vector3f place;
+    auto            thrown = R"({"name":"velocityrandom","min":"300 0 0","max":"300 0 0"})"_str;
+    MovedVelocity(R"({"name":"movement","drag":2,"gravity":"0 -600 0"})"_str, thrown, 1, 1.0 / 60.0, &place);
+    EXPECT_NEAR(place.x(), 300.0 / 60.0, 1e-3);          // moved at the speed before the drag
+    EXPECT_NEAR(place.y(), -600.0 / 60.0 / 60.0, 1e-3);  // and with this frame's gravity already added
+}
