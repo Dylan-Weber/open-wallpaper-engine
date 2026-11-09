@@ -36,6 +36,7 @@ struct WebViewerArgs {
     i32    width;
     i32    height;
     i32    remote_debugging_port;
+    i32    fps;
 };
 
 template<typename T>
@@ -65,6 +66,12 @@ auto ParseWebViewerArgs(int argc, char** argv) -> Result<WebViewerArgs, owe::cli
                             .long_name("remote-debugging-port"_str)
                             .help("if non-zero, expose chrome devtools on this localhost port"_str)
                             .default_value("0"_str));
+    // Wallpaper Engine's frame rate setting: CEF draws the page at it and the page is told it
+    // (applyGeneralProperties({fps})), so a page that paces itself by it sees the same number
+    auto fps = command.add_arg(Arg<i32>::value("fps"_str, from_str_parser<i32>())
+                                   .long_name("fps"_str)
+                                   .help("frame rate the page is drawn at and told"_str)
+                                   .default_value("60"_str));
     auto presenter =
         command.add_arg(Arg<String>::value("presenter"_str, string_parser())
                             .long_name("presenter"_str)
@@ -84,6 +91,7 @@ auto ParseWebViewerArgs(int argc, char** argv) -> Result<WebViewerArgs, owe::cli
         .width                 = Value(matches, width),
         .height                = Value(matches, height),
         .remote_debugging_port = Value(matches, remote_debugging_port),
+        .fps                   = Value(matches, fps),
     });
 }
 
@@ -215,6 +223,11 @@ int main(int argc, char** argv) {
     auto parsed_args = ParseWebViewerArgs(argc, argv);
     if (parsed_args.is_err()) return parsed_args.unwrap_err().code;
     auto args = rstd::move(parsed_args).unwrap();
+    int  fps  = args.fps.to_primitive();
+    if (fps < 1 || fps > 240) {
+        eprintln("webviewer: --fps must be 1 to 240, got {}", fps);
+        return 2;
+    }
 
     auto workshop_dir = PathBuf::from(args.workshop.as_str());
     auto metadata     = rstd::fs::metadata(workshop_dir.as_path());
@@ -346,6 +359,7 @@ int main(int argc, char** argv) {
         initial_metrics.logical_height = w_height;
     }
     weweb::BrowserHost::OpenOptions open_opts;
+    open_opts.frame_rate          = fps;
     open_opts.device_scale_factor = initial_metrics.scale;
     // CEF currently supports windowless shared textures only on Windows.
     // macOS must use OnPaint; CEF still performs page compositing on the GPU.
@@ -358,10 +372,13 @@ int main(int argc, char** argv) {
 #else
     // Preserve the Linux contract: CEF receives the physical presenter extent
     // and uses its existing unit-scale screen information.
+    weweb::BrowserHost::OpenOptions open_opts;
+    open_opts.frame_rate = fps;
     if (! host.OpenWallpaper(manifest,
                              workshop_dir,
                              static_cast<int>(presenter->Width()),
-                             static_cast<int>(presenter->Height()))) {
+                             static_cast<int>(presenter->Height()),
+                             open_opts)) {
 #endif
         host.Shutdown();
         presenter->Shutdown();
