@@ -1018,3 +1018,16 @@ TEST(ParticleInstanceModifiers, CloneRetainsReadOnlyBindingsAfterSourceReplaceme
     ASSERT_TRUE(binding->animation.is_some());
     EXPECT_FLOAT_EQ(binding->animation->c0[usize()].value, 7.0f);
 }
+
+// A plain rope is drawn in the thick vertex format, like a sprite trail: each segment carries the
+// colour of both its particles, and the rope shader blends between them (THICKFORMAT). Only a rope
+// trail uses the thin format. particles-rope-color: Wallpaper Engine shades a rope of six particles
+// coloured red to blue (or opacity 1 to 0.1) as one smooth gradient, owe drew five flat blocks;
+// wallpaper64.exe's rope writer (FUN_1402308a0) fills the 96-byte thick vertex, end colour at +0x40.
+TEST(ParticleRender, RopesUseTheThickFormat) {
+    EXPECT_TRUE(owe::ParticleRendererThickFormat("rope"_str, false));
+    EXPECT_TRUE(owe::ParticleRendererThickFormat("spritetrail"_str, false));
+    EXPECT_FALSE(owe::ParticleRendererThickFormat("ropetrail"_str, false));
+    EXPECT_FALSE(owe::ParticleRendererThickFormat("sprite"_str, false));
+    EXPECT_TRUE(owe::ParticleRendererThickFormat("sprite"_str, true));
+}

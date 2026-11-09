@@ -11,6 +11,7 @@ export import wescene.pkg.scene_obj;
 
 using namespace rstd::prelude;
 using rstd::sync::Arc;
+using namespace rstd::literals;
 
 export namespace owe
 {
@@ -323,6 +324,16 @@ private:
     bool                                                             m_world_space { false };
     bool                                                             m_compiled { false };
 };
+
+// Whether a particle renderer draws in the thick vertex format, where a segment carries both of
+// its particles' colours (THICKFORMAT): sprites with a sprite sheet, sprite trails, and plain ropes,
+// whose segments blend from one particle's colour to the next (particles-rope-color). A rope trail
+// is thin.
+inline bool ParticleRendererThickFormat(ref<str> renderer, bool has_sprite) {
+    if (renderer == "ropetrail"_str) return false;
+    if (renderer == "rope"_str) return true;
+    return has_sprite || renderer->ends_with("trail"_str);
+}
 
 struct ParticleBoxEmitterArgs {
     array<float, 3>       directions;

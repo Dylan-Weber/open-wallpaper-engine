@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test rope renderer: colour and opacity along and between segments",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}
