@@ -7,7 +7,9 @@ for rel in ('models/dev_cube_mat2/dev_cube_mat2.mdl', 'materials/models/dev_cube
             'materials/cubic.tex'):
     dest = os.path.join(HERE, 'model-wall-material', rel)
     os.makedirs(os.path.dirname(dest), exist_ok=True)
-    shutil.copyfile(os.path.join(SRC, rel), dest)
+    # the copies are committed: without the unpacked wallpaper, keep them
+    if os.path.exists(os.path.join(SRC, rel)) or not os.path.exists(dest):
+        shutil.copyfile(os.path.join(SRC, rel), dest)
 blue = w.material('blue', '0 0 1')
 w.cube('behind', blue, 0.4, 0.3, -3, (0, 0.5, 0), '1.5 1.5 1.5')
 w.add({"name": "wall", "model": "models/dev_cube_mat2/dev_cube_mat2.mdl", "origin": vec(0, 0, 0),

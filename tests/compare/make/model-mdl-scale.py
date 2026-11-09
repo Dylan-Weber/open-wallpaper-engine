@@ -8,7 +8,9 @@ for rel in ('models/checkered_sphere/checkered_sphere.mdl', 'materials/models/ch
             'materials/checker.tex'):
     dest = os.path.join(HERE, 'model-mdl-scale', rel)
     os.makedirs(os.path.dirname(dest), exist_ok=True)
-    shutil.copyfile(os.path.join(SRC, rel), dest)
+    # the copies are committed: without the unpacked wallpaper, keep them
+    if os.path.exists(os.path.join(SRC, rel)) or not os.path.exists(dest):
+        shutil.copyfile(os.path.join(SRC, rel), dest)
 for i, scale in enumerate((0.6, 1, 2)):
     w.add({"name": "sphere %g" % scale, "model": "models/checkered_sphere/checkered_sphere.mdl",
            "origin": vec(-4 + i * 4, 0, 0), "angles": vec(0, 0, 0), "scale": "%g %g %g" % (scale, scale, scale)})
