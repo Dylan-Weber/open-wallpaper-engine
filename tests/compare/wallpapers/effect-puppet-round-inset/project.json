@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test a puppet mesh short of its layer edges, plain and tinted",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}
