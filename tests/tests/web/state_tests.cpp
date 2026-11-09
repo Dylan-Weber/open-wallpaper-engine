@@ -207,6 +207,17 @@ TEST(WebState, PageApiSnippetDefinesWallpaperEnginesNames) {
     EXPECT_TRUE(snippet.as_str().contains("if (typeof window[name] === 'undefined')"_str));
 }
 
+// wallpaperRequestRandomFileForProperty with no folder chosen (or a name that is no property): Wallpaper
+// Engine calls back after the call returns with (propertyName, "") (web-random-file, VM 2026-11-09)
+TEST(WebState, RandomFileCallsBackWithNoFile) {
+    auto snippet = BuildPageApiSnippet();
+    auto text    = snippet.as_str();
+    EXPECT_TRUE(text.contains(
+        "define('wallpaperRequestRandomFileForProperty', function(propertyName, callback){"_str));
+    EXPECT_TRUE(text.contains("if (typeof callback !== 'function') return;"_str));
+    EXPECT_TRUE(text.contains("setTimeout(function(){ callback(propertyName, ''); }, 0);"_str));
+}
+
 TEST(WebManifest, LoadsOwnedStringsAndDefaults) {
     auto temporary = rstd::fs::TempDir::make("owe-web-manifest"_str).unwrap();
     auto root      = rstd::path::PathBuf::from(temporary.path());
