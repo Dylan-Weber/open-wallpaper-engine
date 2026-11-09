@@ -1652,6 +1652,56 @@ globalThis._Mat3 = Mat3.prototype;
 globalThis.Vec2 = Vec2;
 globalThis.Vec3 = Vec3;
 globalThis.Vec4 = Vec4;
+// The SceneScript vector methods the classes above get wrong or leave out
+// (https://docs.wallpaperengine.io/en/scene/scenescript/reference/class/Vec3). Angles are in degrees.
+(function () {
+  const RAD = Math.PI / 180;
+  const DEG = 180 / Math.PI;
+
+  function define(target, name, fn) {
+    Object.defineProperty(target, name, { value: fn, writable: true, configurable: true, enumerable: false });
+  }
+
+  // equals: every component the same (a shorter operand's missing ones read 0)
+  for (const [Class, keys] of [[Vec2, ['x', 'y']], [Vec3, ['x', 'y', 'z']], [Vec4, ['x', 'y', 'z', 'w']]]) {
+    define(Class.prototype, 'equals', function (other) {
+      if (typeof other === 'number') return keys.every((key) => this[key] === other);
+      return keys.every((key) => this[key] === (other[key] ?? 0));
+    });
+  }
+
+  // Vec2: angles are counter-clockwise from +x
+  define(Vec2.prototype, 'perpendicular', function () { return new Vec2(-this.y, this.x); });
+  define(Vec2.prototype, 'angle', function () { return Math.atan2(this.y, this.x) * DEG; });
+  define(Vec2.prototype, 'angleBetween', function (other) {
+    // signed: positive when `other` is counter-clockwise from this vector
+    return Math.atan2(this.x * other.y - this.y * other.x, this.x * other.x + this.y * other.y) * DEG;
+  });
+  define(Vec2.prototype, 'rotate', function (angle) {
+    const c = Math.cos(angle * RAD);
+    const s = Math.sin(angle * RAD);
+    return new Vec2(this.x * c - this.y * s, this.x * s + this.y * c);
+  });
+
+  // Vec3
+  define(Vec3.prototype, 'angleBetween', function (other) {
+    const lengths = this.length() * other.length();
+    if (lengths === 0) return 0;
+    const dot = this.x * other.x + this.y * other.y + this.z * other.z;
+    return Math.acos(Math.min(Math.max(dot / lengths, -1), 1)) * DEG;
+  });
+  // theta is the polar angle from +y, phi the azimuth around y measured from +x towards +z
+  define(Vec3.prototype, 'toSpherical', function () {
+    const r = this.length();
+    if (r === 0) return new Vec3(0, 0, 0);
+    return new Vec3(r, Math.acos(Math.min(Math.max(this.y / r, -1), 1)) * DEG, Math.atan2(this.z, this.x) * DEG);
+  });
+  define(Vec3, 'fromSpherical', function (r, theta, phi) {
+    const t = theta * RAD;
+    const p = phi * RAD;
+    return new Vec3(r * Math.sin(t) * Math.cos(p), r * Math.cos(t), r * Math.sin(t) * Math.sin(p));
+  });
+})();
 globalThis.Mat3 = Mat3;
 globalThis.Mat4 = Mat4;
 globalThis.IModelData = IModelData;
