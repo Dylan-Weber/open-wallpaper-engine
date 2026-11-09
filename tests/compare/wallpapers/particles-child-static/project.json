@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test when a static child system fires: thunderbolt glow",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}
