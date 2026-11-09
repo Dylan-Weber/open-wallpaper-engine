@@ -65,7 +65,7 @@ def draw_record(picture, rows, fields, values, started=True):
     return cells
 
 
-def inputs_picture(size=(1600, 900), flipped=False, script_started=True, bands=(), band_values=None):
+def inputs_picture(size=(1600, 900), flipped=False, script_started=True, bands=(), band_values=None, updates=261):
     """A picture of the probe's records over a grey scene, with known inputs."""
     picture = draw_probe(300, size=size, which=1 if flipped else 0, script=290 if script_started else None)
     shader = {'pointer_x': round((0.25 + 4) * 4096), 'pointer_y': round((1.5 + 4) * 4096),
@@ -73,7 +73,8 @@ def inputs_picture(size=(1600, 900), flipped=False, script_started=True, bands=(
               'eye_z': round((800 + 32768) * 256),
               'level16l': 0, 'level16r': 0, 'level32l': 0, 'level32r': 0, 'level64l': 255, 'level64r': 128}
     script = {'press': 41, 'date_day': 2493, 'date_centis': 3600 * 100 * 9 + 1234, 'timezone': 1024 + 300,
-              'camerax': round((12.5 + 32768) * 256), 'cameray': 16777215, 'cameraz': round((800 + 32768) * 256)}
+              'camerax': round((12.5 + 32768) * 256), 'cameray': 16777215, 'cameraz': round((800 + 32768) * 256),
+              'updates': updates}
     draw_record(picture, probe_tool.record_rows(size, 'shader', flipped), probe_tool.SHADER_FIELDS, shader)
     draw_record(picture, probe_tool.record_rows(size, 'script', flipped), probe_tool.SCRIPT_FIELDS, script,
                 script_started)
@@ -191,6 +192,9 @@ class ClockProbe(unittest.TestCase):
         self.assertEqual(inputs['date'], (18262 + 2493) * 86400000 + 9 * 3600000 + 12340)
         self.assertEqual(inputs['timezone'], 300)
         self.assertEqual(inputs['camera'], (12.5, None, 800.0))   # all ones: the script couldn't tell
+        self.assertEqual(inputs['updates'], 261)
+        # a reference stamped before the update counter has black cells there: no count
+        self.assertNotIn('updates', probe_tool.read_inputs(inputs_picture(updates=0)))
         before = probe_tool.read_inputs(inputs_picture(script_started=False))
         self.assertEqual(before['scripts'], probe_tool.NOT_STARTED)
         self.assertNotIn('date', before)

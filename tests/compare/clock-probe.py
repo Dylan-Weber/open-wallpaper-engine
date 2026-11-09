@@ -52,7 +52,7 @@ ROW_BITS = (ROW_CELLS - 2) * 3
 SHADER_FIELDS = [('pointer_x', 16), ('pointer_y', 16), ('eye_x', 24), ('eye_y', 24), ('eye_z', 24)] + [
     ('level%d%s' % (resolution, side), 8) for resolution in (16, 32, 64) for side in 'lr']
 SCRIPT_FIELDS = [('press', 12), ('date_day', 16), ('date_centis', 24), ('timezone', 11), ('camerax', 24),
-                 ('cameray', 24), ('cameraz', 24)]
+                 ('cameray', 24), ('cameraz', 24), ('updates', 20)]
 RESOLUTIONS = (16, 32, 64)
 
 # the records' first rows, counted like the strips' (the bands' rows go on towards the middle)
@@ -238,6 +238,17 @@ export function update(value) {
 }
 """,
 }
+# how many updates the scripts have run: Wallpaper Engine drops whole updates in the VM (~27 a second at fps 30), so
+# owe_compare renders owe at the rate the reference reached (updates / engine.runtime) rather than at the configured one
+FIELD_SCRIPTS['updates'] = """'use strict';
+
+let updates = 0;
+
+export function update(value) {
+	updates = Math.min(updates + 1, 1048574);
+	return updates;
+}
+"""
 for axis in 'xyz':
     FIELD_SCRIPTS['camera' + axis] = """'use strict';
 
@@ -515,7 +526,8 @@ def read_inputs(picture, bands=(), mirrored=False):
     """The inputs a picture's records show: 'flipped' (the records are beside the top strips), 'pointer' (x, y),
     'eye' (x, y, z), 'levels' {resolution: (left, right)};
     from the scripts 'press' (the frame of the last left press, or None), 'date' (milliseconds since 1970, UTC),
-    'timezone' (minutes behind UTC) and 'camera' (x, y, z, None where unknown), or 'scripts' NOT_STARTED; and with
+    'timezone' (minutes behind UTC), 'camera' (x, y, z, None where unknown) and 'updates' (how many updates the
+    scripts have run; missing in references stamped before it), or 'scripts' NOT_STARTED; and with
     `bands`, 'bands' {resolution: {'left': [...], 'right': [...]}}; `mirrored` for a probe drawn on both sides
     (compare.json "probe_mirrored"). Empty when there are no records."""
     size = picture.size
@@ -545,6 +557,9 @@ def read_inputs(picture, bands=(), mirrored=False):
         inputs['timezone'] = values['timezone'] - 1024
         inputs['camera'] = tuple(None if unknown('camera' + axis, 24) else values['camera' + axis] / 256 - 32768
                                  for axis in 'xyz')
+        # 0 in a reference stamped before the counter (its cells are black)
+        if values['updates']:
+            inputs['updates'] = values['updates']
     if bands:
         fields = band_fields(bands)
         found, _ = read_either(picture, lambda side: record_rows(size, 'bands', side, bands), len(fields) * 8,
