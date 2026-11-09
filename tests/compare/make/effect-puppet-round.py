@@ -41,7 +41,7 @@ def bone_list_bound(count, bind):
     return [('bone%d' % i, None if i == 0 else i - 1, (bind(i)[0], bind(i)[1], 0, bind(i)[2])) for i in range(count)]
 
 
-def puppet_layers(name, title, scene, cells, tex_w, tex_h, img_w, img_h, layer_w, layer_h, inset=(0, 0), mask=None, shading=False, bones=1, turned=False, animref=None, bind=None):
+def puppet_layers(name, title, scene, cells, tex_w, tex_h, img_w, img_h, layer_w, layer_h, inset=(0, 0), mask=None, shading=False, bones=1, turned=False, animref=None, bind=None, pose=None):
     """cells: [(x, y, tinted)]; every layer is layer_w x layer_h over the image img_w x img_h of a tex_w x tex_h texture."""
     w = Wallpaper(name, title, clear='0 0 0', size=scene)
     padded_texture(w, 'picture', tex_w, tex_h, img_w, img_h)
@@ -57,7 +57,11 @@ def puppet_layers(name, title, scene, cells, tex_w, tex_h, img_w, img_h, layer_w
     write_binary(os.path.join(name, 'models/picture_puppet.mdl'),
                  puppet_mdl('materials/picture.json', vertices, [(0, 1, 2), (0, 2, 3)],
                             bone_list_bound(bones, bind) if bind else bone_list(bones, turned),
-                            [('rest', 30.0, [[((animref(i)[0], animref(i)[1], 0), (0, 0, animref(i)[2]), (1, 1, 1))] * 2 if animref else [((0, 0, 0), (0, 0, 0), (1, 1, 1))] * 2 for i in range(bones)])],
+                            [('rest', 30.0, [[((animref(i)[0], animref(i)[1], 0), (0, 0, animref(i)[2]), (1, 1, 1))] * 2 if animref else [((0, 0, 0), (0, 0, 0), (1, 1, 1))] * 2 for i in range(bones)]),
+                              # an animation holding `pose(bone)` = (x, y, angle) on every frame
+                              ('pose', 30.0, [[((pose(i)[0], pose(i)[1], 0), (0, 0, pose(i)[2]), (1, 1, 1))] * 2 for i in range(bones)])
+                              ] if pose else
+                             [('rest', 30.0, [[((animref(i)[0], animref(i)[1], 0), (0, 0, animref(i)[2]), (1, 1, 1))] * 2 if animref else [((0, 0, 0), (0, 0, 0), (1, 1, 1))] * 2 for i in range(bones)])],
                             shading=shading))
     if animref is not None:
         # an MDLS version 2 block with the animation reference pose (Gun Girl's "world binds"), each bone's (x, y, angle)
@@ -89,7 +93,7 @@ def puppet_layers(name, title, scene, cells, tex_w, tex_h, img_w, img_h, layer_w
         extra = {}
         if rest and rest[0]:
             # an animation layer at blend 0: additive, normal or (hidden) invisible
-            extra["animationlayers"] = [{"animation": 1, "blend": 0.0, "rate": 1.0, "additive": rest[0] != 'normal',
+            extra["animationlayers"] = [{"animation": 2 if pose else 1, "blend": rest[1] if len(rest) > 1 else 0.0, "rate": 1.0, "additive": rest[0] != 'normal',
                                          "visible": rest[0] != 'hidden', "id": 500 + i, "name": "rest"}]
         if tinted:
             effect = shipped("tint", {"color": "0 0 0", "alpha": 0.25}, id=10 + i)
