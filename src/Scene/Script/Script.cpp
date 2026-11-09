@@ -153,11 +153,11 @@ struct EngineHostState {
     Option<JsRuntime::AnimationLayerDestroyer>   animation_layer_destroyer;
     // playSingleAnimation's layers, removed once they get to their end.
     struct SinglePlay {
-        owe::SceneNode*                node;
-        Arc<owe::SceneAnimationLayer>  layer;
+        owe::SceneNode*               node;
+        Arc<owe::SceneAnimationLayer> layer;
     };
     Vec<SinglePlay> single_plays;
-    owe::SceneNode*                              scene_root { nullptr };
+    owe::SceneNode* scene_root { nullptr };
 };
 
 class EngineBindingGuard : NoCopy, NoMove {
@@ -2811,7 +2811,8 @@ void RemoveFinishedSinglePlays(EngineHostState* host) {
     host->single_plays.retain([&](const EngineHostState::SinglePlay& play) {
         auto playback = play.layer->Playback();
         if (playback.is_none() || (*playback)->EndedCount() == u64()) return true;
-        finished.push(EngineHostState::SinglePlay { .node = play.node, .layer = play.layer.clone() });
+        finished.push(
+            EngineHostState::SinglePlay { .node = play.node, .layer = play.layer.clone() });
         return false;
     });
     for (const auto& play : finished)

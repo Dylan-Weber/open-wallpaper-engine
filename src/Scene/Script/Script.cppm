@@ -279,8 +279,8 @@ public:
         bool                  additive { false };
         bool                  single { false };
     };
-    using AnimationLayerCreator = Box<dyn<
-        FnMut<Option<Arc<owe::SceneAnimationLayer>>(owe::SceneNode*, AnimationLayerRequest)>>>;
+    using AnimationLayerCreator = Box<
+        dyn<FnMut<Option<Arc<owe::SceneAnimationLayer>>(owe::SceneNode*, AnimationLayerRequest)>>>;
     // destroyAnimationLayer: false when the layer isn't one of the node's animation layers.
     using AnimationLayerDestroyer =
         Box<dyn<FnMut<bool(owe::SceneNode*, const owe::SceneAnimationLayer&)>>>;

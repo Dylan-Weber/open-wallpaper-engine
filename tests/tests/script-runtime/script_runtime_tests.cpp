@@ -4642,8 +4642,8 @@ TEST(ScriptAnimationLayer, CreateDestroyAndPlaySingle) {
     rt.SetFrameInputs(MakeFi());
     rt.SetAnimationLayerResolvers(
         JsRuntime::AnimationLayerCreator::make(
-            [&](owe::SceneNode* owner, JsRuntime::AnimationLayerRequest request)
-                -> Option<Arc<owe::SceneAnimationLayer>> {
+            [&](owe::SceneNode*                  owner,
+                JsRuntime::AnimationLayerRequest request) -> Option<Arc<owe::SceneAnimationLayer>> {
                 if (request.animation != "wave"_str) return None();
                 auto playback = Arc<owe::SceneAnimationPlayback>::make(
                     Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {
