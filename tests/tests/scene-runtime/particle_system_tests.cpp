@@ -2787,3 +2787,40 @@ TEST(ParticleSubSystem, TurbulenceAndOscillationWaitForTheirBlendWindow) {
         R"({"name":"oscillateposition","frequencymin":1,"frequencymax":1,"scalemin":30,"scalemax":30,"blendinstart":0.5,"blendinend":0.7})"_str);
     EXPECT_LT((still[usize(1)] - origin).norm(), 1e-4f);
 }
+
+// Wallpaper Engine adds rate x dt to a float (single precision) count and emits its whole part
+// (particles-emission-phase): at 4 a second and 30 frames a second the second particle comes on frame 15, where a
+// double-precision sum of the frame times (0.49999...) still waits a frame.
+TEST(ParticleSubSystem, EmitsByASinglePrecisionCountOfRateTimesFrameTime) {
+    auto emitted_after = [](int frames, bool sphere) {
+        owe::Scene             scene;
+        auto                   mesh = Arc<owe::SceneMesh>::make();
+        owe::ParticleSubSystem subsystem(scene,
+                                         mesh.clone(),
+                                         u32(64),
+                                         f64(1.0),
+                                         u32(1),
+                                         f64(1.0),
+                                         owe::ParticleSubSystem::SpawnType::STATIC,
+                                         owe::ParticleAnimationSpec {});
+        subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+            owe::ParseJson(R"({"name":"lifetimerandom","min":100,"max":100})"_str).unwrap(), u32(1)));
+        if (sphere) {
+            subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(owe::SphereEmitterProgram(
+                subsystem.SpawnPipeline(), owe::ParticleSphereEmitterArgs { .emit_speed = 4.0f }, usize())));
+        } else {
+            subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(owe::BoxEmitterProgram(
+                subsystem.SpawnPipeline(), owe::ParticleBoxEmitterArgs { .emit_speed = 4.0f }, usize())));
+        }
+        subsystem.Finalize();
+        for (int frame = 0; frame < frames; ++frame) subsystem.Tick(f64(1.0 / 30.0), false);
+        return LiveParticleCount(subsystem);
+    };
+    for (bool sphere : { false, true }) {
+        EXPECT_EQ(emitted_after(7, sphere), usize(0));
+        EXPECT_EQ(emitted_after(8, sphere), usize(1));
+        EXPECT_EQ(emitted_after(14, sphere), usize(1));
+        EXPECT_EQ(emitted_after(15, sphere), usize(2)); // a double sum reaches 2 on frame 16
+        EXPECT_EQ(emitted_after(120, sphere), usize(16));
+    }
+}

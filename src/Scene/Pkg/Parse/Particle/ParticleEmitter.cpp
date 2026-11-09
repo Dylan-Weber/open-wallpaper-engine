@@ -14,43 +14,46 @@ using namespace owe;
 namespace
 {
 
-auto EmitCount(f64 timer, float speed) -> u32 {
-    if (speed <= 0.0f) return u32();
-    if (! f32(speed).is_finite()) return u32::MAX;
-
-    const double elapsed  = timer.to_primitive();
-    const double duration = static_cast<double>(1.0f / speed);
-    if (elapsed < duration) return u32();
-
-    const double count = f64(elapsed / duration).floor().to_primitive();
-    if (count >= static_cast<double>(u32::MAX.to_primitive())) return u32::MAX;
-    return u32(static_cast<rstd::uint32_t>(count));
+// The emission count, as Wallpaper Engine keeps it: rate x frame time added to a single-precision float each frame,
+// whose whole part is emitted (particles-emission-phase: a double-precision sum emits a frame late at the exact
+// multiples, e.g. 4 a second at 30 frames a second gives frames 8, 16, 23, 31 instead of 8, 15, 23, 30).
+auto AccumulateEmission(f64 count, float speed, f64 delta) -> f64 {
+    if (speed <= 0.0f) return count;
+    const float added = speed * static_cast<float>(delta.to_primitive());
+    return f64(static_cast<double>(static_cast<float>(count.to_primitive()) + added));
 }
 
-auto ResolveEmitCount(f64 timer, float speed, u32 instantaneous, bool one_per_frame, bool empty)
+auto EmitCount(f64 count, float speed) -> u32 {
+    if (speed <= 0.0f) return u32();
+    if (! f32(speed).is_finite()) return u32::MAX;
+    const float whole = f32(static_cast<float>(count.to_primitive())).floor().to_primitive();
+    if (whole < 1.0f) return u32();
+    if (static_cast<double>(whole) >= static_cast<double>(u32::MAX.to_primitive())) return u32::MAX;
+    return u32(static_cast<rstd::uint32_t>(whole));
+}
+
+auto ResolveEmitCount(f64 count, float speed, u32 instantaneous, bool one_per_frame, bool empty)
     -> u32 {
     if (instantaneous > u32() && empty) return instantaneous;
     if (speed <= 0.0f) return u32();
-    auto count = EmitCount(timer, speed);
-    return one_per_frame && count > u32(1) ? u32(1) : count;
+    auto emit = EmitCount(count, speed);
+    return one_per_frame && emit > u32(1) ? u32(1) : emit;
 }
 
-void CommitEmitCount(f64& timer, float speed, u32 requested, u32 emitted, bool one_per_frame) {
+void CommitEmitCount(f64& count, float speed, u32 requested, u32 emitted, bool one_per_frame) {
     if (requested == u32() || speed <= 0.0f) return;
     if (! f32(speed).is_finite()) {
-        timer = f64();
+        count = f64();
         return;
     }
-
-    const double duration  = static_cast<double>(1.0f / speed);
-    double       remaining = rstd::cmp::max(
-        timer.to_primitive() - duration * static_cast<double>(emitted.to_primitive()), 0.0);
+    float remaining = rstd::cmp::max(
+        static_cast<float>(count.to_primitive()) - static_cast<float>(emitted.to_primitive()), 0.0f);
     if (emitted < requested) {
-        remaining = rstd::cmp::min(duration, remaining);
+        remaining = rstd::cmp::min(1.0f, remaining);
     } else if (one_per_frame) {
-        remaining = (f64(remaining) % f64(duration)).to_primitive();
+        remaining = remaining - f32(remaining).floor().to_primitive();
     }
-    timer = f64(remaining);
+    count = f64(static_cast<double>(remaining));
 }
 
 auto EmitDuration(float speed) noexcept -> f64 {
@@ -177,12 +180,13 @@ void BoxEmitterProgram::Emit(particle::ParticleEmitterContext& context) {
     // an emitter that is off keeps no backlog
     if (! timing_on) emitter.timer = f64();
     const bool timed_emission = timing_on && TimedEmissionEnabled(frame, m_args.controlpoint);
-    if (timed_emission) emitter.timer += frame->emitter_delta;
 
     auto  controlpoints = frame->subsystem->Controlpoints();
     auto  origin        = ResolveEmitterOrigin(controlpoints, m_args.controlpoint, m_args.origin);
     float emit_speed = m_args.emit_speed *
                        AudioResponseScale(frame->audio_average.as_slice(), m_args.audio_response);
+    if (timed_emission)
+        emitter.timer = AccumulateEmission(emitter.timer, emit_speed, frame->emitter_delta);
     auto  timed_emit_count = timed_emission ? ResolveEmitCount(emitter.timer,
                                                                emit_speed,
                                                                m_args.instantaneous,
@@ -240,7 +244,6 @@ void SphereEmitterProgram::Emit(particle::ParticleEmitterContext& context) {
     // an emitter that is off keeps no backlog
     if (! timing_on) emitter.timer = f64();
     const bool timed_emission = timing_on && TimedEmissionEnabled(frame, m_args.controlpoint);
-    if (timed_emission) emitter.timer += frame->emitter_delta;
 
     auto controlpoints = frame->subsystem->Controlpoints();
     auto origin        = ResolveEmitterOrigin(controlpoints, m_args.controlpoint, m_args.origin);
@@ -248,6 +251,8 @@ void SphereEmitterProgram::Emit(particle::ParticleEmitterContext& context) {
     auto            dimensions = ActiveAxisCount(directions);
     float emit_speed = m_args.emit_speed *
                        AudioResponseScale(frame->audio_average.as_slice(), m_args.audio_response);
+    if (timed_emission)
+        emitter.timer = AccumulateEmission(emitter.timer, emit_speed, frame->emitter_delta);
     auto  timed_emit_count = timed_emission ? ResolveEmitCount(emitter.timer,
                                                                emit_speed,
                                                                m_args.instantaneous,
@@ -298,10 +303,11 @@ void LayerImageEmitterProgram::Emit(particle::ParticleEmitterContext& context) {
     if (m_args.duration > 0.0f && emitter.elapsed > f64(m_args.duration) && pending_count == u32())
         return;
     const bool timed_emission = TimedEmissionEnabled(frame, m_args.controlpoint);
-    if (timed_emission) emitter.timer += frame->emitter_delta;
 
     float emit_speed = m_args.emit_speed *
                        AudioResponseScale(frame->audio_average.as_slice(), m_args.audio_response);
+    if (timed_emission)
+        emitter.timer = AccumulateEmission(emitter.timer, emit_speed, frame->emitter_delta);
     auto  timed_emit_count = timed_emission ? ResolveEmitCount(emitter.timer,
                                                                emit_speed,
                                                                m_args.instantaneous,
