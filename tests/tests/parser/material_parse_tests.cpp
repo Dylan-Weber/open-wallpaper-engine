@@ -614,6 +614,34 @@ TEST(ParticleDocument, PreservesRendererDefaultsAndDeclarationOrder) {
     EXPECT_FLOAT_EQ(particle.renderers[usize(2)].subdivision, 3.0f);
 }
 
+// An empty "renderer" list draws nothing; without the key a system is drawn as sprites
+// (particles-no-renderer, GPU VM; thunderbolt's child spawner has "renderer": [] and only moves the
+// control points of its children).
+TEST(ParticleDocument, AnEmptyRendererListDrawsNothing) {
+    owe::fs::VFS vfs;
+    auto         assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    ASSERT_TRUE(vfs.mount("/assets"_str, rstd::move(assets).unwrap()).is_ok());
+    auto read = [&](ref<str> text) {
+        owe::wpscene::Particle particle;
+        EXPECT_TRUE(particle.FromJson(owe::ParseJson(text).unwrap(), vfs));
+        return particle;
+    };
+    auto empty = read(
+        R"({"emitter":[],"renderer":[],"material":"materials/util/effectpassthrough.json"})"_str);
+    EXPECT_FALSE(empty.drawn);
+    EXPECT_FALSE(empty.Clone().drawn);
+    auto missing =
+        read(R"({"emitter":[],"material":"materials/util/effectpassthrough.json"})"_str);
+    EXPECT_TRUE(missing.drawn);
+    ASSERT_EQ(missing.renderers.len(), usize(1));
+    EXPECT_EQ(missing.renderers[usize()].name, "sprite"_str);
+    auto sprite = read(
+        R"({"emitter":[],"renderer":[{"name":"sprite"}],"material":"materials/util/effectpassthrough.json"})"_str);
+    EXPECT_TRUE(sprite.drawn);
+}
+
 TEST(ParticleDocument, CloneOwnsRecursiveDataAndPreservesEmitterFields) {
     owe::wpscene::Particle particle;
     owe::wpscene::Emitter  emitter;

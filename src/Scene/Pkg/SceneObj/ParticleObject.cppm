@@ -126,6 +126,9 @@ public:
     u32    maxcount { 1 };
     float  starttime { 0.0f };
     EFlags flags { 0 };
+    // false for an empty "renderer" list: the system runs (and spawns its children) but draws
+    // nothing (particles-no-renderer)
+    bool drawn { true };
 };
 class ParticleChild {
 public:
