@@ -139,10 +139,16 @@ struct MapSequenceBetweenControlPoints {
     i32                   controlpoint_end { 1 };
     u32                   count { 2 };
     SequenceLimitBehavior limit_behavior { SequenceLimitBehavior::Repeat };
+    // flag 4: the sequence tapers, the particle at index i of n sin(pi (i + 0.5) / n) of its size
+    // (particles-sequence-arc)
+    bool taper { false };
 
     static auto ReadFromJson(const Json& json, u32 implicit_count)
         -> MapSequenceBetweenControlPoints {
         MapSequenceBetweenControlPoints value;
+        u32 flags {};
+        owe::GetJsonValue(json, "flags"_str, flags, false);
+        value.taper = (flags.to_primitive() & 4u) != 0u;
         value.count = rstd::cmp::max(implicit_count, u32(2));
         owe::GetJsonValue(json, "controlpointstart"_str, value.controlpoint_start, false);
         owe::GetJsonValue(json, "controlpointend"_str, value.controlpoint_end, false);
@@ -179,6 +185,15 @@ struct MapSequenceBetweenControlPointsProgram {
             relative -= direction * relative.dot(direction);
         }
         columns.positions[request.slot.index] = (start + amount * path + relative).cast<float>();
+        if (config.taper) {
+            const double scale = f64(3.14159265358979323846 *
+                                     (static_cast<double>(index.to_primitive()) + 0.5) /
+                                     static_cast<double>(count.to_primitive()))
+                                     .sin()
+                                     .to_primitive();
+            columns.sizes[request.slot.index] *= static_cast<float>(scale);
+            columns.initial_sizes[request.slot.index] *= static_cast<float>(scale);
+        }
     }
 };
 
