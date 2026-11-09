@@ -239,19 +239,20 @@ struct NoopSpawnProgram {
                     ref<dyn<rstd::any::Any>>) {}
 };
 
-// inheritcontrolpointvelocity: the particle starts with its control point's velocity times a factor from min to max
-// (particles-controlpoint-velocity: a world-space particle gets the object's speed, half of it at 0.5; one in its object's
-// space moves with the object, so its control point is at rest and it gets none).
+// inheritcontrolpointvelocity: the particle starts with its control point's velocity times a factor
+// from min to max (particles-controlpoint-velocity: a world-space particle gets the object's speed,
+// half of it at 0.5; one in its object's space moves with the object, so its control point is at
+// rest and it gets none).
 struct InheritControlpointVelocityProgram {
     i32    controlpoint { 0 };
     double min { 0.0 }, max { 1.0 };
 
     void Initialize(ParticleSpawnColumns& columns, particle::ParticleSpawnRequest request,
                     ref<dyn<rstd::any::Any>> frame_context) {
-        auto frame = ParticleFrameFrom(frame_context);
-        const Eigen::Vector3d local =
-            frame->controlpoint_velocity.col(rstd::as_cast<usize>(controlpoint % i32(8)).to_primitive());
-        const double          factor = algorism::lerp(Random::get(0.0, 1.0), min, max);
+        auto                  frame = ParticleFrameFrom(frame_context);
+        const Eigen::Vector3d local = frame->controlpoint_velocity.col(
+            rstd::as_cast<usize>(controlpoint % i32(8)).to_primitive());
+        const double factor = algorism::lerp(Random::get(0.0, 1.0), min, max);
         columns.velocities[request.slot.index] =
             (columns.velocities[request.slot.index].cast<double>() + local * factor).cast<float>();
     }

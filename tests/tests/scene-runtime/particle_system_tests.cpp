@@ -847,12 +847,12 @@ TEST(ParticleSubSystem, AppliesTurbulenceMaskAsAxisWeights) {
     EXPECT_FLOAT_EQ(defaults.z(), 0.0f);
 }
 
-// inheritcontrolpointvelocity (particles-controlpoint-velocity): a particle starts with its control point's velocity
-// (how fast the object moves, per second) times a factor between min and max. The first frame has no earlier position
-// to measure from, so a particle born then gets none.
+// inheritcontrolpointvelocity (particles-controlpoint-velocity): a particle starts with its control
+// point's velocity (how fast the object moves, per second) times a factor between min and max. The
+// first frame has no earlier position to measure from, so a particle born then gets none.
 TEST(ParticleSubSystem, InheritControlpointVelocityTakesTheObjectsVelocity) {
     auto last_velocity = [](bool world_space) {
-        owe::Scene scene;
+        owe::Scene             scene;
         owe::ParticleSubSystem subsystem(scene,
                                          Arc<owe::SceneMesh>::make(),
                                          u32(64),
@@ -867,9 +867,11 @@ TEST(ParticleSubSystem, InheritControlpointVelocityTakesTheObjectsVelocity) {
                                          f64(),
                                          world_space);
         subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
-            owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(64)));
+            owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(),
+            u32(64)));
         subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
-            owe::ParseJson(R"({"name":"inheritcontrolpointvelocity","controlpoint":0,"min":0.5,"max":0.5})"_str)
+            owe::ParseJson(
+                R"({"name":"inheritcontrolpointvelocity","controlpoint":0,"min":0.5,"max":0.5})"_str)
                 .unwrap(),
             u32(64)));
         owe::wpscene::Emitter emitter;
