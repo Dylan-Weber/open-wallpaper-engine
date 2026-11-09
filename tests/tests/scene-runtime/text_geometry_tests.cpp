@@ -320,6 +320,34 @@ TEST(TextGeometry, DynamicEffectFollowsCurrentTextBounds) {
     EXPECT_FLOAT_EQ(geometry.effect_frame_height, 221.0f);
 }
 
+// Text drawn with its background (or over a copy of it) draws its whole box, the text and its
+// padding: the render target must be sampled over that same box, or the letters stretch
+// (text-layout: they came out taller than in Wallpaper Engine).
+TEST(TextGeometry, BackgroundTextSamplesTheBoxItDraws) {
+    const owe::text::TextGeometryPolicy policy {
+        .frame_width        = 500.0f,
+        .frame_height       = 200.0f,
+        .preserve_text_bbox = true,
+    };
+    const owe::text::TextLayoutMetrics metrics {
+        .text_width    = 607.0f,
+        .text_height   = 157.0f,
+        .source_width  = 563.0f,
+        .source_height = 143.0f,
+        .padding       = 32.0f,
+    };
+
+    const auto geometry = owe::text::ResolveTextGeometry(policy, metrics);
+
+    EXPECT_FLOAT_EQ(geometry.draw_width, 671.0f);
+    EXPECT_FLOAT_EQ(geometry.draw_height, 221.0f);
+    EXPECT_FLOAT_EQ(geometry.uv_source_width, geometry.draw_width);
+    EXPECT_FLOAT_EQ(geometry.uv_source_height, geometry.draw_height);
+    // and the render target holds that whole box (its ink alone is smaller)
+    EXPECT_FLOAT_EQ(geometry.rt_width, geometry.draw_width);
+    EXPECT_FLOAT_EQ(geometry.rt_height, geometry.draw_height);
+}
+
 TEST(TextLayouter, FailedUpdatesKeepAcceptedStateAndRetry) {
     auto                    resources = TextResources();
     auto                    mesh      = Arc<owe::SceneMesh>::make();
