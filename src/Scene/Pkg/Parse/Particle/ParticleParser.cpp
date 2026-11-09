@@ -239,8 +239,9 @@ struct NoopSpawnProgram {
                     ref<dyn<rstd::any::Any>>) {}
 };
 
-// The colour and opacity of the parent particle a child system's instance was made for (inheritinitialvaluefromevent
-// takes only the colour, inheritvaluefromevent both; particles-inherit-event: not the size or velocity).
+// The colour and opacity of the parent particle a child system's instance was made for
+// (inheritinitialvaluefromevent takes only the colour, inheritvaluefromevent both;
+// particles-inherit-event: not the size or velocity).
 struct ParentLook {
     Eigen::Vector3f color;
     float           alpha {};
@@ -248,7 +249,8 @@ struct ParentLook {
 
 inline auto ParentParticleLook(const ParticleFrame& frame) -> Option<ParentLook> {
     const auto& bounded = frame.subsystem->InstanceState(frame.instance_index).bounded;
-    if (bounded.parent == nullptr || bounded.parent_subsystem == nullptr || bounded.particle_index < isize())
+    if (bounded.parent == nullptr || bounded.parent_subsystem == nullptr ||
+        bounded.particle_index < isize())
         return None();
     auto& storage = bounded.parent->Storage();
     auto  index   = rstd::as_cast<usize>(bounded.particle_index);
