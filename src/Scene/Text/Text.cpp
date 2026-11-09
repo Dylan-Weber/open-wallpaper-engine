@@ -2,6 +2,10 @@ module;
 
 #include <rstd/macro.hpp>
 
+#include <ft2build.h>
+#include FT_FREETYPE_H
+#include FT_OUTLINE_H
+
 module wescene.text;
 import eigen;
 import wescene.pkg.spec_names;
@@ -106,6 +110,20 @@ struct TextResources::Impl {
     Vec<Arc<AtlasPage>>         pages;
     HashMap<String, AtlasGlyph> glyphs;
     rstd::uint64_t              id { vectext::new_identity() }, rasters {}, layouts {};
+    // the fonts RegisterFont was given, for HintedGlyphBox
+    struct Font {
+        vectext::FontSource source;
+        Vec<u8>             bytes;
+        FT_Face             face {};
+    };
+    Vec<Font>                      fonts;
+    FT_Library                     freetype {};
+    HashMap<String, array<rstd::int32_t, 4>> hinted_boxes;
+    ~Impl() {
+        for (auto& font : fonts)
+            if (font.face) FT_Done_Face(font.face);
+        if (freetype) FT_Done_FreeType(freetype);
+    }
     void                        Initialize() {
         if (options.extent >= 8 && options.extent <= 8192 && options.max_pages &&
             options.max_pages <= 64 &&
@@ -127,8 +145,47 @@ auto TextResources::RegisterFont(slice<u8> bytes)
     -> Result<vectext::FontSource, vectext::TextError> {
     auto collection = m_impl->service.collection();
     if (collection.is_err()) return Err(collection.unwrap_err());
-    return collection->register_font(slice<unsigned char>::from_raw_parts(
+    auto source = collection->register_font(slice<unsigned char>::from_raw_parts(
         reinterpret_cast<const unsigned char*>(bytes.as_raw_ptr()), bytes.len()));
+    if (source.is_ok()) m_impl->fonts.push(Impl::Font { *source, Vec<u8>::from(bytes) });
+    return source;
+}
+auto TextResources::HintedGlyphBox(const vectext::FontSource& font, vectext::Index glyph,
+                                   double size) -> Option<array<rstd::int32_t, 4>> {
+    auto& im = *m_impl;
+    if (! (size > 0) || size > 4096) return None();
+    Impl::Font* entry {};
+    for (auto& f : im.fonts)
+        if (f.source == font) entry = &f;
+    if (! entry) return None();
+    auto key = rstd::format("{}:{}:{}:{}",
+                            font.collection,
+                            font.source,
+                            glyph,
+                            rstd::mem::transmute<rstd::uint64_t>(size));
+    if (auto cached = im.hinted_boxes.get(key.as_str()); cached.is_some())
+        return Some(array<rstd::int32_t, 4>(**cached));
+    if (! im.freetype && FT_Init_FreeType(&im.freetype)) return None();
+    if (! entry->face &&
+        FT_New_Memory_Face(im.freetype,
+                           reinterpret_cast<const FT_Byte*>(entry->bytes.as_slice().as_raw_ptr()),
+                           FT_Long(entry->bytes.len().to_primitive()),
+                           0,
+                           &entry->face))
+        return None();
+    // hinted, as Wallpaper Engine loads it (FT_LOAD_NO_BITMAP alone)
+    if (FT_Set_Char_Size(entry->face, 0, FT_F26Dot6(size * 64 + 0.5), 72, 72) ||
+        FT_Load_Glyph(entry->face, FT_UInt(glyph), FT_LOAD_NO_BITMAP) ||
+        entry->face->glyph->format != FT_GLYPH_FORMAT_OUTLINE)
+        return None();
+    FT_BBox cbox;
+    FT_Outline_Get_CBox(&entry->face->glyph->outline, &cbox);
+    // FT_GLYPH_BBOX_PIXELS: the control box grid-fitted, in pixels
+    const auto left = rstd::int32_t(cbox.xMin >> 6), bottom_up = rstd::int32_t(cbox.yMin >> 6),
+               right = rstd::int32_t((cbox.xMax + 63) >> 6), top_up = rstd::int32_t((cbox.yMax + 63) >> 6);
+    array<rstd::int32_t, 4> box { left, -top_up, right, -bottom_up };
+    (void)im.hinted_boxes.insert(rstd::move(key), array<rstd::int32_t, 4>(box));
+    return Some(rstd::move(box));
 }
 auto TextResources::Layout(vectext::TextRequest request)
     -> Result<vectext::TextLayout, vectext::TextError> {
@@ -1043,16 +1100,21 @@ struct TextLayouter::Impl {
                 if (grown.is_err()) return Err(grown.unwrap_err());
                 auto outline = grown.unwrap();
                 // the letter and its outline are drawn where Wallpaper Engine's distance atlas has
-                // them (text-outline-offset), from the letter's box in whole pixels (as hinting
-                // has its edges)
+                // them (text-outline-offset), from the letter's hinted box in whole pixels; for a
+                // font without its file (a system font), the ink's edges rounded as hinting has them
                 auto round = [](double v) {
                     return f64(v + 0.5).floor().to_primitive();
                 };
-                const auto place = OutlinedGlyphPlace(round(atlas.origin.x + atlas.ink_left),
-                                                      round(atlas.origin.x + atlas.ink_right),
-                                                      round(atlas.origin.y + atlas.ink_top),
-                                                      round(atlas.origin.y + atlas.ink_bottom),
-                                                      round(size));
+                double box[4] { round(atlas.origin.x + atlas.ink_left),
+                                round(atlas.origin.y + atlas.ink_top),
+                                round(atlas.origin.x + atlas.ink_right),
+                                round(atlas.origin.y + atlas.ink_bottom) };
+                if (font.source.is_some() && glyph.font == 0)
+                    if (auto hinted = resources->HintedGlyphBox(*font.source, glyph.glyph, size);
+                        hinted.is_some())
+                        for (int i = 0; i < 4; ++i) box[i] = double((*hinted)[usize(i)]);
+                const auto place =
+                    OutlinedGlyphPlace(box[0], box[2], box[1], box[3], round(size));
                 // a glyph point x (y down) is at left - origin.x + x (top + origin.y - y)
                 auto px = [&](double x) {
                     return float(place.scale_x * x + place.offset_x - x);

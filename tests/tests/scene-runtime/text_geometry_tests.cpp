@@ -671,3 +671,28 @@ TEST(TextLayouter, AnOutlinedLetterIsPlacedAsTheAtlasHasIt) {
     // and is still about the letter's size
     EXPECT_NEAR(outlined[usize(1)] - outlined[usize()], plain[usize(1)] - plain[usize()], 2.0f);
 }
+
+TEST(TextAtlas, AHintedGlyphsBoxIsInWholePixels) {
+    // Wallpaper Engine's distance atlas boxes a glyph by its hinted outline (text-outline-offset):
+    // DejaVu Sans' H is 58 pixels wide at 25 points (104.17 pixels an em) and 116 at 50 points,
+    // where its unhinted outline spans 10.22..68.11 and 20.45..136.21
+    auto source = rstd::path::PathBuf::from(__FILE__ ""_str);
+    auto root   = source.as_path().parent().unwrap().parent().unwrap().parent().unwrap();
+    auto path   = rstd::path::PathBuf::from(root).join("fixtures/fonts/DejaVuSans.ttf"_str);
+    auto bytes  = rstd::fs::read(path.as_path()).unwrap();
+    auto resources = TextResources();
+    auto font      = resources->RegisterFont(bytes.as_slice()).unwrap();
+    auto layout    = resources->Layout({ .text = "H"_str, .size = 100, .source = Some(font) }).unwrap();
+    ASSERT_EQ(layout.glyphs().len(), usize(1));
+    const auto glyph = layout.glyphs()[usize()].glyph;
+    const double sizes[2] { 25 * 300.0 / 72, 50 * 300.0 / 72 };
+    const int    widths[2] { 58, 116 };
+    for (int i = 0; i < 2; ++i) {
+        auto box = resources->HintedGlyphBox(font, glyph, sizes[i]);
+        ASSERT_TRUE(box.is_some());
+        EXPECT_EQ((*box)[usize(2)] - (*box)[usize()], widths[i]);
+        EXPECT_LT((*box)[usize(1)], (*box)[usize(3)]); // y down: top above bottom
+    }
+    // no box for a font it wasn't given
+    EXPECT_TRUE(resources->HintedGlyphBox(vectext::FontSource { 99, 99 }, glyph, 100).is_none());
+}
