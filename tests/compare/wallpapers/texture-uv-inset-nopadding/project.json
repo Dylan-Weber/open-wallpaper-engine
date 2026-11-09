@@ -1,0 +1,9 @@
+{
+  "title": "wpe-test a model's nopadding and the texture inset",
+  "type": "scene",
+  "file": "scene.json",
+  "version": 1,
+  "general": {
+    "properties": {}
+  }
+}

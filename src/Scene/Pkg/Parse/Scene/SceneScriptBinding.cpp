@@ -167,14 +167,14 @@ array<float, 2> Texture0UvScale(const SceneMaterial& material, bool nopadding) {
     return { r[usize(2)] / r[usize(0)], r[usize(3)] / r[usize(1)] };
 }
 
-array<float, 2> Texture0TexCoordInset(const SceneMaterial& material) {
+array<float, 2> Texture0TexCoordInset(const SceneMaterial& material, bool nopadding) {
     // sprite sheets map the quad into one frame: their inset is unmeasured
     if (material.hasSprite) return { 0.0f, 0.0f };
     auto it = material.customShader.constValues.get(WE_GLTEX_RESOLUTION_NAMES[usize()]);
     if (it.is_none()) return { 0.0f, 0.0f };
     const auto& r = **it;
     if (r.size() < usize(2)) return { 0.0f, 0.0f };
-    return LayerTexCoordInset(r[usize(0)], r[usize(1)]);
+    return ImageLayerTexCoordInset(r[usize(0)], r[usize(1)], nopadding);
 }
 
 void InstallImageAlignmentBinding(script::JsRuntime& runtime, SceneNode* node, ref<str> alignment,

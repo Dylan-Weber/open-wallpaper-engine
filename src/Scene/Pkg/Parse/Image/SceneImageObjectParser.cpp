@@ -406,7 +406,7 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
                     { geometry_size[usize(0)], geometry_size[usize(1)] },
                     mapRate,
                     source_alignment_offset,
-                    hasEffect ? array<float, 2> { 0.0f, 0.0f } : Texture0TexCoordInset(material));
+                    hasEffect ? array<float, 2> { 0.0f, 0.0f } : Texture0TexCoordInset(material, wpimgobj.nopadding));
         if (parse_geometry.final_mesh.is_some()) {
             effct_final_mesh.ChangeMeshDataFrom(**parse_geometry.final_mesh);
         } else {

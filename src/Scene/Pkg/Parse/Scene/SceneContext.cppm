@@ -267,7 +267,7 @@ void RegisterPuppetLayer(SceneLayerBuildContext&, SceneNode*, Arc<PuppetLayer>);
 void MarkHiddenLinkSource(SceneLayerBuildContext&, i32);
 auto ToSceneUserVisibilityBinding(const wpscene::VisibleUserBinding&) -> SceneUserVisibilityBinding;
 auto Texture0UvScale(const SceneMaterial&, bool = false) -> array<float, 2>;
-auto Texture0TexCoordInset(const SceneMaterial&) -> array<float, 2>;
+auto Texture0TexCoordInset(const SceneMaterial&, bool nopadding) -> array<float, 2>;
 auto ParticleTextureRatio(const SceneMaterial&) -> float;
 void RegisterImageAlignmentBinding(SceneLayerBuildContext&, SceneNode*, ref<str>,
                                    SceneLayerBuildContext::ImageAlignmentSetter);
