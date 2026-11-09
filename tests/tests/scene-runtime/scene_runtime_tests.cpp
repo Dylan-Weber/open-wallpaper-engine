@@ -961,8 +961,8 @@ TEST(SceneParserScript, DynamicObjectsUseSceneIdentity) {
     EXPECT_TRUE(scene.scene->ConsumeRenderGraphDirty());
 }
 
-// A solid layer created by its path has no texture to take a size from: Wallpaper Engine makes it 1 x 1 (scaled by 20 it is
-// 20 x 20, script-layer-alignment); owe made none.
+// A solid layer created by its path has no texture to take a size from: Wallpaper Engine makes it 1
+// x 1 (scaled by 20 it is 20 x 20, script-layer-alignment); owe made none.
 TEST(SceneParserScript, SolidLayerCreatedByPathIsOneByOne) {
     auto document = owe::wpscene::ParseSceneDocumentJson(
         R"JSON({
@@ -1004,15 +1004,17 @@ TEST(SceneParserScript, SolidLayerCreatedByPathIsOneByOne) {
     EXPECT_FLOAT_EQ(created->Size().y(), 1.0f);
 }
 
-// A layer created by its path takes its texture's size only when its model says "autosize"; otherwise it is 1 x 1, as a solid
-// layer (Wallpaper Engine draws material-user-alpha's created 64 x 2 gradient layer, scaled by 5 x 150, as a 5 x 150 line).
+// A layer created by its path takes its texture's size only when its model says "autosize";
+// otherwise it is 1 x 1, as a solid layer (Wallpaper Engine draws material-user-alpha's created 64
+// x 2 gradient layer, scaled by 5 x 150, as a 5 x 150 line).
 TEST(SceneParserScript, CreatedLayerIsOneByOneUnlessAutosize) {
     const auto dir = std::filesystem::temp_directory_path() / "owe-created-size";
     std::filesystem::remove_all(dir);
     std::filesystem::create_directories(dir / "models");
     std::filesystem::create_directories(dir / "materials");
     std::ofstream(dir / "models/plain.json") << R"({"material": "materials/strip.json"})";
-    std::ofstream(dir / "models/autosized.json") << R"({"autosize": true, "material": "materials/strip.json"})";
+    std::ofstream(dir / "models/autosized.json")
+        << R"({"autosize": true, "material": "materials/strip.json"})";
     std::ofstream(dir / "materials/strip.json")
         << R"({"passes": [{"shader": "genericimage2", "textures": ["gradient/gradient_rainbow"]}]})";
 
@@ -1036,7 +1038,8 @@ TEST(SceneParserScript, CreatedLayerIsOneByOneUnlessAutosize) {
 
     auto assets = owe::fs::make_physical_fs(
         owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
-    auto own = owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(dir.string()).unwrap()));
+    auto own =
+        owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(dir.string()).unwrap()));
     ASSERT_TRUE(assets.is_ok());
     ASSERT_TRUE(own.is_ok());
     owe::fs::VFS vfs;
