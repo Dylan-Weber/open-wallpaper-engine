@@ -2694,8 +2694,9 @@ TEST(UniformSourceParallax, PerspectiveWithAuthoredParallaxDepthAppliesShift) {
                          mvp_with_parallax[rstd::usize(13)]) > 1e-5f);
 }
 
-// A script that creates a layer from a model layer's initial configuration (More Physics spawns its spheres this
-// way) gets another model layer of the same model; owe made a plain 2 x 2 solid layer of it (hundreds of white squares).
+// A script that creates a layer from a model layer's initial configuration (More Physics spawns its
+// spheres this way) gets another model layer of the same model; owe made a plain 2 x 2 solid layer
+// of it (hundreds of white squares).
 TEST(SceneParserScript, ACreatedLayerFromAModelConfigurationIsAModelLayer) {
     auto document = owe::wpscene::ParseSceneDocumentJson(
         R"JSON({
@@ -2747,7 +2748,8 @@ TEST(SceneParserScript, ACreatedLayerFromAModelConfigurationIsAModelLayer) {
     usize solids {};
     bool  moved = false;
     for (const auto& child : scene.scene->RootMut()->GetChildren()) {
-        if ((child->Name() == "Source"_str || child->Name() == "Copy"_str) && child->Mesh() != nullptr) {
+        if ((child->Name() == "Source"_str || child->Name() == "Copy"_str) &&
+            child->Mesh() != nullptr) {
             ++models;
             if (child->Translate().x() == 5.0f) moved = true;
         }
