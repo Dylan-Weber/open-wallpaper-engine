@@ -1171,3 +1171,60 @@ TEST(MdlMesh, NativeMaterialPathsShareResolutionAndPreserveDefaults) {
     EXPECT_EQ(short_ref->textures[usize()], "diffuse"_str);
     EXPECT_TRUE(owe::MdlParser::ParseMaterial("missing"_str, vfs).is_none());
 }
+
+// Wallpaper Engine rebuilds a bone's rest rotation when an animation layer is visible: the matrix's columns are normalised with
+// the fast reciprocal square root (0x5f375a86 and one Newton step, which leaves them 0.9983 as long as they were unit), the
+// quaternion is taken from that matrix (glm::quat_cast) and turned back into a matrix without normalising. A quarter turn
+// comes out 0.17 % small and 0.0008 rad short, so Gun Girl's puppet is drawn about 1.5 px narrower with a layer at blend 0.
+static auto MakeTurnedPuppet(float angle) -> Arc<owe::Puppet> {
+    auto  puppet = Arc<owe::Puppet>::make();
+    auto& bone   = puppet->bones.emplace_back();
+    bone.local_bind.linear() = Eigen::AngleAxisf(angle, Eigen::Vector3f::UnitZ()).toRotationMatrix();
+    auto& reference          = bone.animation_reference.insert(Eigen::Affine3f::Identity());
+    reference.linear()       = bone.local_bind.linear();
+    auto& animation          = puppet->anims.emplace_back();
+    animation.id             = 1;
+    animation.fps            = 1.0;
+    animation.length         = 1;
+    animation.mode           = owe::Puppet::PlayMode::Single;
+    auto& track              = animation.bone_tracks.emplace_back();
+    for (int frame : { 0, 1 }) {
+        track.frames.push(owe::Puppet::BoneFrame {
+            .position = Eigen::Vector3f::Zero(),
+            .angle    = Eigen::Vector3f(0.0f, 0.0f, angle),
+            .scale    = Eigen::Vector3f::Ones(),
+        });
+    }
+    puppet->prepared();
+    return puppet;
+}
+
+static auto BoneColumnScale(float angle, bool visible) -> Eigen::Vector2f {
+    auto                             puppet = MakeTurnedPuppet(angle);
+    owe::PuppetLayer                 layer(puppet.clone());
+    owe::PuppetLayer::AnimationLayer authored {
+        .id = 1, .blend = 0.0, .visible = visible, .additive = true,
+    };
+    layer.prepared(slice<owe::PuppetLayer::AnimationLayer>::from_raw_parts(&authored, usize(1)));
+    const auto linear = layer.boneTransform(1, 0.0)->linear();
+    // the bone's pose matrix: its column length and how far its angle is from the one the file gives
+    return { linear.col(0).norm(), std::atan2(linear(1, 0), linear(0, 0)) - angle };
+}
+
+TEST(Puppet, VisibleLayerRebuildsRestRotationThroughFastReciprocalSqrt) {
+    constexpr float half_turn = 1.5707964f;
+    // layer hidden: the bind's own matrix, exact
+    auto hidden = BoneColumnScale(half_turn, false);
+    EXPECT_NEAR(hidden.x(), 1.0f, 1e-6f);
+    EXPECT_NEAR(hidden.y(), 0.0f, 1e-6f);
+    // layer visible at blend 0: Wallpaper Engine's rebuilt matrix (measured 0.17 % small on stripes in the VM)
+    auto quarter = BoneColumnScale(half_turn, true);
+    EXPECT_NEAR(quarter.x(), 0.99831f, 2e-5f);
+    EXPECT_NEAR(quarter.y(), -0.000847f, 5e-5f);
+    // the error grows with the angle: tiny at 0.1 rad, 0.064 % at 1 rad, 0.25 % at a half turn
+    EXPECT_NEAR(BoneColumnScale(0.1f, true).x(), 0.99999f, 2e-5f);
+    EXPECT_NEAR(BoneColumnScale(1.0f, true).x(), 0.99936f, 2e-5f);
+    EXPECT_NEAR(BoneColumnScale(3.1415927f, true).x(), 0.99746f, 2e-5f);
+    // no rotation, no error
+    EXPECT_NEAR(BoneColumnScale(0.0f, true).x(), 1.0f, 1e-6f);
+}
