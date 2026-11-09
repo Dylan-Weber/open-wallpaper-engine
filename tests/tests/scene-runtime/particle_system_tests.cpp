@@ -814,7 +814,7 @@ TEST(ParticleSubSystem, ReduceMovementNearControlPointSlowsLikeADrag) {
                                      f64(),
                                      f64(),
                                      true);
-    auto owner    = rstd::sync::Arc<owe::SceneNode>::make(
+    auto                   owner = rstd::sync::Arc<owe::SceneNode>::make(
         Eigen::Vector3f::Zero(), Eigen::Vector3f::Ones(), Eigen::Vector3f::Zero());
     auto override = rstd::sync::Arc<owe::wpscene::ParticleInstanceoverride>::make();
     subsystem.SetOwnerNode(owner.as_ptr());

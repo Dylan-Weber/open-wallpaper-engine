@@ -1387,10 +1387,10 @@ struct ControlPointAttractOperator {
 // distanceinner, falling to reductionouter at distanceouter by the squared distance, applied as
 // v / (1 + reduction dt) (particles-reduce-near).
 struct ReduceMovementNearControlPointOperator {
-    ParticleAttributes                                        attributes;
-    i32                                                       controlpoint { 0 };
-    double                                                    inner { 0 }, outer { 0 };
-    double                                                    reduction_inner { 0 }, reduction_outer { 0 };
+    ParticleAttributes attributes;
+    i32                controlpoint { 0 };
+    double             inner { 0 }, outer { 0 };
+    double             reduction_inner { 0 }, reduction_outer { 0 };
     particle::ParticleWriteIndex<particle::VelocityAttribute> velocity;
 
     void Compile(particle::ParticleViewCompiler& compiler) {
@@ -1414,8 +1414,7 @@ struct ReduceMovementNearControlPointOperator {
                 reach = (outer * outer - d2) / (outer * outer - inner * inner);
             else
                 continue;
-            const double reduction =
-                reduction_outer + (reduction_inner - reduction_outer) * reach;
+            const double reduction = reduction_outer + (reduction_inner - reduction_outer) * reach;
             if (reduction <= 0.0) continue;
             velocities[slot.index] =
                 (velocities[slot.index].cast<double>() / (1.0 + reduction * delta)).cast<float>();
@@ -1546,7 +1545,8 @@ ParticleParser::GenOperator(const Json& wpj, ParticleInstanceModifiers modifiers
             });
         } else if (name == "reducemovementnearcontrolpoint"_str) {
             i32   controlpoint { 0 };
-            float inner { 0.0f }, outer { 0.0f }, reduction_inner { 0.0f }, reduction_outer { 0.0f };
+            float inner { 0.0f }, outer { 0.0f }, reduction_inner { 0.0f },
+                reduction_outer { 0.0f };
             owe::GetJsonValue(wpj, "controlpoint"_str, controlpoint, false);
             owe::GetJsonValue(wpj, "distanceinner"_str, inner, false);
             owe::GetJsonValue(wpj, "distanceouter"_str, outer, false);
