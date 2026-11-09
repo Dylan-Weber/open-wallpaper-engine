@@ -1,0 +1,25 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>page api</title>
+<style>html, body { margin: 0; background: #000; color: #fff; font: 24px monospace; }
+div { height: 60px; padding-left: 16px; line-height: 60px; }</style></head>
+<body>
+<script>
+var calls = ["wallpaperRegisterMediaPropertiesListener(function(e){})", "wallpaperRegisterMediaThumbnailListener(function(e){})", "wallpaperRegisterMediaPlaybackListener(function(e){})", "wallpaperRegisterMediaTimelineListener(function(e){})", "wallpaperRegisterMediaStatusListener(function(e){})", "wallpaperGetUtilities()", "wallpaperRequestRandomFileForProperty('folder', function(name, file){})", "wallpaperOnVideoEnded()", "wallpaperRequestTakeScreenshotResponse()", "window.wallpaperMediaIntegration.PLAYBACK_PLAYING"];
+window.pageApiResults = [];
+function row(i, text, colour) {
+  var d = document.createElement('div'); d.textContent = calls[i] + ': ' + text; d.style.background = colour;
+  document.body.appendChild(d); window.pageApiResults.push(calls[i] + ': ' + text);
+}
+function ok(i) { row(i, 'ok', '#174'); }
+function fail(i, e) { row(i, String(e), '#a22'); }
+  try { wallpaperRegisterMediaPropertiesListener(function(e){}); ok(0); } catch (e) { fail(0, e); }
+  try { wallpaperRegisterMediaThumbnailListener(function(e){}); ok(1); } catch (e) { fail(1, e); }
+  try { wallpaperRegisterMediaPlaybackListener(function(e){}); ok(2); } catch (e) { fail(2, e); }
+  try { wallpaperRegisterMediaTimelineListener(function(e){}); ok(3); } catch (e) { fail(3, e); }
+  try { wallpaperRegisterMediaStatusListener(function(e){}); ok(4); } catch (e) { fail(4, e); }
+  try { wallpaperGetUtilities(); ok(5); } catch (e) { fail(5, e); }
+  try { wallpaperRequestRandomFileForProperty('folder', function(name, file){}); ok(6); } catch (e) { fail(6, e); }
+  try { wallpaperOnVideoEnded(); ok(7); } catch (e) { fail(7, e); }
+  try { wallpaperRequestTakeScreenshotResponse(); ok(8); } catch (e) { fail(8, e); }
+  try { window.wallpaperMediaIntegration.PLAYBACK_PLAYING; ok(9); } catch (e) { fail(9, e); }
+</script></body></html>

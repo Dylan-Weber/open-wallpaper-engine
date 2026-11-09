@@ -79,6 +79,31 @@ String BuildAudioResponseSnippet(slice<float> data) {
     return snippet;
 }
 
+// The rest of the page API Wallpaper Engine puts on window (read over DevTools in its CEF): media integration
+// listeners, utilities, random files from a directory property, video-ended and screenshot responses. owe has none of
+// those services, so each is defined with the same type and does nothing: a registration keeps nothing and never
+// calls back, so a page that calls one without checking for it doesn't throw. The playback constants are the names
+// pages compare media states with (their values weren't measured; owe never sends a state).
+String BuildPageApiSnippet() {
+    return "(function(){"
+           "  function define(name, value) {"
+           "    if (typeof window[name] === 'undefined') window[name] = value;"
+           "  }"
+           "  define('wallpaperRegisterMediaPropertiesListener', function(callback){});"
+           "  define('wallpaperRegisterMediaThumbnailListener', function(callback){});"
+           "  define('wallpaperRegisterMediaPlaybackListener', function(callback){});"
+           "  define('wallpaperRegisterMediaTimelineListener', function(callback){});"
+           "  define('wallpaperRegisterMediaStatusListener', function(callback){});"
+           "  define('wallpaperGetUtilities', function(){ return {}; });"
+           "  define('wallpaperRequestRandomFileForProperty', function(propertyName, callback){});"
+           "  define('wallpaperOnVideoEnded', function(){});"
+           "  define('wallpaperRequestTakeScreenshotResponse', function(){});"
+           "  define('wallpaperMediaIntegration', {"
+           "    PLAYBACK_STOPPED: 0, PLAYBACK_PLAYING: 1, PLAYBACK_PAUSED: 2"
+           "  });"
+           "})();"_Str;
+}
+
 void InjectUserProperties(CefRefPtr<CefBrowser> browser, const owe::Json& props) {
     if (! browser) return;
     auto frame = browser->GetMainFrame();
