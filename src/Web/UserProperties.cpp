@@ -82,8 +82,9 @@ String BuildAudioResponseSnippet(slice<float> data) {
 // The rest of the page API Wallpaper Engine puts on window (read over DevTools in its CEF): media integration
 // listeners, utilities, random files from a directory property, video-ended and screenshot responses. owe has none of
 // those services, so each is defined with the same type and does nothing: a registration keeps nothing and never
-// calls back, so a page that calls one without checking for it doesn't throw. The playback constants are the names
-// pages compare media states with (their values weren't measured; owe never sends a state).
+// calls back, so a page that calls one without checking for it doesn't throw. A random file is asked for with no
+// folder chosen, which Wallpaper Engine answers after the call returns with (propertyName, ""). The playback constants
+// are the names pages compare media states with (their values weren't measured; owe never sends a state).
 String BuildPageApiSnippet() {
     return "(function(){"
            "  function define(name, value) {"
@@ -95,7 +96,10 @@ String BuildPageApiSnippet() {
            "  define('wallpaperRegisterMediaTimelineListener', function(callback){});"
            "  define('wallpaperRegisterMediaStatusListener', function(callback){});"
            "  define('wallpaperGetUtilities', function(){ return {}; });"
-           "  define('wallpaperRequestRandomFileForProperty', function(propertyName, callback){});"
+           "  define('wallpaperRequestRandomFileForProperty', function(propertyName, callback){"
+           "    if (typeof callback !== 'function') return;"
+           "    setTimeout(function(){ callback(propertyName, ''); }, 0);"
+           "  });"
            "  define('wallpaperOnVideoEnded', function(){});"
            "  define('wallpaperRequestTakeScreenshotResponse', function(){});"
            "  define('wallpaperMediaIntegration', {"
