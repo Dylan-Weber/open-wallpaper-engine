@@ -3,5 +3,13 @@
   "random": {
     "particles-layerimage-lattice": "random node picks with repetition leave ~9% of lattice nodes empty, different ones each run (placement matches)"
   },
-  "control": {}
+  "control": {},
+  "driver": {
+    "shadow-courtyard-arch": "suspected GPU/driver depth-slope difference: light leaking under a wall's own shadow at its foot is brighter in WE (repro shadow-courtyard-arch-flat-slab; OWE_PARITY 'a leak line at a wall's foot')",
+    "shadow-courtyard-arch-novault": "suspected GPU/driver depth-slope difference: light leaking under a wall's own shadow at its foot is brighter in WE (repro shadow-courtyard-arch-flat-slab; OWE_PARITY 'a leak line at a wall's foot')",
+    "shadow-courtyard-arch-closed": "suspected GPU/driver depth-slope difference: light leaking under a wall's own shadow at its foot is brighter in WE (repro shadow-courtyard-arch-flat-slab; OWE_PARITY 'a leak line at a wall's foot')",
+    "shadow-courtyard-arch-slab-sunk": "suspected GPU/driver depth-slope difference: light leaking under a wall's own shadow at its foot is brighter in WE (repro shadow-courtyard-arch-flat-slab; OWE_PARITY 'a leak line at a wall's foot')",
+    "shadow-courtyard-arch-flat-slab": "suspected GPU/driver depth-slope difference: light leaking under a wall's own shadow at its foot is brighter in WE (repro shadow-courtyard-arch-flat-slab; OWE_PARITY 'a leak line at a wall's foot')",
+    "shadow-courtyard-arch-flat-slab-sunk": "suspected GPU/driver depth-slope difference: light leaking under a wall's own shadow at its foot is brighter in WE (repro shadow-courtyard-arch-flat-slab; OWE_PARITY 'a leak line at a wall's foot')"
+  }
 }

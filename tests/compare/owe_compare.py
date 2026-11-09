@@ -94,14 +94,15 @@ def probe_boxes(size, inputs=None, bands=(), mirrored=False):
 
 def known_differences():
     """Wallpapers whose difference is known and not a parity target (known-differences.json beside this script:
-    {"random": {name: why}, "control": {name: why}}): a DIFF among them is reported as RAND or CTRL and counted apart.
-    Without the file, none."""
+    {"random": {name: why}, "control": {name: why}, "driver": {name: why}}): a DIFF among them is reported as RAND or
+    CTRL and counted apart ("driver", a suspected GPU or driver difference, counts as a control). Without the file, none."""
     path = os.path.join(HERE, 'known-differences.json')
     if not os.path.exists(path):
         return {}
     with open(path) as f:
         known = json.load(f)
-    return {name: kind for kind in ('random', 'control') for name in known.get(kind, {})}
+    return {name: 'control' if kind == 'driver' else kind
+            for kind in ('random', 'control', 'driver') for name in known.get(kind, {})}
 
 
 def skipped(name):
