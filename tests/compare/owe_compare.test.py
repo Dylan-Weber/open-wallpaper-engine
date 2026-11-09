@@ -26,7 +26,8 @@ class Inputs(unittest.TestCase):
                   'bands': {16: {'left': [0.5] * 16, 'right': [0.25] * 16}}}
         with tempfile.TemporaryDirectory() as folder:
             arguments, env, notes = owe_compare.input_arguments(inputs, 351, EVERY_FLAG, folder)
-            self.assertEqual(arguments[arguments.index('--mouse-position') + 1], '1.1900,1.1600')
+            # one argument: a pointer outside the window is negative, which would read as an option
+            self.assertIn('--mouse-position=1.1900,1.1600', arguments)
             # the scripts' clock as the scene starts: the date the reference's scripts saw, 351 frames earlier
             self.assertEqual(arguments[arguments.index('--script-clock') + 1], '%d' % (1793226531600 - 11700))
             # 420 minutes behind UTC; POSIX counts the hours the other way round
@@ -51,7 +52,7 @@ class Inputs(unittest.TestCase):
         inputs = {'pointer': (0.25, 0.75), 'scripts': 'started', 'date': 5000, 'timezone': 0,
                   'bands': {64: {'left': [0.0] * 64, 'right': [0.0] * 64}}}
         arguments, env, notes = owe_compare.input_arguments(inputs, 30, '--mouse-position', tempfile.gettempdir())
-        self.assertEqual(arguments, ['--mouse-position', '0.2500,0.7500'])
+        self.assertEqual(arguments, ['--mouse-position=0.2500,0.7500'])
         self.assertEqual(len(notes), 2)   # no spectrum, no script clock
 
     def test_a_press_the_reference_saw_is_noted(self):

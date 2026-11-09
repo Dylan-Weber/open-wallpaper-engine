@@ -280,18 +280,39 @@ void LoadEmitter(ParticleSubSystem& system, const wpscene::Particle& particle,
     }
 }
 
-struct LayerImagePixelSet {
+Vec<LayerImagePoint> LayerImageLattice(const unsigned char* data, int width, int height,
+                                       int channels, bool bgra, float layer_alpha) {
+    constexpr int        block = 4;
     Vec<LayerImagePoint> points;
-    float                jitter { 0.5f };
-};
+    for (int top {}; top + block <= height; top += block) {
+        for (int left {}; left + block <= width; left += block) {
+            float sum[4] {};
+            for (int y = top; y < top + block; ++y) {
+                for (int x = left; x < left + block; ++x) {
+                    const auto* pixel =
+                        data + (static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
+                                static_cast<std::size_t>(x)) *
+                                   static_cast<std::size_t>(channels);
+                    for (int c {}; c < 3; ++c) sum[c] += static_cast<float>(pixel[c]);
+                    sum[3] += channels == 4 ? static_cast<float>(pixel[3]) : 255.0f;
+                }
+            }
+            const float scale = 1.0f / (255.0f * static_cast<float>(block * block));
+            if (sum[3] * scale * layer_alpha < 0.5f) continue;
+            points.push(LayerImagePoint {
+                .x     = static_cast<float>(left + block / 2) - static_cast<float>(width) * 0.5f,
+                .y     = static_cast<float>(height) * 0.5f - static_cast<float>(top + block / 2),
+                .color = Eigen::Vector3f(sum[bgra ? 2 : 0], sum[1], sum[bgra ? 0 : 2]) * scale,
+            });
+        }
+    }
+    return points;
+}
 
-// The pixels of a layer's texture that are opaque enough (the layer's opacity times the pixel's,
-// half or more; particles-layerimage-alpha: the halo's disc matches at 0.5), as points from the
-// image's centre in pixels, for the ones stored as 8-bit colour with or without alpha; None for a
-// format not read (the layer then emits from its texture's rectangle). A large image is sampled
-// every few pixels.
-Option<LayerImagePixelSet> LayerImagePixels(const TexImageParser& textures, ref<str> name,
-                                            float layer_alpha) {
+// The lattice of a layer's texture (LayerImageLattice), for one stored as 8-bit colour with or
+// without alpha; None for a format not read (the layer then emits from its texture's rectangle).
+Option<Vec<LayerImagePoint>> LayerImagePixels(const TexImageParser& textures, ref<str> name,
+                                              float layer_alpha) {
     auto parsed = textures.Parse(name);
     if (parsed.is_err()) return None();
     const auto image = rstd::move(parsed).unwrap_unchecked();
@@ -306,34 +327,12 @@ Option<LayerImagePixelSet> LayerImagePixels(const TexImageParser& textures, ref<
         return None();
     const auto& base = image->content->slots[usize()].mipmaps[usize()];
     if (! base.data || base.width <= 0 || base.height <= 0) return None();
-    const bool   bgra  = image->header.format == TextureFormat::BGRA8;
-    const double total = static_cast<double>(base.width) * static_cast<double>(base.height);
-    const int stride   = rstd::cmp::max(1, static_cast<int>(std::ceil(std::sqrt(total / 65536.0))));
-    LayerImagePixelSet set;
-    set.jitter       = 0.5f * static_cast<float>(stride);
-    const auto* data = base.data.get();
-    for (int row = 0; row < base.height; row += stride) {
-        for (int column = 0; column < base.width; column += stride) {
-            const auto* pixel =
-                data + (static_cast<std::size_t>(row) * static_cast<std::size_t>(base.width) +
-                        static_cast<std::size_t>(column)) *
-                           static_cast<std::size_t>(channels);
-            const float alpha = channels == 4 ? static_cast<float>(pixel[3]) / 255.0f : 1.0f;
-            if (alpha * layer_alpha < 0.5f) continue;
-            const float first = static_cast<float>(pixel[0]) / 255.0f;
-            const float third = static_cast<float>(pixel[2]) / 255.0f;
-            set.points.push(LayerImagePoint {
-                .x     = static_cast<float>(column) + 0.5f * static_cast<float>(stride) -
-                         static_cast<float>(base.width) * 0.5f,
-                .y     = static_cast<float>(base.height) * 0.5f - static_cast<float>(row) -
-                         0.5f * static_cast<float>(stride),
-                .color = Eigen::Vector3f(bgra ? third : first,
-                                         static_cast<float>(pixel[1]) / 255.0f,
-                                         bgra ? first : third),
-            });
-        }
-    }
-    return Some(rstd::move(set));
+    return Some(LayerImageLattice(reinterpret_cast<const unsigned char*>(base.data.get()),
+                                  base.width,
+                                  base.height,
+                                  channels,
+                                  image->header.format == TextureFormat::BGRA8,
+                                  layer_alpha));
 }
 
 // The layer a layerimage emitter emits from, by the object id of the particle object's emitterimage
@@ -350,7 +349,7 @@ Option<Arc<LayerImageSource>> BuildLayerImageSource(SceneParseContext& context, 
     owe::GetJsonValue(json, "size"_str, size, false);
     owe::GetJsonValue(json, "color"_str, color, false);
     owe::GetJsonValue(json, "alpha"_str, alpha, false);
-    Option<LayerImagePixelSet> texture_pixels;
+    Option<Vec<LayerImagePoint>> texture_pixels;
     if (! context.layer_resources->solid_layer_ids.contains(id)) {
         TexImageParser textures(context.vfs);
         String         model, material, texture;
@@ -394,9 +393,7 @@ Option<Arc<LayerImageSource>> BuildLayerImageSource(SceneParseContext& context, 
         .alpha       = alpha,
     };
     if (texture_pixels.is_some()) {
-        auto& pixels  = *texture_pixels;
-        source.points = rstd::move(pixels.points);
-        source.jitter = pixels.jitter;
+        source.points = rstd::move(*texture_pixels);
         if (source.points.is_empty()) source.alpha = 0.0f; // nothing in the image to emit from
     }
     return Some(Arc<LayerImageSource>::make(rstd::move(source)));
