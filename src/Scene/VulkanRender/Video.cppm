@@ -31,6 +31,15 @@ namespace tex = vrento::texture;
 export namespace owe::video
 {
 
+// The YUV matrix Wallpaper Engine plays a video with: BT.601 up to 576 lines, BT.709 above, whatever the stream's
+// matrix tag says (an HD clip tagged BT.601 and an SD clip tagged BT.709 both follow their height). The range tag is
+// kept by the caller. BT.2020 keeps its tag (not measured).
+inline auto WallpaperEngineColorSpace(rstd::uint32_t height, wavsen::video::ColorSpace tagged)
+    -> wavsen::video::ColorSpace {
+    if (tagged == wavsen::video::ColorSpace::Bt2020) return tagged;
+    return height <= 576 ? wavsen::video::ColorSpace::Bt601 : wavsen::video::ColorSpace::Bt709;
+}
+
 struct MediaDecodeOptions {
     String hwdec { "auto"_Str };
     String render_node;
@@ -862,7 +871,8 @@ void MediaRegistry::State::Runtime::Pump(TextureContext& context, double dt_seco
         break;
     }
     const auto color_matrix = wavsen::video::make_color_matrix(
-        static_cast<wavsen::video::ColorSpace>(cs_id.to_primitive()),
+        WallpaperEngineColorSpace(s.height,
+                                  static_cast<wavsen::video::ColorSpace>(cs_id.to_primitive())),
         static_cast<wavsen::video::ColorRange>(cr_id.to_primitive()));
 
     auto runtime_owner = self.upgrade();
