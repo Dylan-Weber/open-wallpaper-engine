@@ -187,11 +187,12 @@ SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
             .help("The frame --capture writes, counted from 0: it shows the scene at N / fps s"_str)
             .default_value("0"_str));
 
-    auto capture_realtime = command.add_arg(
-        Arg<bool>::flag("capture-realtime"_str)
-            .long_name("capture-realtime"_str)
-            .help("With --capture, wait 1 / fps between frames as a window would (by default a capture draws as fast as "
-                  "frames finish: its clock is frame-exact either way)"_str));
+    auto capture_realtime =
+        command.add_arg(Arg<bool>::flag("capture-realtime"_str)
+                            .long_name("capture-realtime"_str)
+                            .help("With --capture, wait 1 / fps between frames as a window would "
+                                  "(by default a capture draws as fast as "
+                                  "frames finish: its clock is frame-exact either way)"_str));
 
     auto parsed = owe::cli::ParseArgs(rstd::move(command), argc, argv);
     if (parsed.is_err()) rstd::process::exit(i32(parsed.unwrap_err().code));
