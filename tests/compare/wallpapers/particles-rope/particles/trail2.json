@@ -1,0 +1,73 @@
+{
+  "material": "materials/particle/halo.json",
+  "maxcount": 40,
+  "starttime": 0,
+  "flags": 0,
+  "controlpoint": [
+    {
+      "id": 0,
+      "flags": 0,
+      "offset": "0 0 0"
+    },
+    {
+      "id": 1,
+      "flags": 0,
+      "offset": "0 120 0"
+    }
+  ],
+  "emitter": [
+    {
+      "id": 1,
+      "name": "boxrandom",
+      "distancemin": "0 0 0",
+      "distancemax": "0 0 0",
+      "directions": "1 1 0",
+      "origin": "0 0 0",
+      "rate": 0,
+      "instantaneous": 5,
+      "speedmin": 0,
+      "speedmax": 0
+    }
+  ],
+  "initializer": [
+    {
+      "id": 2,
+      "name": "lifetimerandom",
+      "min": 100000,
+      "max": 100000
+    },
+    {
+      "id": 3,
+      "name": "sizerandom",
+      "min": 20,
+      "max": 20
+    },
+    {
+      "id": 4,
+      "name": "colorrandom",
+      "min": "255 200 80",
+      "max": "255 200 80"
+    },
+    {
+      "name": "mapsequencebetweencontrolpoints",
+      "controlpointstart": 0,
+      "controlpointend": 1,
+      "count": 5,
+      "id": 10
+    },
+    {
+      "name": "velocityrandom",
+      "min": "0 220 0",
+      "max": "0 220 0",
+      "id": 11
+    }
+  ],
+  "operator": [],
+  "renderer": [
+    {
+      "name": "ropetrail",
+      "length": 0.2,
+      "id": 90
+    }
+  ]
+}
