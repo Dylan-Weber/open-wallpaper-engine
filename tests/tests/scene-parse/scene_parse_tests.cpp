@@ -2488,7 +2488,7 @@ TEST(EffectFboJson, ReadsItsFixedSizeAndWrap) {
     EXPECT_EQ(tiles.uvs, "repeat"_str);
 
     owe::wpscene::EffectFbo plain;
-    auto                    other = owe::ParseJson(R"({"name":"_rt_x","format":"rgba8","scale":2})"_str);
+    auto other = owe::ParseJson(R"({"name":"_rt_x","format":"rgba8","scale":2})"_str);
     ASSERT_TRUE(other.is_ok());
     ASSERT_TRUE(plain.FromJson(*other));
     EXPECT_EQ(plain.width, rstd::u32());

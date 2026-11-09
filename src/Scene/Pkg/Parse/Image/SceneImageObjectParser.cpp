@@ -741,9 +741,11 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
                     // how the target's texture coordinates wrap where an effect samples it past
                     // [0, 1]: Wallpaper Engine repeats them unless the target says "uvs": "clamp"
                     // (effect-fbo-wrap: targets with no "uvs" tile as ones with "repeat" do)
-                    const auto wrap = wpfbo.uvs == "clamp"_str ? TextureWrap::CLAMP_TO_EDGE
-                                                               : TextureWrap::REPEAT;
-                    const TextureSample sample { wrap, wrap, TextureFilter::LINEAR, TextureFilter::LINEAR };
+                    const auto wrap =
+                        wpfbo.uvs == "clamp"_str ? TextureWrap::CLAMP_TO_EDGE : TextureWrap::REPEAT;
+                    const TextureSample sample {
+                        wrap, wrap, TextureFilter::LINEAR, TextureFilter::LINEAR
+                    };
                     if (wpfbo.width > u32() && wpfbo.height > u32()) {
                         // a target of a size of its own
                         (void)scene.RegisterNodeRenderTarget(
