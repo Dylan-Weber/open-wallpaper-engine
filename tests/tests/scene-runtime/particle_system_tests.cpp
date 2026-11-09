@@ -1003,6 +1003,21 @@ TEST(ParticleSubSystem, ColorRandomMultipliesAnImageEmittersColours) {
     }
 }
 
+// A texture thinner than a block (Wallpaper Engine's gradient_rainbow is 64x2) still emits: its rows make one block
+// row, one point every 4 texels across, in the average colour (particles-layerimage-alpha: a rainbow bar).
+TEST(LayerImageLattice, ATextureThinnerThanABlockIsOneBlockAcross) {
+    std::vector<unsigned char> thin;
+    for (int y {}; y < 2; ++y)
+        for (int x {}; x < 64; ++x)
+            for (int v : { x < 32 ? 255 : 0, 0, x < 32 ? 0 : 255, 255 }) thin.push_back(static_cast<unsigned char>(v));
+    auto points = owe::LayerImageLattice(thin.data(), 64, 2, 4, false, 1.0f);
+    ASSERT_EQ(points.len(), usize(16));
+    EXPECT_EQ(points[usize()].x, -30.0f);
+    EXPECT_EQ(points[usize()].y, 0.0f);
+    EXPECT_NEAR(points[usize()].color.x(), 1.0f, 1e-4f);
+    EXPECT_NEAR(points[usize(15)].color.z(), 1.0f, 1e-4f);
+}
+
 // Wallpaper Engine reads a layer's image in 4x4 texel blocks (particles-layerimage-pitch, -block):
 // one point at the centre of each block (texel 4i+2 from the top left, no jitter) when the block's
 // average opacity times the layer's is half or more, in the block's average colour; the lattice
@@ -1333,12 +1348,11 @@ TEST(ParticleSubSystem, CapVelocityLimitsTheSpeed) {
     EXPECT_NEAR(positions[usize()].x(), 200.0f / 60.0f + 100.0f * 119.0f / 60.0f, 0.5f);
 }
 
-// reducemovementnearcontrolpoint slows particles near a control point like a drag: its full
-// reductioninner within distanceinner, falling to reductionouter at distanceouter by the squared
-// distance (particles-reduce-near: streams at 200 units/s through a control point, inner 50, outer
-// 150, reduction 1, 3 and 10; owe ignored the operator). A particle that stays within distanceinner
-// at reduction 10 goes 200/60 (1 - r^60) / (1 - r) = 23.3 units in a second of 60 frames,
-// r = 1 / (1 + 10/60).
+// reducemovementnearcontrolpoint slows particles near a control point like a drag, as Wallpaper Engine runs it
+// (FUN_14023fbc0 case 13): the reduction goes linearly with the distance from reductioninner at distanceinner to
+// reductionouter at distanceouter (and stays at the end values beyond them), and a frame takes
+// min(reduction dt, 1) of the speed. A particle that stays within distanceinner at reduction 10 goes
+// 200/60 (1 - r^60) / (1 - r) = 20.0 units in a second of 60 frames, r = 1 - 10/60.
 TEST(ParticleSubSystem, ReduceMovementNearControlPointSlowsLikeADrag) {
     owe::Scene             scene;
     auto                   mesh = Arc<owe::SceneMesh>::make();
@@ -1390,7 +1404,47 @@ TEST(ParticleSubSystem, ReduceMovementNearControlPointSlowsLikeADrag) {
 
     auto positions = subsystem.System().Instance(usize()).Binding().Read().Positions();
     ASSERT_EQ(positions.len(), usize(1));
-    EXPECT_NEAR(positions[usize()].x(), 23.33f, 0.5f);
+    EXPECT_NEAR(positions[usize()].x(), 20.0f, 0.3f);
+}
+
+// one frame of reducemovementnearcontrolpoint on a particle crossing at 300 units/s, `distance` from the point
+static float ReducedSpeed(float distance, ref<str> reduce) {
+    owe::Scene             scene;
+    auto                   mesh = Arc<owe::SceneMesh>::make();
+    owe::ParticleSubSystem subsystem(scene,
+                                     mesh.clone(),
+                                     u32(1),
+                                     f64(1.0),
+                                     u32(1),
+                                     f64(1.0),
+                                     owe::ParticleSubSystem::SpawnType::STATIC,
+                                     owe::ParticleAnimationSpec {});
+    auto modifiers = owe::ParticleInstanceModifiers(Arc<owe::wpscene::ParticleInstanceoverride>::make(),
+                                                    owe::wpscene::Particle::EFlags { 0 },
+                                                    false);
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"lifetimerandom","min":100,"max":100})"_str).unwrap(), u32(1)));
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"velocityrandom","min":"0 300 0","max":"0 300 0"})"_str).unwrap(), u32(2)));
+    subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(owe::BoxEmitterProgram(
+        subsystem.SpawnPipeline(),
+        owe::ParticleBoxEmitterArgs { .origin = { distance, 0.0f, 0.0f }, .instantaneous = u32(1) },
+        usize())));
+    subsystem.AddOperator(owe::ParticleParser::GenOperator(owe::ParseJson(reduce).unwrap(), modifiers.Clone(),
+                                                           subsystem, usize()));
+    subsystem.Finalize();
+    subsystem.Tick(f64(1.0 / 30.0), false);
+    auto& storage = subsystem.System().Instance(usize()).Storage();
+    particle::ParticleSlotReader value(storage, particle::ParticleSlot {});
+    return value.Read(subsystem.Attributes().velocity).y();
+}
+
+TEST(ParticleSubSystem, ReduceMovementNearControlPointGoesLinearlyWithTheDistance) {
+    auto reduce =
+        R"({"name":"reducemovementnearcontrolpoint","controlpoint":0,"distanceinner":50,"distanceouter":150,"reductioninner":10,"reductionouter":2})"_str;
+    EXPECT_NEAR(ReducedSpeed(40.0f, reduce), 300.0f * (1.0f - 10.0f / 30.0f), 0.05f);  // within: the inner value
+    EXPECT_NEAR(ReducedSpeed(100.0f, reduce), 300.0f * (1.0f - 6.0f / 30.0f), 0.05f);  // half way: half way
+    EXPECT_NEAR(ReducedSpeed(200.0f, reduce), 300.0f * (1.0f - 2.0f / 30.0f), 0.05f);  // beyond: the outer value
 }
 
 // remapvalue maps the distance to a control point, clamped to its input range, linearly onto its
@@ -1938,6 +1992,24 @@ TEST(ParticleSubSystem, CollisionPlaneSlidesDeletesAndTakesAnyNormal) {
     EXPECT_NEAR(wall.position.x(), -100.0f, 1e-4f);
     EXPECT_NEAR(wall.velocity.x(), 30.0f, 1e-3f);
     EXPECT_NEAR(wall.velocity.y(), 7.0f, 1e-3f);
+}
+
+// collisionbehavior "stop" (particles-collisionbounds-single): Wallpaper Engine's fourth behaviour puts the particle on
+// the surface and takes all its speed, the sideways part too (a particle that hits the right edge at 40, 40 stays where
+// it hit).
+TEST(ParticleSubSystem, CollisionStopHoldsAParticleWhereItHits) {
+    auto stopped = CollideWithPlane(
+        R"({"name":"collisionplane","distance":-100,"bouncefactor":0.5,"collisionbehavior":"stop"})"_str,
+        { 0, -100, 0 },
+        R"({"name":"velocityrandom","min":"20 -60 0","max":"20 -60 0"})"_str);
+    ASSERT_TRUE(stopped.alive);
+    EXPECT_NEAR(stopped.position.y(), -100.0f, 1e-4f);
+    EXPECT_NEAR(stopped.velocity.norm(), 0.0f, 1e-4f);
+    auto free = CollideWithPlane(
+        R"({"name":"collisionplane","distance":-100,"collisionbehavior":"stop"})"_str,
+        { 0, -50, 0 },
+        R"({"name":"velocityrandom","min":"20 -60 0","max":"20 -60 0"})"_str);
+    EXPECT_NEAR(free.velocity.x(), 20.0f, 1e-3f); // not touching: left alone
 }
 
 // collisionbounds (particles-collisionbounds-rest): the scene's edges, 0..1920 across and 0..1080

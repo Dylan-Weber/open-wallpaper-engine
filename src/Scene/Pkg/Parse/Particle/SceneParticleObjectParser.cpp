@@ -289,13 +289,16 @@ void LoadEmitter(ParticleSubSystem& system, const wpscene::Particle& particle,
 
 Vec<LayerImagePoint> LayerImageLattice(const unsigned char* data, int width, int height,
                                        int channels, bool bgra, float layer_alpha) {
-    constexpr int        block = 4;
+    constexpr int block = 4;
+    // a texture thinner than a block is one block across that way (Wallpaper Engine's 64x2 gradient_rainbow emits a row)
+    const int            block_x = width < block ? width : block;
+    const int            block_y = height < block ? height : block;
     Vec<LayerImagePoint> points;
-    for (int top {}; top + block <= height; top += block) {
-        for (int left {}; left + block <= width; left += block) {
+    for (int top {}; top + block_y <= height; top += block_y) {
+        for (int left {}; left + block_x <= width; left += block_x) {
             float sum[4] {};
-            for (int y = top; y < top + block; ++y) {
-                for (int x = left; x < left + block; ++x) {
+            for (int y = top; y < top + block_y; ++y) {
+                for (int x = left; x < left + block_x; ++x) {
                     const auto* pixel =
                         data + (static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
                                 static_cast<std::size_t>(x)) *
@@ -304,11 +307,11 @@ Vec<LayerImagePoint> LayerImageLattice(const unsigned char* data, int width, int
                     sum[3] += channels == 4 ? static_cast<float>(pixel[3]) : 255.0f;
                 }
             }
-            const float scale = 1.0f / (255.0f * static_cast<float>(block * block));
+            const float scale = 1.0f / (255.0f * static_cast<float>(block_x * block_y));
             if (sum[3] * scale * layer_alpha < 0.5f) continue;
             points.push(LayerImagePoint {
-                .x     = static_cast<float>(left + block / 2) - static_cast<float>(width) * 0.5f,
-                .y     = static_cast<float>(height) * 0.5f - static_cast<float>(top + block / 2),
+                .x = static_cast<float>(left) + static_cast<float>(block_x) * 0.5f - static_cast<float>(width) * 0.5f,
+                .y = static_cast<float>(height) * 0.5f - static_cast<float>(top) - static_cast<float>(block_y) * 0.5f,
                 .color = Eigen::Vector3f(sum[bgra ? 2 : 0], sum[1], sum[bgra ? 0 : 2]) * scale,
             });
         }
@@ -757,7 +760,7 @@ void BuildParticleObjectNode(ParticleObjectParseServices& services,
     } else {
         mesh.MaterialSlots().last_mut().unwrap().get_mut()->RegisterAnimations(*spNode);
     }
-    spNode->AddMesh(spMesh.clone());
+    if (particle_obj.drawn) spNode->AddMesh(spMesh.clone());
     SetParticleUniformConfig(output, spNode, rstd::move(svData));
     if (trail_uniform_state.is_some()) {
         output.trail_uniform_configs.push(ParticleTrailUniformConfigDraft {

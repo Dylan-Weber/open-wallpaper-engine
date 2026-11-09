@@ -267,6 +267,7 @@ bool Particle::FromJson(const owe::Json& json, fs::VFS& vfs) {
     if (auto values = json.get("renderer"_str); values.is_some()) {
         auto array = (*values)->as_array();
         if (array.is_some()) {
+            if ((*array)->is_empty()) drawn = false;
             for (const auto& el : **array) {
                 ParticleRender pr;
                 pr.FromJson(el);
@@ -274,7 +275,7 @@ bool Particle::FromJson(const owe::Json& json, fs::VFS& vfs) {
             }
         }
     }
-    // add sprite if no renderers
+    // add sprite if no renderers (one that draws nothing still needs a renderer to set up)
     if (renderers.is_empty()) {
         ParticleRender pr;
         pr.name = "sprite"_Str;
@@ -348,6 +349,7 @@ Particle Particle::Clone() const {
     out.maxcount           = maxcount;
     out.starttime          = starttime;
     out.flags              = flags;
+    out.drawn              = drawn;
     return out;
 }
 
