@@ -1,0 +1,6 @@
+{
+  "material": "materials/video.json",
+  "width": 1024,
+  "height": 600,
+  "nopadding": true
+}

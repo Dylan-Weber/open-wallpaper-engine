@@ -3,6 +3,7 @@
 import rstd;
 import rstd.test;
 import vrento;
+import wavsen.video;
 import wescene.video;
 
 using namespace rstd::prelude;
@@ -220,6 +221,18 @@ TEST(MediaRegistry, OpenFailureOwnsDecoderDiagnostic) {
     ASSERT_TRUE(saved.is_some());
     EXPECT_FALSE((*saved)->cause.as_Decoder().message.is_empty());
     EXPECT_EQ(session.validation_errors(), 0u);
+}
+
+// Wallpaper Engine picks a video's YUV matrix by its height alone (probes video-* in tests/compare:
+// 640x480 tagged BT.709 and 1280x576 play as BT.601, 1024x600 and 1920x1080 tagged BT.601 play as
+// BT.709); the range tag is kept.
+TEST(VideoColorMatrix, SdHeightsUseBt601WhateverTheTag) {
+    using wavsen::video::ColorSpace;
+    EXPECT_EQ(media::WallpaperEngineColorSpace(480, ColorSpace::Bt709), ColorSpace::Bt601);
+    EXPECT_EQ(media::WallpaperEngineColorSpace(576, ColorSpace::Bt709), ColorSpace::Bt601);
+    EXPECT_EQ(media::WallpaperEngineColorSpace(600, ColorSpace::Bt601), ColorSpace::Bt709);
+    EXPECT_EQ(media::WallpaperEngineColorSpace(1080, ColorSpace::Bt601), ColorSpace::Bt709);
+    EXPECT_EQ(media::WallpaperEngineColorSpace(2160, ColorSpace::Bt709), ColorSpace::Bt709);
 }
 
 } // namespace owe_test::video
