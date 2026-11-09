@@ -1,0 +1,5 @@
+{
+  "autosize": true,
+  "material": "materials/picture.json",
+  "puppet": "models/picture_puppet.mdl"
+}
