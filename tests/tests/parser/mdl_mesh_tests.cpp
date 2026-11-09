@@ -1358,9 +1358,9 @@ TEST(MdlMesh, BlendShapesMultiplyTheirVertexAlpha) {
     owe::Mdl::Mesh mesh;
     for (float x : { 0.0f, 1.0f, 2.0f }) mesh.positions.push(array<float, 3> { x, 0.0f, 0.0f });
     for (float index : { 0.0f, 1.0f, 2.0f }) mesh.morph_indices.push(float(index));
-    mesh.flag_a             = 0x1000;
-    mesh.morph_scale        = 10.0f;
-    mesh.morph_vertex_count = 2;
+    mesh.flag_a                      = 0x1000;
+    mesh.morph_scale                 = 10.0f;
+    mesh.morph_vertex_count          = 2;
     const rstd::int16_t alphas[2][2] = { { 0, 16384 }, { 32767, 0 } };
     for (const auto& shape_alpha : alphas) {
         auto& shape = mesh.morph_shapes.emplace_back();
@@ -1376,7 +1376,7 @@ TEST(MdlMesh, BlendShapesMultiplyTheirVertexAlpha) {
         owe::MdlParser::MorphAlpha(**morph, slice<float>::from_raw_parts(weights, usize(2)));
     ASSERT_EQ(alpha.len(), usize(3));
     EXPECT_FLOAT_EQ(alpha[usize(0)], 1.0f);
-    EXPECT_FLOAT_EQ(alpha[usize(1)], 0.0f);                           // 0 x (1 x 0.5 + 0.5)
+    EXPECT_FLOAT_EQ(alpha[usize(1)], 0.0f);                          // 0 x (1 x 0.5 + 0.5)
     EXPECT_NEAR(alpha[usize(2)], 16384.0f / 32767.0f * 0.5f, 1e-6f); // 0.5 x (0 x 0.5 + 0.5)
     const float none[] = { 0.0f, 0.0f };
     for (float value :
@@ -1418,8 +1418,7 @@ TEST(MdlMesh, BlendShapeMeshesCarryAVertexColour) {
     {
         owe::SceneMesh::Submesh plain;
         owe::MdlParser::GenMeshFromMdl(plain, mesh);
-        EXPECT_TRUE(
-            plain.vertex_arrays[usize()].AttributeOffset(owe::VAttr::Color.name).is_none());
+        EXPECT_TRUE(plain.vertex_arrays[usize()].AttributeOffset(owe::VAttr::Color.name).is_none());
         owe::wpscene::Material material;
         owe::MdlParser::AddMorphMatInfo(material, mesh);
         EXPECT_TRUE(material.combos.get("VERTEXCOLOR"_str).is_none());
