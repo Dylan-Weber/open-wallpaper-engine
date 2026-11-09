@@ -679,12 +679,12 @@ static void EmitSceneNode(SceneNode* node, ref<str> inherited_output, ref<str> i
     const auto link_source = scene.ResolveLayerLinkSource(*node);
     const i32 layer_id = link_source.is_some() ? link_source->value
                                                : (wallpaper.is_some() ? wallpaper->value : i32(-1));
-    const bool elidable     = scene.IsLayerElidable(WallpaperLayerId { .value = layer_id });
-    const bool linked       = link_source.is_some() && linked_ids.contains(link_source->value);
+    const bool elidable = scene.IsLayerElidable(WallpaperLayerId { .value = layer_id });
+    const bool linked   = link_source.is_some() && linked_ids.contains(link_source->value);
     // a layer the parser hid for good (visibility elidable) hides its subtree like an invisible one
-    const bool self_hidden  = ! node->Visible() ||
-                             (layer_id >= i32() &&
-                              scene.IsLayerVisibilityElidable(WallpaperLayerId { .value = layer_id }));
+    const bool self_hidden =
+        ! node->Visible() || (layer_id >= i32() && scene.IsLayerVisibilityElidable(
+                                                       WallpaperLayerId { .value = layer_id }));
     const bool hidden       = hidden_ancestor || (self_hidden && ! linked);
     const bool child_hidden = linked ? false : hidden;
     bool       emit         = ! hidden || linked;
