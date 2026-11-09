@@ -2835,8 +2835,9 @@ TEST(AnimationParsing, VectorAnimationsAddToTheValueAndAlphaReplacesIt) {
     EXPECT_FLOAT_EQ(node("alpha relative"_str)->EffectiveAlpha(), 0.25f);
 }
 
-// A light's animations follow the curve's `relative` (Wallpaper Engine's pictures of light-paused-animation: a colour
-// animation holding white keeps a white light white, where adding it to the light's colour doubles it).
+// A light's animations follow the curve's `relative` (Wallpaper Engine's pictures of
+// light-paused-animation: a colour animation holding white keeps a white light white, where adding
+// it to the light's colour doubles it).
 TEST(AnimationParsing, ALightsAnimationsFollowRelative) {
     auto document = owe::wpscene::ParseSceneDocumentJson(
         R"JSON({
