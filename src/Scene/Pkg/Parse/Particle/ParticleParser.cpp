@@ -1816,7 +1816,10 @@ struct CollisionPlaneOperator {
     }
 };
 
-// collisionsphere: particles stay out of the sphere (particles-collisionshapes).
+// collisionsphere: particles stay out of the sphere (particles-collisionshapes). Wallpaper Engine's
+// kernel (0x140252de0) works in float with the approximate reciprocal square root: r =
+// rsqrtps(|d|^2) for d = p - origin, inside when |d|^2 < radius^2, normal d r (not quite unit), and
+// the particle moved out along it by r |d|^2 - radius (ft-collisionshapes under replay).
 struct CollisionSphereOperator {
     CollisionState  state;
     Eigen::Vector3d origin { 0.0, -150.0, 0.0 };
@@ -1831,15 +1834,26 @@ struct CollisionSphereOperator {
                           double,
                           Eigen::Vector3d& n,
                           Eigen::Vector3d& on) {
-                          Eigen::Vector3d offset   = position - origin;
-                          const double    distance = offset.norm();
-                          if (distance >= radius) return false;
-                          if (distance > 1e-9)
-                              n = offset / distance;
-                          else
-                              n = v.norm() > 1e-9 ? Eigen::Vector3d(v.normalized())
-                                                  : Eigen::Vector3d(1.0, 0.0, 0.0);
-                          on = origin + n * radius;
+                          const Eigen::Vector3f offset = (position - origin).cast<float>();
+                          const float           d2     = offset.squaredNorm();
+                          const float           r2     = static_cast<float>(radius * radius);
+                          if (! (d2 < r2)) return false;
+                          if (d2 > 0.0f) {
+#if defined(__SSE__)
+                              const float r = _mm_cvtss_f32(_mm_rsqrt_ss(_mm_set_ss(d2)));
+#else
+                              const float r = 1.0f / Eigen::numext::sqrt(d2);
+#endif
+                              const Eigen::Vector3f normal = offset * r;
+                              n                            = normal.cast<double>();
+                              on = (position.cast<float>() -
+                                    normal * (r * d2 - static_cast<float>(radius)))
+                                       .cast<double>();
+                          } else {
+                              n  = v.norm() > 1e-9 ? Eigen::Vector3d(v.normalized())
+                                                   : Eigen::Vector3d(1.0, 0.0, 0.0);
+                              on = origin + n * radius;
+                          }
                           return true;
                       });
     }
