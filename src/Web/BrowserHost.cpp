@@ -278,7 +278,7 @@ bool BrowserHost::OpenWallpaper(const WebManifest& manifest, ref<Path> workshop_
 }
 
 bool BrowserHost::OpenWallpaper(const WebManifest& manifest, ref<Path> workshop_dir, int width,
-                                int height, OpenOptions opts) {
+                                int height, const OpenOptions& opts) {
     if (! impl_->initialised) {
         eprintln("weweb: OpenWallpaper before Init");
         return false;
@@ -298,6 +298,7 @@ bool BrowserHost::OpenWallpaper(const WebManifest& manifest, ref<Path> workshop_
     impl_->client =
         new ClientHandler(manifest.user_props.clone(), impl_->osr, opts.initially_muted);
     impl_->client->SetAudioDemandCallback(impl_->audio_demand_cb.clone());
+    impl_->client->SetPropertyOverrides(opts.properties.clone());
     auto        entry = PathBuf::from(workshop_dir).join(manifest.entry_html.as_str());
     std::string url   = "file://" + CefPath(entry.as_path());
 
@@ -450,6 +451,10 @@ void BrowserHost::ApplyUserProperty(ref<str> key, const owe::Json& value) {
     if (! browser) return;
     auto frame = browser->GetMainFrame();
     if (! frame) return;
+    // Wallpaper Engine's own flip and colour options restyle the page, and the page is told too
+    auto own = rstd::json::Map::make();
+    own.insert(String::make(key), value.clone());
+    impl_->client->ApplyOwnProperties(frame, owe::Json::Object(rstd::move(own)));
     auto snippet = BuildPropertyPatchSnippet(key, value);
     frame->ExecuteJavaScript(
         to_string(snippet.as_str()), "weweb://internal/apply_user_property.js", 0);

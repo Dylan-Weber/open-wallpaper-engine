@@ -6,6 +6,7 @@ import rstd.cppstd;
 import owe.audio_response;
 import wescene.cli;
 import weweb;
+import wescene.json;
 import wavsen.audio;
 import viewer.common;
 import viewer.audio;
@@ -36,6 +37,7 @@ struct WebViewerArgs {
     i32    width;
     i32    height;
     i32    remote_debugging_port;
+    String properties;
 };
 
 template<typename T>
@@ -53,9 +55,9 @@ auto ParseWebViewerArgs(int argc, char** argv) -> Result<WebViewerArgs, owe::cli
             .help("path to a workshop/<id>/ directory containing project.json + index.html"_str)
             .required());
     auto width  = command.add_arg(Arg<i32>::value("width"_str, from_str_parser<i32>())
-                                      .long_name("width"_str)
-                                      .help("initial window width in pixels"_str)
-                                      .default_value("1280"_str));
+                                     .long_name("width"_str)
+                                     .help("initial window width in pixels"_str)
+                                     .default_value("1280"_str));
     auto height = command.add_arg(Arg<i32>::value("height"_str, from_str_parser<i32>())
                                       .long_name("height"_str)
                                       .help("initial window height in pixels"_str)
@@ -65,6 +67,13 @@ auto ParseWebViewerArgs(int argc, char** argv) -> Result<WebViewerArgs, owe::cli
                             .long_name("remote-debugging-port"_str)
                             .help("if non-zero, expose chrome devtools on this localhost port"_str)
                             .default_value("0"_str));
+    // user properties set as Wallpaper Engine's panel (applyProperties) sets them, after the
+    // page has project.json's, e.g. its own flip and colour options: {"wec_e": true, "wec_brs": 65}
+    auto properties = command.add_arg(
+        Arg<String>::value("properties"_str, string_parser())
+            .long_name("properties"_str)
+            .help("JSON object of user property values to apply once the page loads"_str)
+            .default_value("{}"_str));
     auto presenter =
         command.add_arg(Arg<String>::value("presenter"_str, string_parser())
                             .long_name("presenter"_str)
@@ -84,6 +93,7 @@ auto ParseWebViewerArgs(int argc, char** argv) -> Result<WebViewerArgs, owe::cli
         .width                 = Value(matches, width),
         .height                = Value(matches, height),
         .remote_debugging_port = Value(matches, remote_debugging_port),
+        .properties            = Value(matches, properties).clone(),
     });
 }
 
@@ -214,7 +224,13 @@ int main(int argc, char** argv) {
 
     auto parsed_args = ParseWebViewerArgs(argc, argv);
     if (parsed_args.is_err()) return parsed_args.unwrap_err().code;
-    auto args = rstd::move(parsed_args).unwrap();
+    auto args              = rstd::move(parsed_args).unwrap();
+    auto parsed_properties = owe::ParseJson(args.properties.as_str());
+    if (parsed_properties.is_err() || ! parsed_properties->is_object()) {
+        eprintln("webviewer: --properties must be a JSON object");
+        return 2;
+    }
+    auto properties = rstd::move(parsed_properties).unwrap();
 
     auto workshop_dir = PathBuf::from(args.workshop.as_str());
     auto metadata     = rstd::fs::metadata(workshop_dir.as_path());
@@ -274,7 +290,7 @@ int main(int argc, char** argv) {
 
     int         w_width  = args.width.to_primitive();
     int         w_height = args.height.to_primitive();
-    GLFWwindow* window = glfwCreateWindow(w_width,
+    GLFWwindow* window   = glfwCreateWindow(w_width,
                                           w_height,
                                           rstd::cppstd::to_string(manifest.title.as_str()).c_str(),
                                           nullptr,
@@ -346,6 +362,7 @@ int main(int argc, char** argv) {
         initial_metrics.logical_height = w_height;
     }
     weweb::BrowserHost::OpenOptions open_opts;
+    open_opts.properties          = rstd::move(properties);
     open_opts.device_scale_factor = initial_metrics.scale;
     // CEF currently supports windowless shared textures only on Windows.
     // macOS must use OnPaint; CEF still performs page compositing on the GPU.
@@ -358,10 +375,13 @@ int main(int argc, char** argv) {
 #else
     // Preserve the Linux contract: CEF receives the physical presenter extent
     // and uses its existing unit-scale screen information.
+    weweb::BrowserHost::OpenOptions open_opts;
+    open_opts.properties = rstd::move(properties);
     if (! host.OpenWallpaper(manifest,
                              workshop_dir,
                              static_cast<int>(presenter->Width()),
-                             static_cast<int>(presenter->Height()))) {
+                             static_cast<int>(presenter->Height()),
+                             open_opts)) {
 #endif
         host.Shutdown();
         presenter->Shutdown();

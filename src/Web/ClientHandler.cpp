@@ -8,6 +8,7 @@ import :cef_internal;
 
 using namespace rstd::prelude;
 using rstd::cppstd::as_str;
+using rstd::cppstd::to_string;
 using rstd::io::eprintln;
 using rstd::sync::atomic::Ordering;
 
@@ -147,7 +148,33 @@ void ClientHandler::OnLoadEnd(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>
     if (! property_injected_.compare_exchange_strong(
             expected, true, Ordering::SeqCst, Ordering::SeqCst))
         return;
-    InjectUserProperties(browser, user_props_);
+    // as Wallpaper Engine hands them: project.json's with its own flip and colour options added
+    InjectUserProperties(browser, WithWallpaperEngineProperties(user_props_));
+    if (property_overrides_.is_object() && ! property_overrides_.as_object().unwrap()->is_empty()) {
+        auto handed = AsPropertyValues(property_overrides_);
+        ApplyOwnProperties(frame, handed);
+        frame->ExecuteJavaScript(to_string(BuildPropertiesPatchSnippet(handed).as_str()),
+                                 "weweb://internal/apply_user_properties.js",
+                                 0);
+    }
+}
+
+void ClientHandler::SetPropertyOverrides(owe::Json properties) {
+    property_overrides_ = rstd::move(properties);
+}
+
+bool ClientHandler::ApplyOwnProperties(CefRefPtr<CefFrame> frame, const owe::Json& properties) {
+    auto object = properties.as_object();
+    if (object.is_none()) return false;
+    bool any = false;
+    (*object)->iter().for_each([&](auto entry) {
+        auto [key, property] = entry;
+        any |= own_.Apply(key->as_str(), *property);
+    });
+    if (any && frame)
+        frame->ExecuteJavaScript(
+            to_string(own_.StyleSnippet().as_str()), "weweb://internal/own_properties.js", 0);
+    return any;
 }
 
 bool ClientHandler::OnConsoleMessage(CefRefPtr<CefBrowser> /*browser*/, cef_log_severity_t level,

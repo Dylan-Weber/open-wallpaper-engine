@@ -35,6 +35,9 @@ public:
         bool  initially_muted { false };
         int   frame_rate { 60 };
         float device_scale_factor { 1.0f };
+        // user properties the page gets after project.json's (key -> {"value": ...}), as
+        // Wallpaper Engine's applyProperties sets them, e.g. its own flip and colour options
+        owe::Json properties { owe::Json::Null() };
     };
 
     BrowserHost();
@@ -67,7 +70,7 @@ public:
 
     bool OpenWallpaper(const WebManifest& manifest, ref<Path> workshop_dir, int width, int height);
     bool OpenWallpaper(const WebManifest& manifest, ref<Path> workshop_dir, int width, int height,
-                       OpenOptions opts);
+                       const OpenOptions& opts);
 
     void OnResize(int width, int height);
     void OnResize(int width, int height, float device_scale_factor);
