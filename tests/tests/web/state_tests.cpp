@@ -176,6 +176,27 @@ TEST(WebState, WallpaperEnginesOwnPropertiesWithoutTheWallpapers) {
     EXPECT_TRUE(result.pointer("/wec_e/value"_str).is_some());
 }
 
+// A project.json can't set Wallpaper Engine's own properties: the page gets its own definitions
+// (web-color-adjust-brs-100 with a project.json wec_brs of 100: the page saw 50), and a user's
+// saved values for them are applied after load (OwnPropertiesOf)
+TEST(WebState, ProjectCannotSetWallpaperEnginesOwnProperties) {
+    auto props =
+        owe::ParseJson(
+            R"({"wec_brs":{"type":"slider","value":100,"min":0,"max":100,"order":0},"mine":{"type":"bool","value":true,"order":1}})"_str)
+            .unwrap();
+    auto result = WithWallpaperEngineProperties(props);
+    auto brs    = result.pointer("/wec_brs/value"_str);
+    ASSERT_TRUE(brs.is_some());
+    EXPECT_EQ(owe::DumpString(**brs).as_str(), "50"_str);
+    EXPECT_TRUE(result.pointer("/wec_brs/condition"_str).is_some());
+    EXPECT_TRUE(IsWallpaperEnginesOwnProperty("wec_hue"_str));
+    EXPECT_TRUE(IsWallpaperEnginesOwnProperty("alignmentfliph"_str));
+    EXPECT_FALSE(IsWallpaperEnginesOwnProperty("schemecolor"_str));
+    auto own = OwnPropertiesOf(*props.as_object().unwrap());
+    EXPECT_TRUE(own.get("wec_brs"_str).is_some());
+    EXPECT_TRUE(own.get("mine"_str).is_none());
+}
+
 // Values set with applyProperties reach the page as {"value": ...}, as project.json's do
 TEST(WebState, AppliedPropertiesAreHandedAsValues) {
     auto applied =

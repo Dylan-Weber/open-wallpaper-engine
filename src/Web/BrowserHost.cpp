@@ -445,6 +445,20 @@ void BrowserHost::SetPaused(bool paused) {
     if (b && b->GetHost()) b->GetHost()->WasHidden(paused);
 }
 
+bool IsWallpaperEnginesOwnProperty(ref<str> key) {
+    return key == "alignmentfliph"_str || key == "wec_e"_str || key == "wec_brs"_str ||
+           key == "wec_con"_str || key == "wec_sa"_str || key == "wec_hue"_str;
+}
+
+owe::Json OwnPropertiesOf(const rstd::json::Map& values) {
+    auto own = rstd::json::Map::make();
+    values.iter().for_each([&](auto entry) {
+        auto [key, value] = entry;
+        if (IsWallpaperEnginesOwnProperty(key->as_str())) own.insert(key->clone(), value->clone());
+    });
+    return owe::Json::Object(rstd::move(own));
+}
+
 void BrowserHost::ApplyUserProperty(ref<str> key, const owe::Json& value) {
     if (IsClosing() || ! impl_->client) return;
     auto browser = impl_->client->GetBrowser();

@@ -104,4 +104,11 @@ private:
     Box<Impl> impl_;
 };
 
+// Wallpaper Engine's own properties of a web wallpaper (its flip and colour options), which a
+// project.json can't set
+bool IsWallpaperEnginesOwnProperty(ref<str> key);
+// the entries of `values` that are Wallpaper Engine's own properties: a user's saved values for
+// them go in OpenOptions::properties
+owe::Json OwnPropertiesOf(const rstd::json::Map& values);
+
 } // namespace weweb

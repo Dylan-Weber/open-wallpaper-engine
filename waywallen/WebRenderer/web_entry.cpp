@@ -775,6 +775,8 @@ int run(int argc, char** argv) {
     open_opts.shared_texture_enabled = opts.shared_texture_enabled;
     open_opts.initially_muted        = true;
     open_opts.frame_rate             = static_cast<int>(opts.initial_fps.to_primitive());
+    // the user's Wallpaper Engine flip and colour options, applied once the page loads
+    open_opts.properties = weweb::OwnPropertiesOf(opts.initial_user_properties);
     if (! host.OpenWallpaper(manifest,
                              opts.workshop_dir,
                              static_cast<int>(opts.width.to_primitive()),

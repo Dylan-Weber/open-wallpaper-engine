@@ -5,6 +5,7 @@ import rstd.cppstd;
 
 import :cef;
 import :cef_internal;
+import :browser_host;
 using namespace rstd::prelude;
 using namespace rstd::literals;
 using rstd::cppstd::to_string;
@@ -215,8 +216,10 @@ owe::Json WithWallpaperEngineProperties(const owe::Json& props) {
     if (auto properties = props.as_object(); properties.is_some()) {
         (*properties)->iter().for_each([&](auto entry) {
             auto [key, property] = entry;
-            auto copy            = property->clone();
-            auto fields          = copy.as_object_mut();
+            // Wallpaper Engine's own: its definitions stay (a project.json can't set them)
+            if (IsWallpaperEnginesOwnProperty(key->as_str())) return;
+            auto copy   = property->clone();
+            auto fields = copy.as_object_mut();
             if (key->as_str() == "schemecolor"_str) {
                 // the wallpaper's own scheme colour, where Wallpaper Engine puts it
                 if (fields.is_some()) {
