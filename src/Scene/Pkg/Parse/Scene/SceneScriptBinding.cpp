@@ -117,11 +117,11 @@ Arc<PuppetLayer> MakePuppetLayer(Arc<Puppet> puppet, slice<wpscene::PuppetAnimat
     return out;
 }
 
-void RegisterPuppetLayer(SceneParseContext& context, SceneNode* node, Arc<PuppetLayer> layer) {
+void RegisterPuppetLayer(SceneLayerBuildContext& context, SceneNode* node, Arc<PuppetLayer> layer) {
     if (! node) return;
     for (const auto& playback : layer->AnimationPlaybacks())
         node->RegisterAnimation(playback.clone());
-    (void)context.puppet_layers->by_node.insert(node, rstd::move(layer));
+    (void)context.layer_resources->puppet_layers->by_node.insert(node, rstd::move(layer));
 }
 
 Option<Arc<PuppetLayer>> LookupPuppetLayer(const Arc<PuppetLayerRegistry>& layers,
@@ -140,8 +140,8 @@ SceneNode* RootOf(SceneNode* node) {
     return node;
 }
 
-void MarkHiddenLinkSource(SceneParseContext& context, i32 id) {
-    if (context.hidden_link_source_ids.contains(i32(id)))
+void MarkHiddenLinkSource(SceneLayerBuildContext& context, i32 id) {
+    if (context.layer_resources->hidden_link_source_ids.contains(i32(id)))
         context.scene->MarkLayerVisibilityElidable(WallpaperLayerId { .value = i32(id) });
 }
 
@@ -166,16 +166,20 @@ array<float, 2> Texture0UvScale(const SceneMaterial& material, bool nopadding) {
 }
 
 void InstallImageAlignmentBinding(script::JsRuntime& runtime, SceneNode* node, ref<str> alignment,
-                                  const SceneParseContext::ImageAlignmentSetter& setter) {
+                                  const SceneLayerBuildContext::ImageAlignmentSetter& setter) {
     runtime.RegisterImageAlignmentSetter(node, alignment, setter.clone());
 }
 
-void RegisterImageAlignmentBinding(SceneParseContext& context, SceneNode* node, ref<str> alignment,
-                                   SceneParseContext::ImageAlignmentSetter setter) {
+void RegisterImageAlignmentBinding(SceneLayerBuildContext& context, SceneNode* node,
+                                   ref<str>                                     alignment,
+                                   SceneLayerBuildContext::ImageAlignmentSetter setter) {
     if (context.script_scene.is_some()) {
         InstallImageAlignmentBinding((*context.script_scene)->runtime(), node, alignment, setter);
+    } else if (auto scripts = context.scene->ExtensionMut<script::ScriptScene>();
+               scripts.is_some()) {
+        InstallImageAlignmentBinding((**scripts).runtime(), node, alignment, setter);
     }
-    context.image_alignment_bindings.push(SceneParseContext::ImageAlignmentBinding {
+    context.image_alignment_bindings.push(SceneLayerBuildContext::ImageAlignmentBinding {
         .node      = node,
         .alignment = String::make(alignment),
         .setter    = rstd::move(setter),
@@ -197,11 +201,13 @@ Option<Arc<PuppetLayer>> FindPuppetLayerWithBone(const Arc<PuppetLayerRegistry>&
     return None();
 }
 
-script::ScriptScene& EnsureScriptScene(SceneParseContext& context) {
+script::ScriptScene& EnsureScriptScene(SceneLayerBuildContext& context) {
+    if (auto scripts = context.scene->ExtensionMut<script::ScriptScene>(); scripts.is_some())
+        return **scripts;
     if (context.script_scene.is_none()) {
-        context.script_scene =
-            Some(Box<script::ScriptScene>::make(Some(context.audio_response_demand.clone())));
-        auto layers = context.puppet_layers.clone();
+        context.script_scene = Some(Box<script::ScriptScene>::make(
+            Some(context.layer_resources->audio_response_demand.clone())));
+        auto layers          = context.layer_resources->puppet_layers.clone();
         (*context.script_scene)
             ->runtime()
             .SetBoneResolvers(
@@ -219,20 +225,50 @@ script::ScriptScene& EnsureScriptScene(SceneParseContext& context) {
                         }
                         return 0;
                     }),
+                script::JsRuntime::BoneCountResolver::make(
+                    [layers = layers.clone()](SceneNode* node) -> rstd::uint32_t {
+                        auto layer = LookupPuppetLayer(layers, node);
+                        return layer.is_some() ? (*layer)->boneCount() : 0;
+                    }),
                 script::JsRuntime::BoneTransformResolver::make(
                     [layers = layers.clone()](SceneNode*     node,
                                               rstd::uint32_t index,
-                                              double time) -> Option<script::BoneTranslation> {
+                                              double time) -> Option<script::BoneTransformData> {
                         auto layer = LookupPuppetLayer(layers, node);
                         if (layer.is_none()) return None();
                         auto bone = (*layer)->boneTransform(index, time);
                         if (bone.is_none()) return None();
 
                         node->UpdateTrans();
-                        Eigen::Affine3f world = Eigen::Affine3f::Identity();
-                        world.matrix()        = node->ModelTrans().cast<float>();
-                        Eigen::Vector3f t     = (world * *bone).translation();
-                        return Some(script::BoneTranslation { t.x(), t.y(), t.z() });
+                        Eigen::Affine3f world         = Eigen::Affine3f::Identity();
+                        world.matrix()                = node->ModelTrans().cast<float>();
+                        Eigen::Matrix4f           mat = (world * *bone).matrix();
+                        script::BoneTransformData data;
+                        for (int col = 0; col < 4; ++col) {
+                            for (int row = 0; row < 4; ++row) {
+                                data.m[col * 4 + row] = mat(row, col);
+                            }
+                        }
+                        return Some(data);
+                    }),
+                script::JsRuntime::BoneSetTransformResolver::make(
+                    [layers = layers.clone()](SceneNode*                       node,
+                                              rstd::uint32_t                   index,
+                                              const script::BoneTransformData& data) {
+                        auto layer = LookupPuppetLayer(layers, node);
+                        if (layer.is_none()) return;
+
+                        node->UpdateTrans();
+                        Eigen::Matrix4f mat;
+                        for (int col = 0; col < 4; ++col) {
+                            for (int row = 0; row < 4; ++row) {
+                                mat(row, col) = data.m[col * 4 + row];
+                            }
+                        }
+                        Eigen::Affine3f world      = Eigen::Affine3f::Identity();
+                        world.matrix()             = node->ModelTrans().cast<float>();
+                        Eigen::Affine3f local_bone = world.inverse() * Eigen::Affine3f(mat);
+                        (*layer)->setBoneTransform(index, local_bone);
                     }));
         if (context.user_properties.is_some())
             (*context.user_properties)->iter().for_each([&](auto entry) {
@@ -250,7 +286,7 @@ script::ScriptScene& EnsureScriptScene(SceneParseContext& context) {
     return **context.script_scene;
 }
 
-void SetScriptInitializationOrder(SceneParseContext& context, script::FieldScript& script,
+void SetScriptInitializationOrder(SceneLayerBuildContext& context, script::FieldScript& script,
                                   const SceneNode* node) {
     if (node == nullptr) return;
     auto order = context.script_initialization_orders.get(node->ID());
@@ -258,7 +294,8 @@ void SetScriptInitializationOrder(SceneParseContext& context, script::FieldScrip
     EnsureScriptScene(context).runtime().SetInitializationOrder(script, **order);
 }
 
-void TrackRegisteredAssets(SceneParseContext& context, script::FieldScript* script) {
+void TrackFieldScript(SceneLayerBuildContext& context, script::FieldScript* script) {
+    if (script && script->initialization_deferred()) context.deferred_scripts.emplace_back(script);
     if (script && ! script->RegisteredAssets().is_empty())
         context.registered_asset_scripts.push(rstd::move(script));
 }
@@ -275,35 +312,72 @@ Option<float> ScriptValueAsFloat(const script::ScriptValue& value) {
     return None();
 }
 
-void WirePuppetAnimationScripts(SceneParseContext& context, SceneNode* node,
+void WirePuppetAnimationScripts(SceneLayerBuildContext& context, SceneNode* node,
                                 Arc<PuppetLayer>                     puppet,
                                 slice<wpscene::PuppetAnimationLayer> layers) {
-    for (const auto& layer : layers) {
-        auto binding = layer.field_bindings.Get("visible"_str);
-        if (binding.is_none() || (**binding).script.is_none()) continue;
-        auto playback = puppet->AnimationPlayback(i32(layer.playback.layer_id));
-        if (playback.is_none()) continue;
-        const auto& spec    = **binding;
-        const auto& source  = *spec.script;
-        auto&       scripts = EnsureScriptScene(context);
-        auto*       field   = scripts.runtime().MakeFieldScript(
-            source.source.as_str(),
-            utils::genSha1(rstd::as_bytes(source.source.as_str().as_bytes())).as_str(),
-            script::FieldKind::Bool,
-            spec.ScriptProperties(),
-            source.initial_value,
-            script::ScriptBindingContext::ForAnimationLayer(
-                node, spec.field.as_str(), rstd::move(*playback)));
-        if (! field) continue;
-        SetScriptInitializationOrder(context, *field, node);
-        TrackRegisteredAssets(context, field);
-        auto owner = puppet.clone();
-        scripts.AddActuator({ field,
-                              [owner = owner.clone(), id = i32(layer.playback.layer_id)](
-                                  const script::ScriptValue& value) {
-                                  if (auto visible = ScriptValueAsFloat(value); visible.is_some())
-                                      owner->SetAnimationVisible(id, *visible >= 0.5f);
-                              } });
+    if (! node) return;
+    Vec<Arc<SceneAnimationLayer>> states;
+    for (usize index {}; index < layers.len(); ++index) {
+        const auto& layer = layers[index];
+        auto        state = Arc<SceneAnimationLayer>::make(layer.playback.name.clone());
+        state->SetPlayback(puppet->AnimationPlaybackAt(index));
+        state->SetBlend(static_cast<float>(layer.playback.blend));
+        if (layer.playback.rate > 0.0) state->SetRate(static_cast<float>(layer.playback.rate));
+        state->SetVisible(layer.playback.visible);
+        puppet->SetRuntimeAnimationLayer(index, state.clone());
+        auto bindings = BuildAnimationBindingScope(layer.field_bindings);
+        for (const auto& binding : layer.field_bindings.Entries()) {
+            if (binding.animation.is_none()) continue;
+            auto track = bindings.Resolve(binding);
+            if (track.is_none()) continue;
+            node->RegisterAnimation(track->playback.clone());
+            state->RegisterFieldAnimation(binding.field.clone(), rstd::move(*track));
+        }
+        node->RegisterAnimationLayer(state.clone());
+        states.push(rstd::move(state));
+    }
+    for (usize index {}; index < layers.len(); ++index) {
+        const auto& layer = layers[index];
+        auto        state = states[index].clone();
+        for (const auto& spec : layer.field_bindings.Entries()) {
+            if (spec.script.is_none()) continue;
+            if (spec.field != "visible"_str && spec.field != "blend"_str &&
+                spec.field != "rate"_str)
+                continue;
+            auto                                track = state->FieldAnimation(spec.field.as_str());
+            Option<Arc<SceneAnimationPlayback>> playback;
+            if (track.is_some())
+                playback = Some(track->playback.clone());
+            else if (spec.field == "visible"_str)
+                playback = state->Playback();
+            const auto& source  = *spec.script;
+            auto&       scripts = EnsureScriptScene(context);
+            auto*       field   = scripts.runtime().MakeFieldScript(
+                source.source.as_str(),
+                utils::genSha1(rstd::as_bytes(source.source.as_str().as_bytes())).as_str(),
+                spec.field == "visible"_str ? script::FieldKind::Bool : script::FieldKind::Scalar,
+                spec.ScriptProperties(),
+                source.initial_value,
+                script::ScriptBindingContext::ForAnimationLayer(
+                    node, spec.field.as_str(), state.clone(), rstd::move(playback)),
+                context.script_initialization);
+            if (! field) continue;
+            SetScriptInitializationOrder(context, *field, node);
+            TrackFieldScript(context, field);
+            scripts.AddActuator({ field,
+                                  [state = state.clone(),
+                                   name  = spec.field.clone()](const script::ScriptValue& value) {
+                                      if (auto result = ScriptValueAsFloat(value);
+                                          result.is_some()) {
+                                          if (name == "visible"_str)
+                                              state->SetVisible(*result >= 0.5f);
+                                          else if (name == "blend"_str)
+                                              state->SetBlend(*result);
+                                          else if (name == "rate"_str)
+                                              state->SetRate(*result);
+                                      }
+                                  } });
+        }
     }
 }
 
@@ -375,7 +449,7 @@ Json ScriptInitialValueForField(ref<str> field, const Json& value) {
 namespace owe
 {
 
-void WireFieldScripts(SceneParseContext& context, const Arc<SceneNode>& node_sp,
+void WireFieldScripts(SceneLayerBuildContext& context, const Arc<SceneNode>& node_sp,
                       const wpscene::FieldBindings&                             fb,
                       Option<Arc<dyn<FnMut<void(const script::ScriptValue&)>>>> origin_apply,
                       Option<Arc<dyn<FnMut<void(const script::ScriptValue&)>>>> scale_apply) {
@@ -385,13 +459,14 @@ void WireFieldScripts(SceneParseContext& context, const Arc<SceneNode>& node_sp,
     if (parallax_binding.is_some() && (**parallax_binding).user.is_some() && node->ID() != i32() &&
         ! context.parallax_depth_user_binding_ids.contains(node->ID())) {
         context.parallax_depth_user_binding_ids.insert(node->ID());
-        auto state = context.uniform_state.clone();
+        auto state = context.layer_resources->uniform_state.clone();
         context.scene->RegisterUserPropertyBinding(
             (**parallax_binding).user->clone(),
             Box<dyn<FnMut<void(ref<Json>)>>>::make(
                 [state = state.clone(), object_id = node->ID()](ref<Json> property) mutable {
                     (void)state->ApplyObjectParallaxDepth(object_id, *property);
-                }));
+                }),
+            context.scene->RegisterNode(*node));
     }
     auto& ss = EnsureScriptScene(context);
     auto& rt = ss.runtime();
@@ -449,10 +524,11 @@ void WireFieldScripts(SceneParseContext& context, const Arc<SceneNode>& node_sp,
                                       binding.ScriptProperties(),
                                       initial_value,
                                       script::ScriptBindingContext::ForLayer(
-                                          node, binding.field.as_str(), rstd::move(animation)));
+                                          node, binding.field.as_str(), rstd::move(animation)),
+                                      context.script_initialization);
         if (! fs) continue;
         SetScriptInitializationOrder(context, *fs, node);
-        TrackRegisteredAssets(context, fs);
+        TrackFieldScript(context, fs);
         if (! has_actuator) continue;
         if (is_alpha)
             ss.AddActuator({ fs, script::MakeNodeAlphaApply(node_sp.clone()) });
@@ -461,7 +537,7 @@ void WireFieldScripts(SceneParseContext& context, const Arc<SceneNode>& node_sp,
         else if (is_volume)
             ss.AddActuator({ fs, script::MakeNodeVolumeApply(node_sp.clone()) });
         else if (is_parallax) {
-            auto state = context.uniform_state.clone();
+            auto state = context.layer_resources->uniform_state.clone();
             ss.AddActuator({ fs,
                              [state     = state.clone(),
                               object_id = node->ID()](const script::ScriptValue& value) mutable {
@@ -486,7 +562,7 @@ void WireFieldScripts(SceneParseContext& context, const Arc<SceneNode>& node_sp,
 // can. The effect is already registered with the scene, so the actuator
 // only has to flip its runtime visibility; the render graph rebuild is
 // handled by Scene::SetImageEffectRuntimeVisible.
-void WireImageEffectVisibilityScript(SceneParseContext& context, SceneNode* node,
+void WireImageEffectVisibilityScript(SceneLayerBuildContext& context, SceneNode* node,
                                      const wpscene::ImageEffect& effect, SceneEffectId effect_id) {
     const auto* binding = effect.visible_binding();
     if (binding == nullptr || binding->script.is_none() || ! effect_id.Valid()) return;
@@ -508,12 +584,13 @@ void WireImageEffectVisibilityScript(SceneParseContext& context, SceneNode* node
                            binding->ScriptProperties(),
                            sb.initial_value,
                            script::ScriptBindingContext::ForEffect(
-                               node, { .id = effect_id }, "visible"_str, rstd::move(animation)));
+                               node, { .id = effect_id }, "visible"_str, rstd::move(animation)),
+                           context.script_initialization);
     if (! fs) return;
     SetScriptInitializationOrder(context, *fs, node);
-    TrackRegisteredAssets(context, fs);
+    TrackFieldScript(context, fs);
 
-    auto* scene = context.scene.get();
+    auto* scene = context.scene;
     ss.AddActuator({ fs, [scene, effect_id](const script::ScriptValue& value) {
                         auto flag = ScriptValueAsFloat(value);
                         if (! flag) return;
@@ -522,7 +599,7 @@ void WireImageEffectVisibilityScript(SceneParseContext& context, SceneNode* node
                     } });
 }
 
-void WireGeneralFieldScripts(SceneParseContext& context, const wpscene::FieldBindings& fb) {
+void WireGeneralFieldScripts(SceneLayerBuildContext& context, const wpscene::FieldBindings& fb) {
     auto& ss = EnsureScriptScene(context);
     auto& rt = ss.runtime();
 
@@ -535,8 +612,8 @@ void WireGeneralFieldScripts(SceneParseContext& context, const wpscene::FieldBin
             kind = script::FieldKind::Bool;
         } else if (field == "ambientcolor"_str || field == "skylightcolor"_str) {
             kind = script::FieldKind::Vec3;
-        } else if (field != "camerashakeamplitude"_str && field != "camerashakespeed"_str &&
-                   field != "camerashakeroughness"_str) {
+        } else if (field != "fov"_str && field != "camerashakeamplitude"_str &&
+                   field != "camerashakespeed"_str && field != "camerashakeroughness"_str) {
             continue;
         }
 
@@ -554,16 +631,18 @@ void WireGeneralFieldScripts(SceneParseContext& context, const wpscene::FieldBin
                                       binding.ScriptProperties(),
                                       sb.initial_value,
                                       script::ScriptBindingContext::ForLayer(
-                                          nullptr, binding.field.as_str(), rstd::move(animation)));
+                                          nullptr, binding.field.as_str(), rstd::move(animation)),
+                                      context.script_initialization);
         if (! fs) continue;
-        TrackRegisteredAssets(context, fs);
+        TrackFieldScript(context, fs);
 
-        auto state      = context.uniform_state.clone();
-        auto field_name = binding.field.clone();
+        auto  state      = context.layer_resources->uniform_state.clone();
+        auto  field_name = binding.field.clone();
+        auto* scene      = context.scene;
         ss.AddActuator(
             { fs,
-              [state      = state.clone(),
-               field_name = rstd::move(field_name)](const script::ScriptValue& value) mutable {
+              [state = state.clone(), scene, field_name = rstd::move(field_name)](
+                  const script::ScriptValue& value) mutable {
                   if (field_name == "ambientcolor"_str || field_name == "skylightcolor"_str) {
                       const auto current = field_name == "ambientcolor"_str
                                                ? state->AmbientColor()
@@ -579,6 +658,16 @@ void WireGeneralFieldScripts(SceneParseContext& context, const wpscene::FieldBin
                   }
                   auto scalar = ScriptValueAsFloat(value);
                   if (! scalar) return;
+                  if (field_name == "fov"_str) {
+                      auto camera = scene->CameraHandle("global_perspective"_str);
+                      if (camera.is_some() && f32(*scalar).is_finite() && *scalar > 0.0f &&
+                          *scalar < 180.0f && (**camera).Fov() != *scalar) {
+                          (**camera).SetFov(*scalar);
+                          (**camera).Update();
+                          scene->UpdateLinkedCamera("global_perspective"_str);
+                      }
+                      return;
+                  }
                   auto& shake = state->CameraShake();
                   if (field_name == "camerashake"_str)
                       shake.enable = *scalar >= 0.5f;
@@ -592,7 +681,7 @@ void WireGeneralFieldScripts(SceneParseContext& context, const wpscene::FieldBin
     }
 }
 
-void WireCameraFieldScripts(SceneParseContext& context, const Arc<SceneNode>& node_sp,
+void WireCameraFieldScripts(SceneLayerBuildContext& context, const Arc<SceneNode>& node_sp,
                             const Arc<SceneCamera>& camera, const Arc<SceneCameraPath>& camera_path,
                             const wpscene::FieldBindings& fb, const Vector3f& translate_bias,
                             const Vector3f& rotation_bias) {
@@ -620,12 +709,21 @@ void WireCameraFieldScripts(SceneParseContext& context, const Arc<SceneNode>& no
             binding.ScriptProperties(),
             initial_value,
             script::ScriptBindingContext::ForLayer(
-                node, binding.field.as_str(), node->FieldAnimation(binding.field.as_str())));
+                node, binding.field.as_str(), node->FieldAnimation(binding.field.as_str())),
+            context.script_initialization);
         if (! fs) continue;
         SetScriptInitializationOrder(context, *fs, node);
-        TrackRegisteredAssets(context, fs);
+        TrackFieldScript(context, fs);
 
-        if (field == "origin"_str) {
+        if (field == "visible"_str) {
+            auto path = camera_path.clone();
+            ss.AddActuator({ fs, [node, path = rstd::move(path)](const script::ScriptValue& value) {
+                                if (! value.is_Bool()) return;
+                                const bool visible = value.as_Bool().value.v;
+                                node->SetVisible(visible);
+                                path->SetEnabled(visible);
+                            } });
+        } else if (field == "origin"_str) {
             auto path         = camera_path.clone();
             auto camera_owner = camera.clone();
             ss.AddActuator(

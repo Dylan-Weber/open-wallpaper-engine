@@ -37,6 +37,11 @@ struct ExtraInfo {
     HashSet<String>             depth_initialized_outputs;
     HashSet<String>             transient_texture_families;
     Option<ContentRef>          mip_framebuffer_history;
+    struct DepthDraw {
+        SceneNode* node;
+        bool       writes_depth;
+    };
+    Vec<DepthDraw> pending_depth_draws;
     ExtraInfo(Scene& value, const RenderSceneSnapshot& snapshot)
         : graph(NextSceneRenderScope()),
           textures(u64(graph.data().scope)),
@@ -543,7 +548,8 @@ static bool CollectEmitSkipSubtrees(SceneNode* node, Scene& scene, const BTreeSe
         (! node->Visible() || (layer_id >= i32() && scene.IsLayerVisibilityElidable(
                                                         WallpaperLayerId { .value = layer_id }))) &&
         ! linked;
-    const bool visibility_hidden = visibility_hidden_ancestor || visibility_hidden_self;
+    const bool visibility_hidden =
+        linked ? false : visibility_hidden_ancestor || visibility_hidden_self;
 
     bool all_children_skippable = true;
     for (auto& c : node->GetChildren()) {
@@ -570,6 +576,80 @@ static bool ShouldSkipNoRuntimeEffect(SceneNode* node, Scene& scene) {
            ! effect_layer->HasRuntimeVisibleEffect();
 }
 
+static bool HasExternalRenderTargetRead(const SceneMaterial& material, ref<str> local_target) {
+    for (const auto& texture : material.textures) {
+        auto name = texture.as_str();
+        if (! IsLocalSceneMaterialTextureDependency(ClassifySceneMaterialTexture(name)) &&
+            name != local_target)
+            return true;
+    }
+    return false;
+}
+
+static Option<bool> DepthDrawKind(SceneNode& node, Scene& scene) {
+    auto* mesh = node.Mesh();
+    if (mesh == nullptr || mesh->Submeshes().is_empty()) return None();
+    if (! node.HasLayer() && ! node.Camera().is_empty()) return None();
+    if (node.Perspective()) {
+        auto active = scene.ActiveCamera();
+        auto global = scene.Camera("global_perspective"_str);
+        if (active.is_none() || global.is_none() ||
+            (*active).as_raw_ptr() != (*global).as_raw_ptr())
+            return None();
+    }
+    Option<bool> writes_depth;
+    for (const auto& submesh : mesh->Submeshes()) {
+        if (! submesh.output_override.is_empty() || submesh.preserve_output) return None();
+        auto slot = rstd::as_cast<usize>(submesh.material_slot);
+        if (slot >= mesh->MaterialSlots().len() || ! mesh->MaterialSlots()[slot]) return None();
+        const auto& material = *mesh->MaterialSlots()[slot];
+        if (! material.Pipeline().depth_test || HasExternalRenderTargetRead(material, ""_str))
+            return None();
+        const bool writes = material.Pipeline().depth_write;
+        const auto blend  = material.Pipeline().blend_mode;
+        if ((writes && (blend == BlendMode::Translucent || blend == BlendMode::Additive)) ||
+            (! writes && ! LoadsPreviousAttachment(blend)))
+            return None();
+        if (writes_depth.is_some() && *writes_depth != writes) return None();
+        writes_depth = Some<bool>(writes);
+    }
+    if (node.HasLayer()) {
+        auto& layer = *node.Layer();
+        if (layer.PublishesOutput() || ! layer.PrefillNodes().is_empty() ||
+            ! layer.FinalCamera().is_empty() || layer.FinalTarget() != SpecTex_Default ||
+            ! layer.FinalDepthTest() || layer.FinalDepthWrite() != *writes_depth ||
+            (layer.FinalDepthWrite() && (layer.FinalBlend() == BlendMode::Translucent ||
+                                         layer.FinalBlend() == BlendMode::Additive)) ||
+            (! layer.FinalDepthWrite() && ! LoadsPreviousAttachment(layer.FinalBlend())))
+            return None();
+        layer.ResolveEffect(*scene.DefaultEffectMesh(), "effect"_str);
+        for (auto* effect : layer.ResolvedEffects()) {
+            if (effect == nullptr || ! effect->commands.is_empty()) return None();
+            for (const auto& entry : effect->Nodes()) {
+                auto target = layer.ResolvedTarget(*entry);
+                auto output = ResolveEffectTarget(layer, target);
+                if (output != layer.CompositeTarget() && output != SpecTex_Default) return None();
+                auto* effect_mesh = entry->sceneNode->Mesh();
+                if (effect_mesh == nullptr) return None();
+                for (const auto& material : effect_mesh->MaterialSlots()) {
+                    if (material && HasExternalRenderTargetRead(*material, layer.CompositeTarget()))
+                        return None();
+                }
+            }
+        }
+    }
+    return writes_depth;
+}
+
+static void FlushDepthDraws(ExtraInfo& extra) {
+    for (bool writes : { true, false }) {
+        for (const auto& draw : extra.pending_depth_draws) {
+            if (draw.writes_depth == writes) ToGraphPass(draw.node, SpecTex_Default, extra);
+        }
+    }
+    extra.pending_depth_draws.clear();
+}
+
 static void ConfigureNestedOutput(SceneNode* node, ref<str> output, ref<str> inherited_camera) {
     if (! inherited_camera.is_empty() && node->Camera().is_empty()) {
         node->SetCamera(inherited_camera);
@@ -588,7 +668,7 @@ static void ConfigureNestedOutput(SceneNode* node, ref<str> output, ref<str> inh
 
 static void EmitSceneNode(SceneNode* node, ref<str> inherited_output, ref<str> inherited_camera,
                           ExtraInfo& extra, const HashSet<const SceneNode*>& emit_skip_subtrees,
-                          const BTreeSet<i32>& linked_ids) {
+                          const BTreeSet<i32>& linked_ids, bool hidden_ancestor = false) {
     if (node == nullptr || emit_skip_subtrees.contains(node)) return;
 
     auto&      scene       = *extra.scene;
@@ -596,9 +676,11 @@ static void EmitSceneNode(SceneNode* node, ref<str> inherited_output, ref<str> i
     const auto link_source = scene.ResolveLayerLinkSource(*node);
     const i32 layer_id = link_source.is_some() ? link_source->value
                                                : (wallpaper.is_some() ? wallpaper->value : i32(-1));
-    const bool elidable = scene.IsLayerElidable(WallpaperLayerId { .value = layer_id });
-    const bool linked   = link_source.is_some() && linked_ids.contains(link_source->value);
-    bool       emit     = true;
+    const bool elidable     = scene.IsLayerElidable(WallpaperLayerId { .value = layer_id });
+    const bool linked       = link_source.is_some() && linked_ids.contains(link_source->value);
+    const bool hidden       = hidden_ancestor || (! node->Visible() && ! linked);
+    const bool child_hidden = linked ? false : hidden;
+    bool       emit         = ! hidden || linked;
 
     ref<str> node_output = inherited_output;
 
@@ -624,6 +706,7 @@ static void EmitSceneNode(SceneNode* node, ref<str> inherited_output, ref<str> i
     auto group_camera =
         wallpaper.is_some() ? scene.RenderGroupCamera(*wallpaper) : None<ref<str>>();
     if (emit && group_camera) {
+        FlushDepthDraws(extra);
         ConfigureNestedOutput(node, node_output, inherited_camera);
         auto* effect_layer = ToGraphPass(node, node_output, extra, true);
         if (effect_layer == nullptr) {
@@ -632,10 +715,16 @@ static void EmitSceneNode(SceneNode* node, ref<str> inherited_output, ref<str> i
         const ref<str> child_output =
             effect_layer == nullptr ? node_output : effect_layer->CompositeTarget();
         for (auto& child : node->GetChildren()) {
-            EmitSceneNode(
-                child.as_ptr(), child_output, *group_camera, extra, emit_skip_subtrees, linked_ids);
+            EmitSceneNode(child.as_ptr(),
+                          child_output,
+                          *group_camera,
+                          extra,
+                          emit_skip_subtrees,
+                          linked_ids,
+                          child_hidden);
         }
         if (effect_layer != nullptr && effect_layer->HasRenderEffects()) {
+            FlushDepthDraws(extra);
             LoadGraphEffects(effect_layer, extra);
         }
         return;
@@ -643,15 +732,28 @@ static void EmitSceneNode(SceneNode* node, ref<str> inherited_output, ref<str> i
 
     if (emit) {
         ConfigureNestedOutput(node, node_output, inherited_camera);
-        ToGraphPass(node, node_output, extra);
+        if (node->Mesh() != nullptr) {
+            auto camera = scene.ActiveCamera();
+            auto kind = ! linked && node_output == SpecTex_Default && inherited_camera.is_empty() &&
+                                camera.is_some() && (*camera)->IsPerspective()
+                            ? DepthDrawKind(*node, scene)
+                            : None<bool>();
+            if (kind.is_some()) {
+                extra.pending_depth_draws.push({ node, *kind });
+            } else {
+                FlushDepthDraws(extra);
+                ToGraphPass(node, node_output, extra);
+            }
+        }
     }
     for (auto& child : node->GetChildren()) {
         EmitSceneNode(child.as_ptr(),
-                      inherited_output,
+                      linked && elidable && emit ? node_output : inherited_output,
                       inherited_camera,
                       extra,
                       emit_skip_subtrees,
-                      linked_ids);
+                      linked_ids,
+                      child_hidden);
     }
 }
 
@@ -820,6 +922,7 @@ auto owe::BuildSceneRenderState(Scene& scene, const RenderSceneSnapshot& render_
 
     EmitSceneNode(
         scene.RootMut().as_raw_ptr(), SpecTex_Default, {}, extra, emit_skip_subtrees, linked_ids);
+    FlushDepthDraws(extra);
 
     // Emit global post-process draws and copies after the scene traversal.
     auto post_processes = scene.PostProcesses();

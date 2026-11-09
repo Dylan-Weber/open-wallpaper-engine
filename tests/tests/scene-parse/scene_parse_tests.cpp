@@ -25,6 +25,8 @@ import wescene.pkg.parse;
 import wescene.pkg_fs;
 import wescene.pkg.scene_obj;
 import wescene.scene;
+import wescene.scene_user_property;
+import wescene.script;
 import wescene.spec_names;
 import wescene.testing.scene_parse_probe;
 import wescene.types;
@@ -376,6 +378,1045 @@ TEST(SceneObjectExpansion, UserVisibilityRestoresImageDescendants) {
     }
 }
 
+TEST(SceneGeneralScript, FovUpdatesPerspectiveCameraAndSharedState) {
+    auto document = owe::wpscene::ParseSceneDocumentJson(R"JSON({
+        "camera": {"eye":"0 0 5", "center":"0 0 0", "up":"0 1 0"},
+        "general": {"orthogonalprojection": null,
+          "fov": {"value": 50, "script": "shared.zooming = 0; export function update(value) { return value + 5; }"}},
+        "objects": [{"id":1, "name":"Interface Root",
+          "scale": {"value":"1 1 1", "script":"export function update(value) { return shared.zooming === 0 ? 1 : 0.4; }"}}]
+    })JSON"_str,
+                                                         owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, rstd::move(assets).unwrap_unchecked()).is_ok());
+    wavsen::audio::SoundManager sound;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "general-fov"_str,
+        rstd::ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        rstd::mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        rstd::mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto  scene  = rstd::move(parsed).unwrap();
+    auto  camera = scene.scene->CameraHandle("global_perspective"_str);
+    auto* node   = scene.scene->RootMut()->FindByName("Interface Root"_str);
+    ASSERT_TRUE(camera.is_some());
+    ASSERT_NE(node, nullptr);
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+    EXPECT_DOUBLE_EQ((**camera).Fov(), 55.0);
+    scene.scene->UpdateCameraFillMode(rstd::u32(1280), rstd::u32(720), owe::FillMode::ASPECTCROP);
+    EXPECT_DOUBLE_EQ((**camera).Fov(), 55.0);
+    EXPECT_FLOAT_EQ(node->Scale().x(), 1.0f);
+}
+
+TEST(SceneGeneralScript, ReceivesConfiguredGeneralSettingsBeforeUpdate) {
+    using namespace rstd::prelude;
+    auto document = owe::wpscene::ParseSceneDocumentJson(R"JSON({
+        "camera": {},
+        "general": {"orthogonalprojection": null,
+          "fov": {"value":50, "script":"let lang; export function applyGeneralSettings(s) { lang = s.language; } export function update() { return lang === 'zh-chs' ? 60 : 40; }"}},
+        "objects": []
+    })JSON"_str,
+                                                         owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, rstd::move(assets).unwrap()).is_ok());
+    auto settings = rstd::json::Map::make();
+    settings.insert("language"_Str, owe::Json::String("zh-chs"_Str));
+    wavsen::audio::SoundManager sound;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "general-settings"_str,
+        rstd::ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        rstd::mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        rstd::mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound)),
+        { .general_settings = Some(ref<rstd::json::Map>::from_raw_parts(&settings)) });
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene  = rstd::move(parsed).unwrap();
+    auto camera = scene.scene->CameraHandle("global_perspective"_str);
+    ASSERT_TRUE(camera.is_some());
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+    EXPECT_DOUBLE_EQ((**camera).Fov(), 60.0);
+}
+
+TEST(SceneDynamicLayer, CreatesImageConfigurationDuringInitialization) {
+    using namespace rstd::prelude;
+    auto document = owe::wpscene::ParseSceneDocumentJson(R"JSON({
+        "camera": {},
+        "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+        "objects": [{"id": 1, "name": "creator", "scale": {
+            "value": "1 1 1",
+            "script": "export function init() { const created = thisScene.createLayer({image:'models/util/solidlayer.json', name:'initial-runtime', size:'32 32', origin:'0 0 0', scale:new Vec2(2, 3), color:{value:'1 1 1', user:'tint'}}); created.origin = new Vec3(10, 20, 0); }"
+        }}]
+    })JSON"_str,
+                                                         owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, rstd::move(assets).unwrap_unchecked()).is_ok());
+    wavsen::audio::SoundManager sound;
+    owe::SceneParser            parser;
+    auto                        parsed =
+        parser.Parse("initial-image"_str,
+                     ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+                     mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+                     mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto  scene   = rstd::move(parsed).unwrap();
+    auto* created = scene.scene->RootMut()->FindByName("initial-runtime"_str);
+    ASSERT_NE(created, nullptr);
+    ASSERT_NE(created->Mesh(), nullptr);
+    EXPECT_FLOAT_EQ(created->Translate().x(), 10.0f);
+    EXPECT_FLOAT_EQ(created->Translate().y(), 20.0f);
+    EXPECT_FLOAT_EQ(created->Scale().x(), 2.0f);
+    EXPECT_FLOAT_EQ(created->Scale().y(), 3.0f);
+    EXPECT_FLOAT_EQ(created->Scale().z(), 1.0f);
+    EXPECT_TRUE(scene.scene->ResourceIndex().nodeId(*created).is_some());
+    EXPECT_EQ(scene.scene->ImageColorUserBindings("tint"_str).len(), usize(1));
+    EXPECT_TRUE(scene.scene->RemoveNodeMaterialBindings(created->Identity()) > usize());
+    EXPECT_TRUE(scene.scene->ImageColorUserBindings("tint"_str).is_empty());
+}
+
+TEST(SceneDynamicLayer, PreservesInitialUserPropertiesAfterParsing) {
+    using namespace rstd::prelude;
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"({"camera":{},"general":{},"objects":[]})"_str, owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    auto initial = owe::ParseJson(R"({"brightness":{"type":"slider","value":0.5}})"_str).unwrap();
+    auto properties = initial.as_object();
+    ASSERT_TRUE(properties.is_some());
+    owe::fs::VFS                vfs;
+    wavsen::audio::SoundManager sound;
+    owe::SceneParser            parser;
+    auto                        parsed =
+        parser.Parse("property-state"_str,
+                     ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+                     mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+                     mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound)),
+                     { .user_properties = Some(*properties) });
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+    initial    = owe::ParseJson("{}"_str).unwrap();
+
+    auto state = scene.scene->Extension<owe::SceneUserPropertyState>();
+    ASSERT_TRUE(state.is_some());
+    auto property = (**state).Values()->get("brightness"_str);
+    ASSERT_TRUE(property.is_some());
+    auto value = (**property).get("value"_str);
+    ASSERT_TRUE(value.is_some());
+    EXPECT_EQ((*value)->as_f64().unwrap_or(f64()), f64(0.5));
+}
+
+TEST(SceneDynamicLayer, CreatesImageConfigurationDuringUpdate) {
+    using namespace rstd::prelude;
+    auto document = owe::wpscene::ParseSceneDocumentJson(R"JSON({
+        "camera": {},
+        "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+        "objects": [{"id": 1, "name": "creator", "scale": {
+            "value": "1 1 1",
+            "script": "let created; export function update(value) { if (!created) { created = thisScene.createLayer({image:'models/util/solidlayer.json', name:'runtime', size:'32 32', origin:'0 0 0', scale:'1 1 1', alpha:{value:1, script:'export function init() { thisScene.createLayer({image:`models/util/solidlayer.json`, name:`nested-runtime`, size:`8 8`}); thisLayer.origin = new Vec3(3, 4, 0); return 1; }'}}); if (created.origin.x === 3) created.origin = new Vec3(10, 20, 0); thisScene.createLayer({image:'models/util/solidlayer.json', name:'hidden-runtime', size:'32 32', visible:false}); thisScene.createLayer({image:'models/util/solidlayer.json', name:'bound-runtime', size:'32 32', visible:{value:true,user:'shown'}, color:{value:'1 1 1',user:'tint'}, alpha:{value:1,user:'fade'}}); thisScene.createLayer({image:'models/util/solidlayer.json', name:'effect-runtime', size:'32 32', effects:[{file:'effects/blur/effect.json'}]}); thisScene.createLayer({image:'models/runtime-auto.json', name:'auto-runtime', origin:'0 0 0'}); thisScene.createLayer({image:'models/runtime-auto.json', name:'explicit-runtime', origin:'0 0 0', size:'20 10'}); } return value; }"
+        }}, {"id":2, "name":"auto-initial", "image":"models/runtime-auto.json", "origin":"0 0 0", "color":{"value":"1 1 1","user":"tint"}}]
+    })JSON"_str,
+                                                         owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    auto vfs = Box<owe::fs::VFS>::make();
+    ASSERT_TRUE(vfs->mount("/assets"_str, rstd::move(assets).unwrap_unchecked()).is_ok());
+    auto effect_assets = owe::fs::make_physical_fs(owe::fs::Path(
+        rstd::cppstd::as_str(std::string(WAYWALLEN_ASSETS_DIR) + "/effects/blur").unwrap()));
+    ASSERT_TRUE(effect_assets.is_ok());
+    ASSERT_TRUE(vfs->mount("/assets"_str, rstd::move(effect_assets).unwrap()).is_ok());
+    auto temporary = rstd::fs::TempDir::make("owe-runtime-auto"_str).unwrap();
+    auto root      = rstd::path::PathBuf::from(temporary.path().as_os_str().to_os_string());
+    ASSERT_TRUE(rstd::fs::create_dir(root.join("models"_str).as_path()).is_ok());
+    ASSERT_TRUE(
+        rstd::fs::write(
+            root.join("models/runtime-auto.json"_str).as_path(),
+            R"({"autosize":true,"material":"materials/util/solidlayer_instance_3.json"})"_bytes)
+            .is_ok());
+    auto local = owe::fs::make_physical_fs(temporary.path());
+    ASSERT_TRUE(local.is_ok());
+    ASSERT_TRUE(vfs->mount("/assets"_str, rstd::move(local).unwrap()).is_ok());
+    wavsen::audio::SoundManager sound;
+    owe::SceneParser            parser;
+    auto                        initial_properties =
+        owe::ParseJson(
+            R"({"shown":{"value":false},"tint":{"value":"0.2 0.3 0.4"},"fade":{"value":0.4}})"_str)
+            .unwrap();
+    auto parsed =
+        parser.Parse("runtime-image"_str,
+                     ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+                     mut_ref<owe::fs::VFS>::from_raw_parts(vfs.get()),
+                     mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound)),
+                     { .user_properties = Some(*initial_properties.as_object()) });
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+    scene.scene->InstallExtension(rstd::move(vfs));
+    initial_properties = owe::ParseJson("{}"_str).unwrap();
+    auto* initial_node = scene.scene->RootMut()->FindByName("auto-initial"_str);
+    ASSERT_NE(initial_node, nullptr);
+    initial_node->SetColor(Eigen::Vector3f(0.9f, 0.8f, 0.7f));
+
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+    auto* created = scene.scene->RootMut()->FindByName("runtime"_str);
+    ASSERT_NE(created, nullptr);
+    ASSERT_NE(created->Mesh(), nullptr);
+    EXPECT_FLOAT_EQ(created->Translate().x(), 10.0f);
+    EXPECT_FLOAT_EQ(created->Translate().y(), 20.0f);
+    EXPECT_NE(scene.scene->RootMut()->FindByName("nested-runtime"_str), nullptr);
+    auto* hidden = scene.scene->RootMut()->FindByName("hidden-runtime"_str);
+    ASSERT_NE(hidden, nullptr);
+    EXPECT_FALSE(hidden->Visible());
+    auto* bound = scene.scene->RootMut()->FindByName("bound-runtime"_str);
+    ASSERT_NE(bound, nullptr);
+    EXPECT_FALSE(bound->Visible());
+    EXPECT_FLOAT_EQ(bound->Color().x(), 0.2f);
+    EXPECT_FLOAT_EQ(bound->Color().y(), 0.3f);
+    EXPECT_FLOAT_EQ(bound->Color().z(), 0.4f);
+    auto shown = owe::ParseJson(R"({"value":true})"_str).unwrap();
+    (void)owe::SceneUserPropertyApplier::Apply(*scene.scene, "shown"_str, shown);
+    EXPECT_TRUE(bound->Visible());
+    EXPECT_FLOAT_EQ(bound->EffectiveAlpha(), 0.4f);
+    EXPECT_FLOAT_EQ(initial_node->Color().x(), 0.9f);
+    auto* effect = scene.scene->RootMut()->FindByName("effect-runtime"_str);
+    ASSERT_NE(effect, nullptr);
+    EXPECT_TRUE(effect->HasLayer());
+    auto* auto_initial     = scene.scene->RootMut()->FindByName("auto-initial"_str);
+    auto* auto_runtime     = scene.scene->RootMut()->FindByName("auto-runtime"_str);
+    auto* explicit_runtime = scene.scene->RootMut()->FindByName("explicit-runtime"_str);
+    ASSERT_NE(auto_initial, nullptr);
+    ASSERT_NE(auto_runtime, nullptr);
+    ASSERT_NE(explicit_runtime, nullptr);
+    EXPECT_GT(auto_runtime->Size().x(), 0.0f);
+    EXPECT_GT(auto_runtime->Size().y(), 0.0f);
+    EXPECT_FLOAT_EQ(auto_initial->Size().x(), auto_runtime->Size().x());
+    EXPECT_FLOAT_EQ(auto_initial->Size().y(), auto_runtime->Size().y());
+    EXPECT_FLOAT_EQ(explicit_runtime->Size().x(), 20.0f);
+    EXPECT_FLOAT_EQ(explicit_runtime->Size().y(), 10.0f);
+}
+
+TEST(SceneDynamicLayer, CreatesTextConfigurationDuringUpdate) {
+    using namespace rstd::prelude;
+    auto document = owe::wpscene::ParseSceneDocumentJson(R"JSON({
+        "camera": {},
+        "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+        "objects": [{"id": 1, "name": "creator", "scale": {
+            "value": "1 1 1",
+            "script": "let done = false; export function update(value) { if (!done) { let layer = thisScene.createLayer({text:'Hello', font:'systemfont_DejaVu Sans', pointsize:32, name:'runtime-text', alpha:{value:1, script:'export function init() { thisLayer.text = `Updated`; return 1; }'}}); let empty = thisScene.createLayer({text:'', font:'systemfont_DejaVu Sans', pointsize:32, name:'empty-text'}); empty.text = 'Filled'; let hidden = thisScene.createLayer({text:'Hidden', font:'systemfont_DejaVu Sans', pointsize:32, name:'hidden-text', visible:{value:true,user:'shown'}}); let effect = thisScene.createLayer({text:'Blur', font:'systemfont_DejaVu Sans', pointsize:32, name:'effect-text', effects:[{file:'effects/blur/effect.json'}]}); if (layer.text === 'Updated' && empty.text === 'Filled' && !hidden.visible && effect.text === 'Blur') thisLayer.origin = new Vec3(23, 0, 0); done = true; } return value; }"
+        }}]
+    })JSON"_str,
+                                                         owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    auto vfs = Box<owe::fs::VFS>::make();
+    ASSERT_TRUE(vfs->mount("/assets"_str, rstd::move(assets).unwrap()).is_ok());
+    auto effect_assets = owe::fs::make_physical_fs(owe::fs::Path(
+        rstd::cppstd::as_str(std::string(WAYWALLEN_ASSETS_DIR) + "/effects/blur").unwrap()));
+    ASSERT_TRUE(effect_assets.is_ok());
+    ASSERT_TRUE(vfs->mount("/assets"_str, rstd::move(effect_assets).unwrap()).is_ok());
+    auto initial = owe::ParseJson(R"({"shown":{"value":false}})"_str).unwrap();
+    wavsen::audio::SoundManager sound;
+    owe::SceneParser            parser;
+    auto                        parsed =
+        parser.Parse("runtime-text"_str,
+                     ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+                     mut_ref<owe::fs::VFS>::from_raw_parts(vfs.get()),
+                     mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound)),
+                     { .user_properties = Some(*initial.as_object()) });
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+    scene.scene->InstallExtension(rstd::move(vfs));
+    auto targets = scene.scene->RenderTargetNames().len();
+    auto cameras = scene.scene->CameraNames().len();
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+    auto* creator = scene.scene->RootMut()->FindByName("creator"_str);
+    auto* text    = scene.scene->RootMut()->FindByName("runtime-text"_str);
+    auto* empty   = scene.scene->RootMut()->FindByName("empty-text"_str);
+    auto* hidden  = scene.scene->RootMut()->FindByName("hidden-text"_str);
+    auto* effect  = scene.scene->RootMut()->FindByName("effect-text"_str);
+    ASSERT_NE(creator, nullptr);
+    ASSERT_NE(text, nullptr);
+    ASSERT_NE(empty, nullptr);
+    ASSERT_NE(hidden, nullptr);
+    ASSERT_NE(effect, nullptr);
+    EXPECT_FLOAT_EQ(creator->Translate().x(), 23.0f);
+    EXPECT_FALSE(hidden->Visible());
+    ASSERT_NE(text->Mesh(), nullptr);
+    ASSERT_NE(empty->Mesh(), nullptr);
+    EXPECT_GT(scene.scene->RenderTargetNames().len(), targets);
+    EXPECT_GT(scene.scene->CameraNames().len(), cameras);
+    auto shown = owe::ParseJson(R"({"value":true})"_str).unwrap();
+    (void)owe::SceneUserPropertyApplier::Apply(*scene.scene, "shown"_str, shown);
+    EXPECT_TRUE(hidden->Visible());
+}
+
+TEST(SceneDynamicLayer, RollsBackTextWhenDeferredModuleFails) {
+    using namespace rstd::prelude;
+    auto document = owe::wpscene::ParseSceneDocumentJson(R"JSON({
+        "camera": {},
+        "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+        "objects": [{"id": 1, "name": "creator", "scale": {
+            "value": "1 1 1",
+            "script": "let done = false; export function update(value) { if (!done) { try { thisScene.createLayer({text:'Failed', font:'systemfont_DejaVu Sans', pointsize:32, name:'failed-text', effects:[{file:'effects/blur/effect.json'}], alpha:{value:1, script:'throw new Error(7); export function update(v) { return v; }'}}); } catch (e) { thisLayer.origin = new Vec3(31, 0, 0); thisScene.createLayer({text:'After', font:'systemfont_DejaVu Sans', pointsize:32, name:'after-text'}); } done = true; } return value; }"
+        }}]
+    })JSON"_str,
+                                                         owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    auto effect_assets = owe::fs::make_physical_fs(owe::fs::Path(
+        rstd::cppstd::as_str(std::string(WAYWALLEN_ASSETS_DIR) + "/effects/blur").unwrap()));
+    ASSERT_TRUE(effect_assets.is_ok());
+    auto vfs = Box<owe::fs::VFS>::make();
+    ASSERT_TRUE(vfs->mount("/assets"_str, rstd::move(assets).unwrap()).is_ok());
+    ASSERT_TRUE(vfs->mount("/assets"_str, rstd::move(effect_assets).unwrap()).is_ok());
+    wavsen::audio::SoundManager sound;
+    owe::SceneParser            parser;
+    auto                        parsed =
+        parser.Parse("runtime-text-rollback"_str,
+                     ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+                     mut_ref<owe::fs::VFS>::from_raw_parts(vfs.get()),
+                     mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+    scene.scene->InstallExtension(rstd::move(vfs));
+    auto targets = scene.scene->RenderTargetNames().len();
+    auto cameras = scene.scene->CameraNames().len();
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+    auto* creator = scene.scene->RootMut()->FindByName("creator"_str);
+    ASSERT_NE(creator, nullptr);
+    EXPECT_FLOAT_EQ(creator->Translate().x(), 31.0f);
+    EXPECT_EQ(scene.scene->RootMut()->FindByName("failed-text"_str), nullptr);
+    EXPECT_NE(scene.scene->RootMut()->FindByName("after-text"_str), nullptr);
+    EXPECT_EQ(scene.scene->RenderTargetNames().len(), targets);
+    EXPECT_EQ(scene.scene->CameraNames().len(), cameras);
+    auto scripts = scene.scene->ExtensionMut<owe::script::ScriptScene>();
+    ASSERT_TRUE(scripts.is_some());
+    int count = 0;
+    (**scripts).runtime().ForEachScript(
+        [](owe::script::FieldScript*, void* out) {
+            ++*static_cast<int*>(out);
+        },
+        &count);
+    EXPECT_EQ(count, 1);
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+}
+
+TEST(SceneDynamicLayer, DeletesCreatedAndAuthoredLayersAfterScriptTick) {
+    using namespace rstd::prelude;
+    auto document = owe::wpscene::ParseSceneDocumentJson(R"JSON({
+        "camera": {},
+        "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+        "objects": [{"id": 1, "name": "creator", "scale": {
+            "value": "1 1 1",
+            "script": "let stage = 0, image, text, original; export function update(value) { if (stage === 0) { image = thisScene.createLayer({image:'models/util/solidlayer.json', name:'delete-image', size:'32 32'}); text = thisScene.createLayer({text:'Delete', font:'systemfont_DejaVu Sans', pointsize:32, name:'delete-text', effects:[{file:'effects/blur/effect.json'}]}); original = thisScene.getLayer('original-text'); const ok = thisScene.destroyLayer(image) && thisScene.destroyLayer('delete-text') && thisScene.destroyLayer(1) && !thisScene.destroyLayer(image); if (ok && image.name === 'delete-image' && text.name === 'delete-text' && original.name === 'original-text') thisLayer.origin = new Vec3(47, 0, 0); stage = 1; } else if (stage === 1) { if (image.name === '' && text.name === '' && original.name === '' && !thisScene.destroyLayer(image)) thisLayer.origin = new Vec3(53, 0, 0); stage = 2; } return value; }"
+        }}, {"id": 2, "name": "original-text", "text": "Original", "font":"systemfont_DejaVu Sans", "pointsize":32}]
+    })JSON"_str,
+                                                         owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    auto effect_assets = owe::fs::make_physical_fs(owe::fs::Path(
+        rstd::cppstd::as_str(std::string(WAYWALLEN_ASSETS_DIR) + "/effects/blur").unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    ASSERT_TRUE(effect_assets.is_ok());
+    auto vfs = Box<owe::fs::VFS>::make();
+    ASSERT_TRUE(vfs->mount("/assets"_str, rstd::move(assets).unwrap()).is_ok());
+    ASSERT_TRUE(vfs->mount("/assets"_str, rstd::move(effect_assets).unwrap()).is_ok());
+    wavsen::audio::SoundManager sound;
+    owe::SceneParser            parser;
+    auto                        parsed =
+        parser.Parse("delete-layers"_str,
+                     ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+                     mut_ref<owe::fs::VFS>::from_raw_parts(vfs.get()),
+                     mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+    scene.scene->InstallExtension(rstd::move(vfs));
+    auto targets = scene.scene->RenderTargetNames().len();
+    auto cameras = scene.scene->CameraNames().len();
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+    auto* creator = scene.scene->RootMut()->FindByName("creator"_str);
+    ASSERT_NE(creator, nullptr);
+    EXPECT_FLOAT_EQ(creator->Translate().x(), 47.0f);
+    EXPECT_EQ(scene.scene->RootMut()->FindByName("delete-image"_str), nullptr);
+    EXPECT_EQ(scene.scene->RootMut()->FindByName("delete-text"_str), nullptr);
+    EXPECT_EQ(scene.scene->RootMut()->FindByName("original-text"_str), nullptr);
+    EXPECT_EQ(scene.scene->RenderTargetNames().len(), targets);
+    EXPECT_EQ(scene.scene->CameraNames().len(), cameras);
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+    EXPECT_FLOAT_EQ(creator->Translate().x(), 53.0f);
+}
+
+TEST(SceneDynamicLayer, UnmountsOnlyDeletedSoundAfterScriptTick) {
+    using namespace rstd::prelude;
+    auto document = owe::wpscene::ParseSceneDocumentJson(R"JSON({
+        "camera": {},
+        "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+        "objects": [
+            {"id":1,"name":"sound-a","sound":["missing-a.ogg"],"volume":{"value":0.5,"user":"volume"},"playbackmode":"loop"},
+            {"id":2,"name":"sound-b","sound":["missing-b.ogg"],"volume":{"value":0.5,"user":"volume"},"playbackmode":"loop"},
+            {"id":3,"name":"creator","scale":{"value":"1 1 1","script":"let done = false; export function update(value) { if (!done) { thisScene.destroyLayer('sound-a'); done = true; } return value; }"}}
+        ]
+    })JSON"_str,
+                                                         owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    auto vfs = Box<owe::fs::VFS>::make();
+    ASSERT_TRUE(vfs->mount("/assets"_str, rstd::move(assets).unwrap()).is_ok());
+    wavsen::audio::SoundManager sound;
+    usize                       unmounted {};
+    owe::SceneParser            parser;
+    auto                        parsed =
+        parser.Parse("delete-sound"_str,
+                     ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+                     mut_ref<owe::fs::VFS>::from_raw_parts(vfs.get()),
+                     mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound)),
+                     { .sound_unmount = Some(owe::SceneSoundUnmountCallback::make(
+                           [&sound, &unmounted](wavsen::audio::SoundStreamId id) {
+                               ++unmounted;
+                               (void)sound.unmount(id);
+                           })) });
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+    scene.scene->InstallExtension(rstd::move(vfs));
+    EXPECT_EQ(scene.scene->SoundVolumeBindings("volume"_str).len(), usize(2));
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+    EXPECT_EQ(scene.scene->RootMut()->FindByName("sound-a"_str), nullptr);
+    EXPECT_NE(scene.scene->RootMut()->FindByName("sound-b"_str), nullptr);
+    EXPECT_EQ(scene.scene->SoundVolumeBindings("volume"_str).len(), usize(1));
+    EXPECT_EQ(unmounted, usize(1));
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+    EXPECT_EQ(unmounted, usize(1));
+}
+
+TEST(SceneSoundMount, CancelsBeforeOrAfterAttachExactlyOnce) {
+    owe::SceneSoundMountState before;
+    EXPECT_FALSE(before.IsCanceled());
+    EXPECT_TRUE(before.Cancel().is_none());
+    EXPECT_TRUE(before.IsCanceled());
+    EXPECT_FALSE(before.Attach(wavsen::audio::SoundStreamId { rstd::u64(1) }));
+
+    owe::SceneSoundMountState after;
+    EXPECT_TRUE(after.Attach(wavsen::audio::SoundStreamId { rstd::u64(2) }));
+    EXPECT_FALSE(after.Attach(wavsen::audio::SoundStreamId { rstd::u64(3) }));
+    auto id = after.Cancel();
+    ASSERT_TRUE(id.is_some());
+    EXPECT_EQ(id->value, rstd::u64(2));
+    EXPECT_TRUE(after.Cancel().is_none());
+}
+
+TEST(SceneSoundMount, ConcurrentAttachAndCancelHaveOneOwner) {
+    using namespace rstd::prelude;
+    for (int iteration = 0; iteration < 100; ++iteration) {
+        owe::SceneSoundMountState        state;
+        rstd::sync::atomic::Atomic<bool> start { false };
+        auto                             worker = rstd::thread::spawn([&] {
+                          while (! start.load()) rstd::thread::yield_now();
+                          return state.Attach(wavsen::audio::SoundStreamId { u64(17) });
+                                                  }).unwrap();
+        start.store(true);
+        auto canceled = state.Cancel();
+        auto attached = rstd::move(worker).join().unwrap();
+        EXPECT_EQ(attached, canceled.is_some());
+        if (canceled.is_some()) EXPECT_EQ(canceled->value, u64(17));
+        EXPECT_TRUE(state.Cancel().is_none());
+    }
+}
+
+TEST(SceneSoundMount, DecodesAfterSourceVfsIsDestroyed) {
+    using namespace rstd::prelude;
+    auto temporary = rstd::fs::TempDir::make("owe-sound-vfs"_str).unwrap();
+    auto root      = rstd::path::PathBuf::from(temporary.path().as_os_str().to_os_string());
+    auto bytes     = Vec<u8>::make();
+    auto tag       = [&bytes](ref<str> value) {
+        bytes.extend_from_slice(value->as_bytes());
+    };
+    auto word = [&bytes](rstd::uint32_t value, int count) {
+        for (int i = 0; i < count; ++i) bytes.push(u8((value >> (i * 8)) & 255u));
+    };
+    constexpr rstd::uint32_t data_size = 9600;
+    tag("RIFF"_str);
+    word(36 + data_size, 4);
+    tag("WAVE"_str);
+    tag("fmt "_str);
+    word(16, 4);
+    word(1, 2);
+    word(1, 2);
+    word(48000, 4);
+    word(96000, 4);
+    word(2, 2);
+    word(16, 2);
+    tag("data"_str);
+    word(data_size, 4);
+    for (rstd::uint32_t i = 0; i < data_size / 2; ++i) word(0x4000, 2);
+    ASSERT_TRUE(rstd::fs::write(root.join("sound.wav"_str).as_path(), bytes.as_slice()).is_ok());
+    auto prepared = [&] {
+        owe::fs::VFS vfs;
+        auto         local = owe::fs::make_physical_fs(temporary.path());
+        EXPECT_TRUE(local.is_ok());
+        EXPECT_TRUE(vfs.mount("/assets"_str, rstd::move(local).unwrap()).is_ok());
+        owe::wpscene::SoundObject sound;
+        sound.sound.push("sound.wav"_Str);
+        return owe::SoundParser::PrepareAsync(
+            sound,
+            vfs,
+            nullptr,
+            owe::SceneSoundUnmountCallback::make([](wavsen::audio::SoundStreamId) {
+            }));
+    }();
+    prepared.stream->stream().pass_desc({ u32(2), u32(48000) });
+    float output[512] {};
+    auto  frames = prepared.stream->stream().next_pcm(output, u32(256));
+    EXPECT_GT(frames, u64());
+    EXPECT_GT(output[0], 0.1f);
+}
+
+TEST(SceneDynamicLayer, CreatesAndCancelsAsynchronousSounds) {
+    using namespace rstd::prelude;
+    using rstd::sync::Arc;
+    struct PendingSound {
+        Box<dyn<wavsen::audio::SoundStreamObject>> stream;
+        Arc<owe::SceneSoundMountState>             state;
+    };
+    auto document = owe::wpscene::ParseSceneDocumentJson(R"JSON({
+        "camera": {},
+        "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+        "objects": [{"id":1,"name":"creator","scale":{"value":"1 1 1",
+            "script":"let stage=0, b; export function update(value) { if (stage === 0) { let a=thisScene.createLayer({name:'pending-a',sound:['sound/runtime.ogg'],volume:{value:0.5,user:'volume'},playbackmode:'loop',startsilent:true}); b=thisScene.createLayer('sound/runtime.ogg'); let failed=0; try { thisScene.createLayer({name:'failed-sound',sound:['sound/runtime.ogg'],volume:1,playbackmode:'loop',scale:{value:'1 1 1',script:'throw new Error(7); export function update(v) { return v; }'}}); } catch(e) { failed++; } try { thisScene.createLayer({name:'rejected-sound',sound:['sound/runtime.ogg'],volume:1,playbackmode:'loop'}); } catch(e) { failed++; } if (a.volume === 0.75 && !a.isPlaying() && b.isPlaying() && failed === 2) thisLayer.origin=new Vec3(17,0,0); thisScene.destroyLayer(a); stage=1; } else if (stage === 1) { thisScene.destroyLayer(b); stage=2; } return value; }"}}]
+    })JSON"_str,
+                                                         owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    auto temporary = rstd::fs::TempDir::make("owe-runtime-sound"_str).unwrap();
+    auto root      = rstd::path::PathBuf::from(temporary.path().as_os_str().to_os_string());
+    ASSERT_TRUE(rstd::fs::create_dir(root.join("sound"_str).as_path()).is_ok());
+    ASSERT_TRUE(
+        rstd::fs::write(root.join("sound/runtime.ogg"_str).as_path(), "audio"_bytes).is_ok());
+    auto local = owe::fs::make_physical_fs(temporary.path());
+    ASSERT_TRUE(local.is_ok());
+    auto vfs = Box<owe::fs::VFS>::make();
+    ASSERT_TRUE(vfs->mount("/assets"_str, rstd::move(assets).unwrap()).is_ok());
+    ASSERT_TRUE(vfs->mount("/assets"_str, rstd::move(local).unwrap()).is_ok());
+    wavsen::audio::SoundManager sound;
+    Vec<PendingSound>           pending;
+    usize                       attempts {}, unmounted {};
+    auto             properties = owe::ParseJson(R"({"volume":{"value":0.75}})"_str).unwrap();
+    owe::SceneParser parser;
+    auto             parsed =
+        parser.Parse("runtime-sound"_str,
+                     ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+                     mut_ref<owe::fs::VFS>::from_raw_parts(vfs.get()),
+                     mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound)),
+                     { .user_properties = Some(*properties.as_object()),
+                       .sound_unmount   = Some(owe::SceneSoundUnmountCallback::make(
+                           [&sound, &unmounted](wavsen::audio::SoundStreamId id) {
+                               ++unmounted;
+                               (void)sound.unmount(id);
+                           })),
+                       .sound_mount     = Some(owe::SceneSoundMountCallback::make(
+                           [&pending, &attempts](Box<dyn<wavsen::audio::SoundStreamObject>> stream,
+                                                 Arc<owe::SceneSoundMountState>
+                                                     state) {
+                               ++attempts;
+                               if (attempts == usize(3)) return false;
+                               pending.push({ rstd::move(stream), rstd::move(state) });
+                               return true;
+                           })) });
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+    scene.scene->InstallExtension(rstd::move(vfs));
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+    auto* creator = scene.scene->RootMut()->FindByName("creator"_str);
+    ASSERT_NE(creator, nullptr);
+    EXPECT_FLOAT_EQ(creator->Translate().x(), 17.0f);
+    EXPECT_EQ(attempts, usize(3));
+    ASSERT_EQ(pending.len(), usize(2));
+    EXPECT_TRUE(pending[usize()].state->IsCanceled());
+    EXPECT_FALSE(pending[usize()].state->Attach(wavsen::audio::SoundStreamId { u64(99) }));
+    EXPECT_FALSE(pending[usize(1)].state->IsCanceled());
+    EXPECT_EQ(scene.scene->RootMut()->FindByName("pending-a"_str), nullptr);
+    EXPECT_EQ(scene.scene->RootMut()->FindByName("failed-sound"_str), nullptr);
+    EXPECT_EQ(scene.scene->RootMut()->FindByName("rejected-sound"_str), nullptr);
+    ASSERT_NE(scene.scene->RootMut()->FindByName("sound/runtime.ogg"_str), nullptr);
+    auto id = sound.mount(rstd::move(pending[usize(1)].stream));
+    ASSERT_TRUE(id.is_some());
+    ASSERT_TRUE(pending[usize(1)].state->Attach(*id));
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+    EXPECT_TRUE(pending[usize(1)].state->IsCanceled());
+    EXPECT_EQ(unmounted, usize(1));
+    EXPECT_EQ(scene.scene->RootMut()->FindByName("sound/runtime.ogg"_str), nullptr);
+}
+
+TEST(SceneDynamicLayer, PreservesEarlierLayersDuringRepeatedCreation) {
+    using namespace rstd::prelude;
+    auto document = owe::wpscene::ParseSceneDocumentJson(R"JSON({
+        "camera": {},
+        "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+        "objects": [{"id": 1, "name": "creator", "scale": {
+            "value": "1 1 1",
+            "script": "let n = 0; export function update(value) { for (let i = 0; i < 4; ++i) { let layer = thisScene.createLayer({image:'models/util/solidlayer.json', name:'point-' + n, size:'8 8'}); layer.origin = new Vec3(n++, 0, 0); } return value; }"
+        }}]
+    })JSON"_str,
+                                                         owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    auto vfs = Box<owe::fs::VFS>::make();
+    ASSERT_TRUE(vfs->mount("/assets"_str, rstd::move(assets).unwrap()).is_ok());
+    wavsen::audio::SoundManager sound;
+    owe::SceneParser            parser;
+    auto                        parsed =
+        parser.Parse("runtime-image-repeated"_str,
+                     ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+                     mut_ref<owe::fs::VFS>::from_raw_parts(vfs.get()),
+                     mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+    scene.scene->InstallExtension(rstd::move(vfs));
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+    auto* first = scene.scene->RootMut()->FindByName("point-0"_str);
+    ASSERT_NE(first, nullptr);
+    auto first_id = scene.scene->ResourceIndex().nodeId(*first);
+    ASSERT_TRUE(first_id.is_some());
+    auto first_draw = scene.scene->ResourceIndex().drawItemFor(*first_id, u32());
+    ASSERT_TRUE(first_draw.is_some());
+    for (int frame = 1; frame < 400; ++frame)
+        owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+    auto* last = scene.scene->RootMut()->FindByName("point-1599"_str);
+    ASSERT_NE(last, nullptr);
+    EXPECT_FLOAT_EQ(last->Translate().x(), 1599.0f);
+    EXPECT_EQ(scene.scene->ResourceIndex().nodeId(*first), first_id);
+    EXPECT_EQ(scene.scene->ResourceIndex().drawItemFor(*first_id, u32()), first_draw);
+    EXPECT_EQ(scene.scene->ResourceIndex().resolve(*first_draw)->node, first);
+}
+
+TEST(SceneDynamicLayer, RollsBackImageWhenDeferredModuleFails) {
+    using namespace rstd::prelude;
+    auto document = owe::wpscene::ParseSceneDocumentJson(R"JSON({
+        "camera": {},
+        "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+        "objects": [{"id": 1, "name": "creator", "scale": {
+            "value": "1 1 1",
+            "script": "let done = false; export function update(value) { if (!done) { let failures = 0; try { thisScene.createLayer({image:'models/runtime-bad.json', name:'bad-material', size:'16 16'}); } catch (e) { failures++; } try { thisScene.createLayer({image:'models/util/solidlayer.json', name:'failed-runtime', size:'32 32', effects:[{file:'effects/blur/effect.json'}], alpha:{value:1, script:'export function init() { return 1; }'}, scale:{value:'1 1 1', script:'throw new Error(7); export function update(v) { return v; }'}}); } catch (e) { failures++; } if (failures === 2) { thisLayer.origin = new Vec3(17, 0, 0); thisScene.createLayer({image:'models/util/solidlayer.json', name:'after-rollback', size:'16 16'}); } done = true; } return value; }"
+        }}]
+    })JSON"_str,
+                                                         owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    auto vfs = Box<owe::fs::VFS>::make();
+    ASSERT_TRUE(vfs->mount("/assets"_str, rstd::move(assets).unwrap()).is_ok());
+    auto effect_assets = owe::fs::make_physical_fs(owe::fs::Path(
+        rstd::cppstd::as_str(std::string(WAYWALLEN_ASSETS_DIR) + "/effects/blur").unwrap()));
+    ASSERT_TRUE(effect_assets.is_ok());
+    ASSERT_TRUE(vfs->mount("/assets"_str, rstd::move(effect_assets).unwrap()).is_ok());
+    auto temporary = rstd::fs::TempDir::make("owe-runtime-failure"_str).unwrap();
+    auto root      = rstd::path::PathBuf::from(temporary.path().as_os_str().to_os_string());
+    ASSERT_TRUE(rstd::fs::create_dir(root.join("models"_str).as_path()).is_ok());
+    ASSERT_TRUE(rstd::fs::create_dir(root.join("materials"_str).as_path()).is_ok());
+    ASSERT_TRUE(
+        rstd::fs::write(root.join("models/runtime-bad.json"_str).as_path(),
+                        R"({"width":16,"height":16,"material":"materials/runtime-bad.json"})"_bytes)
+            .is_ok());
+    ASSERT_TRUE(rstd::fs::write(root.join("materials/runtime-bad.json"_str).as_path(),
+                                R"({"passes":[{"shader":"missing-runtime-shader"}]})"_bytes)
+                    .is_ok());
+    auto local = owe::fs::make_physical_fs(temporary.path());
+    ASSERT_TRUE(local.is_ok());
+    ASSERT_TRUE(vfs->mount("/assets"_str, rstd::move(local).unwrap()).is_ok());
+    wavsen::audio::SoundManager sound;
+    owe::SceneParser            parser;
+    auto                        parsed =
+        parser.Parse("runtime-image-rollback"_str,
+                     ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+                     mut_ref<owe::fs::VFS>::from_raw_parts(vfs.get()),
+                     mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+    scene.scene->InstallExtension(rstd::move(vfs));
+    auto before_targets = scene.scene->RenderTargetNames().len();
+    auto before_cameras = scene.scene->CameraNames().len();
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+    auto* creator = scene.scene->RootMut()->FindByName("creator"_str);
+    ASSERT_NE(creator, nullptr);
+    EXPECT_FLOAT_EQ(creator->Translate().x(), 17.0f);
+    EXPECT_EQ(scene.scene->RootMut()->FindByName("failed-runtime"_str), nullptr);
+    EXPECT_EQ(scene.scene->RootMut()->FindByName("bad-material"_str), nullptr);
+    EXPECT_NE(scene.scene->RootMut()->FindByName("after-rollback"_str), nullptr);
+    EXPECT_EQ(scene.scene->RenderTargetNames().len(), before_targets);
+    EXPECT_EQ(scene.scene->CameraNames().len(), before_cameras);
+    auto scripts = scene.scene->ExtensionMut<owe::script::ScriptScene>();
+    ASSERT_TRUE(scripts.is_some());
+    int count = 0;
+    (**scripts).runtime().ForEachScript(
+        [](owe::script::FieldScript*, void* out) {
+            ++*static_cast<int*>(out);
+        },
+        &count);
+    EXPECT_EQ(count, 1);
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+}
+
+TEST(SceneDynamicLayer, CreatesUnregisteredImageAssetsDuringUpdate) {
+    using namespace rstd::prelude;
+    auto document = owe::wpscene::ParseSceneDocumentJson(R"JSON({
+        "camera": {},
+        "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+        "objects": [{"id": 1, "name": "creator", "scale": {
+            "value": "1 1 1",
+            "script": "export const __workshopId = '123'; let done = false; export function update(value) { if (!done) { let a = thisScene.createLayer('models/runtime-unregistered.json'); let b = thisScene.createLayer('models/runtime-unregistered.json'); a.origin = new Vec3(10, 0, 0); b.origin = new Vec3(20, 0, 0); let automatic = thisScene.createLayer('models/runtime-unregistered-auto.json'); let cross = thisScene.createLayer('models/runtime-cross.json'); let missing = false; try { thisScene.createLayer('models/missing-runtime.json'); } catch (e) { missing = true; } if (a.origin.x === 10 && b.origin.x === 20 && automatic && cross && missing) thisLayer.origin = new Vec3(29, 0, 0); done = true; } return value; }"
+        }}]
+    })JSON"_str,
+                                                         owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    auto temporary = rstd::fs::TempDir::make("owe-runtime-unregistered"_str).unwrap();
+    auto root      = rstd::path::PathBuf::from(temporary.path().as_os_str().to_os_string());
+    ASSERT_TRUE(rstd::fs::create_dir(root.join("models"_str).as_path()).is_ok());
+    ASSERT_TRUE(rstd::fs::create_dir(root.join("models/workshop"_str).as_path()).is_ok());
+    ASSERT_TRUE(rstd::fs::create_dir(root.join("models/workshop/123"_str).as_path()).is_ok());
+    ASSERT_TRUE(
+        rstd::fs::write(
+            root.join("models/runtime-unregistered.json"_str).as_path(),
+            R"({"width":48,"height":24,"material":"materials/util/solidlayer_instance_3.json"})"_bytes)
+            .is_ok());
+    ASSERT_TRUE(
+        rstd::fs::write(
+            root.join("models/runtime-unregistered-auto.json"_str).as_path(),
+            R"({"autosize":true,"material":"materials/util/solidlayer_instance_3.json"})"_bytes)
+            .is_ok());
+    ASSERT_TRUE(
+        rstd::fs::write(
+            root.join("models/workshop/123/runtime-cross.json"_str).as_path(),
+            R"({"width":16,"height":12,"material":"materials/util/solidlayer_instance_3.json"})"_bytes)
+            .is_ok());
+    auto local = owe::fs::make_physical_fs(temporary.path());
+    ASSERT_TRUE(local.is_ok());
+    auto vfs = Box<owe::fs::VFS>::make();
+    ASSERT_TRUE(vfs->mount("/assets"_str, rstd::move(assets).unwrap()).is_ok());
+    ASSERT_TRUE(vfs->mount("/assets"_str, rstd::move(local).unwrap()).is_ok());
+    wavsen::audio::SoundManager sound;
+    owe::SceneParser            parser;
+    auto                        parsed =
+        parser.Parse("unregistered-image"_str,
+                     ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+                     mut_ref<owe::fs::VFS>::from_raw_parts(vfs.get()),
+                     mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+    scene.scene->InstallExtension(rstd::move(vfs));
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+    auto* creator = scene.scene->RootMut()->FindByName("creator"_str);
+    auto* image   = scene.scene->RootMut()->FindByName("models/runtime-unregistered.json"_str);
+    auto* automatic =
+        scene.scene->RootMut()->FindByName("models/runtime-unregistered-auto.json"_str);
+    auto* cross = scene.scene->RootMut()->FindByName("models/workshop/123/runtime-cross.json"_str);
+    ASSERT_NE(creator, nullptr);
+    ASSERT_NE(image, nullptr);
+    ASSERT_NE(automatic, nullptr);
+    ASSERT_NE(cross, nullptr);
+    EXPECT_FLOAT_EQ(creator->Translate().x(), 29.0f);
+    EXPECT_FLOAT_EQ(image->Size().x(), 48.0f);
+    EXPECT_FLOAT_EQ(image->Size().y(), 24.0f);
+    EXPECT_GT(automatic->Size().x(), 0.0f);
+    EXPECT_GT(automatic->Size().y(), 0.0f);
+    EXPECT_FLOAT_EQ(cross->Size().x(), 16.0f);
+    EXPECT_FLOAT_EQ(cross->Size().y(), 12.0f);
+    EXPECT_TRUE(scene.scene->ResourceIndex().nodeId(*image).is_some());
+    EXPECT_TRUE(scene.scene->ResourceIndex().nodeId(*automatic).is_some());
+}
+
+TEST(SceneDynamicLayer, CreatesShapeWithEffectsDuringUpdate) {
+    using namespace rstd::prelude;
+    auto document = owe::wpscene::ParseSceneDocumentJson(R"JSON({
+        "camera": {},
+        "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+        "objects": [{"id": 1, "name": "creator", "scale": {
+            "value": "1 1 1",
+            "script": "let shape, stage = 0; export function update(value) { if (stage === 0) { shape = thisScene.createLayer({name:'runtime-shape', shape:'quad', origin:[0,0,0], angles:[0,0,0], scale:[1,1,1], effects:[{file:'effects/lightshafts/effect.json', visible:true, passes:[{combos:{DIRECTDRAW:1,RAYMODE:1}, constantshadervalues:{point0:'-1 -1',point1:'-1 1',point2:'1 1',point3:'1 -1'}}]}]}); shape.origin = new Vec3(17, 0, 0); if (shape.origin.x === 17) thisLayer.origin = new Vec3(29, 0, 0); stage = 1; } else if (stage === 1) { if (thisScene.destroyLayer(shape)) thisLayer.origin = new Vec3(31, 0, 0); stage = 2; } return value; }"
+        }}]
+    })JSON"_str,
+                                                         owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    auto effect_assets = owe::fs::make_physical_fs(owe::fs::Path(
+        rstd::cppstd::as_str(std::string(WAYWALLEN_ASSETS_DIR) + "/effects/lightshafts").unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    ASSERT_TRUE(effect_assets.is_ok());
+    auto vfs = Box<owe::fs::VFS>::make();
+    ASSERT_TRUE(vfs->mount("/assets"_str, rstd::move(assets).unwrap()).is_ok());
+    ASSERT_TRUE(vfs->mount("/assets"_str, rstd::move(effect_assets).unwrap()).is_ok());
+    wavsen::audio::SoundManager sound;
+    owe::SceneParser            parser;
+    auto                        parsed =
+        parser.Parse("runtime-shape"_str,
+                     ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+                     mut_ref<owe::fs::VFS>::from_raw_parts(vfs.get()),
+                     mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+    scene.scene->InstallExtension(rstd::move(vfs));
+    auto target_count = scene.scene->RenderTargetNames().len();
+    auto camera_count = scene.scene->CameraNames().len();
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+    auto* creator = scene.scene->RootMut()->FindByName("creator"_str);
+    auto* shape   = scene.scene->RootMut()->FindByName("runtime-shape"_str);
+    ASSERT_NE(creator, nullptr);
+    ASSERT_NE(shape, nullptr);
+    EXPECT_FLOAT_EQ(creator->Translate().x(), 29.0f);
+    auto id = scene.scene->ResourceIndex().nodeId(*shape);
+    ASSERT_TRUE(id.is_some());
+    EXPECT_GE(scene.scene->NodeSources(*id).len(), usize(1));
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+    EXPECT_FLOAT_EQ(creator->Translate().x(), 31.0f);
+    EXPECT_EQ(scene.scene->RootMut()->FindByName("runtime-shape"_str), nullptr);
+    EXPECT_EQ(scene.scene->RenderTargetNames().len(), target_count);
+    EXPECT_EQ(scene.scene->CameraNames().len(), camera_count);
+}
+
+TEST(SceneDynamicLayer, CreatesModelAssetsAndConfigurations) {
+    using namespace rstd::prelude;
+    auto document = owe::wpscene::ParseSceneDocumentJson(R"JSON({
+        "camera": {},
+        "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+        "objects": [{"id": 1, "name": "creator", "scale": {
+            "value": "1 1 1",
+            "script": "const asset = engine.registerAsset('models/editor/camera/camera.mdl'); let done = false; export function init(value) { let initial = thisScene.createLayer(asset); initial.origin = new Vec3(33, 0, 0); return value; } export function update(value) { if (!done) { let a = thisScene.createLayer(asset); let b = thisScene.createLayer({model:'models/editor/camera/camera.mdl', name:'configured-model'}); a.origin = new Vec3(11, 0, 0); b.origin = new Vec3(22, 0, 0); if (a.origin.x === 11 && b.origin.x === 22) thisLayer.origin = new Vec3(37, 0, 0); done = true; } return value; }"
+        }}]
+    })JSON"_str,
+                                                         owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    auto temporary = rstd::fs::TempDir::make("owe-runtime-model"_str).unwrap();
+    auto root      = rstd::path::PathBuf::from(temporary.path().as_os_str().to_os_string());
+    ASSERT_TRUE(rstd::fs::create_dir(root.join("materials"_str).as_path()).is_ok());
+    ASSERT_TRUE(rstd::fs::create_dir(root.join("materials/models"_str).as_path()).is_ok());
+    ASSERT_TRUE(
+        rstd::fs::create_dir(root.join("materials/models/editorcamera"_str).as_path()).is_ok());
+    ASSERT_TRUE(
+        rstd::fs::write(
+            root.join("materials/models/editorcamera/editorcamera.json"_str).as_path(),
+            R"({"passes":[{"shader":"flat","cullmode":"nocull","depthtest":"disabled","depthwrite":"disabled","blending":"translucent"}]})"_bytes)
+            .is_ok());
+    auto local = owe::fs::make_physical_fs(temporary.path());
+    ASSERT_TRUE(local.is_ok());
+    auto vfs = Box<owe::fs::VFS>::make();
+    ASSERT_TRUE(vfs->mount("/assets"_str, rstd::move(assets).unwrap()).is_ok());
+    ASSERT_TRUE(vfs->mount("/assets"_str, rstd::move(local).unwrap()).is_ok());
+    wavsen::audio::SoundManager sound;
+    owe::SceneParser            parser;
+    auto                        parsed =
+        parser.Parse("runtime-model"_str,
+                     ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+                     mut_ref<owe::fs::VFS>::from_raw_parts(vfs.get()),
+                     mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+    scene.scene->InstallExtension(rstd::move(vfs));
+    auto* initial_model = scene.scene->RootMut()->FindByName("models/editor/camera/camera.mdl"_str);
+    ASSERT_NE(initial_model, nullptr);
+    ASSERT_NE(initial_model->Mesh(), nullptr);
+    EXPECT_FLOAT_EQ(initial_model->Translate().x(), 33.0f);
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+    auto*           creator = scene.scene->RootMut()->FindByName("creator"_str);
+    owe::SceneNode* asset   = nullptr;
+    for (const auto& child : scene.scene->Root()->GetChildren())
+        if (child.as_ptr().as_raw_ptr() != initial_model &&
+            child->Name() == "models/editor/camera/camera.mdl"_str)
+            asset = child.as_ptr();
+    auto* configured = scene.scene->RootMut()->FindByName("configured-model"_str);
+    ASSERT_NE(creator, nullptr);
+    ASSERT_NE(asset, nullptr);
+    ASSERT_NE(configured, nullptr);
+    ASSERT_NE(asset->Mesh(), nullptr);
+    ASSERT_NE(configured->Mesh(), nullptr);
+    EXPECT_FLOAT_EQ(creator->Translate().x(), 37.0f);
+}
+
+TEST(SceneDynamicLayer, CreatesUnregisteredParticleWithoutInitialParticles) {
+    using namespace rstd::prelude;
+    auto document = owe::wpscene::ParseSceneDocumentJson(R"JSON({
+        "camera": {},
+        "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+        "objects": [{"id": 1, "name": "creator", "scale": {
+            "value": "1 1 1",
+            "script": "let done = false; export function update(value) { if (!done) { let a = thisScene.createLayer('particles/runtime.json'); let b = thisScene.createLayer('particles/runtime.json'); a.origin = new Vec3(11, 0, 0); b.origin = new Vec3(22, 0, 0); let configured = thisScene.createLayer({particle:'particles/runtime.json', name:'configured-particle', origin:'0 0 0', scale:{value:'1 1 1', script:'export function init(value) { thisLayer.origin = new Vec3(33, 0, 0); return value; }'}}); let missing = false; try { thisScene.createLayer('particles/missing.json'); } catch (e) { missing = true; } let failed = false; try { thisScene.createLayer({particle:'particles/runtime.json', name:'failed-particle', scale:{value:'1 1 1', script:'throw new Error(7); export function update(v) { return v; }'}}); } catch (e) { failed = true; } if (a.origin.x === 11 && b.origin.x === 22 && configured.origin.x === 33 && missing && failed) thisLayer.origin = new Vec3(37, 0, 0); done = true; } return value; }"
+        }}]
+    })JSON"_str,
+                                                         owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    auto temporary = rstd::fs::TempDir::make("owe-runtime-particle"_str).unwrap();
+    auto root      = rstd::path::PathBuf::from(temporary.path().as_os_str().to_os_string());
+    ASSERT_TRUE(rstd::fs::create_dir(root.join("particles"_str).as_path()).is_ok());
+    ASSERT_TRUE(rstd::fs::create_dir(root.join("materials"_str).as_path()).is_ok());
+    ASSERT_TRUE(
+        rstd::fs::write(
+            root.join("particles/runtime.json"_str).as_path(),
+            R"({"material":"materials/runtime-particle.json","maxcount":16,"emitter":[{"name":"sphererandom","rate":1}],"initializer":[{"name":"lifetimerandom","min":1,"max":2}]})"_bytes)
+            .is_ok());
+    ASSERT_TRUE(
+        rstd::fs::write(
+            root.join("materials/runtime-particle.json"_str).as_path(),
+            R"({"passes":[{"shader":"genericparticle","depthtest":"disabled","depthwrite":"disabled","blending":"additive","cullmode":"nocull","textures":["particle/halo"]}]})"_bytes)
+            .is_ok());
+    auto local = owe::fs::make_physical_fs(temporary.path());
+    ASSERT_TRUE(local.is_ok());
+    auto vfs = Box<owe::fs::VFS>::make();
+    ASSERT_TRUE(vfs->mount("/assets"_str, rstd::move(assets).unwrap()).is_ok());
+    ASSERT_TRUE(vfs->mount("/assets"_str, rstd::move(local).unwrap()).is_ok());
+    wavsen::audio::SoundManager sound;
+    owe::SceneParser            parser;
+    auto                        parsed =
+        parser.Parse("unregistered-particle"_str,
+                     ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+                     mut_ref<owe::fs::VFS>::from_raw_parts(vfs.get()),
+                     mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+    scene.scene->InstallExtension(rstd::move(vfs));
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+    auto* creator    = scene.scene->RootMut()->FindByName("creator"_str);
+    auto* particle   = scene.scene->RootMut()->FindByName("particles/runtime.json"_str);
+    auto* configured = scene.scene->RootMut()->FindByName("configured-particle"_str);
+    ASSERT_NE(creator, nullptr);
+    ASSERT_NE(particle, nullptr);
+    ASSERT_NE(configured, nullptr);
+    EXPECT_EQ(scene.scene->RootMut()->FindByName("failed-particle"_str), nullptr);
+    EXPECT_FLOAT_EQ(creator->Translate().x(), 37.0f);
+    ASSERT_NE(particle->Mesh(), nullptr);
+    auto id = scene.scene->ResourceIndex().nodeId(*particle);
+    ASSERT_TRUE(id.is_some());
+    EXPECT_GE(scene.scene->NodeSources(*id).len(), usize(3));
+}
+
+TEST(SceneDynamicLayer, CreatesRegisteredImageAndParticleDuringUpdate) {
+    using namespace rstd::prelude;
+    auto document = owe::wpscene::ParseSceneDocumentJson(R"JSON({
+        "camera": {},
+        "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+        "objects": [{"id": 1, "name": "creator", "scale": {
+            "value": "1 1 1",
+            "script": "const asset = engine.registerAsset('models/runtime-image.json'); const particle = engine.registerAsset('particles/runtime.json'); let initial, created; export function init(value) { initial = thisScene.createLayer(asset); initial.origin = new Vec3(33, 0, 0); initial.alignment = 'top'; return value; } export function update(value) { if (!created) { created = thisScene.createLayer(asset); created.origin = new Vec3(10, 20, 0); created.alignment = 'bottom'; if (initial.alignment === 'top' && created.alignment === 'bottom') thisLayer.origin = new Vec3(47, 0, 0); thisScene.createLayer(particle); } return value; }"
+        }}, {"id": 2, "name": "initial-particle", "particle": "particles/runtime.json"}]
+    })JSON"_str,
+                                                         owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    auto temporary = rstd::fs::TempDir::make("owe-runtime-layer"_str).unwrap();
+    auto root      = rstd::path::PathBuf::from(temporary.path().as_os_str().to_os_string());
+    ASSERT_TRUE(rstd::fs::create_dir(root.join("models"_str).as_path()).is_ok());
+    ASSERT_TRUE(rstd::fs::create_dir(root.join("particles"_str).as_path()).is_ok());
+    ASSERT_TRUE(rstd::fs::create_dir(root.join("materials"_str).as_path()).is_ok());
+    ASSERT_TRUE(
+        rstd::fs::write(
+            root.join("models/runtime-image.json"_str).as_path(),
+            R"({"width":32,"height":32,"material":"materials/util/solidlayer.json","solidlayer":true})"_bytes)
+            .is_ok());
+    ASSERT_TRUE(
+        rstd::fs::write(
+            root.join("particles/runtime.json"_str).as_path(),
+            R"({"material":"materials/runtime-particle.json","maxcount":16,"emitter":[{"name":"sphererandom","rate":1}],"initializer":[{"name":"lifetimerandom","min":1,"max":2}]})"_bytes)
+            .is_ok());
+    ASSERT_TRUE(
+        rstd::fs::write(
+            root.join("materials/runtime-particle.json"_str).as_path(),
+            R"({"passes":[{"shader":"genericparticle","depthtest":"disabled","depthwrite":"disabled","blending":"additive","cullmode":"nocull","textures":["particle/halo"],"constantshadervalues":{"ui_editor_properties_overbright":{"value":2.5,"animation":{"c0":[{"frame":0,"value":2.5},{"frame":60,"value":3.0}]}}}}]})"_bytes)
+            .is_ok());
+    auto local = owe::fs::make_physical_fs(temporary.path());
+    ASSERT_TRUE(local.is_ok());
+    auto vfs = Box<owe::fs::VFS>::make();
+    ASSERT_TRUE(vfs->mount("/assets"_str, rstd::move(assets).unwrap_unchecked()).is_ok());
+    ASSERT_TRUE(vfs->mount("/assets"_str, rstd::move(local).unwrap_unchecked()).is_ok());
+    wavsen::audio::SoundManager sound;
+    owe::SceneParser            parser;
+    auto                        parsed =
+        parser.Parse("registered-image"_str,
+                     ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+                     mut_ref<owe::fs::VFS>::from_raw_parts(vfs.get()),
+                     mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+    scene.scene->InstallExtension(rstd::move(vfs));
+    auto* initial_image = scene.scene->RootMut()->FindByName("models/runtime-image.json"_str);
+    ASSERT_NE(initial_image, nullptr);
+    ASSERT_NE(initial_image->Mesh(), nullptr);
+    EXPECT_FLOAT_EQ(initial_image->Translate().x(), 33.0f);
+    auto initial_image_id = scene.scene->ResourceIndex().nodeId(*initial_image);
+    ASSERT_TRUE(initial_image_id.is_some());
+    EXPECT_GE(scene.scene->NodeSources(*initial_image_id).len(), usize(1));
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+
+    owe::SceneNode* created = nullptr;
+    for (const auto& child : scene.scene->Root()->GetChildren())
+        if (child.as_ptr().as_raw_ptr() != initial_image &&
+            child->Name() == "models/runtime-image.json"_str)
+            created = child.as_ptr();
+    ASSERT_NE(created, nullptr);
+    ASSERT_NE(created->Mesh(), nullptr);
+    auto* creator = scene.scene->RootMut()->FindByName("creator"_str);
+    ASSERT_NE(creator, nullptr);
+    EXPECT_FLOAT_EQ(creator->Translate().x(), 47.0f);
+    EXPECT_FLOAT_EQ(created->Translate().x(), 10.0f);
+    EXPECT_FLOAT_EQ(created->Translate().y(), 20.0f);
+    EXPECT_TRUE(scene.scene->ResourceIndex().nodeId(*created).is_some());
+    auto* particle = scene.scene->RootMut()->FindByName("particles/runtime.json"_str);
+    ASSERT_NE(particle, nullptr);
+    auto particle_id = scene.scene->ResourceIndex().nodeId(*particle);
+    ASSERT_TRUE(particle_id.is_some());
+    EXPECT_GE(scene.scene->NodeSources(*particle_id).len(), usize(3));
+    ASSERT_NE(particle->Mesh(), nullptr);
+    ASSERT_NE(particle->Mesh()->Material(), nullptr);
+    auto animation = particle->Mesh()->Material()->ShaderValueAnimation("g_Overbright"_str);
+    ASSERT_TRUE(animation.is_some());
+    auto* initial_particle = scene.scene->RootMut()->FindByName("initial-particle"_str);
+    ASSERT_NE(initial_particle, nullptr);
+    ASSERT_NE(initial_particle->Mesh(), nullptr);
+    ASSERT_NE(initial_particle->Mesh()->Material(), nullptr);
+    auto initial_animation =
+        initial_particle->Mesh()->Material()->ShaderValueAnimation("g_Overbright"_str);
+    ASSERT_TRUE(initial_animation.is_some());
+    EXPECT_NE((*animation).as_ptr(), (*initial_animation).as_ptr());
+    scene.scene->TickNodeFieldAnimations();
+    scene.scene->PassFrameTime(0.25);
+    scene.scene->TickNodeFieldAnimations();
+    EXPECT_GT((*animation)->PositionSeconds(), 0.0);
+    EXPECT_GT((*initial_animation)->PositionSeconds(), 0.0);
+    auto layer_count = scene.scene->Root()->GetChildren().len();
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+    EXPECT_EQ(scene.scene->Root()->GetChildren().len(), layer_count);
+}
+
 TEST(SceneShaderReflection, InitialMaterialsRetainSharedReflectionAfterFinalize) {
     using namespace rstd::prelude;
     auto document = owe::wpscene::ParseSceneDocumentJson(R"({
@@ -519,6 +1560,52 @@ TEST(SceneObjectExpansion, IgnoresContainerWithoutAuthoredId) {
     ASSERT_EQ(objects.len(), rstd::usize(1));
     ASSERT_TRUE(objects[rstd::usize()].is_Container());
     EXPECT_EQ(objects[rstd::usize()].as_Container().value.id, rstd::i32(7));
+}
+
+TEST(SceneObjectExpansion, SingleObjectDecodeUsesDocumentSchema) {
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {},
+            "general": {},
+            "objects": [
+                {"id": 7, "name": "container", "visible": false},
+                {"id": 8, "name": "audio", "sound": [], "visible": false},
+                {"id": 9, "name": "image", "image": "models/util/solidlayer.json",
+                 "size": "32 32", "visible": false}
+            ]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    owe::fs::VFS vfs;
+    auto         assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    ASSERT_TRUE(vfs.mount("/assets"_str, rstd::move(assets).unwrap_unchecked()).is_ok());
+    auto vfs_ref = rstd::mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs));
+    auto objects = owe::wpscene::DecodeSceneObjects(
+        rstd::ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        vfs_ref);
+    ASSERT_EQ(objects.len(), rstd::usize(3));
+    for (rstd::usize i {}; i < objects.len(); ++i) {
+        const auto& record = document->objects[i];
+        EXPECT_EQ(owe::wpscene::ClassifySceneObject(record.authored), record.metadata.kind);
+        auto decoded = owe::wpscene::DecodeSceneObject(
+            record.authored, vfs_ref, document->metadata.pkg_version);
+        ASSERT_TRUE(decoded.is_some());
+        if (objects[i].is_Container()) {
+            ASSERT_TRUE(decoded->is_Container());
+            EXPECT_EQ(decoded->as_Container().value.id, objects[i].as_Container().value.id);
+            EXPECT_FALSE(decoded->as_Container().value.visible);
+        } else if (objects[i].is_Sound()) {
+            ASSERT_TRUE(decoded->is_Sound());
+            EXPECT_EQ(decoded->as_Sound().value.id, objects[i].as_Sound().value.id);
+            EXPECT_EQ(decoded->as_Sound().value.visible, objects[i].as_Sound().value.visible);
+        } else {
+            ASSERT_TRUE(decoded->is_Image());
+            EXPECT_EQ(decoded->as_Image().value.id, objects[i].as_Image().value.id);
+            EXPECT_FALSE(decoded->as_Image().value.visible);
+        }
+    }
 }
 
 TEST(SceneObjectExpansion, PreservesHiddenSourceReferencedByContainer) {
@@ -968,6 +2055,23 @@ TEST(ImageColorBlendParsing, EffectLayerPreservesLinearDodgeAttachmentOwner) {
         final_effect->Nodes().last().unwrap().get()->sceneNode->Mesh()->Material();
     ASSERT_NE(final_material, nullptr);
     EXPECT_EQ(final_material->Pipeline().blend_mode, owe::BlendMode::Additive);
+    auto target_key = scene.scene->NodeResourceKey(node->Identity(), "layer_composite"_str);
+    ASSERT_TRUE(scene.scene->RenderTarget(target_key.as_str()).is_some());
+    rstd::array<owe::SceneNodeId, 1> owners { node->Identity() };
+    EXPECT_TRUE(scene.scene->RemoveNodeRenderTargets(owners.as_slice()) > rstd::usize());
+    EXPECT_TRUE(scene.scene->RenderTarget(target_key.as_str()).is_none());
+    EXPECT_TRUE(scene.scene->RenderTarget("_rt_default"_str).is_some());
+    auto camera_key = scene.scene->NodeResourceKey(node->Identity(), "layer_camera"_str);
+    auto camera     = scene.scene->CameraHandle(camera_key.as_str());
+    auto active     = scene.scene->ActiveCameraHandle();
+    ASSERT_TRUE(camera.is_some());
+    ASSERT_TRUE(active.is_some());
+    owe::UniformCameraResolver resolver((*active).clone(), scene.scene->CameraRegistry());
+    EXPECT_TRUE(resolver.Resolve(*node).is_some());
+    EXPECT_EQ(scene.scene->RemoveNodeCameras(owners.as_slice()).len(), rstd::usize(1));
+    EXPECT_TRUE(scene.scene->Camera(camera_key.as_str()).is_none());
+    EXPECT_TRUE(resolver.Resolve(*node).is_none());
+    EXPECT_TRUE((*camera)->CameraSnapshot().projection.allFinite());
 }
 
 TEST(ModelMaterialParsing, OpaqueSubmeshesPrecedeBlendedSubmeshes) {
@@ -1270,6 +2374,8 @@ TEST(SceneCameraParsing, PerspectiveOverridePreservesTheOrthographicReferencePla
     auto camera = scene.scene->CameraMut("global_perspective"_str);
     ASSERT_TRUE(camera.is_some());
     EXPECT_DOUBLE_EQ((**camera).Fov(), 21.0);
+    scene.scene->UpdateCameraFillMode(rstd::u32(1920), rstd::u32(1080), owe::FillMode::ASPECTCROP);
+    EXPECT_DOUBLE_EQ((**camera).Fov(), 21.0);
     const double expected_distance =
         4320.0 / (2.0 * std::tan(21.0 * rstd::f64::consts::PI.to_primitive() / 360.0));
     EXPECT_NEAR((**camera).GetPosition().z(), expected_distance, 1e-3);
@@ -1280,6 +2386,36 @@ TEST(SceneCameraParsing, PerspectiveOverridePreservesTheOrthographicReferencePla
     EXPECT_NEAR(view_projection(2, 2), 0.000333444477, 1e-9);
     EXPECT_NEAR(view_projection(2, 3), 1.11559916, 1e-6);
     EXPECT_NEAR(view_projection(3, 3), expected_distance, 1e-3);
+}
+
+TEST(SceneCameraParsing, OrthographicSceneDerivesPerspectiveFovFromViewport) {
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {},
+            "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+            "objects": []
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, rstd::move(assets).unwrap_unchecked()).is_ok());
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "ortho-perspective"_str,
+        rstd::ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        rstd::mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        rstd::mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene  = rstd::move(parsed).unwrap();
+    auto camera = scene.scene->Camera("global_perspective"_str);
+    ASSERT_TRUE(camera.is_some());
+    EXPECT_TRUE((**camera).FovPolicy() == owe::SceneCameraFovPolicy::OrthographicProjection);
+    scene.scene->UpdateCameraFillMode(rstd::u32(1280), rstd::u32(720), owe::FillMode::ASPECTCROP);
+    EXPECT_NEAR((**camera).Fov(), 56.738092586, 0.0001);
 }
 
 TEST(BloomParsing, PreservesPassBindingsAndAuthoredConstants) {

@@ -57,9 +57,15 @@ public:
     ScriptValue(StringValue value): ScriptValue(String(rstd::move(value))) {}
 };
 
-struct BoneTranslation {
-    float x { 0.0f }, y { 0.0f }, z { 0.0f };
+struct BoneTransformData {
+    float m[16] { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+                  0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f };
+    float x() const { return m[12]; }
+    float y() const { return m[13]; }
+    float z() const { return m[14]; }
 };
+
+using BoneTranslation = BoneTransformData;
 
 // What kind of value a FieldScript is expected to produce. Set at parse
 // time based on the field name's well-known type — see the per-field-kind
@@ -163,6 +169,7 @@ struct ScriptBindingContext {
     ScriptPropertyObjectKind                 object_kind { ScriptPropertyObjectKind::Layer };
     String                                   property;
     Option<Arc<owe::SceneAnimationPlayback>> animation;
+    Option<Arc<owe::SceneAnimationLayer>>    animation_layer;
     Option<owe::SceneImageEffectRef>         effect;
     owe::SceneMaterial*                      material { nullptr };
 
@@ -174,6 +181,8 @@ struct ScriptBindingContext {
                          Option<Arc<owe::SceneAnimationPlayback>> = None()) -> ScriptBindingContext;
     static auto ForAnimationLayer(owe::SceneNode*, ref<str>, Arc<owe::SceneAnimationPlayback>)
         -> ScriptBindingContext;
+    static auto ForAnimationLayer(owe::SceneNode*, ref<str>, Arc<owe::SceneAnimationLayer>,
+                                  Option<Arc<owe::SceneAnimationPlayback>>) -> ScriptBindingContext;
     static auto ForEffect(owe::SceneNode*, owe::SceneImageEffectRef, ref<str>,
                           Option<Arc<owe::SceneAnimationPlayback>> = None())
         -> ScriptBindingContext;
@@ -187,22 +196,30 @@ struct LayerAssetReference {
     Option<ref<str>> workshop_id;
 };
 
-// One JsRuntime per Scene. Owns one JSRuntime and one JSContext. Compiled
-// modules are deduped by sha so duplicated sources across many bound fields
-// only allocate once. The runtime is not thread-safe; the renderer's frame
-// tick is the single owner.
+enum class FieldScriptInitialization
+{
+    Automatic,
+    Deferred
+};
+
+// One JsRuntime per Scene. Each field owns a separate module instance.
+// The renderer's frame tick is the single owner; the runtime is not thread-safe.
 class JsRuntime : NoCopy, NoMove {
 public:
     JsRuntime();
     ~JsRuntime();
 
-    // Returns nullptr on hard compile/init failure (logs once).
+    // Deferred scripts compile immediately but evaluate only on initialization.
+    // Returns nullptr on compile or immediate module evaluation failure.
     // `node` (nullable) is the SceneNode the script will see as `thisLayer`
     // inside init/update. When null, `thisLayer` falls back to a generic
     // stub (the JS-side default created at bootstrap).
-    FieldScript* MakeFieldScript(ref<str> source, ref<str> script_sha, FieldKind field_kind,
-                                 const Json& properties_config, const Json& initial_value,
-                                 ScriptBindingContext context = {});
+    FieldScript* MakeFieldScript(
+        ref<str> source, ref<str> script_sha, FieldKind field_kind, const Json& properties_config,
+        const Json& initial_value, ScriptBindingContext context = {},
+        FieldScriptInitialization initialization = FieldScriptInitialization::Automatic);
+
+    bool InitializeFieldScript(FieldScript& script);
 
     // Pending scripts initialize in ascending owner order when SetSceneRoot
     // completes scene assembly. Equal orders retain creation order.
@@ -216,6 +233,7 @@ public:
     // searches from this node. Call once per scene after parsing finishes.
     void SetScene(owe::Scene* scene);
     void SetSceneRoot(owe::SceneNode* root);
+    void InvalidateLayer(owe::SceneNode& node);
 
     // Wire localStorage to a JSON file. Existing keys load synchronously;
     // subsequent script writes flush back to the file. Pass an empty
@@ -232,15 +250,22 @@ public:
     // (`{value: ...}` plus optional metadata).
     void SetUserProperty(ref<str> key, const Json& property);
 
+    // Merge changed general settings and notify initialized scripts.
+    void SetGeneralSettings(const Json& changes);
+
     // Dispatch Wallpaper Engine media callbacks for the current media
     // snapshot. Call from the renderer owner thread.
     void SetMediaStatus(const MediaStatus& status);
 
     using BoneIndexResolver = Box<dyn<FnMut<uint32_t(owe::SceneNode*, ref<str>)>>>;
+    using BoneCountResolver = Box<dyn<FnMut<uint32_t(owe::SceneNode*)>>>;
     using BoneTransformResolver =
-        Box<dyn<FnMut<Option<BoneTranslation>(owe::SceneNode*, uint32_t, double)>>>;
-    void SetBoneResolvers(BoneIndexResolver     index_resolver,
-                          BoneTransformResolver transform_resolver);
+        Box<dyn<FnMut<Option<BoneTransformData>(owe::SceneNode*, uint32_t, double)>>>;
+    using BoneSetTransformResolver =
+        Box<dyn<FnMut<void(owe::SceneNode*, uint32_t, const BoneTransformData&)>>>;
+    void SetBoneResolvers(BoneIndexResolver index_resolver, BoneCountResolver count_resolver,
+                          BoneTransformResolver    transform_resolver,
+                          BoneSetTransformResolver set_transform_resolver);
 
     // Drive every alive FieldScript once. Invokes their cached `update`
     // export and stores the coerced return into FieldScript::last_value().
@@ -263,7 +288,7 @@ public:
     using PointSizeGetter = Arc<dyn<FnMut<double()>>>;
     using PointSizeSetter = Arc<dyn<FnMut<bool(double)>>>;
     using TextAlignSetter = Arc<dyn<FnMut<bool(ref<str>)>>>;
-    void RegisterTextSetter(owe::SceneNode* node, TextSetter setter);
+    void RegisterTextSetter(owe::SceneNode* node, TextSetter setter, ref<str> initial_text);
     void RegisterTextAlignSetters(owe::SceneNode* node, String horizontal, String vertical,
                                   double point_size, TextAlignSetter set_horizontal,
                                   TextAlignSetter         set_vertical,
@@ -280,7 +305,6 @@ public:
     using ImageAlignmentSetter = Arc<dyn<FnMut<void(owe::SceneNode*, ref<str>)>>>;
     void RegisterImageAlignmentSetter(owe::SceneNode* node, ref<str> alignment,
                                       ImageAlignmentSetter setter);
-    void CloneImageAlignmentBinding(owe::SceneNode* source, owe::SceneNode* clone);
 
     using LayerFactory =
         Arc<dyn<FnMut<Option<Arc<owe::SceneNode>>(owe::SceneNode*, LayerAssetReference)>>>;
@@ -290,6 +314,14 @@ public:
     void ClearLayerFactory();
     void ClearLayerConfigFactory();
 
+private:
+    friend class ScriptScene;
+    bool OwnsDeferredFieldScript(const FieldScript& script) const noexcept;
+    bool DiscardDeferredFieldScript(FieldScript& script);
+    void PruneInactiveFieldScripts();
+    void InvalidateLayerPointer(owe::SceneNode* node);
+
+public:
     // Same exposure rule as FieldScript::Impl above: opaque outside the
     // module, but visible to peer module impl files.
     struct Impl;
@@ -304,6 +336,7 @@ public:
     FieldKind          field_kind() const noexcept;
     const ScriptValue& last_value() const noexcept;
     bool               alive() const noexcept;
+    bool               initialization_deferred() const noexcept;
     ref<str>           script_sha() const noexcept;
     slice<String>      RegisteredAssets() const noexcept;
     Option<ref<str>>   WorkshopId() const noexcept;
@@ -364,6 +397,7 @@ public:
 
     JsRuntime& runtime() noexcept;
     void       AddActuator(Actuator a);
+    bool       DiscardDeferredFieldScript(FieldScript& script);
     bool       empty() const noexcept;
 
     // Push the host's per-frame state, drive every FieldScript, drain

@@ -277,10 +277,14 @@ public:
     // Borrowed until this instance is evaluated, prepared, or destroyed again.
     slice<Eigen::Affine3f>  genFrame(double time) noexcept;
     rstd::uint32_t          boneIndex(ref<str> name) const noexcept;
+    rstd::uint32_t          boneCount() const noexcept;
     Option<Eigen::Affine3f> boneTransform(rstd::uint32_t index, double time) noexcept;
+    void setBoneTransform(rstd::uint32_t index, const Eigen::Affine3f& transform) noexcept;
     Option<Eigen::Affine3f> attachmentTransform(usize index, double time) noexcept;
     auto AnimationPlaybacks() const noexcept -> slice<Arc<SceneAnimationPlayback>>;
     auto AnimationPlayback(i32 layer_id) const -> Option<Arc<SceneAnimationPlayback>>;
+    auto AnimationPlaybackAt(usize index) const -> Option<Arc<SceneAnimationPlayback>>;
+    void SetRuntimeAnimationLayer(usize index, Arc<SceneAnimationLayer> state);
     void SetAnimationVisible(i32 layer_id, bool visible);
     auto TextureChannelBlendMap(double time) noexcept -> slice<float>;
 
@@ -298,10 +302,13 @@ private:
         AnimationLayer                       anim_layer;
         const Puppet::Animation*             anim { nullptr };
         Option<Arc<SceneAnimationPlayback>>  playback;
+        Option<Arc<SceneAnimationLayer>>     state;
         bool                                 legacy_absolute_base { false };
         Puppet::Animation::InterpolationInfo interp_info {};
 
         bool IsAdditiveTransform() const { return anim_layer.additive && ! legacy_absolute_base; }
+        bool Visible() const { return state.is_some() ? (*state)->Visible() : anim_layer.visible; }
+        double Blend() const { return state.is_some() ? (*state)->Blend() : anim_layer.blend; }
 
         operator bool() const noexcept { return anim != nullptr; };
     };
@@ -310,6 +317,7 @@ private:
     Vec<Arc<SceneAnimationPlayback>> m_playbacks;
     Vec<float>                       m_texture_channel_blend_map;
     Vec<Eigen::Affine3f>             m_final_affines;
+    Vec<Option<Eigen::Affine3f>>     m_script_bone_overrides;
     Arc<Puppet>                      m_puppet;
 };
 

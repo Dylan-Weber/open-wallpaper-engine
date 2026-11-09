@@ -71,6 +71,10 @@ class MainMsg final {
               (SetMuted, (bool muted;)),
               (SetAudioClientIdentity, (SceneAudioClientIdentity identity;)),
               (AudioDeviceEvent, (wavsen::audio::AudioDeviceEvent event;)),
+              (UnmountSound, (wavsen::audio::SoundStreamId id;)),
+              (MountSound,
+               (Arc<SceneLoadState> load; Box<dyn<wavsen::audio::SoundStreamObject>> stream;
+                Arc<SceneSoundMountState>                                            mount;)),
               (SetFillMode, (FillMode mode;)), (SetSpeed, (f32 speed;)),
               (SetMouseParallax, (bool enabled;)), (SetUserProperty, (String key; Json value;)),
               (SetFirstFrameCallback, (FirstFrameCallback cb;)),
@@ -186,6 +190,8 @@ public:
     void on(MainMsg::SetMuted_payload&&);
     void on(MainMsg::SetAudioClientIdentity_payload&&);
     void on(MainMsg::AudioDeviceEvent_payload&&);
+    void on(MainMsg::UnmountSound_payload&&);
+    void on(MainMsg::MountSound_payload&&);
     void on(MainMsg::SetFillMode_payload&&);
     void on(MainMsg::SetSpeed_payload&&);
     void on(MainMsg::SetMouseParallax_payload&&);
@@ -325,27 +331,37 @@ private:
     void rebuildRenderGraph(vulkan::RenderGraphResourceRetention retention, bool evict_meshes,
                             SceneLoadBenchRecorderView load_bench = {});
     void detachSceneAudioResponseDemandCallback();
+    void maintainResources();
+    bool frameBusy() const {
+        return m_render->framePending() || (m_pipeline && (*m_pipeline)->pending().frame);
+    }
+    void applyPendingChanges();
 
     SceneRuntimeController&     m_main;
     Option<Arc<SceneLoadState>> m_scene_load;
 
-    Box<vulkan::VulkanRender>           m_render;
-    Option<Box<Scene>>                  m_scene_owner;
-    Option<RenderMsg::SetScene_payload> m_pending_scene;
-    Scene*                              m_scene { nullptr };
-    Option<Arc<UniformRuntimeInput>>    m_uniform_input_owner;
-    UniformRuntimeInput*                m_uniform_input { nullptr };
-    Option<Box<SceneRenderPipeline>>    m_pipeline;
-    f32                                 m_speed { 1.0f };
-    bool                                m_mouse_parallax { true };
-    FillMode                            m_fillmode { FillMode::ASPECTCROP };
-    bool                                m_stopped { false };
-    Option<AudioResponseDemandCallback> m_audio_response_demand_callback;
-    bool                                m_audio_response_enabled { true };
-    audio::ResponseEngine               m_audio_response_engine;
-    scene_audio::ResponseProcessor      m_scene_audio_response;
-    bool                                m_first_frame_ok { false };
-    double                              m_frame_delta {};
+    Box<vulkan::VulkanRender>                 m_render;
+    Option<Box<Scene>>                        m_scene_owner;
+    Option<RenderMsg::SetScene_payload>       m_pending_scene;
+    Scene*                                    m_scene { nullptr };
+    Option<Arc<UniformRuntimeInput>>          m_uniform_input_owner;
+    UniformRuntimeInput*                      m_uniform_input { nullptr };
+    Option<Box<SceneRenderPipeline>>          m_pipeline;
+    f32                                       m_speed { 1.0f };
+    bool                                      m_mouse_parallax { true };
+    FillMode                                  m_fillmode { FillMode::ASPECTCROP };
+    bool                                      m_stopped { false };
+    Option<AudioResponseDemandCallback>       m_audio_response_demand_callback;
+    bool                                      m_audio_response_enabled { true };
+    audio::ResponseEngine                     m_audio_response_engine;
+    scene_audio::ResponseProcessor            m_scene_audio_response;
+    bool                                      m_first_frame_ok { false };
+    double                                    m_frame_delta {};
+    Option<Instant>                           m_maintenance_deadline;
+    Vec<RenderMsg::SetUserProperty_payload>   m_pending_properties;
+    Option<RenderMsg::SetMediaStatus_payload> m_pending_media;
+    bool                                      m_pending_view_config {};
+    Option<RenderMsg::SwapchainReady_payload> m_pending_swapchain;
 
     Atomic<array<float, 2>> m_mouse_pos { array<float, 2> { 0.5f, 0.5f } };
     Atomic<u32>             m_buttons_down {};
@@ -394,8 +410,18 @@ void SceneRenderController::start() {
     auto thread = rstd::thread::spawn([this, rx = rstd::move(rx)]() mutable {
         rstd_info("render loop started");
         while (true) {
-            auto received = rx.recv();
-            if (received.is_err()) break;
+            if (m_maintenance_deadline && Instant::now() >= *m_maintenance_deadline)
+                maintainResources();
+            auto received = [&]() -> Result<RenderMsg, RecvTimeoutError> {
+                if (m_maintenance_deadline) return rx.recv_deadline(*m_maintenance_deadline);
+                auto message = rx.recv();
+                if (message.is_err()) return Err(RecvTimeoutError::Disconnected);
+                return Ok(rstd::move(message).unwrap());
+            }();
+            if (received.is_err()) {
+                if (received.unwrap_err() == RecvTimeoutError::Timeout) continue;
+                break;
+            }
 
             auto message  = rstd::move(received).unwrap();
             bool shutdown = false;
@@ -419,7 +445,10 @@ void SceneRenderController::start() {
                     m_scene_audio_response.end();
                 }
                 RSTD_CASE_PAYLOAD(Stop, value) { on(rstd::move(value)); }
-                RSTD_CASE(Draw) { onDraw(); }
+                RSTD_CASE(Draw) {
+                    onDraw();
+                    maintainResources();
+                }
                 RSTD_CASE_PAYLOAD(SwapchainReady, value) { on(rstd::move(value)); }
                 RSTD_CASE_PAYLOAD(RequestPreparedPassDiagnostics, value) { on(rstd::move(value)); }
                 RSTD_CASE_PAYLOAD(RequestPreparationDiagnostics, value) { on(rstd::move(value)); }
@@ -467,10 +496,29 @@ void SceneRenderController::on(RenderMsg::Stop_payload&& m) {
         frame_timer.Stop();
     else
         frame_timer.Run();
+    maintainResources();
+}
+
+void SceneRenderController::maintainResources() {
+    m_maintenance_deadline =
+        m_render->maintainResources() ? Some(Instant::now() + Duration::from_secs(u64(1))) : None();
+}
+
+void SceneRenderController::applyPendingChanges() {
+    if (frameBusy()) return;
+    if (rstd::exchange(m_pending_view_config, false)) {
+        if (m_pipeline) (*m_pipeline)->setFillMode(m_fillmode);
+        if (m_uniform_input) m_uniform_input->SetMouseParallax(m_mouse_parallax);
+    }
+    auto properties = rstd::move(m_pending_properties);
+    for (auto& property : properties) on(rstd::move(property));
+    if (m_pending_media) on(m_pending_media.take().unwrap());
 }
 
 void SceneRenderController::onDraw() {
+    if (m_pending_swapchain && ! m_render->framePending()) on(m_pending_swapchain.take().unwrap());
     if (m_pending_scene && ! m_render->framePending()) on(m_pending_scene.take().unwrap());
+    applyPendingChanges();
     frame_timer.FrameBegin();
     if (m_pipeline.is_some() && m_scene && renderInited()) {
         const bool first_draw = ! m_first_frame_ok;
@@ -530,7 +578,7 @@ void SceneRenderController::onDraw() {
             frame_timer.FrameEnd();
             return;
         }
-        if (! m_stopped) m_scene->PassFrameTime(m_frame_delta);
+        if ((*m_pipeline)->acknowledgeFrameSubmitted()) m_scene->PassFrameTime(m_frame_delta);
 
         if (first_draw) {
             m_first_frame_ok = true;
@@ -555,6 +603,10 @@ void SceneRenderController::onDraw() {
 
 void SceneRenderController::on(RenderMsg::SetFillMode_payload&& m) {
     m_fillmode = m.mode;
+    if (frameBusy()) {
+        m_pending_view_config = true;
+        return;
+    }
     if (m_scene && renderInited()) {
         if (m_pipeline) (*m_pipeline)->setFillMode(m_fillmode);
     }
@@ -591,7 +643,9 @@ void SceneRenderController::on(RenderMsg::SetScene_payload&& m) {
         Random::seed(static_cast<Seed>(m.random_seed->to_primitive()));
     }
     detachSceneAudioResponseDemandCallback();
-    m_pipeline            = None();
+    m_pipeline = None();
+    m_pending_properties.clear();
+    m_pending_media       = None();
     m_scene               = nullptr;
     m_uniform_input       = nullptr;
     m_scene_owner         = Some(rstd::move(m.scene));
@@ -619,11 +673,25 @@ void SceneRenderController::on(RenderMsg::SetSpeed_payload&& m) { m_speed = m.sp
 
 void SceneRenderController::on(RenderMsg::SetMouseParallax_payload&& m) {
     m_mouse_parallax = m.enabled;
+    if (frameBusy()) {
+        m_pending_view_config = true;
+        return;
+    }
     if (m_uniform_input) m_uniform_input->SetMouseParallax(m_mouse_parallax);
 }
 
 void SceneRenderController::on(RenderMsg::SetUserProperty_payload&& m) {
     if (! m_scene) return;
+    if (frameBusy()) {
+        for (auto& pending : m_pending_properties) {
+            if (pending.key == m.key) {
+                pending = rstd::move(m);
+                return;
+            }
+        }
+        m_pending_properties.push(rstd::move(m));
+        return;
+    }
     auto load_bench    = loadBenchView();
     auto property_span = SceneLoadSpan(load_bench, &SceneLoadProbeIds::render_user_property);
 
@@ -659,6 +727,10 @@ void SceneRenderController::on(RenderMsg::SetUserProperty_payload&& m) {
 
 void SceneRenderController::on(RenderMsg::SetMediaStatus_payload&& m) {
     if (! m_scene) return;
+    if (frameBusy()) {
+        m_pending_media = Some(rstd::move(m));
+        return;
+    }
 
     owe::script::SetSceneMediaStatus(*m_scene, ToScriptMediaStatus(m.status));
 
@@ -755,6 +827,11 @@ void SceneRenderController::on(RenderMsg::Init_payload&& m) {
 }
 
 void SceneRenderController::on(RenderMsg::SwapchainReady_payload&& m) {
+    if (m_render->framePending()) {
+        if (m.ready && ! m_stopped) frame_timer.Run();
+        m_pending_swapchain = Some(rstd::move(m));
+        return;
+    }
     if (! m.ready) {
         frame_timer.Stop();
         return;
@@ -929,6 +1006,8 @@ void SceneRuntimeController::startMainLoop() {
                 RSTD_CASE_PAYLOAD(SetMuted, value) { on(rstd::move(value)); }
                 RSTD_CASE_PAYLOAD(SetAudioClientIdentity, value) { on(rstd::move(value)); }
                 RSTD_CASE_PAYLOAD(AudioDeviceEvent, value) { on(rstd::move(value)); }
+                RSTD_CASE_PAYLOAD(UnmountSound, value) { on(rstd::move(value)); }
+                RSTD_CASE_PAYLOAD(MountSound, value) { on(rstd::move(value)); }
                 RSTD_CASE_PAYLOAD(SetFillMode, value) { on(rstd::move(value)); }
                 RSTD_CASE_PAYLOAD(SetSpeed, value) { on(rstd::move(value)); }
                 RSTD_CASE_PAYLOAD(SetMouseParallax, value) { on(rstd::move(value)); }
@@ -1046,6 +1125,22 @@ void SceneRuntimeController::on(MainMsg::SetAudioClientIdentity_payload&& m) {
 
 void SceneRuntimeController::on(MainMsg::AudioDeviceEvent_payload&& m) {
     m_sound_manager->on_device_event(rstd::move(m.event));
+}
+
+void SceneRuntimeController::on(MainMsg::UnmountSound_payload&& m) {
+    (void)m_sound_manager->unmount(m.id);
+}
+
+void SceneRuntimeController::on(MainMsg::MountSound_payload&& m) {
+    if (! m.load->active.load() || ! m_loading_scene ||
+        ! Arc<SceneLoadState>::ptr_eq(*m_loading_scene, m.load) || m.mount->IsCanceled())
+        return;
+    auto id = m_sound_manager->mount(rstd::move(m.stream));
+    if (id.is_none()) {
+        rstd_warn("failed to mount scene sound");
+        return;
+    }
+    if (! m.load->active.load() || ! m.mount->Attach(*id)) (void)m_sound_manager->unmount(*id);
 }
 
 void SceneRuntimeController::on(MainMsg::SetFillMode_payload&& m) {
@@ -1193,6 +1288,7 @@ void SceneRuntimeController::loadScene() {
         .cache_dir = m_config.cache_dir.clone(),
         .document = m_config.scene_document.clone(),
         .user_properties = m_user_properties.clone(),
+        .general_settings = m_config.general_settings.clone(),
         .capabilities = {
             .directional_shadow = m_render_capabilities->directional_shadow(),
             .geometry_shader_supported = m_render_capabilities->geometry_shader,
@@ -1200,6 +1296,17 @@ void SceneRuntimeController::loadScene() {
             .max_geometry_total_output_components = u32(m_render_capabilities->max_geometry_total_output_components),
         },
         .load_bench = loadBenchView(),
+        .sound_unmount = Some(SceneSoundUnmountCallback::make(
+            [tx = sender()](wavsen::audio::SoundStreamId id) {
+                (void)tx.send(MainMsg::UnmountSound(id));
+            })),
+        .sound_mount = Some(SceneSoundMountCallback::make(
+            [tx = sender(), load = scene_load.clone()](
+                Box<dyn<wavsen::audio::SoundStreamObject>> stream,
+                Arc<SceneSoundMountState> mount) {
+                return tx.send(MainMsg::MountSound(load.clone(), rstd::move(stream),
+                                                   rstd::move(mount))).is_ok();
+            })),
         .texture_memory = m_texture_memory.clone(),
     }, mut_ref<wavsen::audio::SoundManager>::from_raw_parts(m_sound_manager.get()));
     if (loaded.is_err()) {
