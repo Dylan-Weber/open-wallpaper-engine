@@ -254,6 +254,18 @@ TEST(WebState, PageApiSnippetDefinesWallpaperEnginesNames) {
     EXPECT_TRUE(snippet.as_str().contains("if (typeof window[name] === 'undefined')"_str));
 }
 
+// Wallpaper Engine tells the page its frame rate setting but draws it at the display's rate:
+// requestAnimationFrame ran 63-64 times a second in the VM with the setting at 15 and at 30
+TEST(WebState, PageIsToldTheSettingButDrawnAtItsOwnRate) {
+    BrowserHost::OpenOptions open;
+    open.general_fps = 15;
+    EXPECT_EQ(open.frame_rate, 60);
+    EXPECT_EQ(ToldFrameRate(open), 15);
+    open.general_fps = 0;
+    open.frame_rate  = 30;
+    EXPECT_EQ(ToldFrameRate(open), 30);
+}
+
 TEST(WebManifest, LoadsOwnedStringsAndDefaults) {
     auto temporary = rstd::fs::TempDir::make("owe-web-manifest"_str).unwrap();
     auto root      = rstd::path::PathBuf::from(temporary.path());

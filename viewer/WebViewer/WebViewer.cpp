@@ -66,11 +66,12 @@ auto ParseWebViewerArgs(int argc, char** argv) -> Result<WebViewerArgs, owe::cli
                             .long_name("remote-debugging-port"_str)
                             .help("if non-zero, expose chrome devtools on this localhost port"_str)
                             .default_value("0"_str));
-    // Wallpaper Engine's frame rate setting: CEF draws the page at it and the page is told it
-    // (applyGeneralProperties({fps})), so a page that paces itself by it sees the same number
+    // Wallpaper Engine's frame rate setting: the page is told it (applyGeneralProperties({fps})),
+    // so a page that paces itself by it sees the same number. It doesn't change how often the page
+    // is drawn: requestAnimationFrame ran 63-64 times a second in Wallpaper Engine at 15 and at 30
     auto fps = command.add_arg(Arg<i32>::value("fps"_str, from_str_parser<i32>())
                                    .long_name("fps"_str)
-                                   .help("frame rate the page is drawn at and told"_str)
+                                   .help("frame rate the page is told (it is drawn at 60)"_str)
                                    .default_value("60"_str));
     auto presenter =
         command.add_arg(Arg<String>::value("presenter"_str, string_parser())
@@ -359,7 +360,7 @@ int main(int argc, char** argv) {
         initial_metrics.logical_height = w_height;
     }
     weweb::BrowserHost::OpenOptions open_opts;
-    open_opts.frame_rate          = fps;
+    open_opts.general_fps         = fps;
     open_opts.device_scale_factor = initial_metrics.scale;
     // CEF currently supports windowless shared textures only on Windows.
     // macOS must use OnPaint; CEF still performs page compositing on the GPU.
@@ -373,7 +374,7 @@ int main(int argc, char** argv) {
     // Preserve the Linux contract: CEF receives the physical presenter extent
     // and uses its existing unit-scale screen information.
     weweb::BrowserHost::OpenOptions open_opts;
-    open_opts.frame_rate = fps;
+    open_opts.general_fps = fps;
     if (! host.OpenWallpaper(manifest,
                              workshop_dir,
                              static_cast<int>(presenter->Width()),
