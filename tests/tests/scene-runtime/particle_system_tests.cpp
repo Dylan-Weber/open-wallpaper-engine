@@ -1979,6 +1979,24 @@ TEST(ParticleSubSystem, CollisionPlaneSlidesDeletesAndTakesAnyNormal) {
     EXPECT_NEAR(wall.velocity.y(), 7.0f, 1e-3f);
 }
 
+// collisionbehavior "stop" (particles-collisionbounds-single): Wallpaper Engine's fourth behaviour puts the particle on
+// the surface and takes all its speed, the sideways part too (a particle that hits the right edge at 40, 40 stays where
+// it hit).
+TEST(ParticleSubSystem, CollisionStopHoldsAParticleWhereItHits) {
+    auto stopped = CollideWithPlane(
+        R"({"name":"collisionplane","distance":-100,"bouncefactor":0.5,"collisionbehavior":"stop"})"_str,
+        { 0, -100, 0 },
+        R"({"name":"velocityrandom","min":"20 -60 0","max":"20 -60 0"})"_str);
+    ASSERT_TRUE(stopped.alive);
+    EXPECT_NEAR(stopped.position.y(), -100.0f, 1e-4f);
+    EXPECT_NEAR(stopped.velocity.norm(), 0.0f, 1e-4f);
+    auto free = CollideWithPlane(
+        R"({"name":"collisionplane","distance":-100,"collisionbehavior":"stop"})"_str,
+        { 0, -50, 0 },
+        R"({"name":"velocityrandom","min":"20 -60 0","max":"20 -60 0"})"_str);
+    EXPECT_NEAR(free.velocity.x(), 20.0f, 1e-3f); // not touching: left alone
+}
+
 // collisionbounds (particles-collisionbounds-rest): the scene's edges, 0..1920 across and 0..1080
 // up
 TEST(ParticleSubSystem, CollisionBoundsKeepParticlesInsideTheScene) {
