@@ -604,7 +604,7 @@ struct TextLayouter::Impl {
         if (style.opaquebackground)
             measured.background_gap =
                 rstd::cmp::max(float(output.logical_bounds().height - bounds.height), 0.0f);
-        auto pages               = resources->Pages();
+        auto pages = resources->Pages();
         if (pages.is_empty()) return Err(vectext::TextError::Limit);
         if (style.opaquebackground) {
             auto pad = style.padding;
