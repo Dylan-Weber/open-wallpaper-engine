@@ -878,7 +878,7 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
         layer->SetSourceDraw(*sp_node);
     }
 
-    auto layer_hold        = layer_node.clone();
+    auto layer_hold = layer_node.clone();
     auto apply_text_anchor =
         Arc<dyn<Fn<void()>>>::make([layer_hold         = layer_hold.clone(),
                                     anchor_state       = anchor_state.clone(),
