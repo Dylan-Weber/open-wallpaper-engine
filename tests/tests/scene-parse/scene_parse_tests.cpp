@@ -3148,6 +3148,24 @@ TEST(SceneAssetPaths, ModelCameraAndClipRetainTheirReparseSemantics) {
     EXPECT_TRUE(clip.name.is_empty());
 }
 
+// Wallpaper Engine draws the last pass of a layer's last effect straight onto the scene, at the screen's resolution,
+// whatever its shader (probes effect-repeat-scaled and effect-pass-resolution): a passthrough of the layer's effect
+// target is only for a layer none of whose effects loaded.
+TEST(EffectFinalPassthrough, NotNeededAfterAnyLoadedEffect) {
+    EXPECT_FALSE(owe::NeedsEffectFinalPassthrough({ .last_effect_loaded = true }));
+}
+
+TEST(EffectFinalPassthrough, NeededWhenNoEffectLoaded) {
+    EXPECT_TRUE(owe::NeedsEffectFinalPassthrough({ .last_effect_loaded = false }));
+}
+
+TEST(EffectFinalPassthrough, NeverForLayersDrawnAnotherWay) {
+    EXPECT_FALSE(owe::NeedsEffectFinalPassthrough({ .linked_source = true }));
+    EXPECT_FALSE(owe::NeedsEffectFinalPassthrough({ .fullscreen = true }));
+    EXPECT_FALSE(owe::NeedsEffectFinalPassthrough({ .copybackground = true }));
+    EXPECT_FALSE(owe::NeedsEffectFinalPassthrough({ .source_composites_final = true }));
+}
+
 // Wallpaper Engine draws an image layer's texture 0.15 texel in from the quad's edges at each end, counted in the
 // texture's own texels (probes texture-uv-inset, -big and -size).
 TEST(LayerTexCoordInset, IsAFixedShareOfATextureTexel) {

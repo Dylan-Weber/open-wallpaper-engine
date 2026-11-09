@@ -183,7 +183,6 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
         wpimgobj.fullscreen ? Vector3f::Zero()
                             : AlignmentOffset(wpimgobj.alignment.as_str(),
                                               { geometry_size[usize(0)], geometry_size[usize(1)] });
-    const bool solid_composite_context = HasSolidCompositeContext(context, wpimgobj);
     spImgNode->SetSize({ geometry_size[usize(0)], geometry_size[usize(1)] });
     spImgNode->SetPerspective(wpimgobj.perspective);
     spImgNode->SetReflected(wpimgobj.reflected);
@@ -759,8 +758,7 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
                 image_node_id, String::make(effect_composite), rstd::move(target));
         }
 
-        bool       last_effect_can_composite_final { false };
-        const bool allow_transparent_previous_final = ! solid_composite_context;
+        bool       last_effect_loaded { false };
         const bool passthrough_can_composite_final =
             isPassthrough || ! parse_geometry.requires_source_draw;
         bool first_effect_pass = true;
@@ -1083,10 +1081,6 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
                     eff_mat_ok = false;
                     break;
                 }
-                if (auto* mat = spMesh->Material(); mat != nullptr) {
-                    last_effect_can_composite_final = CanCompositeFinalEffectMaterial(
-                        mat->name.as_str(), wpEffShaderInfo, allow_transparent_previous_final);
-                }
                 spEffNode->AddMesh(spMesh.clone());
 
                 SetUniformConfig(context, spEffNode, rstd::move(svData));
@@ -1098,9 +1092,10 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
                 });
             }
 
-            if (eff_mat_ok)
+            if (eff_mat_ok) {
                 imgEffectLayer->AddEffect(imgEffect);
-            else {
+                last_effect_loaded = true;
+            } else {
                 rstd_error("effect \'{}\' failed to load", wpeffobj.name);
             }
         }
@@ -1197,8 +1192,11 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
             }
         }
 
-        if (! is_linked_source && ! wpimgobj.fullscreen && ! wpimgobj.copybackground &&
-            ! passthrough_can_composite_final && ! last_effect_can_composite_final) {
+        if (NeedsEffectFinalPassthrough({ .linked_source           = is_linked_source,
+                                          .fullscreen              = wpimgobj.fullscreen,
+                                          .copybackground          = wpimgobj.copybackground,
+                                          .source_composites_final = passthrough_can_composite_final,
+                                          .last_effect_loaded      = last_effect_loaded })) {
             wpscene::Material passthrough_mat;
             auto json = LoadJsonFile(vfs, "/assets/materials/util/effectpassthrough.json"_str);
             if (! json) {

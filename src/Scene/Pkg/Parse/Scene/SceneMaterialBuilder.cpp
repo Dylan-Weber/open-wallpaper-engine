@@ -625,56 +625,6 @@ bool UsesUnitFinalQuad(const wpscene::Material& wpmat) {
     return mode_it.is_some() && **mode_it == i32(1);
 }
 
-bool CanCompositeFinalEffectShader(ref<str> shader) {
-    return IsLayerCompositeShader(shader) || shader == "effects/transform"_str ||
-           shader == "effects/scroll"_str || shader == "effects/spin"_str ||
-           shader == "effects/perspective"_str || shader == "effects/foliagesway"_str ||
-           shader == "effects/blend"_str || shader == "effects/tint"_str;
-}
-
-bool HasShaderCombo(const ShaderInfo& info, ref<str> combo_name) {
-    auto name = combo_name;
-    for (const auto& combo : info.combo_defs)
-        if (combo.combo == name) return true;
-    return false;
-}
-
-bool HasShaderTextureMaterial(const ShaderInfo& info, ref<str> material_key) {
-    auto key = material_key;
-    for (const auto& texture : info.texture_uniforms)
-        if (texture.material == key) return true;
-    return false;
-}
-
-bool HasSolidCompositeContext(const SceneLayerBuildContext& context,
-                              const wpscene::ImageObject&   obj) {
-    if (obj.solid || context.layer_resources->solid_layer_ids.contains(obj.id)) return true;
-
-    HashSet<i32> seen;
-    u32          parent = obj.parent;
-    while (parent != u32() && seen.insert(rstd::as_cast<i32>(parent))) {
-        const auto parent_id = rstd::as_cast<i32>(parent);
-        if (context.layer_resources->solid_layer_ids.contains(parent_id)) return true;
-
-        auto found = context.layer_resources->object_parent_ids.get(parent_id);
-        if (found.is_none()) break;
-        parent = **found;
-    }
-
-    return false;
-}
-
-bool CanCompositeFinalEffectMaterial(ref<str> shader, const ShaderInfo& info,
-                                     bool allow_transparent_previous) {
-    if (CanCompositeFinalEffectShader(shader)) return true;
-    if (! allow_transparent_previous) return false;
-
-    // TODO: WE does not document this as the final-composite rule. This keeps
-    // the historical shortcut only for non-solid layer contexts.
-    return HasShaderCombo(info, "TRANSPARENCY"_str) &&
-           HasShaderTextureMaterial(info, "previous"_str);
-}
-
 void NormalizeEffectPositionCurve(SceneAnimationCurve& curve) {
     auto normalize_axis = [&](Vec<SceneAnimationKey>& keys) {
         for (auto& key : keys) {
