@@ -1,0 +1,64 @@
+{
+  "material": "materials/rope_hose_4.json",
+  "maxcount": 16,
+  "starttime": 0,
+  "flags": 0,
+  "emitter": [
+    {
+      "id": 1,
+      "name": "boxrandom",
+      "distancemin": "0 0 0",
+      "distancemax": "0 0 0",
+      "directions": "1 1 0",
+      "origin": "0 0 0",
+      "rate": 5,
+      "speedmin": 0,
+      "speedmax": 0
+    }
+  ],
+  "initializer": [
+    {
+      "id": 2,
+      "name": "lifetimerandom",
+      "min": 2,
+      "max": 2
+    },
+    {
+      "id": 3,
+      "name": "sizerandom",
+      "min": 40,
+      "max": 40
+    },
+    {
+      "id": 4,
+      "name": "velocityrandom",
+      "min": "150 250 0",
+      "max": "150 250 0"
+    }
+  ],
+  "operator": [
+    {
+      "id": 5,
+      "name": "movement",
+      "drag": 0,
+      "gravity": "0 -300 0"
+    },
+    {
+      "id": 6,
+      "name": "remapvalue",
+      "input": "lifetimefraction",
+      "output": "color",
+      "outputrangemin": "1 0 0",
+      "outputrangemax": "0 0 1"
+    }
+  ],
+  "renderer": [
+    {
+      "id": 90,
+      "name": "rope",
+      "uvscale": 2,
+      "uvscrolling": true,
+      "uvsmoothing": false
+    }
+  ]
+}
