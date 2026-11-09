@@ -793,10 +793,11 @@ TEST(ParticleSubSystem, AppliesVortexAroundWorldSpaceOwner) {
     EXPECT_GT(std::abs(positions[usize()].z()), 0.01f);
 }
 
-// A plain rope's vertex shader takes the length of the rope, in points, from the fourth component of
-// each segment's end point, and spreads its texture over length - 1 segments: a rope of n particles
-// has n - 1 segments and says n (particles-rope-count: owe said n - 1, so the last segment's
-// texture ran off the end and a rope of two particles, whose length - 1 came to 0, drew nothing).
+// A plain rope's vertex shader takes the length of the rope, in points, from the fourth component
+// of each segment's end point, and spreads its texture over length - 1 segments: a rope of n
+// particles has n - 1 segments and says n (particles-rope-count: owe said n - 1, so the last
+// segment's texture ran off the end and a rope of two particles, whose length - 1 came to 0, drew
+// nothing).
 TEST(ParticleSubSystem, ARopeSaysItsLengthInPoints) {
     owe::Scene scene;
     auto       mesh = Arc<owe::SceneMesh>::make();
@@ -825,7 +826,7 @@ TEST(ParticleSubSystem, ARopeSaysItsLengthInPoints) {
                                      f64(),
                                      f64(),
                                      true);
-    auto owner    = rstd::sync::Arc<owe::SceneNode>::make(
+    auto                   owner = rstd::sync::Arc<owe::SceneNode>::make(
         Eigen::Vector3f::Zero(), Eigen::Vector3f::Ones(), Eigen::Vector3f::Zero());
     auto override = rstd::sync::Arc<owe::wpscene::ParticleInstanceoverride>::make();
     subsystem.SetOwnerNode(owner.as_ptr());
