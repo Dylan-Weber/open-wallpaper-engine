@@ -619,3 +619,55 @@ TEST(TextLayouter, AnOutlineDrawsTheGrownGlyphsBehindTheText) {
     const float letter_width  = at(5, 0) - at(4, 0);
     EXPECT_NEAR(outline_width - letter_width, 8.0f, 2.0f);
 }
+
+TEST(TextOutlinePlace, AGlyphGoesWhereWallpaperEnginesSignedDistanceAtlasPutsIt) {
+    // Wallpaper Engine draws outlined text from a signed distance atlas (text-outline-offset): the
+    // glyph's whole-pixel box (231 x 304 here, H at 100 points: 417 pixels an em) is stored at 32
+    // pixels an em, its sizes truncated (17 x 23) and scaled by the larger, with 12 pixels round
+    // it; drawn back on the box grown by 12 / 32 em, the letter lands a little right of and inside
+    // its place
+    const auto place = owe::text::OutlinedGlyphPlace(41, 272, -304, 0, 417);
+    EXPECT_NEAR(place.scale_x * 41 + place.offset_x, 43.7713, 1e-3);
+    EXPECT_NEAR(place.scale_x * 272 + place.offset_x, 275.5544, 1e-3);
+    EXPECT_NEAR(place.scale_y * -304 + place.offset_y, -302.9069, 1e-3);
+    EXPECT_NEAR(place.scale_y * 0 + place.offset_y, -1.0931, 1e-3);
+}
+
+TEST(TextOutlinePlace, AGlyphTheAtlasHoldsExactlyStaysPut) {
+    // 10 pixels at 32 an em is 10 atlas pixels: nothing is truncated
+    const auto place = owe::text::OutlinedGlyphPlace(3, 13, -10, 0, 32);
+    EXPECT_DOUBLE_EQ(place.scale_x, 1.0);
+    EXPECT_NEAR(place.offset_x, 0.0, 1e-9);
+    EXPECT_DOUBLE_EQ(place.scale_y, 1.0);
+    EXPECT_NEAR(place.offset_y, 0.0, 1e-9);
+}
+
+TEST(TextLayouter, AnOutlinedLetterIsPlacedAsTheAtlasHasIt) {
+    // the outlined letter (and its outline) move by the atlas's placement; the same letter without
+    // an outline doesn't
+    auto layout = [](bool outline) {
+        auto                       mesh = Arc<owe::SceneMesh>::make();
+        owe::text::TextLayoutStyle style;
+        style.outline           = outline;
+        style.outline_thickness = 4.0f;
+        owe::text::TextLayouter layouter(
+            TextResources(), TextFont(), mesh.clone(), rstd::move(style), 8);
+        EXPECT_TRUE(layouter.SetText("H"_str).is_ok());
+        const auto& vertices = mesh->GetVertexArray(usize());
+        const auto  stride   = vertices.OneSize().to_primitive();
+        // the letter is the last quad
+        const auto   first = vertices.VertexCount().to_primitive() - 4;
+        const float* data  = vertices.Data();
+        return array<float, 2> { data[first * stride], data[(first + 1) * stride] };
+    };
+    const auto plain = layout(false), outlined = layout(true);
+    // H at 64 pixels: its box's width truncates in the atlas, so the letter doesn't stay put
+    auto moved = [](float a, float b) {
+        return a > b ? a - b : b - a;
+    };
+    EXPECT_GT(rstd::cmp::max(moved(outlined[usize()], plain[usize()]),
+                             moved(outlined[usize(1)], plain[usize(1)])),
+              0.05f);
+    // and is still about the letter's size
+    EXPECT_NEAR(outlined[usize(1)] - outlined[usize()], plain[usize(1)] - plain[usize()], 2.0f);
+}
