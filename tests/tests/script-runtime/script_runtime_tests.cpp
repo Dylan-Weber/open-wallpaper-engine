@@ -732,11 +732,16 @@ TEST(ScriptBones, LocalOriginAndAngles) {
         JsRuntime::BoneIndexResolver::make([](owe::SceneNode*, ref<str> name) -> uint32_t {
             return name == "hand"_str ? 2 : 0;
         }),
-        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t { return 0; }),
+        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t {
+            return 0;
+        }),
         JsRuntime::BoneTransformResolver::make(
-            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTransformData> { return None(); }),
+            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTransformData> {
+                return None();
+            }),
         JsRuntime::BoneSetTransformResolver::make(
-            [](owe::SceneNode*, uint32_t, const BoneTransformData&) {}));
+            [](owe::SceneNode*, uint32_t, const BoneTransformData&) {
+            }));
     BoneLocalPose pose { .origin = { 1.0f, 2.0f, 3.0f }, .angles = { 0.0f, 0.0f, 0.5f } };
     uint32_t      asked = 0, set = 0;
     rt.SetBoneLocalResolvers(
