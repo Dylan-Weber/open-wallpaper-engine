@@ -1018,3 +1018,65 @@ TEST(ParticleInstanceModifiers, CloneRetainsReadOnlyBindingsAfterSourceReplaceme
     ASSERT_TRUE(binding->animation.is_some());
     EXPECT_FLOAT_EQ(binding->animation->c0[usize()].value, 7.0f);
 }
+
+// mapsequencebetweencontrolpoints' flag 4 tapers the sequence: the particle at index i of n is
+// sin(pi (i + 0.5) / n) of its size (particles-sequence-arc, GPU VM: 8 particles of size 16 are
+// 0.16, 0.54, 0.83 and 0.98 of it from the ends in; arcamount and flags 1, 2 and 16 change nothing
+// for particles at rest).
+TEST(ParticleSubSystem, SequenceFlagFourTapersTheEnds) {
+    auto sizes = [](ref<str> sequence) -> Vec<float> {
+        owe::Scene             scene;
+        auto                   mesh = Arc<owe::SceneMesh>::make();
+        owe::ParticleSubSystem subsystem(scene,
+                                         mesh.clone(),
+                                         u32(8),
+                                         f64(1.0),
+                                         u32(1),
+                                         f64(1.0),
+                                         owe::ParticleSubSystem::SpawnType::STATIC,
+                                         owe::ParticleAnimationSpec {});
+        subsystem.ControlpointsMut()[usize(1)].base_offset = Eigen::Vector3d { 400.0, 0.0, 0.0 };
+        subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+            owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(8)));
+        subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+            owe::ParseJson(R"({"name":"sizerandom","min":16,"max":16})"_str).unwrap(), u32(8)));
+        subsystem.AddInitializer(
+            owe::ParticleParser::GenInitializer(owe::ParseJson(sequence).unwrap(), u32(8)));
+        subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+            owe::BoxEmitterProgram(subsystem.SpawnPipeline(),
+                                   owe::ParticleBoxEmitterArgs { .instantaneous = u32(8) },
+                                   usize())));
+        subsystem.Finalize();
+        subsystem.Tick(f64(1.0 / 30.0), false);
+        auto&      storage = subsystem.System().Instance(usize()).Storage();
+        // in the order of their place along the sequence
+        float xs[8], size[8];
+        for (rstd::uint32_t k = 0; k < 8; ++k) {
+            particle::ParticleSlotReader value(storage, particle::ParticleSlot { .index = usize(k) });
+            xs[k]   = value.Read(subsystem.Attributes().position).x();
+            size[k] = value.Read(subsystem.Attributes().size);
+        }
+        for (int a = 1; a < 8; ++a)
+            for (int b = a; b > 0 && xs[b - 1] > xs[b]; --b) {
+                float t = xs[b]; xs[b] = xs[b - 1]; xs[b - 1] = t;
+                t = size[b]; size[b] = size[b - 1]; size[b - 1] = t;
+            }
+        Vec<float> out;
+        for (int k = 0; k < 8; ++k) out.push(size[k]);
+        return out;
+    };
+    auto plain = sizes(R"({"name":"mapsequencebetweencontrolpoints","count":8})"_str);
+    ASSERT_EQ(plain.len(), usize(8));
+    for (float size : plain) EXPECT_FLOAT_EQ(size, 16.0f);
+    auto tapered =
+        sizes(R"({"name":"mapsequencebetweencontrolpoints","count":8,"flags":4,"arcamount":0.1})"_str);
+    ASSERT_EQ(tapered.len(), usize(8));
+    for (usize i {}; i < usize(8); ++i) {
+        const double expected =
+            16.0 * std::sin(3.14159265358979323846 * (static_cast<double>(i.to_primitive()) + 0.5) / 8.0);
+        EXPECT_NEAR(tapered[i], expected, 1e-3);
+    }
+    // thunderbolt's flags 23 include 4
+    auto bolt = sizes(R"({"name":"mapsequencebetweencontrolpoints","count":8,"flags":23})"_str);
+    EXPECT_NEAR(bolt[usize()], 16.0 * std::sin(3.14159265358979323846 * 0.5 / 8.0), 1e-3);
+}
