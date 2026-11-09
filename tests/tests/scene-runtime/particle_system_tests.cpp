@@ -1152,3 +1152,43 @@ TEST(ParticleSubSystem, PeriodicEmissionRestartsStaticChildren) {
     for (int k = 121; k < 134; ++k) third = third || lit[usize(k)];
     EXPECT_TRUE(third);
 }
+
+// The emitter's own instantaneous count fires again at each new on phase too: wallpaper64.exe's
+// emitter pass (FUN_1402378a0, 0x140237a8f..) copies the instantaneous count back into the pending
+// count ([emitter+0x44] = [emitter+0x48]) when a periodic delay ends.
+TEST(ParticleSubSystem, PeriodicEmissionRefiresItsOwnInstantaneousCount) {
+    owe::Scene             scene;
+    owe::ParticleSubSystem system(scene,
+                                  Arc<owe::SceneMesh>::make(),
+                                  u32(8),
+                                  f64(1.0),
+                                  u32(1),
+                                  f64(1.0),
+                                  owe::ParticleSubSystem::SpawnType::STATIC,
+                                  owe::ParticleAnimationSpec {});
+    system.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"lifetimerandom","min":0.3,"max":0.3})"_str).unwrap(), u32(8)));
+    owe::wpscene::Emitter periodic;
+    EXPECT_TRUE(periodic.FromJson(
+        owe::ParseJson(
+            R"({"name":"boxrandom","rate":0,"instantaneous":2,"flags":4,"minperiodicdelay":1,"maxperiodicdelay":1,"minperiodicduration":1,"maxperiodicduration":1})"_str)
+            .unwrap()));
+    system.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+        owe::BoxEmitterProgram(system.SpawnPipeline(),
+                               owe::ParticleBoxEmitterArgs {
+                                   .instantaneous = u32(2),
+                                   .timing        = owe::ParticleEmitterTiming::From(periodic),
+                               },
+                               usize())));
+    system.Finalize();
+    Vec<bool> lit;
+    for (int k = 0; k < 140; ++k) {
+        system.Tick(f64(1.0 / 30.0), false);
+        lit.push(! system.InstanceState(usize()).no_live_particle);
+    }
+    EXPECT_TRUE(lit[usize(2)]);
+    for (int k = 20; k < 58; ++k) EXPECT_FALSE(lit[usize(k)]) << k;
+    bool again = false;
+    for (int k = 60; k < 72; ++k) again = again || lit[usize(k)];
+    EXPECT_TRUE(again);
+}
