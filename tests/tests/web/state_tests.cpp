@@ -183,8 +183,9 @@ TEST(WebState, PropertySnippetEscapesKey) {
     EXPECT_TRUE(empty.as_str().contains("applyUserProperties({}"_str));
 }
 
-// Wallpaper Engine calls a page's audio listeners only when project.json's general.supportsaudioprocessing is true
-// (VM, DevTools on its CEF, 2026-11-08: 30 calls a second with it, none without)
+// Wallpaper Engine calls a page's audio listeners only when project.json's
+// general.supportsaudioprocessing is true (VM, DevTools on its CEF, 2026-11-08: 30 calls a second
+// with it, none without)
 TEST(WebState, AudioDemandIsRefusedWithoutAudioProcessing) {
     CefRefPtr<OsrRenderHandler> render = new OsrRenderHandler;
     CefRefPtr<ClientHandler>    client =
@@ -209,7 +210,9 @@ TEST(WebState, AudioDemandPassesWithAudioProcessing) {
     CefRefPtr<ClientHandler>    client =
         new ClientHandler(owe::Json::Null(), render, false, { .audio_allowed = true });
     bool last = false;
-    client->SetAudioDemandCallback(Some(AudioDemandCallback::make([&](bool active) { last = active; })));
+    client->SetAudioDemandCallback(Some(AudioDemandCallback::make([&](bool active) {
+        last = active;
+    })));
     auto message = CefProcessMessage::Create("weweb.audio-demand");
     message->GetArgumentList()->SetInt(0, 0);
     message->GetArgumentList()->SetBool(1, true);
@@ -218,7 +221,8 @@ TEST(WebState, AudioDemandPassesWithAudioProcessing) {
     client->RequestClose();
 }
 
-// Wallpaper Engine hands a page applyGeneralProperties({fps}) with its frame rate setting (15 in the VM)
+// Wallpaper Engine hands a page applyGeneralProperties({fps}) with its frame rate setting (15 in
+// the VM)
 TEST(WebState, GeneralPropertiesSnippetGivesTheFrameRate) {
     auto snippet = BuildGeneralPropertiesSnippet(15);
     EXPECT_TRUE(snippet.as_str().contains("applyGeneralProperties({\"fps\":15})"_str));
