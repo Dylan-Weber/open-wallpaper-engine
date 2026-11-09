@@ -251,7 +251,8 @@ struct ColorRandomProgram {
             auto raw   = component.to_primitive();
             value[raw] = static_cast<float>(algorism::lerp(random, min[component], max[component]));
         }
-        // times the colour the emitter gave (a layer image's pixels; white for the others), not instead of it
+        // times the colour the emitter gave (a layer image's pixels; white for the others), not
+        // instead of it
         const Eigen::Vector3f base                 = columns.colors[request.slot.index];
         const Eigen::Vector3f tinted               = base.cwiseProduct(value);
         columns.colors[request.slot.index]         = tinted;
