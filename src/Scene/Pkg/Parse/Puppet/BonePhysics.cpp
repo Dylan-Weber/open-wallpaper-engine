@@ -19,6 +19,9 @@ constexpr float kDegrees = 3.14159265358979f / 180.0f;
 // The longest step: a longer pause (a hidden or paused wallpaper) is taken as
 // this, so the springs do not overshoot.
 constexpr float kLongestStep = 0.1f;
+// How far a tip moves at most in a second, for its inertia's turn (Wallpaper Engine's
+// solver: 900 x the frame time).
+constexpr float kFarthestASecond = 900.0f;
 
 // Turned about x, then y, then z, as the animations are.
 Quaternionf TurnOf(const Vector3f& angles) {
@@ -138,16 +141,17 @@ auto BonePhysics::Apply(usize bone, const BoneSimulation& simulation, const Affi
                         const Affine3f& local, float dt, const Vector3f& scale) -> Affine3f {
     auto& state = m_states[bone];
     if (dt > 0.0f) {
-        // where the animation (and the parents' physics) put the bone and its tip
+        // where the animation (and the parents' physics) put the bone
         const Affine3f animated = parent * local;
         const Vector3f place    = animated.translation();
-        const Vector3f tip      = animated * simulation.tip;
         if (! state.started) {
             state.last_place = place;
-            state.last_tip   = tip;
-            state.started    = true;
+            state.last_tip   = parent * Translation3f(state.position_offset) * local *
+                             state.rotation_offset * simulation.tip;
+            state.started = true;
         }
 
+        const Vector3f offset_before = state.position_offset;
         if (simulation.translation) {
             // It keeps (inertia) some of where it was as its place moves, is
             // pulled by gravity and back by its spring, along the axes it may
@@ -176,42 +180,33 @@ auto BonePhysics::Apply(usize bone, const BoneSimulation& simulation, const Affi
         }
 
         if (simulation.rotation) {
-            // It turns back (inertia) towards where its tip pointed as the tip is
-            // carried along, is turned back to its pose by its spring, turns by
-            // its spin within its limits, and its spin dies down.
-            const Vector3f last_direction = state.last_tip - state.last_place;
-            const Vector3f direction      = tip - place;
-            const float    moved          = (tip - state.last_tip).norm();
-            if (moved > 0.0f && direction.norm() > 1e-6f && last_direction.norm() > 1e-6f) {
-                const Quaternionf back =
-                    TurnBetween(direction.normalized(), last_direction.normalized());
-                const Quaternionf turn(animated.rotation());
-                const Quaternionf own     = turn.conjugate() * back * turn;
-                const float       inertia = moved * simulation.rotation_inertia * kDegrees;
-
-                state.spin = state.spin * Towards(Quaternionf::Identity(), own, inertia);
-            }
+            // It turns back (inertia) towards where its tip was the step before, as
+            // the tip is carried along and pulled across by gravity, is turned back
+            // to its pose by its spring, turns by its spin within its limits, and its
+            // spin dies down. As in Wallpaper Engine, in the bone's animated space:
+            // the tip as the physics has it now (the last step's turn and offset),
+            // less gravity's part across it (the mass, no frame time), turns towards
+            // the last step's tip, blended in by how far apart they are (at most 900
+            // units a second) x the inertia x pi / 180.
+            const Affine3f to_animated = animated.inverse();
+            Vector3f       now = to_animated * (parent * Translation3f(offset_before) * local *
+                                          state.rotation_offset * simulation.tip);
             if (simulation.gravity) {
-                // Gravity turns the bone: its tip, as turned now, is moved against the part of
-                // gravity across it (the mass, times the object scale: no frame time) and turned
-                // back, blended in by how far it moved x the inertia x pi / 180, so the turn goes
-                // with the mass squared and a tiny one is none (see TurnBetween).
                 const Vector3f turned = state.rotation_offset * simulation.tip;
                 if (turned.norm() > 1e-6f) {
-                    const Vector3f along  = turned.normalized();
-                    const Vector3f pull   = animated.linear().inverse() *
-                                            simulation.gravity_direction * simulation.mass;
-                    const Vector3f across = pull - pull.dot(along) * along;
-                    const float    moved  = across.norm();
-                    if (moved > 0.0f) {
-                        const Vector3f    moved_tip = turned - across;
-                        const Quaternionf back      = TurnBetween(moved_tip.normalized(), along);
-                        state.spin =
-                            state.spin * Towards(Quaternionf::Identity(),
-                                                 back,
-                                                 moved * simulation.rotation_inertia * kDegrees);
-                    }
+                    const Vector3f along = turned.normalized();
+                    const Vector3f pull  = animated.linear().inverse() *
+                                          simulation.gravity_direction * simulation.mass;
+                    now -= pull - pull.dot(along) * along;
                 }
+            }
+            const Vector3f before = to_animated * state.last_tip;
+            const float    moved  = rstd::cmp::min((now - before).norm(), dt * kFarthestASecond);
+            if (moved > 0.0f && now.norm() > 1e-6f && before.norm() > 1e-6f) {
+                const Quaternionf back = TurnBetween(now.normalized(), before.normalized());
+                state.spin             = state.spin * Towards(Quaternionf::Identity(),
+                                                  back,
+                                                  moved * simulation.rotation_inertia * kDegrees);
             }
             if (! simulation.rigid) {
                 const Quaternionf pose   = TurnOf(-state.angles);
@@ -241,7 +236,8 @@ auto BonePhysics::Apply(usize bone, const BoneSimulation& simulation, const Affi
         }
 
         state.last_place = place;
-        state.last_tip   = tip;
+        state.last_tip   = parent * Translation3f(state.position_offset) * local *
+                         state.rotation_offset * simulation.tip;
     }
     return Translation3f(state.position_offset) * local * state.rotation_offset;
 }
