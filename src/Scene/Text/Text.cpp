@@ -228,6 +228,12 @@ auto FontKerning::Read(slice<u8> bytes) -> FontKerning {
         const auto record = start + 12 + i * 16;
         const auto tag    = font.U32(record);
         if (tag == Tag("head")) kerning.m_units_per_em = font.U16(font.U32(record + 8) + 18);
+        if (tag == Tag("hhea")) {
+            const auto hhea      = font.U32(record + 8);
+            kerning.m_ascender   = static_cast<rstd::int16_t>(font.U16(hhea + 4));
+            kerning.m_descender  = static_cast<rstd::int16_t>(font.U16(hhea + 6));
+            kerning.m_line_gap   = static_cast<rstd::int16_t>(font.U16(hhea + 8));
+        }
         if (tag == Tag("GPOS")) gpos = font.U32(record + 8);
         if (tag == Tag("kern")) kern = font.U32(record + 8);
     }
@@ -284,6 +290,11 @@ auto FontKerning::Read(slice<u8> bytes) -> FontKerning {
     return kerning;
 }
 
+auto FontKerning::LineHeight(double size) const -> double {
+    const auto units = double(m_ascender - m_descender + m_line_gap);
+    if (units <= 0.0) return 0.0;
+    return f64(units * size / double(m_units_per_em) + 0.5).floor().to_primitive();
+}
 auto FontKerning::Empty() const -> bool {
     return m_subtables.is_empty() && m_kern_tables.is_empty();
 }
@@ -355,9 +366,9 @@ auto TextResources::RegisterFont(slice<u8> bytes)
     auto source = collection->register_font(slice<unsigned char>::from_raw_parts(
         reinterpret_cast<const unsigned char*>(bytes.as_raw_ptr()), bytes.len()));
     if (source.is_ok()) {
+        // kept for every font: its line metrics too (FontKerning::LineHeight)
         auto kerning = FontKerning::Read(bytes);
-        if (! kerning.Empty())
-            (void)m_impl->kerning.insert(rstd::format("{}:{}", source->collection, source->source),
+        (void)m_impl->kerning.insert(rstd::format("{}:{}", source->collection, source->source),
                                          rstd::move(kerning));
     }
     return source;
@@ -907,7 +918,26 @@ struct TextLayouter::Impl {
             }
             measured.text_width = ink_right - hang;
         }
-        measured.text_height   = float(bounds.height);
+        // Wallpaper Engine moves down a line by the font's line height in whole pixels, where owe's
+        // lines are its ascent and descent each rounded up (text-composite-lines: DejaVu at 20
+        // points, 97 against 98); each line is lifted by the difference, and the text is that much
+        // shorter.
+        Vec<float> line_lift;
+        {
+            float lift {};
+            for (usize index {}; index < output.lines().len(); ++index) {
+                const auto& line = output.lines()[index];
+                if (index > usize() && kerning != nullptr) {
+                    const auto& above = output.lines()[index - usize(1)];
+                    const float step  = float(line.baseline - above.baseline);
+                    const float whole = float(kerning->LineHeight(size));
+                    if (whole > 0.0f && step > whole) lift += step - whole;
+                }
+                line_lift.push(float(lift));
+            }
+        }
+        measured.text_height = float(bounds.height) -
+                               (line_lift.is_empty() ? 0.0f : line_lift[line_lift.len() - usize(1)]);
         measured.source_width  = measured.text_width;
         measured.source_height = measured.text_height;
         measured.padding       = style.padding;
@@ -937,7 +967,8 @@ struct TextLayouter::Impl {
             float left = line_pen[usize(glyph.line)] + glyph_pen[index] + float(atlas.origin.x) -
                          measured.text_width / 2;
             float top =
-                measured.text_height / 2 - float(glyph.position.y - bounds.y + atlas.origin.y);
+                measured.text_height / 2 - float(glyph.position.y - bounds.y + atlas.origin.y) +
+                line_lift[usize(glyph.line)];
             float right  = left + float(atlas.width / atlas.scale),
                   bottom = top - float(atlas.height / atlas.scale);
             if (! have_bounds) {
