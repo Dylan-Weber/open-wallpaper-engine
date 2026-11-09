@@ -1003,6 +1003,33 @@ TEST(ParticleSubSystem, ColorRandomMultipliesAnImageEmittersColours) {
     }
 }
 
+// A solid layer emits from the same lattice, as a white image of its size
+// (particles-layerimage-alpha: Wallpaper Engine's 300x150 rectangles end 2 units short at the
+// bottom, where 150 leaves half a block).
+TEST(LayerImageLattice, ASolidLayerIsAWhiteImageOfItsSize) {
+    auto points = owe::SolidLayerLattice(300, 150);
+    ASSERT_EQ(points.len(), usize(75 * 37));
+    float min_x = 1e9f, max_x = -1e9f, min_y = 1e9f, max_y = -1e9f;
+    for (const auto& point : points) {
+        min_x = std::min(min_x, point.x);
+        max_x = std::max(max_x, point.x);
+        min_y = std::min(min_y, point.y);
+        max_y = std::max(max_y, point.y);
+        EXPECT_TRUE(point.color.isApprox(Eigen::Vector3f(1, 1, 1)));
+    }
+    EXPECT_EQ(min_x, -148.0f);
+    EXPECT_EQ(max_x, 148.0f);
+    EXPECT_EQ(max_y, 73.0f);
+    EXPECT_EQ(min_y, -71.0f);
+    // thinner than a block: one block across (as a texture)
+    auto thin = owe::SolidLayerLattice(2, 10);
+    ASSERT_EQ(thin.len(), usize(2));
+    EXPECT_EQ(thin[usize()].x, 0.0f);
+    EXPECT_EQ(thin[usize()].y, 3.0f);
+    EXPECT_EQ(thin[usize(1)].y, -1.0f);
+    EXPECT_TRUE(owe::SolidLayerLattice(0, 10).is_empty());
+}
+
 // A texture thinner than a block (Wallpaper Engine's gradient_rainbow is 64x2) still emits: its rows make one block
 // row, one point every 4 texels across, in the average colour (particles-layerimage-alpha: a rainbow bar).
 TEST(LayerImageLattice, ATextureThinnerThanABlockIsOneBlockAcross) {
