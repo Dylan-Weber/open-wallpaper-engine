@@ -345,7 +345,7 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
                                     obj.backgroundcolor[usize(2)] };
     style.background_brightness = obj.backgroundbrightness;
     style.halign  = (obj.horizontalalign.is_empty() ? obj.alignment : obj.horizontalalign).clone();
-    style.padding   = obj.padding[usize(0)];
+    style.padding = obj.padding[usize(0)];
     style.padding_y = obj.padding[usize(1)];
     if (obj.limitwidth && obj.maxwidth > 0.0f) style.wrap_width = obj.maxwidth;
     if (obj.limitrows && obj.maxrows > u32()) style.max_rows = obj.maxrows.to_primitive();
@@ -366,13 +366,13 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
 
     const float text_padding   = style.padding;
     const float text_padding_y = style.padding_y;
-    const float wrap_width   = style.wrap_width;
-    auto        layouter     = Arc<text::TextLayouter>::make(resources.clone(),
-                                                             rstd::move(font),
-                                                             sp_mesh.clone(),
-                                                             rstd::move(style),
-                                                             peak_quads,
-                                                             context.scene);
+    const float wrap_width     = style.wrap_width;
+    auto        layouter       = Arc<text::TextLayouter>::make(resources.clone(),
+                                                               rstd::move(font),
+                                                               sp_mesh.clone(),
+                                                               rstd::move(style),
+                                                               peak_quads,
+                                                               context.scene);
     if (layouter->SetText(s_text).is_err()) {
         rstd_error("text '{}': initial layout failed", obj.name);
         return;
