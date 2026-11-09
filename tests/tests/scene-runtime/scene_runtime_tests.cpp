@@ -2694,8 +2694,9 @@ TEST(UniformSourceParallax, PerspectiveWithAuthoredParallaxDepthAppliesShift) {
                          mvp_with_parallax[rstd::usize(13)]) > 1e-5f);
 }
 
-// A script can read the scene's field of view (thisScene.fov) and set a camera layer's (thisLayer.fov): More Physics'
-// camera layer says 60 and its script copies the scene's 80 into it in init, so the view is drawn with 80.
+// A script can read the scene's field of view (thisScene.fov) and set a camera layer's
+// (thisLayer.fov): More Physics' camera layer says 60 and its script copies the scene's 80 into it
+// in init, so the view is drawn with 80.
 TEST(SceneParserScript, ACameraLayerTakesTheScenesFieldOfViewFromItsScript) {
     auto document = owe::wpscene::ParseSceneDocumentJson(
         R"JSON({

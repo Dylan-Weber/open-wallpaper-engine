@@ -3100,14 +3100,14 @@ public:
     // The scene's own field of view (general.fov), what scripts read as thisScene.fov.
     void   SetSceneFov(double fov) { m_scene_fov = fov; }
     double SceneFov() const { return m_scene_fov; }
-    void RegisterCameraPathUserBinding(String key, Arc<SceneCameraPath>);
-    void RegisterTexture(String name, SceneTexture texture);
-    bool RemoveTexture(ref<str> name);
-    bool RemoveRenderTarget(ref<str> name);
-    auto Texture(ref<str> name) const -> Option<ref<SceneTexture>>;
-    auto TextureContentRevision(ref<str> name) const -> u64;
-    auto TextureResource(SceneTextureId id) const -> Option<vrento::resource::TextureResourceRef>;
-    auto TargetResource(SceneRenderTargetId id) const
+    void   RegisterCameraPathUserBinding(String key, Arc<SceneCameraPath>);
+    void   RegisterTexture(String name, SceneTexture texture);
+    bool   RemoveTexture(ref<str> name);
+    bool   RemoveRenderTarget(ref<str> name);
+    auto   Texture(ref<str> name) const -> Option<ref<SceneTexture>>;
+    auto   TextureContentRevision(ref<str> name) const -> u64;
+    auto   TextureResource(SceneTextureId id) const -> Option<vrento::resource::TextureResourceRef>;
+    auto   TargetResource(SceneRenderTargetId id) const
         -> Option<vrento::resource::TextureResourceRef>;
     auto  TargetResource(ref<str>                             name,
                          vrento::resource::TextureRequestKind kind =
@@ -3440,7 +3440,7 @@ private:
     HashSet<String>                          m_active_camera_paths;
     MaterialBindingIndex<Arc<SceneCameraPath>> m_camera_path_user_index;
     // The scene's own field of view (general.fov), what scripts read as thisScene.fov
-    double                                   m_scene_fov { 50.0 };
+    double m_scene_fov { 50.0 };
 
     void        RebuildElidableLayerIds();
     void        WriteRenderTarget(String name, SceneRenderTarget target);

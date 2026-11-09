@@ -1609,7 +1609,8 @@ JSValue NodeSetHAlign(JSContext* ctx, JSValueConst this_val, JSValueConst val) {
 }
 JSValue NodeSetIgnore(JSContext*, JSValueConst, JSValueConst) { return JS_UNDEFINED; }
 
-// thisScene.fov is the scene's field of view; a camera layer's is the one it drives the camera with.
+// thisScene.fov is the scene's field of view; a camera layer's is the one it drives the camera
+// with.
 JSValue NodeGetFov(JSContext* ctx, JSValueConst this_val) {
     auto* node = GetLayerNode(this_val);
     auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
@@ -1624,7 +1625,7 @@ JSValue NodeSetFov(JSContext* ctx, JSValueConst this_val, JSValueConst value) {
     auto* node = GetLayerNode(this_val);
     auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
     if (node == nullptr || host == nullptr || host->scene == nullptr) return JS_UNDEFINED;
-    auto path = host->scene->CameraPathOfNode(node);
+    auto   path = host->scene->CameraPathOfNode(node);
     double fov {};
     if (path.is_none() || JS_ToFloat64(ctx, &fov, value) != 0 || ! (fov > 0.0)) return JS_UNDEFINED;
     (*path)->fov_base = static_cast<float>(fov);
