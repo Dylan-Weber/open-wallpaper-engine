@@ -402,6 +402,18 @@ bool ParticleObject::FromJson(const owe::Json& json, fs::VFS& vfs, SceneVersion 
     owe::GetJsonValue(json, "parent"_str, parent, false);
     owe::GetJsonValue(json, "attachment"_str, attachment, false);
     owe::GetJsonValue(json, "dependencies"_str, dependencies, false);
+    if (auto list = json.get("dependencies"_str); list.is_some()) {
+        if (auto items = (*list)->as_array(); items.is_some()) {
+            for (const auto& item : **items) {
+                String kind;
+                i32    id { 0 };
+                if (item.get("type"_str).is_none() || item.get("id"_str).is_none()) continue;
+                owe::GetJsonValue(item, "type"_str, kind, false);
+                owe::GetJsonValue(item, "id"_str, id, false);
+                if (kind == "emitterimage"_str) emitterimage_layer = Some(id);
+            }
+        }
+    }
     owe::GetJsonValue(json, "controlpoint"_str, controlpoint, false);
     if (auto value = json.get("instance"_str); value.is_some()) instance = (*value)->clone();
     if (auto value = json.get("particlesrc"_str); value.is_some()) particlesrc = (*value)->clone();
