@@ -30,7 +30,13 @@ def padded_texture(w, name, tex_w, tex_h, img_w, img_h, stripe=50):
     write_binary(os.path.join(w.name, 'materials', name + '.tex'), data)
 
 
-def puppet_layers(name, title, scene, cells, tex_w, tex_h, img_w, img_h, layer_w, layer_h, inset=(0, 0), mask=None, shading=False):
+def bone_list(count, turned):
+    """A chain of `count` bones; with `turned` each is a quarter turn from its parent and its parent's far end (as Gun Girl's
+    arm and eye bones are), the chain still returning every vertex to where it started because the animation is the rest."""
+    return [('bone%d' % i, None if i == 0 else i - 1, (0, 0, 0)) for i in range(count)]
+
+
+def puppet_layers(name, title, scene, cells, tex_w, tex_h, img_w, img_h, layer_w, layer_h, inset=(0, 0), mask=None, shading=False, bones=1, turned=False):
     """cells: [(x, y, tinted)]; every layer is layer_w x layer_h over the image img_w x img_h of a tex_w x tex_h texture."""
     w = Wallpaper(name, title, clear='0 0 0', size=scene)
     padded_texture(w, 'picture', tex_w, tex_h, img_w, img_h)
@@ -44,8 +50,9 @@ def puppet_layers(name, title, scene, cells, tex_w, tex_h, img_w, img_h, layer_w
     if mask:
         tex_file(w, 'masks/white_mask', mask[0], mask[1], bytes([255]) * (mask[0] * mask[1]), binary.R8)
     write_binary(os.path.join(name, 'models/picture_puppet.mdl'),
-                 puppet_mdl('materials/picture.json', vertices, [(0, 1, 2), (0, 2, 3)], [('root', None, (0, 0, 0))],
-                            [('rest', 30.0, [[((0, 0, 0), (0, 0, 0), (1, 1, 1))] * 2])], shading=shading))
+                 puppet_mdl('materials/picture.json', vertices, [(0, 1, 2), (0, 2, 3)], bone_list(bones, turned),
+                            [('rest', 30.0, [[((0, 0, 0), (0, 0, 0), (1, 1, 1))] * 2 for _ in range(bones)])],
+                            shading=shading))
     w.files['models/picture.json'] = {"autosize": True, "material": "materials/picture.json",
                                       "puppet": "models/picture_puppet.mdl"}
     w.files['materials/picture.json'] = {"passes": [{
@@ -104,3 +111,6 @@ puppet_layers('effect-puppet-layer-shaded', 'a shaded autosize puppet with and w
 # Gun Girl's mesh: 41 px short of the layer's left edge, 35 of the right, 26 of the top and 36 of the bottom
 puppet_layers('effect-puppet-layer-asym', 'an asymmetric inset puppet with and without an animation layer at blend 0', (8000, 4500),
               [(2000, 2250, False), (6000, 2250, False, 'additive')], 3840, 3008, 3800, 3000, 3800, 3000, inset=(41, 35, 26, 36), shading=True)
+# many bones: Gun Girl has 54
+puppet_layers('effect-puppet-layer-bones', 'a 54-bone chain puppet with and without an animation layer at blend 0', (2400, 1350),
+              [(600, 675, False), (1800, 675, False, 'additive')], 1024, 832, 1000, 800, 1000, 800, inset=(12, 8), bones=54)
