@@ -1,0 +1,62 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 12",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": null,
+    "fov": 50,
+    "nearz": 0.1,
+    "farz": 100,
+    "clearcolor": "0.05 0.05 0.1",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "bloom": false,
+    "zoom": 1,
+    "ambientcolor": "0.05 0.05 0.05",
+    "skylightcolor": "0.05 0.05 0.05",
+    "lightconfig": {
+      "point": 1,
+      "spot": 0,
+      "tube": 0,
+      "directional": 0
+    }
+  },
+  "objects": [
+    {
+      "name": "wall",
+      "model": "models/old.mdl",
+      "origin": "0 0 -1",
+      "angles": "0 0 0",
+      "scale": "12 7 0.2",
+      "id": 1,
+      "visible": true
+    },
+    {
+      "name": "red",
+      "light": "lpoint",
+      "origin": "-3 0 3",
+      "color": "1 0 0",
+      "intensity": 6,
+      "radius": 8,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "id": 2,
+      "visible": true
+    },
+    {
+      "name": "blue",
+      "light": "point",
+      "origin": "3 0 3",
+      "color": "0 0 1",
+      "intensity": 6,
+      "radius": 8,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "id": 3,
+      "visible": true
+    }
+  ],
+  "version": 3
+}

@@ -83,12 +83,14 @@ inline constexpr ref<str> G_LCR                = "g_LightsColorRadius"_str;
 inline constexpr ref<str> G_LIGHTDIRECTIONTYPE = "g_LightsDirectionType"_str;
 inline constexpr ref<str> G_LIGHTCONEEXPONENT  = "g_LightsConeExponent"_str;
 inline constexpr ref<str> G_LIGHTCASTSHADOW    = "g_LightsCastShadow"_str;
-inline constexpr ref<str> G_LIGHTAMBIENTCOLOR  = "g_LightAmbientColor"_str;
-inline constexpr ref<str> G_LIGHTSKYLIGHTCOLOR = "g_LightSkylightColor"_str;
-inline constexpr ref<str> G_FOGDISTANCECOLOR   = "g_FogDistanceColor"_str;
-inline constexpr ref<str> G_FOGDISTANCEPARAMS  = "g_FogDistanceParams"_str;
-inline constexpr ref<str> G_FOGHEIGHTCOLOR     = "g_FogHeightColor"_str;
-inline constexpr ref<str> G_FOGHEIGHTPARAMS    = "g_FogHeightParams"_str;
+// Lighting V1's light colors: every kind of light, where the old arrays have the old kind only.
+inline constexpr ref<str> G_LIGHTINGV1COLORRADIUS = "g_OweLightsColorRadius"_str;
+inline constexpr ref<str> G_LIGHTAMBIENTCOLOR     = "g_LightAmbientColor"_str;
+inline constexpr ref<str> G_LIGHTSKYLIGHTCOLOR    = "g_LightSkylightColor"_str;
+inline constexpr ref<str> G_FOGDISTANCECOLOR      = "g_FogDistanceColor"_str;
+inline constexpr ref<str> G_FOGDISTANCEPARAMS     = "g_FogDistanceParams"_str;
+inline constexpr ref<str> G_FOGHEIGHTCOLOR        = "g_FogHeightColor"_str;
+inline constexpr ref<str> G_FOGHEIGHTPARAMS       = "g_FogHeightParams"_str;
 
 inline constexpr ref<str> G_TIME                           = "g_Time"_str;
 inline constexpr ref<str> G_FRAMETIME                      = "g_Frametime"_str;
