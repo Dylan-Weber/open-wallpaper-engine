@@ -1333,12 +1333,11 @@ TEST(ParticleSubSystem, CapVelocityLimitsTheSpeed) {
     EXPECT_NEAR(positions[usize()].x(), 200.0f / 60.0f + 100.0f * 119.0f / 60.0f, 0.5f);
 }
 
-// reducemovementnearcontrolpoint slows particles near a control point like a drag: its full
-// reductioninner within distanceinner, falling to reductionouter at distanceouter by the squared
-// distance (particles-reduce-near: streams at 200 units/s through a control point, inner 50, outer
-// 150, reduction 1, 3 and 10; owe ignored the operator). A particle that stays within distanceinner
-// at reduction 10 goes 200/60 (1 - r^60) / (1 - r) = 23.3 units in a second of 60 frames,
-// r = 1 / (1 + 10/60).
+// reducemovementnearcontrolpoint slows particles near a control point like a drag, as Wallpaper Engine runs it
+// (FUN_14023fbc0 case 13): the reduction goes linearly with the distance from reductioninner at distanceinner to
+// reductionouter at distanceouter (and stays at the end values beyond them), and a frame takes
+// min(reduction dt, 1) of the speed. A particle that stays within distanceinner at reduction 10 goes
+// 200/60 (1 - r^60) / (1 - r) = 20.0 units in a second of 60 frames, r = 1 - 10/60.
 TEST(ParticleSubSystem, ReduceMovementNearControlPointSlowsLikeADrag) {
     owe::Scene             scene;
     auto                   mesh = Arc<owe::SceneMesh>::make();
@@ -1390,7 +1389,47 @@ TEST(ParticleSubSystem, ReduceMovementNearControlPointSlowsLikeADrag) {
 
     auto positions = subsystem.System().Instance(usize()).Binding().Read().Positions();
     ASSERT_EQ(positions.len(), usize(1));
-    EXPECT_NEAR(positions[usize()].x(), 23.33f, 0.5f);
+    EXPECT_NEAR(positions[usize()].x(), 20.0f, 0.3f);
+}
+
+// one frame of reducemovementnearcontrolpoint on a particle crossing at 300 units/s, `distance` from the point
+static float ReducedSpeed(float distance, ref<str> reduce) {
+    owe::Scene             scene;
+    auto                   mesh = Arc<owe::SceneMesh>::make();
+    owe::ParticleSubSystem subsystem(scene,
+                                     mesh.clone(),
+                                     u32(1),
+                                     f64(1.0),
+                                     u32(1),
+                                     f64(1.0),
+                                     owe::ParticleSubSystem::SpawnType::STATIC,
+                                     owe::ParticleAnimationSpec {});
+    auto modifiers = owe::ParticleInstanceModifiers(Arc<owe::wpscene::ParticleInstanceoverride>::make(),
+                                                    owe::wpscene::Particle::EFlags { 0 },
+                                                    false);
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"lifetimerandom","min":100,"max":100})"_str).unwrap(), u32(1)));
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"velocityrandom","min":"0 300 0","max":"0 300 0"})"_str).unwrap(), u32(2)));
+    subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(owe::BoxEmitterProgram(
+        subsystem.SpawnPipeline(),
+        owe::ParticleBoxEmitterArgs { .origin = { distance, 0.0f, 0.0f }, .instantaneous = u32(1) },
+        usize())));
+    subsystem.AddOperator(owe::ParticleParser::GenOperator(owe::ParseJson(reduce).unwrap(), modifiers.Clone(),
+                                                           subsystem, usize()));
+    subsystem.Finalize();
+    subsystem.Tick(f64(1.0 / 30.0), false);
+    auto& storage = subsystem.System().Instance(usize()).Storage();
+    particle::ParticleSlotReader value(storage, particle::ParticleSlot {});
+    return value.Read(subsystem.Attributes().velocity).y();
+}
+
+TEST(ParticleSubSystem, ReduceMovementNearControlPointGoesLinearlyWithTheDistance) {
+    auto reduce =
+        R"({"name":"reducemovementnearcontrolpoint","controlpoint":0,"distanceinner":50,"distanceouter":150,"reductioninner":10,"reductionouter":2})"_str;
+    EXPECT_NEAR(ReducedSpeed(40.0f, reduce), 300.0f * (1.0f - 10.0f / 30.0f), 0.05f);  // within: the inner value
+    EXPECT_NEAR(ReducedSpeed(100.0f, reduce), 300.0f * (1.0f - 6.0f / 30.0f), 0.05f);  // half way: half way
+    EXPECT_NEAR(ReducedSpeed(200.0f, reduce), 300.0f * (1.0f - 2.0f / 30.0f), 0.05f);  // beyond: the outer value
 }
 
 // remapvalue maps the distance to a control point, clamped to its input range, linearly onto its

@@ -2030,9 +2030,7 @@ struct MaintainDistanceBetweenOperator {
     }
 };
 
-// reducemovementnearcontrolpoint: a drag near a control point, reductioninner within
-// distanceinner, falling to reductionouter at distanceouter by the squared distance, applied as
-// v / (1 + reduction dt) (particles-reduce-near).
+// reducemovementnearcontrolpoint: a drag near a control point (particles-reduce-near, particles-reduce-near-rest).
 struct ReduceMovementNearControlPointOperator {
     ParticleAttributes attributes;
     i32                controlpoint { 0 };
@@ -2051,20 +2049,19 @@ struct ReduceMovementNearControlPointOperator {
         auto velocities = context.view.Write(velocity);
         auto center =
             frame->subsystem->SimulationControlpoint(rstd::as_cast<usize>(controlpoint)).center;
-        auto delta = context.delta.to_primitive();
+        // Wallpaper Engine (FUN_14023fbc0 case 13): the reduction goes linearly with the distance from reductioninner
+        // at distanceinner to reductionouter at distanceouter, held at the end values beyond them, and a frame takes
+        // min(reduction dt, 1) of the speed
+        auto         delta = context.delta.to_primitive();
+        const double span  = outer - inner;
         for (auto slot : context.slots) {
-            const double d2 = (positions[slot.index].cast<double>() - center).squaredNorm();
-            double       reach {};
-            if (d2 <= inner * inner)
-                reach = 1.0;
-            else if (d2 < outer * outer)
-                reach = (outer * outer - d2) / (outer * outer - inner * inner);
-            else
-                continue;
-            const double reduction = reduction_outer + (reduction_inner - reduction_outer) * reach;
-            if (reduction <= 0.0) continue;
-            velocities[slot.index] =
-                (velocities[slot.index].cast<double>() / (1.0 + reduction * delta)).cast<float>();
+            const double distance = (positions[slot.index].cast<double>() - center).norm();
+            const double t =
+                span > 0.0 ? rstd::cmp::min(rstd::cmp::max((distance - inner) / span, 0.0), 1.0)
+                           : (distance < inner ? 0.0 : 1.0);
+            const double reduction = reduction_inner + (reduction_outer - reduction_inner) * t;
+            const double taken     = rstd::cmp::min(rstd::cmp::max(reduction * delta, 0.0), 1.0);
+            velocities[slot.index] = (velocities[slot.index].cast<double>() * (1.0 - taken)).cast<float>();
         }
     }
 };
