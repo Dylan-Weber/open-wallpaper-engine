@@ -223,8 +223,9 @@ TEST(MediaRegistry, OpenFailureOwnsDecoderDiagnostic) {
     EXPECT_EQ(session.validation_errors(), 0u);
 }
 
-// Wallpaper Engine picks a video's YUV matrix by its height alone (probes video-* in tests/compare: 640x480 tagged
-// BT.709 and 1280x576 play as BT.601, 1024x600 and 1920x1080 tagged BT.601 play as BT.709); the range tag is kept.
+// Wallpaper Engine picks a video's YUV matrix by its height alone (probes video-* in tests/compare:
+// 640x480 tagged BT.709 and 1280x576 play as BT.601, 1024x600 and 1920x1080 tagged BT.601 play as
+// BT.709); the range tag is kept.
 TEST(VideoColorMatrix, SdHeightsUseBt601WhateverTheTag) {
     using wavsen::video::ColorSpace;
     EXPECT_EQ(media::WallpaperEngineColorSpace(480, ColorSpace::Bt709), ColorSpace::Bt601);
