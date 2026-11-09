@@ -266,6 +266,10 @@ public:
     void SetBoneResolvers(BoneIndexResolver index_resolver, BoneCountResolver count_resolver,
                           BoneTransformResolver    transform_resolver,
                           BoneSetTransformResolver set_transform_resolver);
+    // Each bone's parent, numbered as the bone index resolver numbers bones
+    // (0 for a root); empty when the node has no bones.
+    using BoneParentsResolver = Box<dyn<FnMut<Vec<uint32_t>(owe::SceneNode*)>>>;
+    void SetBoneParentsResolver(BoneParentsResolver resolver);
 
     // Drive every alive FieldScript once. Invokes their cached `update`
     // export and stores the coerced return into FieldScript::last_value().

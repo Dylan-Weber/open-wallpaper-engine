@@ -270,6 +270,14 @@ script::ScriptScene& EnsureScriptScene(SceneLayerBuildContext& context) {
                         Eigen::Affine3f local_bone = world.inverse() * Eigen::Affine3f(mat);
                         (*layer)->setBoneTransform(index, local_bone);
                     }));
+        (*context.script_scene)
+            ->runtime()
+            .SetBoneParentsResolver(script::JsRuntime::BoneParentsResolver::make(
+                [layers = layers.clone()](SceneNode* node) -> Vec<rstd::uint32_t> {
+                    auto layer = LookupPuppetLayer(layers, node);
+                    if (layer.is_none()) return {};
+                    return (*layer)->boneParents();
+                }));
         if (context.user_properties.is_some())
             (*context.user_properties)->iter().for_each([&](auto entry) {
                 auto [entry_key, entry_value] = entry;

@@ -278,6 +278,7 @@ public:
     slice<Eigen::Affine3f>  genFrame(double time) noexcept;
     rstd::uint32_t          boneIndex(ref<str> name) const noexcept;
     rstd::uint32_t          boneCount() const noexcept;
+    Vec<rstd::uint32_t>     boneParents() const;
     Option<Eigen::Affine3f> boneTransform(rstd::uint32_t index, double time) noexcept;
     void setBoneTransform(rstd::uint32_t index, const Eigen::Affine3f& transform) noexcept;
     Option<Eigen::Affine3f> attachmentTransform(usize index, double time) noexcept;
