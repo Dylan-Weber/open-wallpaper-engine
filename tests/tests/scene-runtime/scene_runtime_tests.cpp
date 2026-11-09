@@ -2032,8 +2032,9 @@ TEST(UniformSourceParallax, HostSwitchOnlyRemovesMouseContribution) {
 }
 
 TEST(UniformSourceParallax, APointerOutsideTheWindowParallaxesFromItsEdge) {
-    // camera-parallax: with the pointer parked outside the window (the probe reads 2.87, 1.79), Wallpaper Engine's layers
-    // move as if it were at the window's corner; the shaders' pointer stays outside
+    // camera-parallax: with the pointer parked outside the window (the probe reads 2.87, 1.79),
+    // Wallpaper Engine's layers move as if it were at the window's corner; the shaders' pointer
+    // stays outside
     auto state = Arc<owe::UniformSceneState>::make(Arc<owe::AudioResponseDemand>::make());
     state->CameraParallax() = { true, 0.5f, 0.0f, 0.25f };
     state->SetOrtho(100.0f, 80.0f);
@@ -2061,7 +2062,8 @@ TEST(UniformSourceParallax, APointerOutsideTheWindowParallaxesFromItsEdge) {
     const auto outside = offset();
     EXPECT_FLOAT_EQ(outside[usize()], corner[usize()]);
     EXPECT_FLOAT_EQ(outside[usize(1)], corner[usize(1)]);
-    auto pointer = scene_test::Capture(owe::SceneFrame {}, frame_source, owe::FrameUniformOutput::PointerPosition);
+    auto pointer = scene_test::Capture(
+        owe::SceneFrame {}, frame_source, owe::FrameUniformOutput::PointerPosition);
     EXPECT_FLOAT_EQ(pointer[usize()], 2.0f);
     EXPECT_FLOAT_EQ(pointer[usize(1)], 1.5f);
 }

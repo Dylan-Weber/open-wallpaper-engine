@@ -409,7 +409,8 @@ auto UniformSceneState::ComputeParallaxOffset(const UniformNodeState& state,
     const Vector2f depth { depth_values[usize(0)], depth_values[usize(1)] };
     const auto     ortho_values = Ortho();
     const Vector2f ortho { ortho_values[usize(0)], ortho_values[usize(1)] };
-    // the parallax follows the pointer only as far as the window's edge (camera-parallax); shaders see it outside
+    // the parallax follows the pointer only as far as the window's edge (camera-parallax); shaders
+    // see it outside
     const Vector2f pointer =
         Vector2f(Inputs().pointer.data()).cwiseMax(Vector2f::Zero()).cwiseMin(Vector2f::Ones());
     const Vector2f pointer_offset  = Scaling(1.0f, -1.0f) * (Vector2f { 0.5f, 0.5f } - pointer);
