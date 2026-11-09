@@ -205,13 +205,15 @@ struct RemapInitialValueProgram {
             break;
         }
         case ParticleRemap::Output::Opacity: {
-            auto value = float(remap.Apply(Eigen::Vector3d::Constant(columns.alphas[slot]), input).x());
+            auto value =
+                float(remap.Apply(Eigen::Vector3d::Constant(columns.alphas[slot]), input).x());
             columns.alphas[slot]         = value;
             columns.initial_alphas[slot] = value;
             break;
         }
         case ParticleRemap::Output::Size: {
-            auto value = float(remap.Apply(Eigen::Vector3d::Constant(columns.sizes[slot]), input).x());
+            auto value =
+                float(remap.Apply(Eigen::Vector3d::Constant(columns.sizes[slot]), input).x());
             columns.sizes[slot]         = value;
             columns.initial_sizes[slot] = value;
             break;
@@ -513,7 +515,9 @@ void ParticleSpawnInstruction::Initialize(ParticleSpawnColumns&          columns
         RSTD_CASE(MapSequenceBetweenControlPoints, instruction) {
             instruction.Initialize(columns, request, frame);
         }
-        RSTD_CASE(RemapInitialValue, instruction) { instruction.Initialize(columns, request, frame); }
+        RSTD_CASE(RemapInitialValue, instruction) {
+            instruction.Initialize(columns, request, frame);
+        }
         RSTD_CASE(Override, instruction) { instruction.Initialize(columns, request, frame); }
     }
 }
@@ -541,7 +545,8 @@ ParticleSpawnInstruction ParticleParser::GenInitializer(const Json& wpj,
         } else if (name == "remapinitialvalue"_str) {
             auto remap = ParticleRemap::FromJson(wpj);
             if (remap.is_none()) break;
-            return ParticleSpawnInstruction::Make(RemapInitialValueProgram { .remap = rstd::move(*remap) });
+            return ParticleSpawnInstruction::Make(
+                RemapInitialValueProgram { .remap = rstd::move(*remap) });
         } else if (name == "lifetimerandom"_str) {
             SingleRandom r = { 0.0f, 1.0f };
             SingleRandom::ReadFromJson(wpj, r);
@@ -1456,7 +1461,8 @@ struct RemapValueOperator {
         auto lifetimes = context.view.Read(lifetime);
         auto initial   = context.view.Read(initial_lifetime);
         auto center =
-            frame->subsystem->SimulationControlpoint(rstd::as_cast<usize>(remap.controlpoint)).center;
+            frame->subsystem->SimulationControlpoint(rstd::as_cast<usize>(remap.controlpoint))
+                .center;
         auto input = [&](particle::ParticleSlot slot) -> double {
             if (remap.input == ParticleRemap::Input::Lifetime)
                 return LifetimePosition(lifetimes[slot.index], initial[slot.index]);
