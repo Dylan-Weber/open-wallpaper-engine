@@ -917,7 +917,8 @@ auto LightUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
         }
         if (! visible) continue;
         if (index >= max_lights) break;
-        const bool lighting_v1 = lit(light.type());
+        // The newer interface leaves the old kind of light out; it takes none of the counts.
+        const bool lighting_v1 = ! light.desc().old_kind && lit(light.type());
         auto&      node        = *light.node();
         node.UpdateTrans();
         const auto transform = node.ModelTrans();
