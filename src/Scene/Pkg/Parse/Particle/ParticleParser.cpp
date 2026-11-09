@@ -2131,26 +2131,36 @@ struct RemapValueOperator {
             default: return frame_input;
             }
         };
+        auto life = [&](particle::ParticleSlot slot) {
+            return LifetimePosition(lifetimes[slot.index], initial[slot.index]);
+        };
         switch (remap.output) {
         case ParticleRemap::Output::Color: {
             auto values = context.view.Write(color);
             for (auto slot : context.slots)
                 values[slot.index] =
-                    remap.Apply(values[slot.index].cast<double>(), input(slot)).cast<float>();
+                    remap.Blend(values[slot.index].cast<double>(), input(slot), life(slot))
+                        .cast<float>();
             break;
         }
         case ParticleRemap::Output::Opacity: {
             auto values = context.view.Write(alpha);
             for (auto slot : context.slots)
-                values[slot.index] = float(
-                    remap.Apply(Eigen::Vector3d::Constant(values[slot.index]), input(slot)).x());
+                values[slot.index] = float(remap
+                                               .Blend(Eigen::Vector3d::Constant(values[slot.index]),
+                                                      input(slot),
+                                                      life(slot))
+                                               .x());
             break;
         }
         case ParticleRemap::Output::Size: {
             auto values = context.view.Write(size);
             for (auto slot : context.slots)
-                values[slot.index] = float(
-                    remap.Apply(Eigen::Vector3d::Constant(values[slot.index]), input(slot)).x());
+                values[slot.index] = float(remap
+                                               .Blend(Eigen::Vector3d::Constant(values[slot.index]),
+                                                      input(slot),
+                                                      life(slot))
+                                               .x());
             break;
         }
         case ParticleRemap::Output::Velocity: {
@@ -2159,7 +2169,8 @@ struct RemapValueOperator {
             auto values = context.view.Write(output_velocity);
             for (auto slot : context.slots)
                 values[slot.index] =
-                    remap.Apply(values[slot.index].cast<double>(), input(slot)).cast<float>();
+                    remap.Blend(values[slot.index].cast<double>(), input(slot), life(slot))
+                        .cast<float>();
             break;
         }
         }

@@ -49,8 +49,9 @@ inline auto HsvToRgb(double hue, double saturation, double value) -> Eigen::Vect
 // remapvalue: maps an input (the distance to a control point, or how far through its life a
 // particle is) from inputrangemin..max, clamped, linearly onto outputrangemin..max, and sets a
 // particle's colour, opacity or size to it, or multiplies or adds it (particles-remapvalue). A size
-// it sets is a radius: the particle is drawn twice as large. Other inputs, outputs and transform
-// functions (noise, sine) are not read: such an operator does nothing.
+// it sets is a radius: the particle is drawn twice as large. Other inputs, outputs and the noise
+// transforms are not read: such an operator does nothing. A remapvalue can be limited to part of a
+// particle's life (blend windows, BlendWeight).
 // (Inputs: see Input; scalar ones give every axis the same value, so a colour of them is grey.)
 struct ParticleRemap {
     enum class Input
@@ -109,10 +110,27 @@ struct ParticleRemap {
     Operation       operation { Operation::Remap };
     Transform       transform { Transform::Linear };
     Eigen::Vector3d output_min { Eigen::Vector3d::Zero() }, output_max { Eigen::Vector3d::Ones() };
+    // transforminputscale: the sine goes scale / 2 times round over the input range
+    // (particles-remap-timescale-range); the linear transform ignores it
+    double transform_scale { 2.0 };
+    // blendinstart..blendinend and blendoutstart..blendoutend, fractions of the particle's life
+    // over which the remapped value is blended in from the particle's own and back out
+    // (particles-remap-timescale); without them it is applied all the time
+    Option<array<double, 2>> blend_in, blend_out;
 
     static auto FromJson(const Json& json) -> Option<ParticleRemap> {
         ParticleRemap remap;
         String        text;
+        GetJsonValue(json, "transforminputscale"_str, remap.transform_scale, false);
+        auto window = [&](ref<str> start, ref<str> end) -> Option<array<double, 2>> {
+            if (json.get(start).is_none() && json.get(end).is_none()) return None();
+            array<double, 2> range { 0.0, 0.0 };
+            GetJsonValue(json, start, range[usize(0)], false);
+            GetJsonValue(json, end, range[usize(1)], false);
+            return Some(range);
+        };
+        remap.blend_in  = window("blendinstart"_str, "blendinend"_str);
+        remap.blend_out = window("blendoutstart"_str, "blendoutend"_str);
         if (json.get("transformfunction"_str).is_some()) {
             GetJsonValue(json, "transformfunction"_str, text, false);
             if (text == "triangle"_str)
@@ -213,7 +231,8 @@ struct ParticleRemap {
         t        = t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t);
         switch (transform) {
         case Transform::Linear: return t;
-        case Transform::Sine: return 0.5 - 0.5 * std::cos(2.0 * 3.14159265358979323846 * t);
+        case Transform::Sine:
+            return 0.5 - 0.5 * std::cos(3.14159265358979323846 * transform_scale * t);
         case Transform::Triangle: {
             const double p = 2.0 * t - std::floor(2.0 * t);
             return 1.0 - std::abs(2.0 * p - 1.0);
@@ -253,6 +272,33 @@ struct ParticleRemap {
         case Operation::Remap: break;
         }
         return mapped;
+    }
+
+    // how much of the remapped value a particle `life` (0 to 1) through its life takes
+    auto BlendWeight(double life) const -> double {
+        auto ramp = [life](const array<double, 2>& range) {
+            const double span = range[usize(1)] - range[usize(0)];
+            if (span <= 0.0) return life >= range[usize(0)] ? 1.0 : 0.0;
+            const double t = (life - range[usize(0)]) / span;
+            return t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t);
+        };
+        double weight = 1.0;
+        if (blend_in.is_some()) weight *= ramp(*blend_in);
+        if (blend_out.is_some()) weight *= 1.0 - ramp(*blend_out);
+        return weight;
+    }
+
+    // Apply, blended with the particle's value by BlendWeight
+    auto Blend(const Eigen::Vector3d& current, const Eigen::Vector3d& value, double life) const
+        -> Eigen::Vector3d {
+        const double weight = BlendWeight(life);
+        if (weight <= 0.0) return current;
+        Eigen::Vector3d applied = Apply(current, value);
+        return weight >= 1.0 ? applied : Eigen::Vector3d(current + (applied - current) * weight);
+    }
+
+    auto Blend(const Eigen::Vector3d& current, double value, double life) const -> Eigen::Vector3d {
+        return Blend(current, Eigen::Vector3d::Constant(value), life);
     }
 };
 
