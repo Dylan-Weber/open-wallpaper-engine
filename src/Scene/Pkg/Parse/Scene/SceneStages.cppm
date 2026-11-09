@@ -79,11 +79,12 @@ constexpr auto ResolveTextRenderMode(TextSurfaceRequirements requirements) -> Te
 }
 
 // Whether a pass of an effect leaves anything another pass or the layer sees. In Wallpaper Engine a
-// pass's default input ("previous") is the effect's input, not the pass before it (effect-pass-chain:
-// a repeat pass then a copy pass, with no targets or binds, shows the plain texture; with the repeat
-// "compose": true, which the effect parser turns into a target and a bind, the copy shows the
-// repeat). So a pass that is not the effect's last and writes no target of its own is dropped.
-// Effects with copy commands keep every pass: their commands are placed by pass position.
+// pass's default input ("previous") is the effect's input, not the pass before it
+// (effect-pass-chain: a repeat pass then a copy pass, with no targets or binds, shows the plain
+// texture; with the repeat "compose": true, which the effect parser turns into a target and a bind,
+// the copy shows the repeat). So a pass that is not the effect's last and writes no target of its
+// own is dropped. Effects with copy commands keep every pass: their commands are placed by pass
+// position.
 struct EffectPassUse {
     bool last { false };
     bool has_target { false };
