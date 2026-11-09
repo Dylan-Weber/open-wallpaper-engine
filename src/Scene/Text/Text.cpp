@@ -381,12 +381,12 @@ Option<Arc<owe::SceneShader>> GetTextSceneShader() {
 
 auto NdcToTexture() -> Eigen::Matrix4d {
     Eigen::Matrix4d m = Eigen::Matrix4d::Zero();
-    m(0, 0) = 0.5;
-    m(0, 3) = 0.5;
-    m(1, 1) = -0.5;
-    m(1, 3) = 0.5;
-    m(2, 2) = 1.0;
-    m(3, 3) = 1.0;
+    m(0, 0)           = 0.5;
+    m(0, 3)           = 0.5;
+    m(1, 1)           = -0.5;
+    m(1, 3)           = 0.5;
+    m(2, 2)           = 1.0;
+    m(3, 3)           = 1.0;
     return m;
 }
 
