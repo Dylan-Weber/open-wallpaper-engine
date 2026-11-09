@@ -1312,10 +1312,11 @@ TEST(TextUniformSource, EffectProjectionIncludesGeometryAlignment) {
     auto                         projected = scene_test::Capture(
         owe::SceneFrame {}, source, owe::text::TextUniformOutput::EffectModelViewProjection);
     ASSERT_EQ(projected.size(), usize(16));
-    EXPECT_FLOAT_EQ(projected[usize()], 0.4f);
-    EXPECT_FLOAT_EQ(projected[usize(5)], 0.6f);
-    EXPECT_FLOAT_EQ(projected[usize(12)], 0.6f);
-    EXPECT_FLOAT_EQ(projected[usize(13)], 0.4f);
+    // in the scene texture's coordinates (NdcToTexture): clip space 0.4, 0.6, 0.6, 0.4
+    EXPECT_FLOAT_EQ(projected[usize()], 0.2f);
+    EXPECT_FLOAT_EQ(projected[usize(5)], -0.3f);
+    EXPECT_FLOAT_EQ(projected[usize(12)], 0.8f);
+    EXPECT_FLOAT_EQ(projected[usize(13)], 0.3f);
 
     auto uniform_state = Arc<owe::UniformSceneState>::make(Arc<owe::AudioResponseDemand>::make());
     auto resolver      = Arc<owe::UniformCameraResolver>::make(camera.clone());
@@ -1327,7 +1328,12 @@ TEST(TextUniformSource, EffectProjectionIncludesGeometryAlignment) {
                                       transform_source,
                                       owe::TransformUniformOutput::EffectModelViewProjection);
     ASSERT_EQ(effect.size(), projected.size());
-    for (usize i {}; i < effect.size(); ++i) EXPECT_FLOAT_EQ(effect[i], projected[i]);
+    // the layer's clip-space projection, mapped to the scene texture as the text's is
+    Eigen::Matrix4d effect_clip;
+    for (int i = 0; i < 16; ++i) effect_clip(i % 4, i / 4) = effect[usize(i)];
+    const Eigen::Matrix4d effect_texture = owe::text::NdcToTexture() * effect_clip;
+    for (int i = 0; i < 16; ++i)
+        EXPECT_FLOAT_EQ(float(effect_texture(i % 4, i / 4)), projected[usize(i)]);
     auto model = scene_test::Capture(
         owe::SceneFrame {}, transform_source, owe::TransformUniformOutput::LayerModel);
     ASSERT_EQ(model.size(), usize(16));
