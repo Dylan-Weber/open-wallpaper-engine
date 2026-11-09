@@ -188,11 +188,12 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
     bool has_text_effect    = ! obj.effects.is_empty();
     const bool linked_source        = context.IsLinkedSource(obj.id);
     const auto text_render_mode     = ResolveTextRenderMode(TextSurfaceRequirements {
-        .color_blend       = obj.colorBlendMode != i32(),
-        .has_effect        = has_text_effect,
-        .copy_background   = obj.copybackground,
-        .opaque_background = obj.opaquebackground,
-        .linked_source     = linked_source,
+        .color_blend         = obj.colorBlendMode != i32(),
+        .has_effect          = has_text_effect,
+        .copy_background     = obj.copybackground,
+        .opaque_background   = obj.opaquebackground,
+        .linked_source       = linked_source,
+        .translucent_outline = obj.outline && obj.alpha < 1.0f,
     });
     const bool direct_text          = text_render_mode == TextRenderMode::Direct;
     const bool copy_background_seed = has_text_effect || obj.copybackground;
@@ -322,17 +323,22 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
         material.name    = "text"_Str;
         material.defines = Vec<String>::make();
         material.defines.push("g_Texture0"_Str);
-        material.SetBlendMode(direct_text || copy_background_seed || has_bg ? BlendMode::Translucent
-                                                                            : BlendMode::Normal);
+        // (letters blend over their outline, which they would otherwise wipe out)
+        material.SetBlendMode(direct_text || copy_background_seed || has_bg || obj.outline
+                                  ? BlendMode::Translucent
+                                  : BlendMode::Normal);
         material.customShader.shader = shader.clone();
         sp_mesh->AddMaterial(rstd::move(material));
     }
 
+    // Translucent outlined text is drawn opaque, in its whole box (its outline reaches past its
+    // ink), and faded as a whole when it is laid on the scene.
+    const bool            alpha_at_compose = obj.outline && obj.alpha < 1.0f && ! direct_text;
     text::TextLayoutStyle style;
-    style.mesh_origin =
-        direct_text ? text::TextMeshOrigin::Layout : text::TextMeshOrigin::InkBounds;
+    style.mesh_origin           = direct_text || alpha_at_compose ? text::TextMeshOrigin::Layout
+                                                                  : text::TextMeshOrigin::InkBounds;
     style.color                 = { obj.color[usize(0)], obj.color[usize(1)], obj.color[usize(2)] };
-    style.alpha                 = direct_text ? 1.0f : obj.alpha;
+    style.alpha                 = direct_text || alpha_at_compose ? 1.0f : obj.alpha;
     style.brightness            = obj.brightness;
     style.opaquebackground      = has_bg;
     style.background_color      = { obj.backgroundcolor[usize(0)],
@@ -363,14 +369,16 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
         obj.verticalalign.as_str(), obj.alignment.as_str(), "top"_str, "bottom"_str);
     style.halign = rstd::into(initial_halign);
 
-    const float text_padding = style.padding;
-    const float wrap_width   = style.wrap_width;
-    auto        layouter     = Arc<text::TextLayouter>::make(resources.clone(),
-                                                             rstd::move(font),
-                                                             sp_mesh.clone(),
-                                                             rstd::move(style),
-                                                             peak_quads,
-                                                             context.scene);
+    // ...with room for the outline in its box
+    const float text_padding =
+        style.padding + (alpha_at_compose ? obj.outlinethickness + 2.0f : 0.0f);
+    const float wrap_width = style.wrap_width;
+    auto        layouter   = Arc<text::TextLayouter>::make(resources.clone(),
+                                                           rstd::move(font),
+                                                           sp_mesh.clone(),
+                                                           rstd::move(style),
+                                                           peak_quads,
+                                                           context.scene);
     if (layouter->SetText(s_text).is_err()) {
         rstd_error("text '{}': initial layout failed", obj.name);
         return;
@@ -443,7 +451,7 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
         .dynamic            = wants_dynamic_text,
         .has_effect         = has_text_effect,
         .frame_bound        = linked_source,
-        .preserve_text_bbox = has_bg || obj.copybackground,
+        .preserve_text_bbox = has_bg || obj.copybackground || alpha_at_compose,
     };
     const auto initial_geometry = text::ResolveTextGeometry(geometry_policy, layouter->Metrics());
     const auto [initial_layer_w, initial_layer_h] = TextLayerExtent(initial_geometry);
@@ -600,7 +608,11 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
             SceneMaterial          mat;
             UniformNodeConfigDraft sv;
             ShaderInfo             si;
-            si.baseConstSvs      = effect_base.clone();
+            si.baseConstSvs = effect_base.clone();
+            if (final_composite && alpha_at_compose)
+                (void)si.baseConstSvs.insert(
+                    rstd::into(G_COLOR4),
+                    ShaderValue(array<float, 4> { 1.0f, 1.0f, 1.0f, obj.alpha }));
             auto material_result = BuildMaterial(*context.vfs,
                                                  *context.layer_resources->shader_cache,
                                                  context.layer_resources->shader_environment,
