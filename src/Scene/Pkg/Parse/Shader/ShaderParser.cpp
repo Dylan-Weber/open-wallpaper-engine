@@ -300,16 +300,21 @@ float3 PerformLighting_V1(float3 worldPos, float3 albedo, float3 normal, float3 
         if (type > 1.5 && type < 2.5) {
 #if LIGHTS_SHADOW_MAPPING
             if (g_OweLightsShadowView[i] > -0.5) {
-                float selectedCascade = 0.0;
-                for (int cascade = 0; cascade < 3; ++cascade) {
-                    float4 projected = CalculateProjectedCoordsCascades(
-                        worldPos, g_OweShadowViewProjections[shadowView + cascade]);
-                    float active = (1.0 - projected.w) * (1.0 - selectedCascade);
-                    float sampled = PerformShadowMapping(
-                        projected.xyz, g_OweShadowAtlasTransforms[shadowView + cascade]);
-                    shadowFactor = lerp(shadowFactor, sampled, active);
-                    selectedCascade = saturate(selectedCascade + active);
-                }
+                // Wallpaper Engine's cascade choice: the second cascade where the point is outside
+                // the first, then the third wherever it is outside the second (even inside the
+                // first), and lit outside the third
+                float4 c1 = CalculateProjectedCoordsCascades(
+                    worldPos, g_OweShadowViewProjections[shadowView]);
+                float4 c2 = CalculateProjectedCoordsCascades(
+                    worldPos, g_OweShadowViewProjections[shadowView + 1]);
+                float4 c3 = CalculateProjectedCoordsCascades(
+                    worldPos, g_OweShadowViewProjections[shadowView + 2]);
+                float4 uvTransforms = lerp(g_OweShadowAtlasTransforms[shadowView],
+                                           g_OweShadowAtlasTransforms[shadowView + 1], c1.w);
+                float3 coords = lerp(c1.xyz, c2.xyz, c1.w);
+                coords = lerp(coords, c3.xyz, c2.w);
+                uvTransforms = lerp(uvTransforms, g_OweShadowAtlasTransforms[shadowView + 2], c2.w);
+                shadowFactor = max(c3.w, PerformShadowMapping(coords, uvTransforms));
             }
 #endif
             light += ComputePBRLightShadowInfinite(
@@ -2005,7 +2010,7 @@ constexpr array<rstd::uint8_t, 8> kShaderCacheMagic { rstd::uint8_t('O'), rstd::
                                                       rstd::uint8_t('P'), rstd::uint8_t('V'),
                                                       rstd::uint8_t('3'), rstd::uint8_t(0) };
 constexpr rstd::uint32_t          kShaderCacheFormatVersion = 3;
-constexpr rstd::uint32_t          kShaderCacheAbiVersion    = 24;
+constexpr rstd::uint32_t          kShaderCacheAbiVersion    = 25;
 // 8-byte magic, six u32 fields, and four SHA-1 digests total 112 bytes.
 constexpr rstd::uint32_t kShaderCacheHeaderSize = static_cast<rstd::uint32_t>(
     kShaderCacheMagic.len().to_primitive() + 6 * sizeof(rstd::uint32_t) +
@@ -2699,6 +2704,7 @@ String ShaderParser::PreShaderSrc(fs::VFS& vfs, ref<str> src, ShaderInfo* pShade
     return newsrc;
 }
 
+auto ShaderParser::LightingV1Source() -> ref<str> { return lighting_v1_source; }
 String ShaderParser::PreShaderHeader(ref<str> src, const Combos& combos, ShaderType type) {
     // Some workshop shaders contain full-width semicolons, which glslang rejects
     // while compiling the Vulkan shader source.

@@ -1865,7 +1865,7 @@ void main() {
                (static_cast<std::uint32_t>(header[offset + 3]) << 24);
     };
     EXPECT_EQ(read_u32(8), 3u);
-    EXPECT_EQ(read_u32(12), 24u);
+    EXPECT_EQ(read_u32(12), 25u);
     EXPECT_EQ(read_u32(16), 112u);
     EXPECT_EQ(read_u32(24), 2u);
     const auto initial_write_time = std::filesystem::last_write_time(artifact_path);
@@ -2154,4 +2154,18 @@ TEST(ShaderParser, NativeIncludesPreserveNestedOrderMalformedLinesAndUtf8) {
     EXPECT_TRUE(text->contains("#include invalid"_str));
     EXPECT_TRUE(text->contains("// head"_str));
     EXPECT_TRUE(text->contains("// tail"_str));
+}
+
+// Wallpaper Engine's directional cascades (its generated PerformLighting_V1): the second cascade
+// where a point is outside the first, the third wherever it is outside the second (even inside
+// the first), and lit outside the third (probe shadow-cascade-switch-wide-first: cascades 30 / 5 /
+// 100 draw the posts' far shadows from the third cascade)
+TEST(ShaderParser, LightingV1ChoosesCascadesAsWallpaperEngineDoes) {
+    const std::string source = rstd::cppstd::to_string(owe::ShaderParser::LightingV1Source());
+    EXPECT_NE(source.find("coords = lerp(c1.xyz, c2.xyz, c1.w);"), std::string::npos);
+    EXPECT_NE(source.find("coords = lerp(coords, c3.xyz, c2.w);"), std::string::npos);
+    EXPECT_NE(source.find("max(c3.w, PerformShadowMapping(coords, uvTransforms))"),
+              std::string::npos);
+    // not the first cascade that holds the point
+    EXPECT_EQ(source.find("selectedCascade"), std::string::npos);
 }

@@ -1,0 +1,6 @@
+{
+  "probe": true,
+  "fps": 30,
+  "shadow_quality": "medium",
+  "probe_updates": true
+}
