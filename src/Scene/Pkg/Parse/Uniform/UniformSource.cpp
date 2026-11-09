@@ -886,6 +886,7 @@ auto LightUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
     constexpr usize  max_lights { 4 };
     array<float, 12> positions {};
     array<float, 16> colors_radius {};
+    array<float, 16> lighting_v1_colors_radius {};
     array<float, 12> colors_legacy {};
     array<float, 16> directions_type {};
     array<float, 16> cones_exponent {};
@@ -914,10 +915,14 @@ auto LightUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
         positions[index * usize(3)]                = position.x();
         positions[index * usize(3) + usize(1)]     = position.y();
         positions[index * usize(3) + usize(2)]     = position.z();
-        colors_radius[index * usize(4)]            = color.x();
-        colors_radius[index * usize(4) + usize(1)] = color.y();
-        colors_radius[index * usize(4) + usize(2)] = color.z();
-        colors_radius[index * usize(4) + usize(3)] = light.radius();
+        for (auto* colors : { &lighting_v1_colors_radius, &colors_radius }) {
+            // The old arrays get the old kind of light only.
+            if (colors == &colors_radius && ! light.desc().old_kind) continue;
+            (*colors)[index * usize(4)]            = color.x();
+            (*colors)[index * usize(4) + usize(1)] = color.y();
+            (*colors)[index * usize(4) + usize(2)] = color.z();
+            (*colors)[index * usize(4) + usize(3)] = light.radius();
+        }
         Eigen::Vector3d local_direction            = Eigen::Vector3d::UnitX();
         if (light.type() != SceneLightType::Spot) local_direction = -local_direction;
         const auto direction =
@@ -930,7 +935,7 @@ auto LightUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
         cones_exponent[index * usize(4) + usize(1)]  = light.desc().outer_cone_cos;
         cones_exponent[index * usize(4) + usize(2)]  = light.desc().exponent;
         cast_shadow[index]                           = light.desc().cast_shadow ? 1.0f : 0.0f;
-        if (index < usize(3)) {
+        if (index < usize(3) && light.desc().old_kind) {
             const auto premultiplied = color * light.radius() * light.radius();
             for (usize component {}; component < usize(3); ++component) {
                 colors_legacy[index * usize(4) + component] =
@@ -942,6 +947,7 @@ auto LightUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
     writer.Write(Output::Position, positions);
     writer.Write(Output::ColorLegacy, colors_legacy);
     writer.Write(Output::ColorRadius, colors_radius);
+    writer.Write(Output::LightingV1ColorRadius, lighting_v1_colors_radius);
     writer.Write(Output::DirectionType, directions_type);
     writer.Write(Output::ConeExponent, cones_exponent);
     writer.Write(Output::CastShadow, cast_shadow);
@@ -994,30 +1000,39 @@ auto ShadowUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
     view_y.normalize();
     view_z.normalize();
 
+    // Wallpaper Engine's cascades: as wide as the light's cascade distances (3, 10 and 100 by
+    // default), centred half their width ahead of the camera (less so along the light), moved
+    // in whole texels of their squares, and as deep as four times the second distance.
     array<float, 96> matrix_values {};
-    const double camera_far = rstd::cmp::max(0.001, f64(m_camera->FarClip()).abs().to_primitive());
+    constexpr double defaults[3] { 3.0, 10.0, 100.0 };
+    double           widths[3] {};
+    for (int cascade = 0; cascade < 3; ++cascade) {
+        const float authored = light->desc().cascade_distances[cascade];
+        widths[cascade]      = authored > 0.0f ? static_cast<double>(authored) : defaults[cascade];
+    }
+    const double   depths[3] { widths[1] * 4.0,
+                               widths[1] * 4.0,
+                               std::max(widths[2] * 1.5, widths[1] * 4.0) };
+    const Vector3d shine = -view_z;
+    const Vector3d ahead = forward - shine * (forward.dot(shine) * 0.5);
     for (usize cascade {}; cascade < usize(3); ++cascade) {
-        const float     authored = light->desc().cascade_distances[cascade.to_primitive()];
-        const double    distance = authored > 0.0f ? static_cast<double>(authored) : camera_far;
-        const auto      center   = camera_transform.eye + forward * (distance * 0.5);
-        Eigen::Matrix4d view     = Eigen::Matrix4d::Identity();
-        view.block<1, 3>(0, 0)   = view_x.transpose();
-        view.block<1, 3>(1, 0)   = view_y.transpose();
-        view.block<1, 3>(2, 0)   = view_z.transpose();
-        view(0, 3)               = -view_x.dot(center);
-        view(1, 3)               = -view_y.dot(center);
-        view(2, 3)               = -view_z.dot(center);
+        const double half   = widths[cascade.to_primitive()] * 0.5;
+        const double texel  = widths[cascade.to_primitive()] / static_cast<double>(kShadowTileSize);
+        Vector3d     center = camera_transform.eye + ahead * half;
+        center -= view_x * std::fmod(view_x.dot(center), texel);
+        center -= view_y * std::fmod(view_y.dot(center), texel);
+        Eigen::Matrix4d view   = Eigen::Matrix4d::Identity();
+        view.block<1, 3>(0, 0) = view_x.transpose();
+        view.block<1, 3>(1, 0) = view_y.transpose();
+        view.block<1, 3>(2, 0) = view_z.transpose();
+        view(0, 3)             = -view_x.dot(center);
+        view(1, 3)             = -view_y.dot(center);
+        view(2, 3)             = -view_z.dot(center);
 
-        const double          half_extent = distance * 0.5;
-        const double          depth_span  = rstd::cmp::max(80.0, distance * 1.5);
-        const Eigen::Matrix4f matrix      = (Eigen::Ortho(-half_extent,
-                                                          half_extent,
-                                                          -half_extent,
-                                                          half_extent,
-                                                          -depth_span * 0.5,
-                                                          depth_span * 0.5) *
-                                             view)
-                                                .cast<float>();
+        const double          depth = depths[cascade.to_primitive()];
+        const Eigen::Matrix4f matrix =
+            (Eigen::Ortho(-half, half, -half, half, -depth * 0.5, depth * 0.5) * view)
+                .cast<float>();
         for (usize value {}; value < usize(16); ++value) {
             matrix_values[cascade * usize(16) + value] = matrix.data()[value.to_primitive()];
         }

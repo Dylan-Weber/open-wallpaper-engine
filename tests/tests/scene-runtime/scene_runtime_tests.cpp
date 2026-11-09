@@ -465,7 +465,8 @@ TEST(LightUniformSource, PublishesWorldDirectionAndType) {
     EXPECT_NEAR(direction[usize(2)], 0.0f, 1e-5f);
     EXPECT_FLOAT_EQ(direction[usize(3)], static_cast<float>(owe::SceneLightType::Directional));
 
-    auto color = scene_test::Capture(frame, source, owe::LightUniformOutput::ColorRadius);
+    // a directional light of the newer kind reaches Lighting V1's colors
+    auto color = scene_test::Capture(frame, source, owe::LightUniformOutput::LightingV1ColorRadius);
     ASSERT_EQ(color.size(), usize(16));
     EXPECT_FLOAT_EQ(color[usize()], 0.5f);
     EXPECT_FLOAT_EQ(color[usize(1)], 1.0f);
@@ -1711,6 +1712,49 @@ TEST(CameraShake, RuntimeUpdatesLinkedViewAndClearsDisabledOrPreviousCamera) {
     EXPECT_TRUE(effect->GetPosition().isZero());
 }
 
+// Without authored distances the cascades are 3, 10 and 100 wide (Wallpaper Engine's defaults,
+// not the camera's far plane), as deep as four times the second; their centres move in whole
+// texels of their 256-pixel squares, so the shadow doesn't shimmer as the camera moves.
+TEST(ShadowUniformSource, CascadesDefaultToThreeTenAndAHundredInWholeTexels) {
+    auto camera =
+        Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000.0, 50.0));
+    const Eigen::Vector3d eye(0.013, -0.021, 0.0);
+    camera->SetLookAt(eye, eye - Eigen::Vector3d::UnitZ(), Eigen::Vector3d::UnitY());
+    auto                  light_node = Arc<owe::SceneNode>::make();
+    owe::SceneLight::Desc desc;
+    desc.type        = owe::SceneLightType::Directional;
+    desc.cast_shadow = true;
+    owe::Scene scene;
+    auto       light = Box<owe::SceneLight>::make(desc);
+    light->setNode(light_node.as_ptr());
+    (void)scene.RegisterLight(rstd::move(light));
+    owe::ShadowUniformSource source(camera.clone(), ref<owe::Scene>::from_raw_parts(&scene));
+
+    auto matrices = scene_test::Capture(
+        owe::SceneFrame {}, source, owe::ShadowUniformOutput::ViewProjectionMatrices);
+    ASSERT_EQ(matrices.size(), usize(96));
+    // widths
+    EXPECT_NEAR(matrices[usize(8)], 2.0f / 3.0f, 1e-6f);
+    EXPECT_NEAR(matrices[usize(16 + 8)], 2.0f / 10.0f, 1e-6f);
+    EXPECT_NEAR(matrices[usize(32 + 8)], 2.0f / 100.0f, 1e-6f);
+    // depths: four times the second width (and 1.5 times the third, if more)
+    EXPECT_NEAR(matrices[usize(2)], -1.0f / 40.0f, 1e-6f);
+    EXPECT_NEAR(matrices[usize(32 + 2)], -1.0f / 150.0f, 1e-6f);
+    // the light's x and y axes see the eye's z and y: each centre is a whole number of texels
+    for (usize cascade {}; cascade < usize(3); ++cascade) {
+        const float width = cascade == usize() ? 3.0f : cascade == usize(1) ? 10.0f : 100.0f;
+        const float texel = width / 256.0f;
+        for (usize axis {}; axis < usize(2); ++axis) {
+            const float scale  = matrices[cascade * usize(16) + axis * usize(5) +
+                                          (axis == usize() ? usize(8) : usize())];
+            const float offset = matrices[cascade * usize(16) + usize(12) + axis];
+            const float centre = -offset / scale;
+            EXPECT_NEAR(centre / texel, std::round(centre / texel), 1e-3f)
+                << cascade.to_primitive();
+        }
+    }
+}
+
 TEST(ShadowUniformSource, CascadeCentersUseFinalCameraPosition) {
     auto camera =
         Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000, 50));
@@ -2692,4 +2736,35 @@ TEST(UniformSourceParallax, PerspectiveWithAuthoredParallaxDepthAppliesShift) {
                          mvp_with_parallax[rstd::usize(12)]) > 1e-5f ||
                 std::abs(mvp_without_parallax[rstd::usize(13)] -
                          mvp_with_parallax[rstd::usize(13)]) > 1e-5f);
+}
+
+// The old four-light arrays (generic2, lit genericimage2 layers, custom shaders) get only the old
+// kind of light; lpoint and the other newer kinds reach Lighting V1 alone (model-light-legacy:
+// Wallpaper Engine lights a generic2 wall with its "point" light and not its "lpoint" one).
+TEST(LightUniformSource, NewerLightKindsStayOutOfTheOldArrays) {
+    auto                  newer = Arc<owe::SceneNode>::make();
+    auto                  older = Arc<owe::SceneNode>::make();
+    owe::SceneLight::Desc newer_desc;
+    newer_desc.color                 = { 1.0f, 0.0f, 0.0f };
+    newer_desc.radius                = 8.0f;
+    owe::SceneLight::Desc older_desc = newer_desc;
+    older_desc.color                 = { 0.0f, 0.0f, 1.0f };
+    older_desc.old_kind              = true;
+    owe::Scene scene;
+    auto       newer_light = Box<owe::SceneLight>::make(newer_desc);
+    auto       older_light = Box<owe::SceneLight>::make(older_desc);
+    newer_light->setNode(newer.as_ptr());
+    older_light->setNode(older.as_ptr());
+    (void)scene.RegisterLight(rstd::move(newer_light));
+    (void)scene.RegisterLight(rstd::move(older_light));
+    owe::LightUniformSource source(ref<owe::Scene>::from_raw_parts(&scene));
+    owe::SceneFrame         frame;
+
+    auto old_arrays = scene_test::Capture(frame, source, owe::LightUniformOutput::ColorRadius);
+    EXPECT_FLOAT_EQ(old_arrays[usize(0)], 0.0f);
+    EXPECT_FLOAT_EQ(old_arrays[usize(6)], 1.0f);
+    auto lighting_v1 =
+        scene_test::Capture(frame, source, owe::LightUniformOutput::LightingV1ColorRadius);
+    EXPECT_FLOAT_EQ(lighting_v1[usize(0)], 1.0f);
+    EXPECT_FLOAT_EQ(lighting_v1[usize(6)], 1.0f);
 }

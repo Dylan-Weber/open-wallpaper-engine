@@ -360,6 +360,7 @@ void ParseLightObj(SceneParseContext& context, wpscene::LightObject& light_obj) 
     } else {
         desc.type = SceneLightType::Point; // default + point/lpoint
     }
+    desc.old_kind    = light_obj.light == "point"_str;
     desc.color       = Vector3f(light_obj.color.data());
     desc.radius      = light_obj.radius;
     desc.intensity   = light_obj.intensity;
@@ -694,11 +695,13 @@ BuildContext(Scene& scene, fs::VFS& vfs, ref<str> scene_id, const wpscene::Scene
         });
 
     if (context.layer_resources->shader_environment.directional_shadow) {
+        // a square of the atlas for each cascade
+        constexpr float tile = static_cast<float>(kShadowTileSize);
         context.scene->RegisterRenderTarget(
             String::make(WE_SHADOW_ATLAS_PREFIX),
             SceneRenderTarget {
-                .width             = i32(768),
-                .height            = i32(256),
+                .width             = i32(3 * static_cast<int>(tile)),
+                .height            = i32(static_cast<int>(tile)),
                 .kind              = SceneRenderTargetKind::DepthSampled,
                 .depth_clear_value = 0.0f,
                 .sample =
@@ -715,14 +718,14 @@ BuildContext(Scene& scene, fs::VFS& vfs, ref<str> scene_id, const wpscene::Scene
         auto viewports = Vec<SceneShadowViewport>::make();
         for (u32 index {}; index < u32(3); ++index) {
             viewports.push(SceneShadowViewport {
-                .x              = f32(256.0f * static_cast<float>(index.to_primitive())),
-                .y              = f32(256.0f),
-                .width          = f32(256.0f),
-                .height         = f32(-256.0f),
-                .scissor_x      = i32(256) * rstd::as_cast<i32>(index),
+                .x              = f32(tile * static_cast<float>(index.to_primitive())),
+                .y              = f32(tile),
+                .width          = f32(tile),
+                .height         = f32(-tile),
+                .scissor_x      = i32(static_cast<int>(tile)) * rstd::as_cast<i32>(index),
                 .scissor_y      = i32(),
-                .scissor_width  = u32(256),
-                .scissor_height = u32(256),
+                .scissor_width  = u32(static_cast<unsigned>(tile)),
+                .scissor_height = u32(static_cast<unsigned>(tile)),
             });
         }
         context.scene->RegisterShadowDefinition(SceneShadowDefinition {
