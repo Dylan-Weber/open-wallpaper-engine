@@ -324,6 +324,31 @@ private:
     bool                                                             m_compiled { false };
 };
 
+// When an emitter emits (particles-emitter-periodic): with flag 4, in on phases of
+// minperiodicduration..maxperiodicduration seconds and off phases of
+// minperiodicdelay..maxperiodicdelay, each on phase emitting at most maxtoemitperperiod (0: no
+// limit); "delay" starts it that many seconds late. A phase switch takes a frame of its own (1 s
+// on and 1 s off repeat every 2.06 s at 30 fps).
+struct ParticleEmitterTiming {
+    bool  periodic { false };
+    float min_duration {}, max_duration {};
+    float min_delay {}, max_delay {};
+    u32   max_per_period {};
+    float delay {};
+
+    static auto From(const wpscene::Emitter& emitter) -> ParticleEmitterTiming {
+        return ParticleEmitterTiming {
+            .periodic       = emitter.flags[wpscene::Emitter::FlagEnum::periodic],
+            .min_duration   = emitter.min_periodic_duration,
+            .max_duration   = emitter.max_periodic_duration,
+            .min_delay      = emitter.min_periodic_delay,
+            .max_delay      = emitter.max_periodic_delay,
+            .max_per_period = emitter.max_emit_per_period,
+            .delay          = emitter.delay,
+        };
+    }
+};
+
 struct ParticleBoxEmitterArgs {
     array<float, 3>       directions;
     array<float, 3>       min_distance;
@@ -336,6 +361,7 @@ struct ParticleBoxEmitterArgs {
     float                 max_speed {};
     float                 duration {};
     i32                   controlpoint {};
+    ParticleEmitterTiming timing;
     ParticleAudioResponse audio_response;
 };
 
@@ -352,6 +378,7 @@ struct ParticleSphereEmitterArgs {
     float                 max_speed {};
     float                 duration {};
     i32                   controlpoint {};
+    ParticleEmitterTiming timing;
     ParticleAudioResponse audio_response;
 };
 
@@ -401,6 +428,13 @@ struct ParticleInstanceState {
     struct EmitterState {
         f64 timer {};
         f64 elapsed {};
+        // periodic emission and the start delay (ParticleEmitterTiming): whether the emitter is
+        // in an on phase, how long it has been in it, how long it lasts, what it has emitted
+        bool timing_started { false };
+        bool timing_on { true };
+        f64  phase {};
+        f64  phase_length {};
+        u32  period_emitted {};
     };
 
     struct BoundedData {
@@ -430,6 +464,45 @@ struct ParticleInstanceState {
         emitters.clear();
     }
 };
+
+// Advances an emitter's phase by a frame of `delta` seconds; true while it may emit.
+inline bool AdvanceEmitterTiming(ParticleInstanceState::EmitterState& state,
+                                 const ParticleEmitterTiming& timing, double delta) {
+    if (! timing.periodic && timing.delay <= 0.0f) return true;
+    auto between = [](float low, float high) {
+        return f64(low == high ? static_cast<double>(low) : Random::get(low, high));
+    };
+    if (! state.timing_started) {
+        state.timing_started = true;
+        state.timing_on      = timing.delay <= 0.0f;
+        state.phase          = f64();
+        state.phase_length   = state.timing_on ? between(timing.min_duration, timing.max_duration)
+                                               : f64(static_cast<double>(timing.delay));
+        state.period_emitted = u32();
+    }
+    // after a delay alone the emitter stays on
+    const bool endless = state.timing_on && ! timing.periodic;
+    if (! endless && state.phase.to_primitive() >= state.phase_length.to_primitive() - 1e-9) {
+        state.timing_on = ! state.timing_on;
+        state.phase     = f64();
+        if (state.timing_on) {
+            state.phase_length   = between(timing.min_duration, timing.max_duration);
+            state.period_emitted = u32();
+        } else {
+            state.phase_length = between(timing.min_delay, timing.max_delay);
+        }
+    } else {
+        state.phase += f64(delta);
+    }
+    return state.timing_on;
+}
+
+// How many of `count` particles an emitter in an on phase may still emit.
+inline auto EmitterTimingAllowance(const ParticleInstanceState::EmitterState& state,
+                                   const ParticleEmitterTiming& timing, u32 count) -> u32 {
+    if (! timing.periodic || timing.max_per_period == u32()) return count;
+    return rstd::cmp::min(count, timing.max_per_period.saturating_sub(state.period_emitted));
+}
 
 struct ParticleInstanceRef {
     particle::ParticleInstance* instance { nullptr };
