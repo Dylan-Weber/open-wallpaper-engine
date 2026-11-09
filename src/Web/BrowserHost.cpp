@@ -295,8 +295,11 @@ bool BrowserHost::OpenWallpaper(const WebManifest& manifest, ref<Path> workshop_
     }
     impl_->osr->SetDeviceScaleFactor(opts.device_scale_factor);
 
-    impl_->client =
-        new ClientHandler(manifest.user_props.clone(), impl_->osr, opts.initially_muted);
+    impl_->client = new ClientHandler(
+        manifest.user_props.clone(),
+        impl_->osr,
+        opts.initially_muted,
+        { .audio_allowed = manifest.supports_audio, .general_fps = opts.frame_rate });
     impl_->client->SetAudioDemandCallback(impl_->audio_demand_cb.clone());
     auto        entry = PathBuf::from(workshop_dir).join(manifest.entry_html.as_str());
     std::string url   = "file://" + CefPath(entry.as_path());

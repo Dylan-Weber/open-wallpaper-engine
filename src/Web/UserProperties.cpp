@@ -79,6 +79,25 @@ String BuildAudioResponseSnippet(slice<float> data) {
     return snippet;
 }
 
+// Wallpaper Engine calls applyGeneralProperties({fps}) with its frame rate setting once the page
+// has loaded.
+String BuildGeneralPropertiesSnippet(int fps) {
+    auto      snippet = "(function(){"
+                        "  if (typeof window.wallpaperPropertyListener !== 'object') return;"
+                        "  if (typeof window.wallpaperPropertyListener.applyGeneralProperties !== "
+                        "'function') return;"
+                        "  try {"
+                        "    window.wallpaperPropertyListener.applyGeneralProperties({\"fps\":"_Str;
+    Formatter formatter(snippet);
+    formatter.write_fmt(Arguments::make("{}", fps));
+    snippet.push_str("});"
+                     "  } catch (e) {"
+                     "    console.error('weweb: applyGeneralProperties threw:', e);"
+                     "  }"
+                     "})();"_str);
+    return snippet;
+}
+
 void InjectUserProperties(CefRefPtr<CefBrowser> browser, const owe::Json& props) {
     if (! browser) return;
     auto frame = browser->GetMainFrame();
