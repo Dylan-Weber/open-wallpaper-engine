@@ -876,7 +876,7 @@ public:
 
     bool hasSprite { false };
 
-    SceneMaterialCustomShader  customShader;
+    SceneMaterialCustomShader customShader;
     // its shadow casters, one for each of the scene's shadow definitions
     Vec<Arc<SceneMaterial>> shadow_variants;
 
