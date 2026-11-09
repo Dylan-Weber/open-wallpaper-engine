@@ -12,6 +12,7 @@ export import wescene.pkg.scene_obj;
 
 using namespace rstd::prelude;
 using rstd::sync::Arc;
+using namespace rstd::literals;
 
 export namespace owe
 {
