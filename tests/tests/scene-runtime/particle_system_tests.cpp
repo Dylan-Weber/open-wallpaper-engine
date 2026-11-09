@@ -1062,7 +1062,7 @@ TEST(ParticleSubSystem, SequenceFlagFourTapersTheEnds) {
                 t = size[b]; size[b] = size[b - 1]; size[b - 1] = t;
             }
         Vec<float> out;
-        for (int k = 0; k < 8; ++k) out.push(size[k]);
+        for (int k = 0; k < 8; ++k) out.push(float(size[k]));
         return out;
     };
     auto plain = sizes(R"({"name":"mapsequencebetweencontrolpoints","count":8})"_str);
