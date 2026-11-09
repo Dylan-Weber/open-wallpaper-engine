@@ -3,7 +3,7 @@
 # naka_isi_01, times its 0.01). Untextured, under OoT's camera (looking at the origin), sun and cascades, medium
 # shadows. WE lets a wider strip of sun in at the wall's foot. Variants: -lowered, the floor 0.4 lower (the wall's
 # foot no longer inside it); -novault, the wall without its vault (only its upright faces); -nowall, the floor alone;
-# -closed, the wall two-sided (each triangle twice).
+# -closed, the wall two-sided (each triangle twice); -clipped, the wall's foot raised to the floor's top (y 0.84).
 import struct
 CENTER = (8.98972, 1.30595, -0.10218)
 DATA = json.load(open(os.path.join(os.path.dirname(HERE), 'make', 'data', 'courtyard-arch.json')))
@@ -23,7 +23,7 @@ def mesh_mdl(parts):
     return data
 
 
-def make(name, floor_dy=0.0, vault=True, wall=True, closed=False):
+def make(name, floor_dy=0.0, vault=True, wall=True, closed=False, clip=None):
     w = Scene3D(name, 'the courtyard wall that casts the edge (%s)' % name, ambient='0.15 0.15 0.15',
                 eye='0.98868 0.13889 0.05676')
     mat = 'materials/plain.json'
@@ -31,7 +31,8 @@ def make(name, floor_dy=0.0, vault=True, wall=True, closed=False):
                                 "constantshadervalues": {"color": "0.8 0.8 0.8", "alpha": 1.0}, "textures": [None]}]}
     def part(key, dy=0.0, keep=lambda n: True):
         d = DATA[key]
-        ps = [[p[0] - CENTER[0], p[1] - CENTER[1] + dy, p[2] - CENTER[2]] for p in d['positions']]
+        ys = [max(p[1], clip) if clip is not None and key == 'wall' else p[1] for p in d['positions']]
+        ps = [[p[0] - CENTER[0], y - CENTER[1] + dy, p[2] - CENTER[2]] for p, y in zip(d['positions'], ys)]
         tris = [t for t in d['triangles'] if all(keep(d['normals'][i]) for i in t)]
         normals = d['normals']
         if closed and key == 'wall':  # each triangle twice: its back face too, wound and facing the other way
@@ -58,3 +59,4 @@ make('shadow-courtyard-arch-lowered', floor_dy=-0.4)
 make('shadow-courtyard-arch-novault', vault=False)
 make('shadow-courtyard-arch-nowall', wall=False)
 make('shadow-courtyard-arch-closed', closed=True)
+make('shadow-courtyard-arch-clipped', clip=0.84)
