@@ -16,6 +16,9 @@ export namespace owe
 
 {
 
+// How many samples Wallpaper Engine's anisotropic filtering of a texture takes at most.
+inline constexpr rstd::uint8_t kTextureAnisotropy { 8 };
+
 // Sub-version stamps embedded in a `.tex` file. All four are read from
 // independent "TEXX0000" stamps interleaved with the header / sprite
 // payload (see `LoadHeader` and the sprite branch of `ParseHeader`).
