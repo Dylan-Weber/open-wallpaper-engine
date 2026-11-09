@@ -2533,6 +2533,30 @@ TEST(ImageEffectJson, PreservesCopyPositionsAndComposeBindings) {
     EXPECT_EQ(effect.passes[rstd::usize(1)].bind[rstd::usize()].name, "_rt_FullCompoBuffer1"_str);
 }
 
+// The target a compose pass draws into clamps its texture coordinates (effect-edge-wrap: refraction's
+// second pass reads it past the top edge; repeating, like an effect's own target without "uvs",
+// brought the picture's bottom rows up there, ws2759157886's cyan streak).
+TEST(ImageEffectJson, AComposeTargetClampsItsEdges) {
+    auto json = owe::ParseJson(R"({
+        "name":"compose-clamp", "version":1,
+        "passes":[
+            {"material":"materials/util/passthrough.json","compose":true},
+            {"material":"materials/util/passthrough.json"}
+        ]
+    })"_str);
+    ASSERT_TRUE(json.is_ok());
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, rstd::move(assets).unwrap()).is_ok());
+    owe::wpscene::ImageEffect effect;
+    ASSERT_TRUE(effect.FromFileJson(*json, vfs));
+    ASSERT_EQ(effect.fbos.len(), rstd::usize(1));
+    EXPECT_EQ(effect.fbos[rstd::usize()].name, "_rt_FullCompoBuffer1"_str);
+    EXPECT_EQ(effect.fbos[rstd::usize()].uvs, "clamp"_str);
+}
+
 TEST(ImageEffectJson, FailedEffectsAreAbsentFromParsedObjects) {
     auto image_json = owe::ParseJson(R"({
         "image": "models/util/fullscreenlayer.json",
