@@ -626,18 +626,19 @@ TEST(ParticleSubSystem, ConvertsWorldSpaceFollowAnchorsIntoChildLocalSpace) {
     EXPECT_TRUE(resolved.head<3>().cast<float>().isApprox(parent_position));
 }
 
-// The layerimage emitter (particles-layerimage) emits from the shape of an image layer: a solid layer's rectangle (its size,
-// moved with the layer), in the layer's colour, and nothing from a layer less than about half opaque.
+// The layerimage emitter (particles-layerimage) emits from the shape of an image layer: a solid
+// layer's rectangle (its size, moved with the layer), in the layer's colour, and nothing from a
+// layer less than about half opaque.
 TEST(ParticleSubSystem, LayerImageEmitterFillsTheLayersRectangleInItsColour) {
     struct Emitted {
-        usize                        count {};
-        bool                         inside { true };
-        bool                         red { true };
-        float                        min_x { 1e9f }, max_x { -1e9f }, min_y { 1e9f }, max_y { -1e9f };
+        usize count {};
+        bool  inside { true };
+        bool  red { true };
+        float min_x { 1e9f }, max_x { -1e9f }, min_y { 1e9f }, max_y { -1e9f };
     };
     auto emit = [](float alpha) {
         owe::Scene scene;
-        auto       layer = rstd::sync::Arc<owe::SceneNode>::make(Eigen::Vector3f { 100.0f, 50.0f, 0.0f },
+        auto layer = rstd::sync::Arc<owe::SceneNode>::make(Eigen::Vector3f { 100.0f, 50.0f, 0.0f },
                                                            Eigen::Vector3f { 1.0f, 1.0f, 1.0f },
                                                            Eigen::Vector3f::Zero());
         owe::ParticleSubSystem subsystem(scene,
@@ -649,26 +650,31 @@ TEST(ParticleSubSystem, LayerImageEmitterFillsTheLayersRectangleInItsColour) {
                                          owe::ParticleSubSystem::SpawnType::STATIC,
                                          owe::ParticleAnimationSpec {});
         subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
-            owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(64)));
+            owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(),
+            u32(64)));
         owe::wpscene::Emitter emitter;
         emitter.name          = String::make("layerimage"_str);
         emitter.instantaneous = u32(40);
-        auto source = Arc<owe::LayerImageSource>::make(owe::LayerImageSource {
-            .node = layer.clone(), .half_width = 20.0, .half_height = 10.0,
-            .color = Eigen::Vector3f(1.0f, 0.0f, 0.0f), .alpha = alpha });
+        auto source           = Arc<owe::LayerImageSource>::make(
+            owe::LayerImageSource { .node        = layer.clone(),
+                                    .half_width  = 20.0,
+                                    .half_height = 10.0,
+                                    .color       = Eigen::Vector3f(1.0f, 0.0f, 0.0f),
+                                    .alpha       = alpha });
         subsystem.AddEmitter(
             owe::ParticleParser::GenEmitter(emitter, subsystem, usize(), Some(rstd::move(source))));
         subsystem.Finalize();
         subsystem.Tick(f64(1.0 / 60.0), false);
         Emitted result;
-        result.count = LiveParticleCount(subsystem);
+        result.count  = LiveParticleCount(subsystem);
         auto& storage = subsystem.System().Instance(usize()).Storage();
         for (usize index {}; index < result.count; ++index) {
             particle::ParticleSlotReader value(storage, particle::ParticleSlot { .index = index });
-            auto                         position = Eigen::Vector3f(value.Read(subsystem.Attributes().position));
-            auto                         color    = Eigen::Vector3f(value.Read(subsystem.Attributes().color));
-            result.inside = result.inside && position.x() >= 80.0f - 1e-3f && position.x() <= 120.0f + 1e-3f &&
-                            position.y() >= 40.0f - 1e-3f && position.y() <= 60.0f + 1e-3f;
+            auto position = Eigen::Vector3f(value.Read(subsystem.Attributes().position));
+            auto color    = Eigen::Vector3f(value.Read(subsystem.Attributes().color));
+            result.inside = result.inside && position.x() >= 80.0f - 1e-3f &&
+                            position.x() <= 120.0f + 1e-3f && position.y() >= 40.0f - 1e-3f &&
+                            position.y() <= 60.0f + 1e-3f;
             result.red    = result.red && color.isApprox(Eigen::Vector3f(1, 0, 0));
             result.min_x  = std::min(result.min_x, position.x());
             result.max_x  = std::max(result.max_x, position.x());
@@ -691,11 +697,12 @@ TEST(ParticleSubSystem, LayerImageEmitterFillsTheLayersRectangleInItsColour) {
     EXPECT_EQ(emit(0.5f).count, usize(40));
 }
 
-// A layer with pixels (a texture's opaque ones) emits from those: here two points, 10 left of the layer's centre (green) and
-// 10 right (blue), each within half a unit; the layer's colour multiplies theirs.
+// A layer with pixels (a texture's opaque ones) emits from those: here two points, 10 left of the
+// layer's centre (green) and 10 right (blue), each within half a unit; the layer's colour
+// multiplies theirs.
 TEST(ParticleSubSystem, LayerImageEmitterEmitsFromThePixelsOfAnImage) {
     owe::Scene scene;
-    auto       layer = rstd::sync::Arc<owe::SceneNode>::make(Eigen::Vector3f { 100.0f, 50.0f, 0.0f },
+    auto layer = rstd::sync::Arc<owe::SceneNode>::make(Eigen::Vector3f { 100.0f, 50.0f, 0.0f },
                                                        Eigen::Vector3f { 1.0f, 1.0f, 1.0f },
                                                        Eigen::Vector3f::Zero());
     owe::ParticleSubSystem subsystem(scene,
@@ -711,11 +718,15 @@ TEST(ParticleSubSystem, LayerImageEmitterEmitsFromThePixelsOfAnImage) {
     owe::wpscene::Emitter emitter;
     emitter.name          = String::make("layerimage"_str);
     emitter.instantaneous = u32(40);
-    owe::LayerImageSource image {
-        .node = layer.clone(), .half_width = 20.0, .half_height = 10.0,
-        .color = Eigen::Vector3f(1.0f, 1.0f, 0.5f), .alpha = 1.0f };
-    image.points.push(owe::LayerImagePoint { .x = -10.0f, .y = 0.0f, .color = Eigen::Vector3f(0, 1, 0) });
-    image.points.push(owe::LayerImagePoint { .x = 10.0f, .y = 0.0f, .color = Eigen::Vector3f(0, 0, 1) });
+    owe::LayerImageSource image { .node        = layer.clone(),
+                                  .half_width  = 20.0,
+                                  .half_height = 10.0,
+                                  .color       = Eigen::Vector3f(1.0f, 1.0f, 0.5f),
+                                  .alpha       = 1.0f };
+    image.points.push(
+        owe::LayerImagePoint { .x = -10.0f, .y = 0.0f, .color = Eigen::Vector3f(0, 1, 0) });
+    image.points.push(
+        owe::LayerImagePoint { .x = 10.0f, .y = 0.0f, .color = Eigen::Vector3f(0, 0, 1) });
     subsystem.AddEmitter(owe::ParticleParser::GenEmitter(
         emitter, subsystem, usize(), Some(Arc<owe::LayerImageSource>::make(rstd::move(image)))));
     subsystem.Finalize();
