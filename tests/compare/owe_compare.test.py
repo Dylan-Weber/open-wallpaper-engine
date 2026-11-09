@@ -22,6 +22,29 @@ spec.loader.exec_module(owe_compare)
 EVERY_FLAG = '--mouse-position --audio-spectrum --script-clock --camera-eye-log --script-start'
 
 
+class MeasuredRate(unittest.TestCase):
+    def test_a_reference_that_ran_fewer_updates_is_rendered_at_their_rate(self):
+        # 360 updates by g_Time frame 400 (13.3 s): 27 a second
+        self.assertEqual(owe_compare.measured_fps(360, 400, 30), 27)
+
+    def test_a_reference_that_kept_up_keeps_its_frame_rate(self):
+        self.assertIsNone(owe_compare.measured_fps(400, 400, 30))
+        self.assertIsNone(owe_compare.measured_fps(399, 400, 30))
+
+    def test_no_count_too_early_or_wrapped_tells_nothing(self):
+        self.assertIsNone(owe_compare.measured_fps(None, 400, 30))
+        self.assertIsNone(owe_compare.measured_fps(20, 25, 30))
+        self.assertIsNone(owe_compare.measured_fps(700, 400, 30))
+
+
+class SeriesFile(unittest.TestCase):
+    def test_a_series_in_a_subfolder_gets_its_folder(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = owe_compare.write_series(folder, '_scratch/turn', [
+                {'shot': 1, 'frame': 330, 'ssim': 1.0, 'mae': 0.0, 'changed': 0.0, 'regions': 0}])
+            self.assertTrue(os.path.exists(path))
+
+
 class Inputs(unittest.TestCase):
     def test_gives_the_viewer_what_the_reference_saw(self):
         inputs = {'pointer': (1.19, 1.16), 'scripts': 'started', 'date': 1793226531600, 'timezone': 420,

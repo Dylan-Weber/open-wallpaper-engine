@@ -167,8 +167,8 @@ def series_rows(results, name):
 
 def write_series(folder, name, rows):
     """Writes the series' rows to folder/name.csv (to chart how owe follows Wallpaper Engine over time)."""
-    os.makedirs(folder, exist_ok=True)
     path = os.path.join(folder, name + '.csv')
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, 'w') as f:
         f.write('shot,frame,ssim,mae,changed,regions\n')
         for row in rows:
@@ -275,6 +275,21 @@ def shader_cache(viewer):
     return os.path.join(OUTPUT, 'shader-cache', '%d-%d' % (stat.st_mtime_ns, stat.st_size))
 
 
+# the update rate each reference's probe recorded (its scripts' update count over its g_Time), by label: Wallpaper Engine
+# runs every script once an update and steps physics once an update, and in the VM it runs fewer updates than its fps
+# (about 27 a second at 30): owe renders such a reference at that rate, unless its compare.json gives "owe_fps"
+MEASURED_FPS = {}
+
+
+def measured_fps(updates, frames, fps):
+    """The whole frame rate nearest the reference's update rate (`updates` scripts' updates by g_Time frame `frames`, in
+    30ths of a second), or None where it can't tell (too early, the count wrapped, or not below the fps it was taken at)."""
+    if updates is None or not frames or frames < 30 or updates > frames * fps / 30 * 1.05:
+        return None
+    rate = round(updates * 30 / frames)
+    return rate if 1 <= rate < fps else None
+
+
 def render(name, size, viewer, frames=None, script_start=0.0, camera_path_delay=0.0, inputs=(), env_extra=None):
     """Renders the wallpaper offscreen with SceneViewer --capture at `size` (at `frames`, or its compare.json's or
     the usual moment; scripts from `script_start` seconds, camera paths `camera_path_delay` seconds behind, the
@@ -285,7 +300,7 @@ def render(name, size, viewer, frames=None, script_start=0.0, camera_path_delay=
     # the frame rate the reference's physics stepped at (compare.json "owe_fps": Wallpaper Engine steps a bone's springs by the
     # frame time, and a heavy wallpaper runs at 15 a second in the VM; else the "fps" it was taken at), the frame counted in
     # 30ths of a second
-    fps = settings_of(name).get('owe_fps', frame_rate(name))
+    fps = settings_of(name).get('owe_fps') or MEASURED_FPS.get(name) or frame_rate(name)
     # in a memory cgroup of its own, so a viewer that runs away is killed, not the machine
     capped = ['systemd-run', '--user', '--scope', '-q', '-p', 'MemoryMax=' + os.environ.get('WPE_TEST_MEMORY', '6G'),
               '-p', 'MemorySwapMax=0']
@@ -546,6 +561,12 @@ def render_plan(name, reference, help_text, no_render, quiet=False):
             # what Wallpaper Engine gave the scene: the pointer, the spectrum, the scripts' clock, the eye
             inputs = clock_probe.read_inputs(reference, bands, settings_of(name).get('probe_mirrored', False))
             stamp['reference_inputs'] = {key: value for key, value in inputs.items() if key != 'bands'}
+            rate = measured_fps(inputs.get('updates'), frames, frame_rate(name))
+            if rate and 'owe_fps' not in settings_of(name):
+                MEASURED_FPS[name] = rate
+                stamp['measured_fps'] = rate
+                say('     %-28s the reference ran %d updates by frame %d: owe at %d a second' % (
+                    name, inputs['updates'], frames, rate), flush=True)
             if inputs and not no_render:
                 input_args, input_env, notes = input_arguments(
                     inputs, frames, help_text, os.path.join(OUTPUT, name))
@@ -596,7 +617,7 @@ def main():
             os.makedirs(os.path.join(OUTPUT, label), exist_ok=True)
             renders.submit(
                 (folder_of(label), plan['frames'], plan['script_start'], plan['camera_path_delay'],
-                 tuple(plan['input_args'])),
+                 tuple(plan['input_args']), MEASURED_FPS.get(label)),
                 lambda label=label, reference=reference, plan=plan: render(
                     label, reference.size, args.viewer, plan['frames'], plan['script_start'],
                     plan['camera_path_delay'], plan['input_args'], plan['input_env']))
@@ -632,7 +653,8 @@ def main():
                         name, reference, args.viewer, frames, script_start, args.tolerance, input_args, input_env,
                         masked)
                     stamp['camera_path_delay'] = round(camera_path_delay * 30)
-                frame = renders.get((folder_of(name), frames, script_start, camera_path_delay, tuple(input_args)),
+                frame = renders.get((folder_of(name), frames, script_start, camera_path_delay, tuple(input_args),
+                                     MEASURED_FPS.get(name)),
                                     lambda: render(name, reference.size, args.viewer, frames, script_start,
                                                    camera_path_delay, input_args, input_env))
             owe = Image.open(frame)

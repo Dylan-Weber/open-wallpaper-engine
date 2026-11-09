@@ -65,7 +65,8 @@ def draw_record(picture, rows, fields, values, started=True):
     return cells
 
 
-def inputs_picture(size=(1600, 900), flipped=False, script_started=True, bands=(), band_values=None):
+def inputs_picture(size=(1600, 900), flipped=False, script_started=True, bands=(), band_values=None,
+                   script_fields=None):
     """A picture of the probe's records over a grey scene, with known inputs."""
     picture = draw_probe(300, size=size, which=1 if flipped else 0, script=290 if script_started else None)
     shader = {'pointer_x': round((0.25 + 4) * 4096), 'pointer_y': round((1.5 + 4) * 4096),
@@ -73,10 +74,11 @@ def inputs_picture(size=(1600, 900), flipped=False, script_started=True, bands=(
               'eye_z': round((800 + 32768) * 256),
               'level16l': 0, 'level16r': 0, 'level32l': 0, 'level32r': 0, 'level64l': 255, 'level64r': 128}
     script = {'press': 41, 'date_day': 2493, 'date_centis': 3600 * 100 * 9 + 1234, 'timezone': 1024 + 300,
-              'camerax': round((12.5 + 32768) * 256), 'cameray': 16777215, 'cameraz': round((800 + 32768) * 256)}
+              'camerax': round((12.5 + 32768) * 256), 'cameray': 16777215, 'cameraz': round((800 + 32768) * 256),
+              'updates_mark': 7, 'updates': 268}
     draw_record(picture, probe_tool.record_rows(size, 'shader', flipped), probe_tool.SHADER_FIELDS, shader)
-    draw_record(picture, probe_tool.record_rows(size, 'script', flipped), probe_tool.SCRIPT_FIELDS, script,
-                script_started)
+    draw_record(picture, probe_tool.record_rows(size, 'script', flipped), script_fields or probe_tool.SCRIPT_FIELDS,
+                script, script_started)
     if bands:
         fields = probe_tool.band_fields(bands)
         draw_record(picture, probe_tool.record_rows(size, 'bands', flipped, bands), fields, band_values)
@@ -195,6 +197,18 @@ class ClockProbe(unittest.TestCase):
         self.assertEqual(before['scripts'], probe_tool.NOT_STARTED)
         self.assertNotIn('date', before)
         self.assertEqual(before['pointer'], (0.25, 1.5))
+
+    def test_reads_how_many_updates_the_scripts_ran(self):
+        self.assertEqual(probe_tool.read_inputs(inputs_picture())['updates'], 268)
+
+    def test_reads_a_probe_stamped_before_the_update_count(self):
+        inputs = probe_tool.read_inputs(inputs_picture(script_fields=probe_tool.SCRIPT_FIELDS_V1))
+        self.assertEqual(inputs['timezone'], 300)
+        self.assertEqual(inputs['camera'], (12.5, None, 800.0))
+        self.assertNotIn('updates', inputs)
+
+    def test_stamps_a_script_that_counts_updates(self):
+        self.assertIn('updates', probe_tool.FIELD_SCRIPTS)
 
     def test_reads_the_audio_bands(self):
         values = {}

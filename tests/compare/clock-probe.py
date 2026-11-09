@@ -51,8 +51,13 @@ ROW_BITS = (ROW_CELLS - 2) * 3
 # from -32768 in 1/256ths, levels and bands from 0 to 1 in 1/255ths; a field whose bits are all ones is unknown
 SHADER_FIELDS = [('pointer_x', 16), ('pointer_y', 16), ('eye_x', 24), ('eye_y', 24), ('eye_z', 24)] + [
     ('level%d%s' % (resolution, side), 8) for resolution in (16, 32, 64) for side in 'lr']
-SCRIPT_FIELDS = [('press', 12), ('date_day', 16), ('date_centis', 24), ('timezone', 11), ('camerax', 24),
-                 ('cameray', 24), ('cameraz', 24)]
+SCRIPT_FIELDS_V1 = [('press', 12), ('date_day', 16), ('date_centis', 24), ('timezone', 11), ('camerax', 24),
+                    ('cameray', 24), ('cameraz', 24)]
+# and the number of times the scripts have run (update() calls, modulo 65536): Wallpaper Engine runs every script once an
+# update, and in the VM fewer updates than frames of g_Time (about 27 a second at 30 fps), which is what physics follows.
+# Probes stamped before this field have only the first ones (SCRIPT_FIELDS_V1), whose end marker (a black cell) is where
+# a newer probe draws a white one (updates_mark, 7)
+SCRIPT_FIELDS = SCRIPT_FIELDS_V1 + [('updates_mark', 3), ('updates', 16)]
 RESOLUTIONS = (16, 32, 64)
 
 # the records' first rows, counted like the strips' (the bands' rows go on towards the middle)
@@ -217,6 +222,21 @@ export function update(value) {
 	} catch (e) {
 		return 4095;
 	}
+}
+""",
+    'updates_mark': """'use strict';
+
+export function update(value) {
+	return 7;
+}
+""",
+    'updates': """'use strict';
+
+let n = 0;
+
+export function update(value) {
+	n = (n + 1) % 65536;
+	return n;
 }
 """,
     'date_day': """'use strict';
@@ -532,13 +552,19 @@ def read_inputs(picture, bands=(), mirrored=False):
         'levels': {resolution: (values['level%dl' % resolution] / 255, values['level%dr' % resolution] / 255)
                    for resolution in RESOLUTIONS},
     }
-    script, _ = read_either(picture, lambda side: record_rows(size, 'script', side),
-                            sum(w for _, w in SCRIPT_FIELDS), mirrored)
+    script, fields = None, SCRIPT_FIELDS
+    for fields in (SCRIPT_FIELDS, SCRIPT_FIELDS_V1):
+        script, _ = read_either(picture, lambda side: record_rows(size, 'script', side),
+                                sum(w for _, w in fields), mirrored)
+        if script is not None:
+            break
     if script == NOT_STARTED:
         inputs['scripts'] = NOT_STARTED
     elif script is not None:
-        values = fields_of(script, SCRIPT_FIELDS)
+        values = fields_of(script, fields)
         inputs['scripts'] = 'started'
+        if values.get('updates_mark') == 7:
+            inputs['updates'] = values['updates']
         if not unknown('press', 12):
             inputs['press'] = values['press'] - 1 if values['press'] else None
         inputs['date'] = (values['date_day'] + EPOCH_DAYS) * 86400000 + values['date_centis'] * 10
