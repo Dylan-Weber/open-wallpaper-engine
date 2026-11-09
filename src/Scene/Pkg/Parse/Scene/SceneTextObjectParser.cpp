@@ -970,8 +970,7 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
          update_text_layout = update_text_layout.clone(),
          current_point_size = current_point_size.clone()](double next_point_size) {
             if (! f64(next_point_size).is_finite() || next_point_size <= 0) return false;
-            if (layouter->SetPixelSize(text::PointsToPixels(next_point_size))
-                    .is_err()) {
+            if (layouter->SetPixelSize(text::PointsToPixels(next_point_size)).is_err()) {
                 rstd_warn("text pointsize update failed");
                 return false;
             }
