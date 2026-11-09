@@ -328,5 +328,34 @@ class Presets(unittest.TestCase):
             self.assertIsNone(owe_compare.preset_of(parent))
 
 
+class GeneratedFiles(unittest.TestCase):
+    """A wallpaper whose generated inputs (listed in its .gitignore, made by make-wallpapers.py) are missing would
+    render without them; it is left out with the command that makes them."""
+
+    def wallpaper(self, root, ignored, present):
+        folder = os.path.join(root, 'videotex-x')
+        os.makedirs(os.path.join(folder, 'materials'))
+        with open(os.path.join(folder, 'project.json'), 'w') as f:
+            json.dump({'type': 'scene', 'file': 'scene.json'}, f)
+        with open(os.path.join(folder, '.gitignore'), 'w') as f:
+            f.write(''.join(path + '\n' for path in ignored))
+        for path in present:
+            open(os.path.join(folder, path), 'w').close()
+
+    def test_a_missing_generated_texture_leaves_the_wallpaper_out(self):
+        with tempfile.TemporaryDirectory() as root:
+            self.wallpaper(root, ['materials/video.tex'], [])
+            with mock.patch.object(owe_compare, 'WALLPAPERS', root):
+                reason = owe_compare.skipped('videotex-x')
+            self.assertIn('materials/video.tex', reason)
+            self.assertIn('make-wallpapers.py', reason)
+
+    def test_present_generated_files_and_a_missing_test_sound_are_fine(self):
+        with tempfile.TemporaryDirectory() as root:
+            self.wallpaper(root, ['materials/video.tex', 'audio.wav', 'still.png'], ['materials/video.tex'])
+            with mock.patch.object(owe_compare, 'WALLPAPERS', root):
+                self.assertIsNone(owe_compare.skipped('videotex-x'))
+
+
 if __name__ == '__main__':
     unittest.main()
