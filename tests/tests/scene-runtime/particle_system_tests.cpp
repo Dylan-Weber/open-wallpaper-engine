@@ -803,6 +803,21 @@ TEST(ParticleSubSystem, ColorRandomMultipliesAnImageEmittersColours) {
     }
 }
 
+// A texture thinner than a block (Wallpaper Engine's gradient_rainbow is 64x2) still emits: its rows make one block
+// row, one point every 4 texels across, in the average colour (particles-layerimage-alpha: a rainbow bar).
+TEST(LayerImageLattice, ATextureThinnerThanABlockIsOneBlockAcross) {
+    std::vector<unsigned char> thin;
+    for (int y {}; y < 2; ++y)
+        for (int x {}; x < 64; ++x)
+            for (int v : { x < 32 ? 255 : 0, 0, x < 32 ? 0 : 255, 255 }) thin.push_back(static_cast<unsigned char>(v));
+    auto points = owe::LayerImageLattice(thin.data(), 64, 2, 4, false, 1.0f);
+    ASSERT_EQ(points.len(), usize(16));
+    EXPECT_EQ(points[usize()].x, -30.0f);
+    EXPECT_EQ(points[usize()].y, 0.0f);
+    EXPECT_NEAR(points[usize()].color.x(), 1.0f, 1e-4f);
+    EXPECT_NEAR(points[usize(15)].color.z(), 1.0f, 1e-4f);
+}
+
 // Wallpaper Engine reads a layer's image in 4x4 texel blocks (particles-layerimage-pitch, -block):
 // one point at the centre of each block (texel 4i+2 from the top left, no jitter) when the block's
 // average opacity times the layer's is half or more, in the block's average colour; the lattice
