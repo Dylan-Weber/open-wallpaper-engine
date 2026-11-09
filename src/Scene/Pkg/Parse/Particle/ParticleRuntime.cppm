@@ -3,6 +3,7 @@ export module wescene.pkg.parse:particle_runtime;
 import eigen;
 import rstd;
 import wescene.core;
+import wescene.json;
 import wescene.particle;
 import wescene.particle.program;
 import wescene.scene;
@@ -11,6 +12,7 @@ export import wescene.pkg.scene_obj;
 
 using namespace rstd::prelude;
 using rstd::sync::Arc;
+using namespace rstd::literals;
 
 export namespace owe
 {
@@ -322,6 +324,43 @@ private:
     particle::ParticleWriteIndex<particle::InitialLifetimeAttribute> m_initial_lifetime;
     bool                                                             m_world_space { false };
     bool                                                             m_compiled { false };
+};
+
+// An operator's blend windows: blendinstart..blendinend and blendoutstart..blendoutend, fractions of
+// a particle's life over which the operator's effect grows from nothing and fades back out,
+// linearly (particles-operator-blend); without them it acts all the time.
+struct ParticleOperatorWindow {
+    Option<array<double, 2>> in, out;
+
+    static auto FromJson(const Json& json) -> ParticleOperatorWindow {
+        auto read = [&](ref<str> start, ref<str> end) -> Option<array<double, 2>> {
+            if (json.get(start).is_none() && json.get(end).is_none()) return None();
+            float low {}, high {};
+            GetJsonValue(json, start, low, false);
+            GetJsonValue(json, end, high, false);
+            return Some(array<double, 2> { low, high });
+        };
+        return ParticleOperatorWindow {
+            .in  = read("blendinstart"_str, "blendinend"_str),
+            .out = read("blendoutstart"_str, "blendoutend"_str),
+        };
+    }
+
+    auto Always() const -> bool { return in.is_none() && out.is_none(); }
+
+    // how much of its effect an operator has on a particle `life` (0 to 1) through its life
+    auto Weight(double life) const -> double {
+        auto ramp = [life](const array<double, 2>& range) {
+            const double span = range[usize(1)] - range[usize(0)];
+            if (span <= 0.0) return life >= range[usize(0)] ? 1.0 : 0.0;
+            const double t = (life - range[usize(0)]) / span;
+            return t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t);
+        };
+        double weight = 1.0;
+        if (in.is_some()) weight *= ramp(*in);
+        if (out.is_some()) weight *= 1.0 - ramp(*out);
+        return weight;
+    }
 };
 
 struct ParticleBoxEmitterArgs {
