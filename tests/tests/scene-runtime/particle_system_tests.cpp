@@ -1018,3 +1018,80 @@ TEST(ParticleInstanceModifiers, CloneRetainsReadOnlyBindingsAfterSourceReplaceme
     ASSERT_TRUE(binding->animation.is_some());
     EXPECT_FLOAT_EQ(binding->animation->c0[usize()].value, 7.0f);
 }
+
+// An operator's blendinstart..blendinend and blendoutstart..blendoutend (fractions of the
+// particle's life) blend its effect in from nothing and back out, linearly
+// (particles-operator-blend: turbulence and oscillateposition blended in over 0.5..0.75 leave a
+// stream straight for its first half; particles-remap-timescale measured the same ramp for
+// remapvalue).
+TEST(ParticleOperatorWindow, WeighsAnOperatorByTheParticlesLife) {
+    auto window = [](ref<str> json) {
+        return owe::ParticleOperatorWindow::FromJson(owe::ParseJson(json).unwrap());
+    };
+    auto none = window(R"({"name":"turbulence"})"_str);
+    EXPECT_EQ(none.Weight(0.0), 1.0);
+    EXPECT_EQ(none.Weight(0.9), 1.0);
+    auto in = window(R"({"name":"turbulence","blendinstart":0.5,"blendinend":0.75})"_str);
+    EXPECT_EQ(in.Weight(0.4), 0.0);
+    EXPECT_NEAR(in.Weight(0.625), 0.5, 1e-9);
+    EXPECT_EQ(in.Weight(0.8), 1.0);
+    auto both = window(
+        R"({"name":"turbulence","blendinstart":0.1,"blendinend":0.5,"blendoutstart":0.6,"blendoutend":0.7})"_str);
+    EXPECT_NEAR(both.Weight(0.3), 0.5, 1e-9);
+    EXPECT_EQ(both.Weight(0.55), 1.0);
+    EXPECT_NEAR(both.Weight(0.65), 0.5, 1e-9);
+    EXPECT_EQ(both.Weight(0.75), 0.0);
+}
+
+TEST(ParticleSubSystem, TurbulenceAndOscillationWaitForTheirBlendWindow) {
+    auto simulate = [](ref<str> config) -> array<Eigen::Vector3f, 2> {
+        owe::Scene             scene;
+        auto                   mesh = Arc<owe::SceneMesh>::make();
+        owe::ParticleSubSystem subsystem(scene,
+                                         mesh.clone(),
+                                         u32(1),
+                                         f64(1.0),
+                                         u32(1),
+                                         f64(1.0),
+                                         owe::ParticleSubSystem::SpawnType::STATIC,
+                                         owe::ParticleAnimationSpec {});
+        subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+            owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(1)));
+        subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+            owe::BoxEmitterProgram(subsystem.SpawnPipeline(),
+                                   owe::ParticleBoxEmitterArgs {
+                                       .origin        = { 31.0f, 73.0f, 17.0f },
+                                       .instantaneous = u32(1),
+                                   },
+                                   usize())));
+        subsystem.AddOperator(owe::ParticleParser::GenOperator(
+            owe::ParseJson(config).unwrap(),
+            owe::ParticleInstanceModifiers(Arc<owe::wpscene::ParticleInstanceoverride>::make(),
+                                           owe::wpscene::Particle::EFlags { 0 },
+                                           false),
+            subsystem,
+            usize()));
+        subsystem.Finalize();
+        for (int k = 0; k < 6; ++k) subsystem.Tick(f64(1.0 / 60.0), false);
+        auto&                        storage = subsystem.System().Instance(usize()).Storage();
+        particle::ParticleSlotReader value(storage, particle::ParticleSlot {});
+        return { value.Read(subsystem.Attributes().velocity),
+                 value.Read(subsystem.Attributes().position) };
+    };
+    const Eigen::Vector3f origin { 31.0f, 73.0f, 17.0f };
+    // the particle is 0.01 through its life: before a window from 0.5, inside one from 0
+    auto turbulence = simulate(R"({"name":"turbulence","speedmin":100,"speedmax":100})"_str);
+    ASSERT_GT(turbulence[usize()].norm(), 0.01f);
+    auto waiting = simulate(
+        R"({"name":"turbulence","speedmin":100,"speedmax":100,"blendinstart":0.5,"blendinend":0.75})"_str);
+    EXPECT_EQ(waiting[usize()].norm(), 0.0f);
+    auto over = simulate(
+        R"({"name":"turbulence","speedmin":100,"speedmax":100,"blendoutstart":0,"blendoutend":0.001})"_str);
+    EXPECT_EQ(over[usize()].norm(), 0.0f);
+    auto oscillation = simulate(
+        R"({"name":"oscillateposition","frequencymin":1,"frequencymax":1,"scalemin":30,"scalemax":30})"_str);
+    ASSERT_GT((oscillation[usize(1)] - origin).norm(), 0.001f);
+    auto still = simulate(
+        R"({"name":"oscillateposition","frequencymin":1,"frequencymax":1,"scalemin":30,"scalemax":30,"blendinstart":0.5,"blendinend":0.7})"_str);
+    EXPECT_LT((still[usize(1)] - origin).norm(), 1e-4f);
+}
