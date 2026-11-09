@@ -7,6 +7,7 @@ using namespace rstd::prelude;
 using rstd::sync::atomic::Atomic;
 using rstd::time::Duration;
 using rstd::time::Instant;
+using namespace rstd::literals;
 
 namespace
 {
@@ -118,4 +119,28 @@ TEST(FrameTimer, TargetFrameTimeIsExactlyOneOverTheFrameRate) {
         timer.SetRequiredFps(u16(static_cast<rstd::uint16_t>(fps)));
         EXPECT_EQ(timer.TargetFrameTime(), 1.0 / static_cast<double>(fps));
     }
+}
+
+// --frame-times FILE: a reference's recorded frame times (a JSON array of seconds) replayed instead of 1 / fps, so a
+// comparison steps the scene the way Wallpaper Engine happened to (particles-frametime-*).
+TEST(RecordedFrameTimes, ParsesAJsonArrayOfSeconds) {
+    auto times = owe::ParseFrameTimes("[0.0001, 0.0572, 0.0164]"_str);
+    ASSERT_TRUE(times.is_ok());
+    ASSERT_EQ(times->len(), usize(3));
+    EXPECT_NEAR((*times)[usize(1)].to_primitive(), 0.0572, 1e-12);
+}
+
+TEST(RecordedFrameTimes, RejectsWhatIsNotAListOfTimes) {
+    EXPECT_TRUE(owe::ParseFrameTimes("{\"a\": 1}"_str).is_err());
+    EXPECT_TRUE(owe::ParseFrameTimes("[0.01, \"x\"]"_str).is_err());
+    EXPECT_TRUE(owe::ParseFrameTimes("[0.01, -0.02]"_str).is_err());
+    EXPECT_TRUE(owe::ParseFrameTimes("not json"_str).is_err());
+}
+
+TEST(RecordedFrameTimes, StepsTheListThenTheTargetFrameTime) {
+    auto times = owe::ParseFrameTimes("[0.0001, 0.0572]"_str).unwrap();
+    EXPECT_NEAR(owe::RecordedFrameStep(times, usize(0), 1.0 / 30.0), 0.0001, 1e-12);
+    EXPECT_NEAR(owe::RecordedFrameStep(times, usize(1), 1.0 / 30.0), 0.0572, 1e-12);
+    EXPECT_NEAR(owe::RecordedFrameStep(times, usize(2), 1.0 / 30.0), 1.0 / 30.0, 1e-12);
+    EXPECT_NEAR(owe::RecordedFrameStep(Vec<f64>::make(), usize(0), 1.0 / 60.0), 1.0 / 60.0, 1e-12);
 }

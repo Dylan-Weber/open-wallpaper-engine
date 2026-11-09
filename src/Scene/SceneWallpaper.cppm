@@ -94,6 +94,9 @@ struct SceneWallpaperConfig {
     // some wallpapers, as they load. 0 by default.
     float script_start { 0.0f };
     float camera_path_delay { 0.0f };
+    // a reference's recorded frame times, stepped instead of 1 / fps while they last (--frame-times:
+    // ParseFrameTimes)
+    Vec<f64> frame_times;
 };
 
 class SceneRuntimeController;

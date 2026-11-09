@@ -34,6 +34,7 @@ struct SceneViewerArgs {
     Option<f64> script_clock;
     Option<f32> script_start;
     Option<f32> camera_path_delay;
+    PathBuf     frame_times_path;
     Resolution  resolution;
     i32         fps;
     u32         msaa_samples;
@@ -193,6 +194,12 @@ SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
             .help("Start camera paths SECONDS after the scene's clock and run them that much "
                   "behind it (as Wallpaper Engine does after loading)"_str)
             .value_name("SECONDS"_str));
+    auto frame_times = command.add_arg(
+        Arg<String>::value("frame-times"_str, string_parser())
+            .long_name("frame-times"_str)
+            .help("Step frame N by the Nth time of FILE (a JSON array of seconds, e.g. a reference's "
+                  "recorded frames) instead of 1 / fps, then 1 / fps after the list"_str)
+            .default_value(""_str));
     auto load_bench_output =
         command.add_arg(Arg<String>::value("load-bench-output"_str, string_parser())
                             .long_name("load-bench-output"_str)
@@ -257,6 +264,7 @@ SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
         .script_clock          = OptionalValue(matches, script_clock),
         .script_start          = OptionalValue(matches, script_start),
         .camera_path_delay     = OptionalValue(matches, camera_path_delay),
+        .frame_times_path      = PathBuf::from(Value(matches, frame_times).as_str()),
         .resolution            = Value(matches, resolution),
         .fps                   = Value(matches, fps),
         .msaa_samples          = Value(matches, msaa),

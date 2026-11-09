@@ -53,7 +53,8 @@ class RenderMsg final {
               (SetScene,
                (Arc<SceneLoadState> load; Box<Scene> scene; Arc<UniformRuntimeInput> uniform_input;
                 Option<SceneLoadBenchHandle> load_bench; Option<u64> random_seed;
-                Option<scene_audio::Buffers> fixed_audio; PathBuf camera_eye_log;)),
+                Option<scene_audio::Buffers> fixed_audio; PathBuf camera_eye_log;
+                Vec<f64> frame_times;)),
               (SetFillMode, (FillMode mode;)), (SetSpeed, (f32 speed;)),
               (SetMouseParallax, (bool enabled;)), (SetUserProperty, (String key; Json property;)),
               (SetMediaStatus, (MediaStatus status;)),
@@ -358,6 +359,9 @@ private:
     scene_audio::ResponseProcessor            m_scene_audio_response;
     bool                                      m_first_frame_ok { false };
     double                                    m_frame_delta {};
+    // SceneWallpaperConfig::frame_times, and the next one a frame steps by
+    Vec<f64>                                  m_frame_times;
+    usize                                     m_frame_index {};
     Option<Instant>                           m_maintenance_deadline;
     Vec<RenderMsg::SetUserProperty_payload>   m_pending_properties;
     Option<RenderMsg::SetMediaStatus_payload> m_pending_media;
@@ -542,8 +546,11 @@ void SceneRenderController::onDraw() {
                 auto retried = (*m_pipeline)->retryPreparation(load_bench);
                 if (retried.is_err() || *retried != PrepareOutcome::Ready) return retried;
             }
-            m_frame_delta =
-                m_stopped ? 0.0 : frame_timer.TargetFrameTime() * m_speed.to_primitive();
+            m_frame_delta = m_stopped ? 0.0
+                                      : RecordedFrameStep(m_frame_times,
+                                                          m_frame_index,
+                                                          frame_timer.TargetFrameTime()) *
+                                            m_speed.to_primitive();
             m_scene->SetTargetFps(u32(frame_timer.RequiredFps().to_primitive()));
             owe::script::FrameInputs fi;
             fi.frametime   = static_cast<float>(m_frame_delta);
@@ -600,7 +607,10 @@ void SceneRenderController::onDraw() {
                                       m_camera_eye_lines.as_str().as_bytes());
             }
         }
-        if ((*m_pipeline)->acknowledgeFrameSubmitted()) m_scene->PassFrameTime(m_frame_delta);
+        if ((*m_pipeline)->acknowledgeFrameSubmitted()) {
+            m_scene->PassFrameTime(m_frame_delta);
+            ++m_frame_index;
+        }
 
         if (first_draw) {
             m_first_frame_ok = true;
@@ -667,6 +677,8 @@ void SceneRenderController::on(RenderMsg::SetScene_payload&& m) {
     m_fixed_audio      = rstd::move(m.fixed_audio);
     m_camera_eye_log   = rstd::move(m.camera_eye_log);
     m_camera_eye_lines = String::make();
+    m_frame_times = rstd::move(m.frame_times);
+    m_frame_index = usize();
     detachSceneAudioResponseDemandCallback();
     m_pipeline = None();
     m_pending_properties.clear();
@@ -1359,7 +1371,8 @@ void SceneRuntimeController::loadScene() {
                                      m_config.load_bench.clone(),
                                      m_config.random_seed,
                                      m_config.fixed_audio,
-                                     m_config.camera_eye_log.clone()))
+                                     m_config.camera_eye_log.clone(),
+                                     m_config.frame_times.clone()))
             .is_err()) {
         abort_load();
         return;

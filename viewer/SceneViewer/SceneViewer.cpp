@@ -12,6 +12,7 @@ import wavsen.audio;
 import wescene.core;
 import wescene.json;
 import wescene.scene_wallpaper;
+import wescene.timer;
 import wescene.utils;
 import viewer.common;
 import viewer.audio;
@@ -268,6 +269,22 @@ int main(int argc, char** argv) {
     }
     config.camera_eye_log = args.camera_eye_log.clone();
     if (args.script_clock.is_some()) config.script_clock = Some(args.script_clock->to_primitive());
+    // --frame-times FILE: the frames step by a recorded list instead of 1 / fps
+    if (const auto& times_path = args.frame_times_path; ! times_path.is_empty()) {
+        auto source = rstd::fs::read_to_string(times_path);
+        if (source.is_err()) {
+            eprintln("--frame-times: cannot open '{}'", times_path.as_path().as_os_str().display());
+            return 1;
+        }
+        auto times = owe::ParseFrameTimes(source->as_str());
+        if (times.is_err()) {
+            eprintln("--frame-times: '{}': {}",
+                     times_path.as_path().as_os_str().display(),
+                     times.unwrap_err());
+            return 1;
+        }
+        config.frame_times = times.unwrap();
+    }
 
     config.cache_dir = args.cache_path.is_empty() ? viewer::DefaultCacheDir("wescene-renderer"_str)
                                                   : rstd::move(args.cache_path);

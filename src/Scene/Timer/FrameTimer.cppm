@@ -45,4 +45,10 @@ private:
     Instant                 m_clock { Instant::now() };
     ThreadTimer             m_timer;
 };
+
+// A reference's recorded frame times (--frame-times FILE: a JSON array of seconds), replayed instead of 1 / fps so a
+// comparison steps the scene the way Wallpaper Engine happened to (particles-frametime-*).
+auto ParseFrameTimes(ref<str> source) -> Result<Vec<f64>, String>;
+// Frame `index`'s step: the recorded time, or `fallback` (the target frame time) once the list runs out.
+double RecordedFrameStep(const Vec<f64>& times, usize index, double fallback);
 } // namespace owe
