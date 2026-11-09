@@ -395,6 +395,8 @@ def stamp(folder):
         with open(settings_path) as f:
             settings = json.load(f)
     settings['probe'] = True
+    # its script record holds the update counter (references stamped before it show the scene in those cells)
+    settings['probe_updates'] = True
     if bands:
         settings['probe_bands'] = bands
     else:
