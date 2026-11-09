@@ -236,33 +236,8 @@ void AppHandler::OnContextCreated(CefRefPtr<CefBrowser> /*browser*/, CefRefPtr<C
                                    V8_PROPERTY_ATTRIBUTE_DONTDELETE);
     SendAudioDemand(frame, generation, false);
 
-    // WE web audio-response API. The page calls wallpaperRegisterAudioListener
-    // to subscribe; the browser process feeds samples each tick by invoking
-    // __weweb_pushAudio with a 128-float array (64 left + 64 right). Values
-    // remain linear and may exceed 1 Installed here so it exists before the
-    // page's own scripts run.
-    static const char kAudioApi[] =
-        "(function(){"
-        "  if (window.__weweb_audio_installed) return;"
-        "  window.__weweb_audio_installed = true;"
-        "  var listeners = [];"
-        "  window.wallpaperRegisterAudioListener = function(cb){"
-        "    if (typeof cb !== 'function' || listeners.indexOf(cb) >= 0) return;"
-        "    listeners.push(cb);"
-        "    if (listeners.length === 1) window.__weweb_setAudioDemand(true);"
-        "  };"
-        "  window.wallpaperRemoveAudioListener = function(cb){"
-        "    var i = listeners.indexOf(cb); if (i < 0) return;"
-        "    listeners.splice(i, 1);"
-        "    if (listeners.length === 0) window.__weweb_setAudioDemand(false);"
-        "  };"
-        "  window.__weweb_pushAudio = function(arr){"
-        "    for (var i = 0; i < listeners.length; i++){"
-        "      try { listeners[i](arr); } catch (e) {}"
-        "    }"
-        "  };"
-        "})();";
-    frame->ExecuteJavaScript(kAudioApi, "weweb://internal/audio_api.js", 0);
+    frame->ExecuteJavaScript(
+        to_string(BuildAudioApiSnippet().as_str()), "weweb://internal/audio_api.js", 0);
 }
 
 void AppHandler::OnContextReleased(CefRefPtr<CefBrowser> /*browser*/, CefRefPtr<CefFrame> frame,

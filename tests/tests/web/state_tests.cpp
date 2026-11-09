@@ -149,6 +149,20 @@ TEST(WebState, HostOwnsCallbacksBeforeInitialization) {
     EXPECT_EQ(released, 1);
 }
 
+// Wallpaper Engine keeps one audio listener: a page that registers again replaces the first
+// (measured with web-audio-listeners: the first stopped being called), registering null changes
+// nothing, and there is no wallpaperRemoveAudioListener
+TEST(WebState, AudioApiKeepsOneListener) {
+    auto snippet = BuildAudioApiSnippet();
+    auto text    = snippet.as_str();
+    EXPECT_TRUE(text.contains("window.wallpaperRegisterAudioListener = function(cb){"_str));
+    EXPECT_TRUE(text.contains("if (typeof cb !== 'function') return;"_str));
+    EXPECT_TRUE(text.contains("listener = cb;"_str));
+    EXPECT_FALSE(text.contains("listeners"_str));
+    EXPECT_FALSE(text.contains("wallpaperRemoveAudioListener"_str));
+    EXPECT_TRUE(text.contains("window.__weweb_pushAudio = function(arr){"_str));
+}
+
 TEST(WebState, AudioSnippetPreservesPayload) {
     rstd::array<float, 3> data { 0.0f, 0.5f, -1.0f };
     EXPECT_EQ(
