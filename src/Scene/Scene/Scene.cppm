@@ -3098,14 +3098,14 @@ public:
     double ScriptStart() const { return m_script_start; }
     void   SetCameraPathDelay(double seconds) { m_camera_path_delay = seconds; }
     double CameraPathDelay() const { return m_camera_path_delay; }
-    void RegisterCameraPathUserBinding(String key, Arc<SceneCameraPath>);
-    void RegisterTexture(String name, SceneTexture texture);
-    bool RemoveTexture(ref<str> name);
-    bool RemoveRenderTarget(ref<str> name);
-    auto Texture(ref<str> name) const -> Option<ref<SceneTexture>>;
-    auto TextureContentRevision(ref<str> name) const -> u64;
-    auto TextureResource(SceneTextureId id) const -> Option<vrento::resource::TextureResourceRef>;
-    auto TargetResource(SceneRenderTargetId id) const
+    void   RegisterCameraPathUserBinding(String key, Arc<SceneCameraPath>);
+    void   RegisterTexture(String name, SceneTexture texture);
+    bool   RemoveTexture(ref<str> name);
+    bool   RemoveRenderTarget(ref<str> name);
+    auto   Texture(ref<str> name) const -> Option<ref<SceneTexture>>;
+    auto   TextureContentRevision(ref<str> name) const -> u64;
+    auto   TextureResource(SceneTextureId id) const -> Option<vrento::resource::TextureResourceRef>;
+    auto   TargetResource(SceneRenderTargetId id) const
         -> Option<vrento::resource::TextureResourceRef>;
     auto  TargetResource(ref<str>                             name,
                          vrento::resource::TextureRequestKind kind =
@@ -3437,8 +3437,8 @@ private:
     Vec<Arc<SceneCameraPath>>                m_camera_paths;
     HashSet<String>                          m_active_camera_paths;
     MaterialBindingIndex<Arc<SceneCameraPath>> m_camera_path_user_index;
-    double                                   m_script_start { 0.0 };
-    double                                   m_camera_path_delay { 0.0 };
+    double                                     m_script_start { 0.0 };
+    double                                     m_camera_path_delay { 0.0 };
 
     void        RebuildElidableLayerIds();
     void        WriteRenderTarget(String name, SceneRenderTarget target);

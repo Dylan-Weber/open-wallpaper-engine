@@ -149,9 +149,9 @@ SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
                             .long_name("mouse-position"_str)
                             .help("Set initial normalized mouse position, e.g. 0,1"_str)
                             .default_value(""_str));
-    auto random_seed = command.add_arg(Arg<u64>::value("random-seed"_str, from_str_parser<u64>())
-                                           .long_name("random-seed"_str)
-                                           .help("Set the scene random seed"_str));
+    auto random_seed  = command.add_arg(Arg<u64>::value("random-seed"_str, from_str_parser<u64>())
+                                            .long_name("random-seed"_str)
+                                            .help("Set the scene random seed"_str));
     auto script_start = command.add_arg(
         Arg<f32>::value("script-start"_str, from_str_parser<f32>())
             .long_name("script-start"_str)
