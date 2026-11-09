@@ -2719,3 +2719,19 @@ TEST(SceneAssetPaths, ModelCameraAndClipRetainTheirReparseSemantics) {
     EXPECT_EQ(camera.path, "motion.json"_str);
     EXPECT_TRUE(clip.name.is_empty());
 }
+
+// In Wallpaper Engine a pass's default input is the effect's input, not the pass before it (effect-pass-chain): a pass
+// that is neither the effect's last nor writes a target of its own leaves nothing any pass or the layer sees.
+TEST(EffectPassUse, TheLastPassIsSeen) {
+    EXPECT_TRUE(owe::EffectPassIsSeen({ .last = true }));
+}
+
+TEST(EffectPassUse, AnEarlierPassIsSeenOnlyThroughItsTarget) {
+    EXPECT_FALSE(owe::EffectPassIsSeen({}));
+    EXPECT_TRUE(owe::EffectPassIsSeen({ .has_target = true }));
+}
+
+TEST(EffectPassUse, EffectsWithCommandsKeepEveryPass) {
+    // copy commands are placed by pass position
+    EXPECT_TRUE(owe::EffectPassIsSeen({ .effect_has_commands = true }));
+}

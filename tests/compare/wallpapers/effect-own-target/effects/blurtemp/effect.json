@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "name": "blurtemp",
+  "passes": [
+    {
+      "material": "materials/effects/repeat.json",
+      "target": "_rt_BlurTemp"
+    },
+    {
+      "material": "materials/effects/copy.json",
+      "bind": [
+        {
+          "name": "_rt_BlurTemp",
+          "index": 0
+        }
+      ]
+    }
+  ],
+  "fbos": [
+    {
+      "name": "_rt_BlurTemp",
+      "format": "rgba_backbuffer"
+    }
+  ]
+}

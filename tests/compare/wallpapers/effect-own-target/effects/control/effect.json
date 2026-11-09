@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "name": "control",
+  "passes": [
+    {
+      "material": "materials/effects/repeat.json",
+      "target": "_rt_Work"
+    },
+    {
+      "material": "materials/effects/copy.json",
+      "bind": [
+        {
+          "name": "_rt_Work",
+          "index": 0
+        }
+      ]
+    }
+  ],
+  "fbos": [
+    {
+      "name": "_rt_Work",
+      "format": "rgba_backbuffer"
+    }
+  ]
+}
