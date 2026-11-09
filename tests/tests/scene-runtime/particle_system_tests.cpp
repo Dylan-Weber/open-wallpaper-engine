@@ -1019,9 +1019,9 @@ TEST(ParticleInstanceModifiers, CloneRetainsReadOnlyBindingsAfterSourceReplaceme
     EXPECT_FLOAT_EQ(binding->animation->c0[usize()].value, 7.0f);
 }
 
-// maintaindistancebetweencontrolpoints (particles-maintain-between): a particle stays between control points 0 and 1
-// along the axis joining them (clamped to the nearer end), drifts a little towards control point 0 (about 1.1 % a
-// second), and keeps its sideways place.
+// maintaindistancebetweencontrolpoints (particles-maintain-between): a particle stays between
+// control points 0 and 1 along the axis joining them (clamped to the nearer end), drifts a little
+// towards control point 0 (about 1.1 % a second), and keeps its sideways place.
 static Eigen::Vector3f KeepBetweenControlpoints(Eigen::Vector3f origin, int ticks = 1) {
     owe::Scene             scene;
     auto                   mesh = Arc<owe::SceneMesh>::make();
@@ -1047,8 +1047,10 @@ static Eigen::Vector3f KeepBetweenControlpoints(Eigen::Vector3f origin, int tick
                                              owe::wpscene::Particle::EFlags { 0 },
                                              false);
     subsystem.AddOperator(owe::ParticleParser::GenOperator(
-        owe::ParseJson(R"({"name":"maintaindistancebetweencontrolpoints"})"_str).unwrap(), modifiers.Clone(),
-        subsystem, usize()));
+        owe::ParseJson(R"({"name":"maintaindistancebetweencontrolpoints"})"_str).unwrap(),
+        modifiers.Clone(),
+        subsystem,
+        usize()));
     subsystem.Finalize();
     for (int tick = 0; tick < ticks; ++tick) subsystem.Tick(f64(1.0 / 60.0), false);
     auto&                        storage = subsystem.System().Instance(usize()).Storage();
@@ -1057,10 +1059,15 @@ static Eigen::Vector3f KeepBetweenControlpoints(Eigen::Vector3f origin, int tick
 }
 
 TEST(ParticleSubSystem, MaintainDistanceBetweenControlpointsClampsAlongTheAxis) {
-    EXPECT_NEAR(KeepBetweenControlpoints({ 260, 100, 0 }).x(), 200.0f, 0.1f); // past control point 1
-    EXPECT_NEAR(KeepBetweenControlpoints({ -50, 100, 0 }).x(), 0.0f, 0.1f);   // behind control point 0
-    EXPECT_NEAR(KeepBetweenControlpoints({ 100, 100, 0 }).x(), 100.0f, 0.1f); // between: left (barely drifting)
-    EXPECT_NEAR(KeepBetweenControlpoints({ 100, 100, 0 }).y(), 100.0f, 1e-4f); // sideways place kept
+    EXPECT_NEAR(
+        KeepBetweenControlpoints({ 260, 100, 0 }).x(), 200.0f, 0.1f); // past control point 1
+    EXPECT_NEAR(
+        KeepBetweenControlpoints({ -50, 100, 0 }).x(), 0.0f, 0.1f); // behind control point 0
+    EXPECT_NEAR(KeepBetweenControlpoints({ 100, 100, 0 }).x(),
+                100.0f,
+                0.1f); // between: left (barely drifting)
+    EXPECT_NEAR(
+        KeepBetweenControlpoints({ 100, 100, 0 }).y(), 100.0f, 1e-4f); // sideways place kept
 }
 
 TEST(ParticleSubSystem, MaintainDistanceBetweenControlpointsDriftsTowardsTheFirst) {
