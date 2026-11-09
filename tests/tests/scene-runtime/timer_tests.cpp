@@ -70,7 +70,7 @@ TEST(FrameTimer, OwnsMutableCallbackAndPreservesBackpressure) {
 TEST(FrameTimer, SerializesSamplesWithFpsChanges) {
     owe::FrameTimer timer;
     EXPECT_EQ(timer.RequiredFps(), u16(15));
-    EXPECT_DOUBLE_EQ(timer.TargetFrameTime(), 0.066666);
+    EXPECT_DOUBLE_EQ(timer.TargetFrameTime(), 1.0 / 15.0);
     timer.SetRequiredFps(u16());
     EXPECT_EQ(timer.RequiredFps(), u16(1));
     EXPECT_DOUBLE_EQ(timer.FrameTime(), 1.0);
@@ -84,4 +84,15 @@ TEST(FrameTimer, SerializesSamplesWithFpsChanges) {
     rstd::move(writer).join().unwrap();
     EXPECT_EQ(timer.RequiredFps(), u16(129));
     EXPECT_TRUE(timer.TargetFrameTime() > 0.0);
+}
+
+// The scene steps by exactly 1 / fps (Wallpaper Engine's particle counts match a 1/30 step, not 33333 us: rounded to
+// whole microseconds, 4 emissions a second at 30 fps add up to just under 2 by frame 15 and emit a frame late).
+TEST(FrameTimer, TargetFrameTimeIsExactlyOneOverTheFrameRate) {
+    owe::FrameTimer timer;
+    const int rates[] = { 15, 30, 60, 144 };
+    for (int fps : rates) {
+        timer.SetRequiredFps(u16(static_cast<rstd::uint16_t>(fps)));
+        EXPECT_EQ(timer.TargetFrameTime(), 1.0 / static_cast<double>(fps));
+    }
 }

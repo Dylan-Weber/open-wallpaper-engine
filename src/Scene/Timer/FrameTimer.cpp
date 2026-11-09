@@ -25,8 +25,10 @@ u16    FrameTimer::RequiredFps() const { return m_req_fps.load(); }
 double FrameTimer::FrameTime() const {
     return static_cast<double>(m_frametime.load().to_primitive()) / 1'000'000.0;
 }
+// exactly 1 / fps, not the whole microseconds the timer waits (Wallpaper Engine's steps add up to whole frames: rounded
+// down to 33333 us, 30 frames of 4 emissions a second fall short of 4 and emit late)
 double FrameTimer::TargetFrameTime() const {
-    return static_cast<double>(m_ideatime.load().to_primitive()) / 1'000'000.0;
+    return 1.0 / static_cast<double>(m_req_fps.load().to_primitive());
 }
 
 void FrameTimer::SetRequiredFps(u16 value) {
