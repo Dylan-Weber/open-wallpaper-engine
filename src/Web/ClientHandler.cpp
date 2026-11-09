@@ -8,6 +8,7 @@ import :cef_internal;
 
 using namespace rstd::prelude;
 using rstd::cppstd::as_str;
+using rstd::cppstd::to_string;
 using rstd::io::eprintln;
 using rstd::sync::atomic::Ordering;
 
@@ -15,8 +16,9 @@ namespace weweb
 {
 
 ClientHandler::ClientHandler(owe::Json user_props, CefRefPtr<OsrRenderHandler> render_handler,
-                             bool initially_muted)
+                             bool initially_muted, ClientOptions options)
     : user_props_(rstd::move(user_props)),
+      options_(options),
       render_handler_(rstd::move(render_handler)),
       audio_muted_(initially_muted) {}
 
@@ -131,7 +133,8 @@ bool ClientHandler::OnProcessMessageReceived(CefRefPtr<CefBrowser> /*browser*/,
             if (auto callback = audio_demand_cb_.clone(); callback) (*callback)->operator()(false);
         }
     }
-    const bool active = args->GetBool(1);
+    // a page that doesn't declare audio processing hears nothing, as in Wallpaper Engine
+    const bool active = args->GetBool(1) && options_.audio_allowed;
     if (active != audio_demand_) {
         audio_demand_ = active;
         if (auto callback = audio_demand_cb_.clone(); callback) (*callback)->operator()(active);
@@ -148,6 +151,13 @@ void ClientHandler::OnLoadEnd(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>
             expected, true, Ordering::SeqCst, Ordering::SeqCst))
         return;
     InjectUserProperties(browser, user_props_);
+    if (options_.general_fps > 0) {
+        if (auto main = browser->GetMainFrame(); main)
+            main->ExecuteJavaScript(
+                to_string(BuildGeneralPropertiesSnippet(options_.general_fps).as_str()),
+                "weweb://internal/apply_general_properties.js",
+                0);
+    }
 }
 
 bool ClientHandler::OnConsoleMessage(CefRefPtr<CefBrowser> /*browser*/, cef_log_severity_t level,
