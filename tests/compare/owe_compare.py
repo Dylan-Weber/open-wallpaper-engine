@@ -143,7 +143,8 @@ def shader_cache(viewer):
     return os.path.join(OUTPUT, 'shader-cache', '%d-%d' % (stat.st_mtime_ns, stat.st_size))
 
 
-def render(name, size, viewer, frames=None, script_start=0.0, camera_path_delay=0.0, inputs=(), env_extra=None):
+def render(name, size, viewer, frames=None, script_start=0.0, camera_path_delay=0.0, inputs=(), env_extra=None,
+           capture_shift=0):
     """Renders the wallpaper offscreen with SceneViewer --capture at `size` (at `frames`, or its compare.json's or
     the usual moment; scripts from `script_start` seconds, camera paths `camera_path_delay` seconds behind, the
     viewer given the reference's `inputs` arguments and environment `env_extra`) and returns the picture's path."""
@@ -163,7 +164,7 @@ def render(name, size, viewer, frames=None, script_start=0.0, camera_path_delay=
     shadows = ['--shadow-quality', settings_of(name)['shadow_quality']] \
         if 'shadow_quality' in settings_of(name) and '--shadow-quality' in viewer_help(viewer) else []
     command = capped + ['timeout', '900', viewer, '-C', shader_cache(viewer), '--resolution', '%dx%d' % size,
-                        '--fps', '30', '--capture', frame, '--capture-frame', str(frames)] + (
+                        '--fps', '30', '--capture', frame, '--capture-frame', str(frames + capture_shift)] + (
                            ['--script-start', '%.4f' % script_start] if script_start > 0 else []) + (
                            ['--camera-path-delay', '%.4f' % camera_path_delay] if camera_path_delay > 0
                            else []) + shadows + list(inputs) + [ASSETS, scene_package(os.path.join(WALLPAPERS, name))]
@@ -427,6 +428,21 @@ def main():
             owe = Image.open(frame)
             if owe.size != reference.size:
                 raise RuntimeError('sizes differ: reference %s, owe %s' % (reference.size, owe.size))
+            # a sprite sheet that advances a frame a render (general.spritesheetrefreshsync) shows the frames drawn,
+            # which the update rate only approximates: the probe's render counter (compare.json "probe_render_count")
+            # reads them in both pictures, and owe renders again that many frames earlier or later
+            if probe and settings_of(name).get('probe_render_count') and not args.no_render:
+                drawn = clock_probe.read_render_count(reference.convert('RGB'))
+                owe_drawn = clock_probe.read_render_count(owe.convert('RGB'))
+                stamp['render_count'] = [drawn, owe_drawn]
+                if drawn is not None and owe_drawn is not None and drawn != owe_drawn:
+                    shift = (drawn - owe_drawn + 500) % 1000 - 500
+                    print('     %-28s Wallpaper Engine drew %d frames, owe %d: owe renders %+d' % (
+                        name, drawn, owe_drawn, shift), flush=True)
+                    frame = render(name, reference.size, args.viewer, frames, script_start, camera_path_delay,
+                                   input_args, input_env, capture_shift=shift)
+                    owe = Image.open(frame)
+                    stamp['render_count'].append(clock_probe.read_render_count(owe.convert('RGB')))
         except Exception as error:
             print('FAIL %-28s %s' % (name, error), flush=True)
             results[name] = {'error': str(error)}

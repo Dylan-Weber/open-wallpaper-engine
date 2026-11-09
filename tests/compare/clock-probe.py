@@ -310,14 +310,49 @@ def pack(files, version):
 def write(folder, path, content):
     target = os.path.join(folder, path)
     os.makedirs(os.path.dirname(target), exist_ok=True)
+    if isinstance(content, bytes):
+        with open(target, 'wb') as f:
+            f.write(content)
+        return
     with open(target, 'w') as f:
         f.write(content if isinstance(content, str) else json.dumps(content, indent=2) + '\n')
 
 
-def probe_files(scene, bands=(), mirrored=False):
+# The render counter (compare.json "probe_render_count", for scenes with general.spritesheetrefreshsync): a sprite sheet
+# of RENDER_FRAMES frames, each its own colour, which such a scene advances one frame a render, as it does the
+# wallpaper's GIF. Its colour in the picture says how many frames Wallpaper Engine had drawn (mod RENDER_FRAMES), which
+# the update counter can't: the VM drops updates and renders differently.
+RENDER_FRAMES, RENDER_COLUMNS, RENDER_CELL, RENDER_SIDE = 1000, 40, 8, 24
+
+
+def render_color(i):
+    return (i % 256, (i // 256) * 60 + 20, (i * 7) % 256)
+
+
+def render_counter_tex():
+    """The counter's sheet: RENDER_FRAMES cells of RENDER_CELL pixels, frame i all render_color(i)."""
+    w, h = RENDER_COLUMNS * RENDER_CELL, ((RENDER_FRAMES + RENDER_COLUMNS - 1) // RENDER_COLUMNS) * RENDER_CELL
+    pixels = bytearray(w * h * 4)
+    for i in range(RENDER_FRAMES):
+        x0, y0 = (i % RENDER_COLUMNS) * RENDER_CELL, (i // RENDER_COLUMNS) * RENDER_CELL
+        cell = bytes(render_color(i) + (255,)) * RENDER_CELL
+        for y in range(y0, y0 + RENDER_CELL):
+            pixels[(y * w + x0) * 4:(y * w + x0 + RENDER_CELL) * 4] = cell
+    data = b'TEXV0005\0TEXI0001\0' + struct.pack('<7I', 0, 7, w, h, w, h, 0)
+    data += b'TEXB0003\0' + struct.pack('<Ii', 1, -1) + struct.pack('<I', 1)
+    data += struct.pack('<IIII', w, h, 0, len(pixels)) + struct.pack('<I', len(pixels)) + bytes(pixels)
+    data += b'TEXS0003\0' + struct.pack('<III', RENDER_FRAMES, RENDER_CELL, RENDER_CELL)
+    for i in range(RENDER_FRAMES):
+        data += struct.pack('<iffffff', 0, 0.01, float((i % RENDER_COLUMNS) * RENDER_CELL),
+                            float((i // RENDER_COLUMNS) * RENDER_CELL), float(RENDER_CELL), 0.0, 0.0)
+        data += struct.pack('<f', float(RENDER_CELL))
+    return data
+
+
+def probe_files(scene, bands=(), mirrored=False, render_count=False):
     """The scene with the probe added (replacing an earlier one), and the probe's own files (recording the audio
-    `bands`, the records `mirrored` beside the top strips too)."""
-    objects = [o for o in scene.get('objects', []) if o.get('name') != 'owe clock probe']
+    `bands`, the records `mirrored` beside the top strips too, and the render counter in the top-right corner)."""
+    objects = [o for o in scene.get('objects', []) if o.get('name') not in ('owe clock probe', 'owe render counter')]
     ids = [o.get('id', 0) for o in objects if isinstance(o.get('id', 0), int)]
     objects.append({
         "id": max(ids + [0]) + 1, "name": "owe clock probe", "image": "models/util/fullscreenlayer.json",
@@ -326,9 +361,27 @@ def probe_files(scene, bands=(), mirrored=False):
                      "visible": True, "passes": [{"id": max(ids + [0]) + 3, "constantshadervalues": {
                          "scriptframe": {"script": SCRIPT, "value": -1},
                          **{name: {"script": script, "value": -1} for name, script in FIELD_SCRIPTS.items()}}}]}]})
-    scene = dict(scene, objects=objects)
     as_json = lambda value: (json.dumps(value, indent=2) + '\n').encode()
-    return scene, {
+    counter = {}
+    if render_count:
+        projection = scene.get('general', {}).get('orthogonalprojection') or {}
+        width, height = projection.get('width', 1920), projection.get('height', 1080)
+        objects.append({
+            "id": max(ids + [0]) + 4, "name": "owe render counter", "image": "models/owerendercount.json",
+            "origin": "%g %g 0" % (width - RENDER_SIDE / 2, height - RENDER_SIDE / 2), "angles": "0 0 0",
+            "scale": "%g %g 1" % (RENDER_SIDE / RENDER_CELL, RENDER_SIDE / RENDER_CELL), "size": "%d %d" % (
+                RENDER_CELL, RENDER_CELL), "color": "1 1 1", "alpha": 1, "visible": True, "alignment": "center"})
+        counter = {
+            'models/owerendercount.json': as_json({"material": "materials/owerendercount.json",
+                                                   "width": RENDER_CELL, "height": RENDER_CELL}),
+            'materials/owerendercount.json': as_json({"passes": [{
+                "shader": "genericimage2", "blending": "normal", "cullmode": "nocull", "depthtest": "disabled",
+                "depthwrite": "disabled", "combos": {"SPRITESHEET": 1, "VERSION": 2},
+                "textures": ["owerendercount"]}]}),
+            'materials/owerendercount.tex': render_counter_tex(),
+        }
+    scene = dict(scene, objects=objects)
+    return scene, {**counter,
         'effects/oweclock/effect.json': as_json({
             "version": 1, "name": "oweclock", "passes": [{"material": "materials/effects/oweclock.json"}]}),
         'materials/effects/oweclock.json': as_json({"passes": [{
@@ -375,25 +428,26 @@ def stamp(folder):
     bands = used_bands(contents)
     # layers a script creates are drawn after the probe and may cover its records: they go on both sides then
     mirrored = any(b'createLayer' in content for content in contents)
+    settings_path = os.path.join(folder, 'compare.json')
+    settings = {}
+    if os.path.exists(settings_path):
+        with open(settings_path) as f:
+            settings = json.load(f)
+    render_count = bool(settings.get('probe_render_count'))
     if packaged:
         # Wallpaper Engine doesn't draw every unpacked Workshop wallpaper alike: stamp inside the package
         version, files = unpack(package)
-        scene, extra = probe_files(json.loads(files[name]), bands, mirrored)
+        scene, extra = probe_files(json.loads(files[name]), bands, mirrored, render_count)
         files[name] = (json.dumps(scene, indent=2) + '\n').encode()
         files.update(extra)
         with open(package, 'wb') as f:
             f.write(pack(files, version))
     else:
         with open(os.path.join(folder, name)) as f:
-            scene, extra = probe_files(json.load(f), bands, mirrored)
+            scene, extra = probe_files(json.load(f), bands, mirrored, render_count)
         write(folder, name, scene)
         for path, content in extra.items():
-            write(folder, path, content.decode())
-    settings_path = os.path.join(folder, 'compare.json')
-    settings = {}
-    if os.path.exists(settings_path):
-        with open(settings_path) as f:
-            settings = json.load(f)
+            write(folder, path, content if path.endswith('.tex') else content.decode())
     settings['probe'] = True
     # its script record holds the update counter (references stamped before it show the scene in those cells)
     settings['probe_updates'] = True
@@ -407,6 +461,18 @@ def stamp(folder):
         settings.pop('probe_mirrored', None)
     write(folder, 'compare.json', settings)
     print('%s: stamped' % folder)
+
+
+def read_render_count(picture):
+    """The frames drawn (mod RENDER_FRAMES) by a probe's render counter, from the colour of the picture's top-right
+    corner (the counter is RENDER_SIDE of 1920 scene units wide), or None without one."""
+    w, h = picture.size
+    side = max(2, int(RENDER_SIDE * w / 1920))
+    samples = sorted(picture.getpixel((w - side + dx, dy))[:3]
+                     for dx in range(side // 4, side * 3 // 4) for dy in range(side // 4, side * 3 // 4))
+    colour = samples[len(samples) // 2]
+    best = min(range(RENDER_FRAMES), key=lambda i: sum(abs(p - q) for p, q in zip(render_color(i), colour)))
+    return best if sum(abs(p - q) for p, q in zip(render_color(best), colour)) <= 12 else None
 
 
 def strips(size):
