@@ -291,6 +291,104 @@ TEST(WebState, RandomFileCallsBackWithNoFile) {
     EXPECT_TRUE(text.contains("setTimeout(function(){ callback(propertyName, ''); }, 0);"_str));
 }
 
+// Wallpaper Engine adds its own properties to what applyUserProperties hands a web page: its flip
+// and colour options and a scheme colour, a divider before the wallpaper's own properties, whose
+// orders move up by 100 (a missing order becomes null). Expected: web-property-dump-noorder as read
+// over DevTools in the VM (2026-11-09)
+TEST(WebState, WallpaperEnginesOwnPropertiesAreAdded) {
+    auto props =
+        owe::ParseJson(
+            R"({"schemecolor":{"text":"ui_browse_properties_scheme_color","type":"color","value":"1 0 0"},"plain":{"text":"plain","type":"bool","value":true},"negative":{"order":-3,"text":"negative","type":"bool","value":false}})"_str)
+            .unwrap();
+    auto expected =
+        owe::ParseJson(
+            R"({"_d0":{"order":0,"type":"divider"},"alignmentfliph":{"icon":"fa-exchange","order":-12,"text":"ui_browse_properties_alignment_flip_horizontally","type":"bool","value":false},"negative":{"order":97,"text":"negative","type":"bool","value":false},"plain":{"order":null,"text":"plain","type":"bool","value":true},"schemecolor":{"icon":"fa-palette","order":-20,"text":"ui_browse_properties_scheme_color","type":"color","value":"1 0 0"},"wec_brs":{"condition":"wec_e.value","icon":"fa-sun","max":100,"min":0,"order":-7,"text":"ui_browse_properties_brightness","type":"slider","value":50},"wec_con":{"condition":"wec_e.value","icon":"fa-adjust","max":100,"min":0,"order":-6,"text":"ui_browse_properties_contrast","type":"slider","value":50},"wec_e":{"order":-8,"text":"ui_browse_properties_show_color_options","type":"bool","value":false},"wec_hue":{"condition":"wec_e.value","icon":"fa-palette","max":100,"min":0,"order":-4,"text":"ui_browse_properties_hue_shift","type":"slider","value":50},"wec_sa":{"condition":"wec_e.value","icon":"fa-tint","max":100,"min":0,"order":-5,"text":"ui_browse_properties_saturation","type":"slider","value":50}})"_str)
+            .unwrap();
+    auto result = WithWallpaperEngineProperties(props);
+    EXPECT_EQ(owe::DumpString(result).as_str(), owe::DumpString(expected).as_str());
+}
+
+// With no properties of its own: no divider, and a grey scheme colour (web-property-dump-empty)
+TEST(WebState, WallpaperEnginesOwnPropertiesWithoutTheWallpapers) {
+    auto result = WithWallpaperEngineProperties(owe::ParseJson("{}"_str).unwrap());
+    EXPECT_TRUE(result.get("_d0"_str).is_none());
+    auto scheme = result.pointer("/schemecolor/value"_str);
+    ASSERT_TRUE(scheme.is_some());
+    EXPECT_EQ((*scheme)->as_str(), Some("0.5 0.5 0.5"_str));
+    EXPECT_TRUE(result.pointer("/wec_e/value"_str).is_some());
+}
+
+// A project.json can't set Wallpaper Engine's own properties: the page gets its own definitions
+// (web-color-adjust-brs-100 with a project.json wec_brs of 100: the page saw 50), and a user's
+// saved values for them are applied after load (OwnPropertiesOf)
+TEST(WebState, ProjectCannotSetWallpaperEnginesOwnProperties) {
+    auto props =
+        owe::ParseJson(
+            R"({"wec_brs":{"type":"slider","value":100,"min":0,"max":100,"order":0},"mine":{"type":"bool","value":true,"order":1}})"_str)
+            .unwrap();
+    auto result = WithWallpaperEngineProperties(props);
+    auto brs    = result.pointer("/wec_brs/value"_str);
+    ASSERT_TRUE(brs.is_some());
+    EXPECT_EQ(owe::DumpString(**brs).as_str(), "50"_str);
+    EXPECT_TRUE(result.pointer("/wec_brs/condition"_str).is_some());
+    EXPECT_TRUE(IsWallpaperEnginesOwnProperty("wec_hue"_str));
+    EXPECT_TRUE(IsWallpaperEnginesOwnProperty("alignmentfliph"_str));
+    EXPECT_FALSE(IsWallpaperEnginesOwnProperty("schemecolor"_str));
+    auto own = OwnPropertiesOf(*props.as_object().unwrap());
+    EXPECT_TRUE(own.get("wec_brs"_str).is_some());
+    EXPECT_TRUE(own.get("mine"_str).is_none());
+}
+
+// Values set with applyProperties reach the page as {"value": ...}, as project.json's do
+TEST(WebState, AppliedPropertiesAreHandedAsValues) {
+    auto applied =
+        owe::ParseJson(R"({"wec_e":true,"wec_brs":65,"x":{"value":"kept"}})"_str).unwrap();
+    auto handed = AsPropertyValues(applied);
+    EXPECT_EQ(owe::DumpString(handed).as_str(),
+              owe::DumpString(
+                  owe::ParseJson(
+                      R"({"wec_brs":{"value":65},"wec_e":{"value":true},"x":{"value":"kept"}})"_str)
+                      .unwrap())
+                  .as_str());
+}
+
+// Wallpaper Engine applies its colour options with a CSS filter on <html>: contrast, brightness and
+// saturation the slider over 50, the hue (slider - 50) * 3.6 degrees (web-color-adjust-*, VM)
+TEST(WebState, OwnColourOptionsAreACssFilter) {
+    OwnProperties own;
+    auto          value = [](auto v) {
+        return owe::ParseJson(rstd::format("{{\"value\":{}}}", v).as_str()).unwrap();
+    };
+    EXPECT_TRUE(own.Apply("wec_brs"_str, value(65)));
+    EXPECT_EQ(own.Filter().as_str(), ""_str); // off until wec_e
+    EXPECT_TRUE(own.Apply("wec_e"_str, value("true")));
+    EXPECT_TRUE(own.Apply("wec_con"_str, value(35)));
+    EXPECT_TRUE(own.Apply("wec_sa"_str, value(70)));
+    EXPECT_TRUE(own.Apply("wec_hue"_str, value(60)));
+    EXPECT_EQ(own.Filter().as_str(),
+              "contrast(0.7) brightness(1.3) saturate(1.4) hue-rotate(36deg)"_str);
+    own.Apply("wec_hue"_str, value(0));
+    own.Apply("wec_brs"_str, value(0));
+    own.Apply("wec_con"_str, value(100));
+    own.Apply("wec_sa"_str, value(0));
+    EXPECT_EQ(own.Filter().as_str(),
+              "contrast(2) brightness(0) saturate(0) hue-rotate(-180deg)"_str);
+    EXPECT_FALSE(own.Apply("schemecolor"_str, value(1)));
+}
+
+// The flip is transform: scaleX(-1) and overflow-y: hidden on <html>, with or without the colour
+// options; with neither, nothing is set
+TEST(WebState, OwnFlipIsACssTransform) {
+    OwnProperties own;
+    EXPECT_FALSE(own.Active());
+    own.Apply("alignmentfliph"_str, owe::ParseJson(R"({"value":true})"_str).unwrap());
+    EXPECT_TRUE(own.Active());
+    auto snippet = own.StyleSnippet();
+    EXPECT_TRUE(snippet.as_str().contains("s.filter = '';"_str));
+    EXPECT_TRUE(snippet.as_str().contains("s.transform = 'scaleX(-1)';"_str));
+    EXPECT_TRUE(snippet.as_str().contains("s.overflowY = 'hidden';"_str));
+}
+
 TEST(WebManifest, LoadsOwnedStringsAndDefaults) {
     auto temporary = rstd::fs::TempDir::make("owe-web-manifest"_str).unwrap();
     auto root      = rstd::path::PathBuf::from(temporary.path());

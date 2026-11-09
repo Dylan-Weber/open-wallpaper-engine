@@ -278,7 +278,7 @@ bool BrowserHost::OpenWallpaper(const WebManifest& manifest, ref<Path> workshop_
 }
 
 bool BrowserHost::OpenWallpaper(const WebManifest& manifest, ref<Path> workshop_dir, int width,
-                                int height, OpenOptions opts) {
+                                int height, const OpenOptions& opts) {
     if (! impl_->initialised) {
         eprintln("weweb: OpenWallpaper before Init");
         return false;
@@ -301,6 +301,7 @@ bool BrowserHost::OpenWallpaper(const WebManifest& manifest, ref<Path> workshop_
         opts.initially_muted,
         { .audio_allowed = manifest.supports_audio, .general_fps = ToldFrameRate(opts) });
     impl_->client->SetAudioDemandCallback(impl_->audio_demand_cb.clone());
+    impl_->client->SetPropertyOverrides(opts.properties.clone());
     auto        entry = PathBuf::from(workshop_dir).join(manifest.entry_html.as_str());
     std::string url   = "file://" + CefPath(entry.as_path());
 
@@ -451,12 +452,30 @@ void BrowserHost::SetPaused(bool paused) {
     if (b && b->GetHost()) b->GetHost()->WasHidden(paused);
 }
 
+bool IsWallpaperEnginesOwnProperty(ref<str> key) {
+    return key == "alignmentfliph"_str || key == "wec_e"_str || key == "wec_brs"_str ||
+           key == "wec_con"_str || key == "wec_sa"_str || key == "wec_hue"_str;
+}
+
+owe::Json OwnPropertiesOf(const rstd::json::Map& values) {
+    auto own = rstd::json::Map::make();
+    values.iter().for_each([&](auto entry) {
+        auto [key, value] = entry;
+        if (IsWallpaperEnginesOwnProperty(key->as_str())) own.insert(key->clone(), value->clone());
+    });
+    return owe::Json::Object(rstd::move(own));
+}
+
 void BrowserHost::ApplyUserProperty(ref<str> key, const owe::Json& value) {
     if (IsClosing() || ! impl_->client) return;
     auto browser = impl_->client->GetBrowser();
     if (! browser) return;
     auto frame = browser->GetMainFrame();
     if (! frame) return;
+    // Wallpaper Engine's own flip and colour options restyle the page, and the page is told too
+    auto own = rstd::json::Map::make();
+    own.insert(String::make(key), value.clone());
+    impl_->client->ApplyOwnProperties(frame, owe::Json::Object(rstd::move(own)));
     auto snippet = BuildPropertyPatchSnippet(key, value);
     frame->ExecuteJavaScript(
         to_string(snippet.as_str()), "weweb://internal/apply_user_property.js", 0);

@@ -108,6 +108,33 @@ struct ClientOptions {
     int general_fps { 0 };
 };
 
+// Wallpaper Engine's own properties of a web wallpaper: its horizontal flip and colour options,
+// which it applies to the page itself with CSS on <html> (read over DevTools in the VM,
+// web-color-adjust-*). Off by default; project.json can't set them, only the user (applyProperties).
+struct OwnProperties {
+    bool flip { false };
+    bool colour { false };
+    double brightness { 50.0 };
+    double contrast { 50.0 };
+    double saturation { 50.0 };
+    double hue { 50.0 };
+
+    // `property` is {"value": ...} or the value itself; false when `key` isn't one of them
+    bool Apply(ref<str> key, const owe::Json& property);
+    // the flip or the colour options are on: <html> is styled
+    bool Active() const;
+    // "contrast(c) brightness(b) saturate(s) hue-rotate(hdeg)" with the colour options on, else ""
+    String Filter() const;
+    // sets <html>'s filter, transform and overflow-y to these values
+    String StyleSnippet() const;
+};
+
+// What Wallpaper Engine hands applyUserProperties: project.json's properties with its own added
+owe::Json WithWallpaperEngineProperties(const owe::Json& props);
+// values set as Wallpaper Engine's applyProperties sets them (key -> value), as the page gets them:
+// key -> {"value": value} (an entry that already has a "value" is kept)
+owe::Json AsPropertyValues(const owe::Json& values);
+
 class ClientHandler : public CefClient,
                       public CefLifeSpanHandler,
                       public CefLoadHandler,
@@ -126,6 +153,12 @@ public:
     bool                  IsClosing() const;
     bool                  IsClosed() const;
     CefRefPtr<CefBrowser> GetBrowser() const;
+    // user properties set before the page loads, handed to it after project.json's in a second
+    // applyUserProperties call, as Wallpaper Engine's applyProperties does
+    void SetPropertyOverrides(owe::Json properties);
+    // records Wallpaper Engine's own properties among `properties` (key -> {"value": ...}) and
+    // restyles the page; true when there were any
+    bool ApplyOwnProperties(CefRefPtr<CefFrame> frame, const owe::Json& properties);
 
     CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
     CefRefPtr<CefLoadHandler>     GetLoadHandler() override { return this; }
@@ -189,11 +222,14 @@ private:
     bool                        audio_demand_ { false };
     bool                        audio_muted_ { false };
     Atomic<bool>                property_injected_ { false };
+    owe::Json                   property_overrides_ { owe::Json::Null() };
+    OwnProperties               own_;
     CefRefCount                 ref_count_;
 };
 
 String BuildPropertyListenerSnippet(const owe::Json& props);
 String BuildPropertyPatchSnippet(ref<str> key, const owe::Json& value);
+String BuildPropertiesPatchSnippet(const owe::Json& properties);
 String BuildAudioResponseSnippet(slice<float> data);
 String BuildGeneralPropertiesSnippet(int fps);
 String BuildPageApiSnippet();

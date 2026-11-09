@@ -39,6 +39,9 @@ public:
         // setting, which doesn't change how often it draws the page; 0 tells it frame_rate
         int   general_fps { 0 };
         float device_scale_factor { 1.0f };
+        // user properties the page gets after project.json's (key -> {"value": ...}), as
+        // Wallpaper Engine's applyProperties sets them, e.g. its own flip and colour options
+        owe::Json properties { owe::Json::Null() };
     };
 
     BrowserHost();
@@ -71,7 +74,7 @@ public:
 
     bool OpenWallpaper(const WebManifest& manifest, ref<Path> workshop_dir, int width, int height);
     bool OpenWallpaper(const WebManifest& manifest, ref<Path> workshop_dir, int width, int height,
-                       OpenOptions opts);
+                       const OpenOptions& opts);
 
     void OnResize(int width, int height);
     void OnResize(int width, int height, float device_scale_factor);
@@ -107,5 +110,11 @@ private:
 
 // The fps applyGeneralProperties gives the page
 int ToldFrameRate(const BrowserHost::OpenOptions& opts);
+// Wallpaper Engine's own properties of a web wallpaper (its flip and colour options), which a
+// project.json can't set
+bool IsWallpaperEnginesOwnProperty(ref<str> key);
+// the entries of `values` that are Wallpaper Engine's own properties: a user's saved values for
+// them go in OpenOptions::properties
+owe::Json OwnPropertiesOf(const rstd::json::Map& values);
 
 } // namespace weweb
