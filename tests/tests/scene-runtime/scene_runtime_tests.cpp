@@ -856,15 +856,15 @@ void CheckScriptMusicSelector(ref<str> initial_selection) {
         })JSON"_str,
         owe::wpscene::kSceneVersionUnknown);
     ASSERT_TRUE(document.is_some());
-    auto schema = owe::ParseJson(R"({
+    auto schema     = owe::ParseJson(R"({
         "type":"combo", "value":"0",
         "options":[{"value":"0"},{"value":"1"},{"value":"2"}]
     })"_str)
-                      .unwrap();
+                          .unwrap();
     auto property   = initial_selection == "0"_str
                           ? schema.clone()
                           : owe::MergeUserPropertyDescriptor(
-                              schema, owe::MakeUserPropertyWirePatch(initial_selection));
+                                schema, owe::MakeUserPropertyWirePatch(initial_selection));
     auto properties = rstd::json::Map::make();
     properties.insert(String::make("bgmselect"_str), property.clone());
 
@@ -877,7 +877,7 @@ void CheckScriptMusicSelector(ref<str> initial_selection) {
         mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
         mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)),
         owe::SceneParseOptions {
-                                   .user_properties =
+            .user_properties =
                 Some(ref<rstd::json::Map>::from_raw_parts(rstd::addressof(properties))),
         });
     ASSERT_TRUE(parsed.is_ok());
@@ -950,7 +950,7 @@ TEST(SceneParserScript, FractionSliderPreservesAuthoredValue) {
         mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
         mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)),
         owe::SceneParseOptions {
-                                   .user_properties =
+            .user_properties =
                 Some(ref<rstd::json::Map>::from_raw_parts(rstd::addressof(user_properties))),
         });
     ASSERT_TRUE(parsed.is_ok());
@@ -1383,7 +1383,7 @@ TEST(TextUniformSource, EffectProjectionIncludesGeometryAlignment) {
     node_state->effect_projection_node = Some(layer.clone());
     node_state->effect_projection_size = { 40.0f, 20.0f };
     owe::TransformUniformSource transform_source(uniform_state.clone(), node_state.clone());
-    auto                        effect = scene_test::Capture(owe::SceneFrame {},
+    auto effect = scene_test::Capture(owe::SceneFrame {},
                                       transform_source,
                                       owe::TransformUniformOutput::EffectModelViewProjection);
     ASSERT_EQ(effect.size(), projected.size());
@@ -1807,7 +1807,7 @@ TEST(ShadowUniformSource, CascadesDefaultToThreeTenAndAHundredInWholeTexels) {
         const float texel = width / 256.0f;
         for (usize axis {}; axis < usize(2); ++axis) {
             const float scale  = matrices[cascade * usize(16) + axis * usize(5) +
-                                         (axis == usize() ? usize(8) : usize())];
+                                          (axis == usize() ? usize(8) : usize())];
             const float offset = matrices[cascade * usize(16) + usize(12) + axis];
             const float centre = -offset / scale;
             EXPECT_NEAR(centre / texel, std::round(centre / texel), 1e-3f)
@@ -2189,8 +2189,8 @@ TEST(UniformSourceParallax, ParentPropagationSelectsAncestorConfiguration) {
                                             Eigen::Vector3f { 1.0f, 1.0f, 1.0f },
                                             Eigen::Vector3f::Zero());
     auto child  = Arc<owe::SceneNode>::make(Eigen::Vector3f { -76.0f, -3.0f, 0.0f },
-                                           Eigen::Vector3f { 1.0f, 1.0f, 1.0f },
-                                           Eigen::Vector3f::Zero());
+                                            Eigen::Vector3f { 1.0f, 1.0f, 1.0f },
+                                            Eigen::Vector3f::Zero());
     auto effect = Arc<owe::SceneNode>::make();
     auto mesh   = Arc<owe::SceneMesh>::make();
     mesh->AddMaterial(owe::SceneMaterial {});
@@ -2324,8 +2324,8 @@ TEST(UniformSourceParallax, InactiveEffectDoesNotReplaceLayerOrigin) {
     state->Advance(owe::SceneFrame {});
 
     auto layer       = Arc<owe::SceneNode>::make(Eigen::Vector3f { 2667.97363f, 1349.58765f, 0.0f },
-                                           Eigen::Vector3f::Ones(),
-                                           Eigen::Vector3f::Zero());
+                                                 Eigen::Vector3f::Ones(),
+                                                 Eigen::Vector3f::Zero());
     auto effect      = Arc<owe::SceneNode>::make();
     auto layer_state = Arc<owe::UniformNodeState>::make(layer.clone(), resolver.clone());
     auto effect_state      = Arc<owe::UniformNodeState>::make(effect.clone(), resolver.clone());
@@ -2367,8 +2367,8 @@ TEST(UniformSourceParallax, ComposeLayerCameraSharesParentParallaxOrigin) {
     state->Advance(owe::SceneFrame {});
 
     auto photo   = Arc<owe::SceneNode>::make(Eigen::Vector3f { 1920.0f, 1080.0f, 0.0f },
-                                           Eigen::Vector3f { 0.54125f, 0.54125f, 1.0f },
-                                           Eigen::Vector3f::Zero());
+                                             Eigen::Vector3f { 0.54125f, 0.54125f, 1.0f },
+                                             Eigen::Vector3f::Zero());
     auto compose = Arc<owe::SceneNode>::make(Eigen::Vector3f { 1680.87378f, 730.31299f, 0.0f },
                                              Eigen::Vector3f { 5.48290f, 5.48290f, 1.0f },
                                              Eigen::Vector3f::Zero());
@@ -2577,8 +2577,8 @@ TEST(UniformSourceParallax, UnregisteredContainerRootDoesNotPoisonChildren) {
                                                Eigen::Vector3f { 1.0f, 1.0f, 1.0f },
                                                Eigen::Vector3f::Zero());
     auto child     = Arc<owe::SceneNode>::make(Eigen::Vector3f { -76.0f, -3.0f, 0.0f },
-                                           Eigen::Vector3f { 1.0f, 1.0f, 1.0f },
-                                           Eigen::Vector3f::Zero());
+                                               Eigen::Vector3f { 1.0f, 1.0f, 1.0f },
+                                               Eigen::Vector3f::Zero());
     auto mesh      = Arc<owe::SceneMesh>::make();
     mesh->AddMaterial(owe::SceneMaterial {});
     owe::SceneMesh::Submesh submesh;
@@ -2642,8 +2642,8 @@ TEST(UniformSourceParallax, DisablePropagationBlocksInheritance) {
                                             Eigen::Vector3f { 1.0f, 1.0f, 1.0f },
                                             Eigen::Vector3f::Zero());
     auto child  = Arc<owe::SceneNode>::make(Eigen::Vector3f { -76.0f, -3.0f, 0.0f },
-                                           Eigen::Vector3f { 1.0f, 1.0f, 1.0f },
-                                           Eigen::Vector3f::Zero());
+                                            Eigen::Vector3f { 1.0f, 1.0f, 1.0f },
+                                            Eigen::Vector3f::Zero());
     auto mesh   = Arc<owe::SceneMesh>::make();
     mesh->AddMaterial(owe::SceneMaterial {});
     owe::SceneMesh::Submesh submesh;

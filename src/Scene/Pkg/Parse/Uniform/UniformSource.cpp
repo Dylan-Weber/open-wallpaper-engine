@@ -1050,7 +1050,8 @@ auto ShadowUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
 
     bool  have_cascades {};
     usize next_slot {};
-    // the lights take the slots as LightUniformSource gives them: hidden ones (or in a hidden layer) take none
+    // the lights take the slots as LightUniformSource gives them: hidden ones (or in a hidden
+    // layer) take none
     for (const auto& light_ref : m_scene->Lights()) {
         const auto& light = *light_ref;
         if (light.node() == nullptr || ! light.runtimeVisible()) continue;
@@ -1063,9 +1064,9 @@ auto ShadowUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
         }
         if (! visible) continue;
         if (next_slot >= max_lights) break;
-        const usize slot  = next_slot;
-        next_slot         = next_slot + usize(1);
-        const auto  first = light.desc().shadow_view;
+        const usize slot = next_slot;
+        next_slot        = next_slot + usize(1);
+        const auto first = light.desc().shadow_view;
         if (first < i32()) continue;
         const auto view = usize(rstd::as_cast<rstd::size_t>(first.to_primitive()));
         if (light.type() != SceneLightType::Directional || ! camera_ok) continue;
