@@ -3438,7 +3438,7 @@ private:
     HashSet<String>                          m_active_camera_paths;
     MaterialBindingIndex<Arc<SceneCameraPath>> m_camera_path_user_index;
     // the camera scripts see: the scene's own and what scripts set (ScriptCameraTransforms)
-    Option<SceneCameraTransforms>              m_script_camera;
+    Option<SceneCameraTransforms> m_script_camera;
 
     void        RebuildElidableLayerIds();
     void        WriteRenderTarget(String name, SceneRenderTarget target);

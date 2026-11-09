@@ -511,11 +511,12 @@ TEST(LightUniformSource, HiddenAncestorsDoNotConsumeLightSlots) {
     EXPECT_FLOAT_EQ(color[usize(1)], 0.0f);
 }
 
-// Scripts' thisScene.getCameraTransforms() is the scene's own camera and what scripts set, not where a camera path
-// has moved the view (Wallpaper Engine's camera-script-read: a path holds the eye 3 to the side, scripts see 0).
+// Scripts' thisScene.getCameraTransforms() is the scene's own camera and what scripts set, not
+// where a camera path has moved the view (Wallpaper Engine's camera-script-read: a path holds the
+// eye 3 to the side, scripts see 0).
 TEST(SceneCamera, ScriptsSeeTheScenesCameraNotItsPath) {
     owe::Scene scene;
-    auto camera =
+    auto       camera =
         Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000.0, 50.0));
     camera->SetLookAt(Eigen::Vector3d(0, 0, 12), Eigen::Vector3d::Zero(), Eigen::Vector3d::UnitY());
     scene.RegisterCamera("global_perspective"_Str, camera.clone());
@@ -523,7 +524,8 @@ TEST(SceneCamera, ScriptsSeeTheScenesCameraNotItsPath) {
     scene.SetScriptCameraTransforms(camera->AuthoredTransforms());
 
     // a camera path moves the view
-    camera->SetLookAt(Eigen::Vector3d(3, 0, 12), Eigen::Vector3d(3, 0, 0), Eigen::Vector3d::UnitY());
+    camera->SetLookAt(
+        Eigen::Vector3d(3, 0, 12), Eigen::Vector3d(3, 0, 0), Eigen::Vector3d::UnitY());
     auto seen = scene.ScriptCameraTransforms();
     ASSERT_TRUE(seen.is_some());
     EXPECT_DOUBLE_EQ(seen->eye.x(), 0.0);
@@ -540,7 +542,7 @@ TEST(SceneCamera, ScriptsSeeTheScenesCameraNotItsPath) {
 // Without a camera of its own recorded (a 2D scene), scripts see the active camera.
 TEST(SceneCamera, ScriptsSeeTheActiveCameraWithoutASceneCamera) {
     owe::Scene scene;
-    auto camera =
+    auto       camera =
         Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000.0, 50.0));
     camera->SetLookAt(Eigen::Vector3d(1, 2, 3), Eigen::Vector3d::Zero(), Eigen::Vector3d::UnitY());
     scene.RegisterCamera("global"_Str, camera.clone());
