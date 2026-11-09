@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "name": "compose",
+  "passes": [
+    {
+      "material": "materials/effects/repeat.json",
+      "compose": true
+    },
+    {
+      "material": "materials/effects/copy.json"
+    }
+  ]
+}

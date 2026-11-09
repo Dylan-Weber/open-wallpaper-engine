@@ -817,6 +817,12 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
             bool eff_mat_ok { true };
 
             for (usize i_mat {}; i_mat < wpeffobj.materials.len(); i_mat++) {
+                const bool pass_has_target =
+                    wpeffobj.passes.len() > i_mat && ! wpeffobj.passes.at(i_mat).target.is_empty();
+                if (! EffectPassIsSeen({ .last       = i_mat + usize(1) == wpeffobj.materials.len(),
+                                         .has_target = pass_has_target,
+                                         .effect_has_commands = ! wpeffobj.commands.is_empty() }))
+                    continue;
                 wpscene::Material         wpmat = wpeffobj.materials.at(i_mat).clone();
                 SceneEffectTarget         matOutRT { SceneEffectTarget::LayerNext() };
                 Option<wpscene::Material> user_texture_fallback;
