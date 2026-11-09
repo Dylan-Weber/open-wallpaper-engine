@@ -60,11 +60,16 @@ class FontKerning {
     Vec<rstd::uint32_t> m_lookup_ends; // where each kern lookup's subtables end in m_subtables
     Vec<rstd::uint32_t> m_kern_tables; // legacy format 0 subtables, from the file's start
     rstd::uint32_t      m_units_per_em { 1000 };
+    // hhea: ascender, descender (negative) and line gap, in font units; 0 0 0 without the table
+    rstd::int32_t m_ascender {}, m_descender {}, m_line_gap {};
 
 public:
     static auto Read(slice<u8> font) -> FontKerning;
     auto        Empty() const -> bool;
     auto        UnitsPerEm() const -> rstd::uint32_t { return m_units_per_em; }
+    // How far apart Wallpaper Engine sets this font's lines at `size` pixels: the hhea line height
+    // rounded to whole pixels (as FreeType's size metrics have it); 0 without hhea.
+    auto LineHeight(double size) const -> double;
     auto        Pair(rstd::uint32_t left, rstd::uint32_t right) const -> rstd::int32_t;
 };
 class TextResources {
@@ -76,7 +81,7 @@ public:
     TextResources(vectext::FontCollection collection, AtlasOptions options = {});
     ~TextResources();
     auto RegisterFont(slice<u8> bytes) -> Result<vectext::FontSource, vectext::TextError>;
-    // The kerning of a font RegisterFont took, if it has any.
+    // The kerning (and line metrics) of a font RegisterFont took.
     auto Kerning(const vectext::FontSource& source) const -> const FontKerning*;
     auto Layout(vectext::TextRequest request) -> Result<vectext::TextLayout, vectext::TextError>;
     // `outline` > 0: the glyph's outline stroked that many pixels to either side with mitred
