@@ -190,7 +190,7 @@ auto TraceGlyph(const vectext::GlyphBitmap& glyph) -> Vec<Vec<OutlinePoint>> {
                 const int    a = k, b = (k + 1) % 4;
                 const double t  = (iso - v[a]) / (v[b] - v[a]);
                 const int    i0 = i + rstd::cmp::min(ci[a], ci[b]),
-                          j0    = j + rstd::cmp::min(cj[a], cj[b]);
+                             j0 = j + rstd::cmp::min(cj[a], cj[b]);
                 key             = (rstd::uint64_t(j0 * gw + i0) << 1) | (ci[a] == ci[b] ? 1u : 0u);
                 return { i + ci[a] + (ci[b] - ci[a]) * t - 0.5,
                          j + cj[a] + (cj[b] - cj[a]) * t - 0.5 };
@@ -345,8 +345,8 @@ auto StrokeGlyph(const vectext::GlyphBitmap& fine, int trace, double radius, dou
     -> vectext::GlyphBitmap {
     const double f = trace;
     // the glyph's corner in whole fine pixels
-    const auto ox = f64(fine.origin.x + 0.5).floor().to_primitive(),
-               oy = f64(fine.origin.y + 0.5).floor().to_primitive();
+    const auto             ox = f64(fine.origin.x + 0.5).floor().to_primitive(),
+                           oy = f64(fine.origin.y + 0.5).floor().to_primitive();
     Vec<Vec<OutlinePoint>> polygons;
     for (auto& traced : TraceGlyph(fine)) {
         // in the result's pixels
@@ -413,11 +413,11 @@ auto StrokeGlyph(const vectext::GlyphBitmap& fine, int trace, double radius, dou
             maxy = rstd::cmp::max(maxy, p.y);
         }
     // (a whole pixel's edge, give or take rounding, doesn't add a pixel)
-    constexpr double slack = 1e-3;
-    const int        x0    = int(f64(minx + slack).floor().to_primitive()),
-              y0           = int(f64(miny + slack).floor().to_primitive());
-    const int          w   = int(f64(maxx - slack).ceil().to_primitive()) - x0;
-    const int          h   = int(f64(maxy - slack).ceil().to_primitive()) - y0;
+    constexpr double   slack = 1e-3;
+    const int          x0    = int(f64(minx + slack).floor().to_primitive()),
+                       y0    = int(f64(miny + slack).floor().to_primitive());
+    const int          w     = int(f64(maxx - slack).ceil().to_primitive()) - x0;
+    const int          h     = int(f64(maxy - slack).ceil().to_primitive()) - y0;
     const int          fw = w * trace, fh = h * trace;
     Vec<unsigned char> stroke;
     stroke.resize(usize(fw * fh), static_cast<unsigned char>(0));
@@ -537,10 +537,10 @@ auto TextResources::Rasterize(const vectext::FontInstance& font, vectext::Index 
         return Err(vectext::TextError::InvalidValue);
     auto bits = rstd::mem::transmute<rstd::uint64_t>(scale);
     auto key  = outline > 0 ? rstd::format("{}:{}:{}:outline:{}",
-                                          font.id(),
-                                          glyph,
-                                          bits,
-                                          rstd::mem::transmute<rstd::uint64_t>(outline))
+                                           font.id(),
+                                           glyph,
+                                           bits,
+                                           rstd::mem::transmute<rstd::uint64_t>(outline))
                             : rstd::format("{}:{}:{}", font.id(), glyph, bits);
     if (auto cached = im.glyphs.get(key.as_str()); cached.is_some())
         return Ok(AtlasGlyph(**cached));
@@ -849,9 +849,9 @@ auto TextUniformSource::Evaluate(rstd::ref<rstd::dyn<UniformUpdateContext>>,
     };
 
     m_state->node->UpdateTrans();
-    const Eigen::Matrix4d model = (**m_state->camera).GetViewProjectionMatrix() *
-                                  m_state->node->ModelTrans() * m_state->node->GeometryTransform();
-    auto result = write(TextUniformOutput::ModelViewProjection, model);
+    const Eigen::Matrix4d model  = (**m_state->camera).GetViewProjectionMatrix() *
+                                   m_state->node->ModelTrans() * m_state->node->GeometryTransform();
+    auto                  result = write(TextUniformOutput::ModelViewProjection, model);
     if (result.is_err()) return result;
 
     if (! m_state->effect_projection) return rstd::Ok(rstd::empty {});
