@@ -642,6 +642,13 @@ void ParticleSubSystem::UpdateControlpoints(ParticleInstanceRef current) {
         auto&           controlpoint = m_controlpoints[index];
         Eigen::Vector3f angles { Eigen::Vector3f::Zero() };
         controlpoint.offset = controlpoint.base_offset;
+        // a worldspace control point's offset is a world position (particles-cp-worldspace)
+        if (controlpoint.worldspace) {
+            const Eigen::Vector3d& world = controlpoint.base_offset;
+            Eigen::Vector4d        local =
+                m_frame.local_from_world * Eigen::Vector4d(world.x(), world.y(), world.z(), 1.0);
+            controlpoint.offset = local.head<3>();
+        }
         if (m_instance_modifiers.is_some() && (*m_instance_modifiers).ControlpointsEnabled()) {
             const auto& position_override = (*m_instance_modifiers).Controlpoint(index);
             if (position_override.is_some()) {

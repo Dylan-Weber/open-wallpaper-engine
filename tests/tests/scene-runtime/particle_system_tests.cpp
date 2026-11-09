@@ -1129,7 +1129,10 @@ TEST(ParticleSubSystem, ResolvesWorldControlpointOverridesThroughOwnerTransform)
 
     auto resolved = subsystem.Controlpoints();
     EXPECT_TRUE(resolved[usize(1)].offset.isApprox(Eigen::Vector3d { 10.0, 10.0, 0.0 }));
-    EXPECT_TRUE(resolved[usize(2)].offset.isApprox(Eigen::Vector3d { 3.0, 4.0, 0.0 }));
+    // a worldspace control point's own offset is a world position too, override or not
+    // (particles-cp-worldspace: layers anywhere, at any scale, with offset 960 540 all reach the
+    // middle of the picture; thunderbolt's control point 1 "0 -450 0" points off the bottom left)
+    EXPECT_TRUE(resolved[usize(2)].offset.isApprox(Eigen::Vector3d { -48.5, -49.0, 0.0 }));
     EXPECT_TRUE(resolved[usize(3)].offset.isApprox(Eigen::Vector3d { 4.0, 6.0, 0.0 }));
 }
 
