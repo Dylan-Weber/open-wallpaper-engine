@@ -617,6 +617,8 @@ void BuildParticleObjectNode(ParticleObjectParseServices& services,
         if (! render_rope_trail)
             (void)shaderInfo.combos.insert(rstd::into(WE_CB_THICK_FORMAT), "1"_Str);
     }
+    // a plain rope blends each segment from one particle's colour to the next (particles-rope-color)
+    if (render_rope) (void)shaderInfo.combos.insert(rstd::into(WE_CB_THICK_FORMAT), "1"_Str);
     if (rope_shader) {
         i32 subdiv = rstd::as_cast<i32>(f32(wppartRenderer.subdivision).round().to_primitive());
         subdiv     = LimitRopeSubdivision(subdiv, services, particle_obj.material, shaderInfo);
@@ -663,7 +665,8 @@ void BuildParticleObjectNode(ParticleObjectParseServices& services,
     bool  hasSprite          = material.hasSprite;
     (void)hasSprite;
 
-    bool           thick_format = material.hasSprite || (hastrail && ! render_rope_trail);
+    bool           thick_format =
+        ParticleRendererThickFormat(wppartRenderer.name.as_str(), material.hasSprite);
     rstd::uint32_t trail_length = 0;
     if (render_rope_trail) {
         rstd::int32_t segments = wppartRenderer.segments.to_primitive();
