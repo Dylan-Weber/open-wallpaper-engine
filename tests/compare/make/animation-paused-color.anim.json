@@ -1,0 +1,233 @@
+{
+ "c0": [
+  {
+   "back": {
+    "enabled": true,
+    "magic": true,
+    "x": -0.75,
+    "y": -0.0
+   },
+   "frame": 0,
+   "front": {
+    "enabled": true,
+    "magic": true,
+    "x": 1,
+    "y": 0
+   },
+   "lockangle": true,
+   "locklength": true,
+   "value": 1
+  },
+  {
+   "back": {
+    "enabled": true,
+    "magic": true,
+    "x": -1,
+    "y": 0.058823999
+   },
+   "frame": 2,
+   "front": {
+    "enabled": true,
+    "magic": true,
+    "x": 1,
+    "y": -0.058823999
+   },
+   "lockangle": true,
+   "locklength": true,
+   "value": 0.41176471
+  },
+  {
+   "back": {
+    "enabled": true,
+    "magic": true,
+    "x": -1,
+    "y": -0.05882353
+   },
+   "frame": 4,
+   "front": {
+    "enabled": true,
+    "magic": true,
+    "x": 1,
+    "y": 0.05882353
+   },
+   "lockangle": true,
+   "locklength": true,
+   "value": 0.41176
+  },
+  {
+   "back": {
+    "enabled": true,
+    "magic": true,
+    "x": -1,
+    "y": -0.0
+   },
+   "frame": 6,
+   "front": {
+    "enabled": true,
+    "magic": true,
+    "x": 0.75,
+    "y": 0
+   },
+   "lockangle": true,
+   "locklength": true,
+   "value": 1
+  }
+ ],
+ "c1": [
+  {
+   "back": {
+    "enabled": true,
+    "magic": true,
+    "x": -0.75,
+    "y": -0.0
+   },
+   "frame": 0,
+   "front": {
+    "enabled": true,
+    "magic": true,
+    "x": 1,
+    "y": 0
+   },
+   "lockangle": true,
+   "locklength": true,
+   "value": 1
+  },
+  {
+   "back": {
+    "enabled": true,
+    "magic": true,
+    "x": -1,
+    "y": 0.058823999
+   },
+   "frame": 2,
+   "front": {
+    "enabled": true,
+    "magic": true,
+    "x": 1,
+    "y": -0.058823999
+   },
+   "lockangle": true,
+   "locklength": true,
+   "value": 0.41176471
+  },
+  {
+   "back": {
+    "enabled": true,
+    "magic": true,
+    "x": -1,
+    "y": -0.05882353
+   },
+   "frame": 4,
+   "front": {
+    "enabled": true,
+    "magic": true,
+    "x": 1,
+    "y": 0.05882353
+   },
+   "lockangle": true,
+   "locklength": true,
+   "value": 0.41176
+  },
+  {
+   "back": {
+    "enabled": true,
+    "magic": true,
+    "x": -1,
+    "y": -0.0
+   },
+   "frame": 6,
+   "front": {
+    "enabled": true,
+    "magic": true,
+    "x": 0.75,
+    "y": 0
+   },
+   "lockangle": true,
+   "locklength": true,
+   "value": 1
+  }
+ ],
+ "c2": [
+  {
+   "back": {
+    "enabled": true,
+    "magic": true,
+    "x": -0.75,
+    "y": -0.0
+   },
+   "frame": 0,
+   "front": {
+    "enabled": true,
+    "magic": true,
+    "x": 1,
+    "y": 0
+   },
+   "lockangle": true,
+   "locklength": true,
+   "value": 1
+  },
+  {
+   "back": {
+    "enabled": true,
+    "magic": true,
+    "x": -1,
+    "y": 0.058823999
+   },
+   "frame": 2,
+   "front": {
+    "enabled": true,
+    "magic": true,
+    "x": 1,
+    "y": -0.058823999
+   },
+   "lockangle": true,
+   "locklength": true,
+   "value": 0.41176471
+  },
+  {
+   "back": {
+    "enabled": true,
+    "magic": true,
+    "x": -1,
+    "y": -0.05882353
+   },
+   "frame": 4,
+   "front": {
+    "enabled": true,
+    "magic": true,
+    "x": 1,
+    "y": 0.05882353
+   },
+   "lockangle": true,
+   "locklength": true,
+   "value": 0.41176
+  },
+  {
+   "back": {
+    "enabled": true,
+    "magic": true,
+    "x": -1,
+    "y": -0.0
+   },
+   "frame": 6,
+   "front": {
+    "enabled": true,
+    "magic": true,
+    "x": 0.75,
+    "y": 0
+   },
+   "lockangle": true,
+   "locklength": true,
+   "value": 1
+  }
+ ],
+ "options": {
+  "fps": 30,
+  "length": 6,
+  "mode": "single",
+  "name": "fade",
+  "smoothing": 0,
+  "startpaused": true,
+  "wraploop": null
+ }
+}

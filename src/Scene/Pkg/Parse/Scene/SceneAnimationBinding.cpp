@@ -69,7 +69,8 @@ SceneAnimationCurve BuildSceneAnimationCurve(const owe::wpscene::AnimCurve& curv
         .c0       = ToSceneAnimationAxis(curve.c0.as_slice()),
         .c1       = ToSceneAnimationAxis(curve.c1.as_slice()),
         .c2       = ToSceneAnimationAxis(curve.c2.as_slice()),
-        .relative = curve.relative,
+        .relative     = curve.relative,
+        .relative_key = curve.relative_key,
     };
 }
 

@@ -1011,6 +1011,8 @@ float SceneAnimationTrack::EvaluateLayerScalar(float value) const {
 }
 
 Eigen::Vector3f SceneAnimationTrack::EvaluateLayerVec3(const Eigen::Vector3f& value) const {
+    // without a "relative" key the curve is absolute (`relative` reads false) and replaces the value
+    if (! curve->relative_key) return curve->EvaluateVec3(value, playback->Sample());
     return value + curve->EvaluateVec3(Eigen::Vector3f::Zero(), playback->Sample());
 }
 

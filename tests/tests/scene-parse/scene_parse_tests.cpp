@@ -2885,3 +2885,67 @@ TEST(AnimationParsing, ALightsAnimationsFollowRelative) {
     EXPECT_FLOAT_EQ(absolute->Color().x(), 0.5f);
     EXPECT_FLOAT_EQ(relative->Color().x(), 0.75f);
 }
+
+// Measured with animation-color-relative and animation-vector-relative: a layer's vector animation
+// (origin, scale, angles, colour) is added to the value only when the curve has a "relative" key,
+// true or false; without one it takes the place of the value (OoT's ocarina buttons, whose colour
+// animation has no key, stay at the animation's 1 where adding gave 2).
+TEST(AnimationParsing, AVectorAnimationWithoutARelativeKeyReplacesTheValue) {
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {},
+            "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+            "objects": [
+                {"id": 1, "name": "origin", "image": "models/util/solidlayer.json", "size": "100 100",
+                 "visible": true, "origin": {"value": "0 400 0", "animation": {
+                     "c0": [{"frame": 0, "value": 300}, {"frame": 6, "value": 300}],
+                     "c1": [{"frame": 0, "value": 600}, {"frame": 6, "value": 600}],
+                     "c2": [{"frame": 0, "value": 0}, {"frame": 6, "value": 0}],
+                     "options": {"fps": 30, "length": 6, "mode": "single"}}}},
+                {"id": 2, "name": "colour", "image": "models/util/solidlayer.json", "size": "100 100",
+                 "visible": true, "color": {"value": "0 0.5 0", "animation": {
+                     "c0": [{"frame": 0, "value": 0}, {"frame": 6, "value": 0}],
+                     "c1": [{"frame": 0, "value": 0}, {"frame": 6, "value": 0}],
+                     "c2": [{"frame": 0, "value": 0.5}, {"frame": 6, "value": 0.5}],
+                     "options": {"fps": 30, "length": 6, "mode": "single", "startpaused": true}}}},
+                {"id": 3, "name": "colour with key", "image": "models/util/solidlayer.json",
+                 "size": "100 100", "visible": true, "color": {"value": "0 0.5 0", "animation": {
+                     "c0": [{"frame": 0, "value": 0}, {"frame": 6, "value": 0}],
+                     "c1": [{"frame": 0, "value": 0}, {"frame": 6, "value": 0}],
+                     "c2": [{"frame": 0, "value": 0.5}, {"frame": 6, "value": 0.5}],
+                     "options": {"fps": 30, "length": 6, "mode": "single"}, "relative": false}}}
+            ]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, std::move(assets).unwrap_unchecked()).is_ok());
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "animation-relative-key"_str,
+        rstd::ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        rstd::mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        rstd::mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+    scene.scene->Runtime().Advance(rstd::f64(1.0));
+    scene.scene->TickNodeFieldAnimations();
+
+    auto node = [&](rstd::ref<rstd::str> name) {
+        return scene.scene->RootMut()->FindByName(name);
+    };
+    ASSERT_NE(node("origin"_str), nullptr);
+    ASSERT_NE(node("colour"_str), nullptr);
+    ASSERT_NE(node("colour with key"_str), nullptr);
+    EXPECT_FLOAT_EQ(node("origin"_str)->Translate().x(), 300.0f);
+    EXPECT_FLOAT_EQ(node("origin"_str)->Translate().y(), 600.0f);
+    EXPECT_FLOAT_EQ(node("colour"_str)->Color().y(), 0.0f);
+    EXPECT_FLOAT_EQ(node("colour"_str)->Color().z(), 0.5f);
+    EXPECT_FLOAT_EQ(node("colour with key"_str)->Color().y(), 0.5f);
+    EXPECT_FLOAT_EQ(node("colour with key"_str)->Color().z(), 0.5f);
+}
