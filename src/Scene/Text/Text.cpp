@@ -478,9 +478,12 @@ auto TextAnchorOffset(ref<str> horizontal, ref<str> vertical, float width, float
     array<float, 2> offset { 0.0f, 0.0f };
     if (horizontal->contains("left"_str)) offset[usize(0)] += width * 0.5f;
     if (horizontal->contains("right"_str)) offset[usize(0)] -= width * 0.5f;
-    if (vertical->contains("top"_str)) offset[usize(1)] -= height * 0.5f;
-    else if (vertical->contains("bottom"_str)) offset[usize(1)] += height * 0.5f;
-    else offset[usize(1)] -= descent * 0.5f;
+    if (vertical->contains("top"_str))
+        offset[usize(1)] -= height * 0.5f;
+    else if (vertical->contains("bottom"_str))
+        offset[usize(1)] += height * 0.5f;
+    else
+        offset[usize(1)] -= descent * 0.5f;
     return offset;
 }
 
@@ -605,7 +608,7 @@ struct TextLayouter::Impl {
         measured.padding         = style.padding;
         if (! output.lines().is_empty())
             measured.descent = float(output.lines()[output.lines().len() - usize(1)].descent);
-        auto pages               = resources->Pages();
+        auto pages = resources->Pages();
         if (pages.is_empty()) return Err(vectext::TextError::Limit);
         if (style.opaquebackground) {
             auto pad = style.padding;

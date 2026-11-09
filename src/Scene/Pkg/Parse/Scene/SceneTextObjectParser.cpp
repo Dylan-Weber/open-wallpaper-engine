@@ -879,17 +879,16 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
         layer->SetSourceDraw(*sp_node);
     }
 
-    auto layer_hold = layer_node.clone();
-    auto apply_text_anchor =
-        Arc<dyn<Fn<void()>>>::make([layer_hold   = layer_hold.clone(),
-                                    anchor_state = anchor_state.clone()]() {
-            auto*      layer_ptr = layer_hold.as_ptr().as_raw_ptr();
+    auto layer_hold        = layer_node.clone();
+    auto apply_text_anchor = Arc<dyn<Fn<void()>>>::make(
+        [layer_hold = layer_hold.clone(), anchor_state = anchor_state.clone()]() {
+            auto* layer_ptr = layer_hold.as_ptr().as_raw_ptr();
             // measured: text-size, text-metrics
-            const auto anchor    = text::TextAnchorOffset(anchor_state->horizontal.as_str(),
-                                                       anchor_state->vertical.as_str(),
-                                                       anchor_state->width,
-                                                       anchor_state->height,
-                                                       anchor_state->descent);
+            const auto     anchor = text::TextAnchorOffset(anchor_state->horizontal.as_str(),
+                                                           anchor_state->vertical.as_str(),
+                                                           anchor_state->width,
+                                                           anchor_state->height,
+                                                           anchor_state->descent);
             const Vector3d offset(anchor[usize(0)], anchor[usize(1)], 0.0);
             // Alignment moves the text geometry, not the frame inherited by children.
             layer_ptr->SetGeometryTransform(Eigen::Affine3d(Eigen::Translation3d(offset)).matrix());
@@ -903,8 +902,8 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
          geometry_policy,
          direct_text,
          text_padding](text::TextLayoutMetrics metrics) {
-            auto* layer_ptr      = layer_hold.as_ptr().as_raw_ptr();
-            metrics.padding      = text_padding;
+            auto* layer_ptr       = layer_hold.as_ptr().as_raw_ptr();
+            metrics.padding       = text_padding;
             anchor_state->width   = metrics.text_width;
             anchor_state->height  = metrics.text_height;
             anchor_state->descent = metrics.descent;
