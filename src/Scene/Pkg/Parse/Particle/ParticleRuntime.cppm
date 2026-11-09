@@ -449,6 +449,8 @@ struct ParticleInstanceState {
     bool              death { false };
     bool              no_live_particle { false };
     bool              warmup_pending { true };
+    // the parent's periodic emission began a new on phase: the instantaneous emitters fire again
+    bool              restart_pending { false };
     Vec<EmitterState> emitters;
 
     auto Emitter(usize index) -> EmitterState& {
@@ -547,6 +549,9 @@ public:
     void AddInitializer(ParticleSpawnInstruction);
     void AddOperator(Box<dyn<particle::ParticleUpdateProgram>>);
     void AddChild(Box<ParticleSubSystem>);
+    // a periodic emitter began a new on phase: static children's instantaneous emitters fire again
+    // (particles-child-static)
+    void RestartStaticChildren();
 
     auto SchemaBuilder() noexcept -> particle::ParticleSchemaBuilder& { return m_schema_builder; }
     auto Attributes() const noexcept -> const ParticleAttributes& { return m_attributes; }
