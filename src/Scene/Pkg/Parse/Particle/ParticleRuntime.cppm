@@ -246,8 +246,6 @@ struct ParticleFrame {
     f64                      time {};
     f64                      delta {};
     f64                      emitter_delta {};
-    // the scene's step before the system's rate: none on the scene's first frame
-    f64                      scene_delta {};
     usize                    trail_sample_steps {};
     f64                      trail_sample_remainder {};
     bool                     world_space { false };

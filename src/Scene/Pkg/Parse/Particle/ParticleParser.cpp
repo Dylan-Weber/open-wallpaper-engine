@@ -909,15 +909,11 @@ struct MovementOperator {
     float                                                     drag {};
     Eigen::Vector3d                                           gravity;
     ParticleInstanceModifiers                                 modifiers;
-    particle::ParticleWriteIndex<particle::VelocityAttribute>        velocity;
-    particle::ParticleReadIndex<particle::LifetimeAttribute>        lifetime;
-    particle::ParticleReadIndex<particle::InitialLifetimeAttribute> initial_lifetime;
+    particle::ParticleWriteIndex<particle::VelocityAttribute> velocity;
 
     void Compile(particle::ParticleViewCompiler& compiler) {
         compiler.WriteBase(attributes.position);
-        velocity         = compiler.Write(attributes.velocity);
-        lifetime         = compiler.Read(attributes.lifetime);
-        initial_lifetime = compiler.Read(attributes.initial_lifetime);
+        velocity = compiler.Write(attributes.velocity);
     }
 
     void Update(particle::ParticleUpdateContext& context) {
@@ -928,18 +924,14 @@ struct MovementOperator {
         auto speed      = modifiers.Speed();
         // Wallpaper Engine (FUN_14023fbc0 case 1): gravity is added, the particle moves, then drag takes
         // min(drag dt2, 1) of the speed, dt2 being the frame-rate compensated step (particles-drag-step: a thrown
-        // particle stops at (speed / drag) x (1 + drag dt2) / (0.503, 0.818, 1) at 15, 30, 60 fps). A particle is not
-        // slowed in the frame it is born in (it has not aged yet): it goes one frame further.
-        const double keep      = 1.0 - rstd::cmp::min(double(drag) * context.delta2.to_primitive(), 1.0);
-        auto         lifetimes = context.view.Read(lifetime);
-        auto         initial   = context.view.Read(initial_lifetime);
+        // particle stops at speed / (drag x 0.503, 0.818, 1) at 15, 30, 60 fps).
+        const double keep = 1.0 - rstd::cmp::min(double(drag) * context.delta2.to_primitive(), 1.0);
         for (auto slot : context.slots) {
             const Eigen::Vector3d pulled =
                 velocities[slot.index].cast<double>() +
                 speed * (frame->world_space ? frame->local_from_world_dir * gravity : gravity) * delta;
             positions[slot.index] = (positions[slot.index].cast<double>() + pulled * delta).cast<float>();
-            const bool newborn     = lifetimes[slot.index] >= initial[slot.index];
-            velocities[slot.index] = (newborn ? pulled : pulled * keep).cast<float>();
+            velocities[slot.index] = (pulled * keep).cast<float>();
         }
     }
 };

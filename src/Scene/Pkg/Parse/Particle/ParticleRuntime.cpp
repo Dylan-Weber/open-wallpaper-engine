@@ -709,7 +709,6 @@ auto owe::ParticleOperatorStepsFor(u32 target_fps, f64 delta) -> particle::Parti
 void ParticleSubSystem::Advance(f64 frame_time, f64 child_frame_time, bool update_mesh) {
     m_time += frame_time;
     UpdateFrameInput(frame_time);
-    m_frame.scene_delta = child_frame_time;
     if (m_spawn_type == SpawnType::STATIC && System().InstanceCount() == usize()) {
         (void)System().CreateInstance();
         m_instance_states.emplace_back();
@@ -773,21 +772,18 @@ void ParticleSubSystem::Warmup(ParticleInstanceRef current, ref<dyn<rstd::any::A
     auto saved_time          = m_frame.time;
     auto saved_delta         = m_frame.delta;
     auto saved_emitter_delta = m_frame.emitter_delta;
-    auto saved_scene_delta   = m_frame.scene_delta;
     auto warmup_start = rstd::cmp::max(m_time.to_primitive() - m_start_time.to_primitive(), 0.0);
     for (u32 index {}; index < frame_count; ++index) {
         m_frame.time = f64(warmup_start + frame_time.to_primitive() *
                                               static_cast<double>((index + u32(1)).to_primitive()));
         m_frame.delta         = frame_time;
         m_frame.emitter_delta = frame_time;
-        m_frame.scene_delta   = frame_time;
         m_pending_child_deaths.clear();
         System().Advance(*current.instance, frame_ref, frame_time, m_frame.time);
     }
     m_frame.time          = saved_time;
     m_frame.delta         = saved_delta;
     m_frame.emitter_delta = saved_emitter_delta;
-    m_frame.scene_delta   = saved_scene_delta;
 }
 
 bool ParticleSubSystem::SyncPlayback() {
