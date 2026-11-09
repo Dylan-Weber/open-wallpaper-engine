@@ -912,9 +912,9 @@ auto LightUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
         const auto position  = transform.block<3, 1>(0, 3).cast<float>();
         auto       color     = light.color();
         if (node.IsColorOverridden()) color = node.Color() * light.desc().intensity;
-        positions[index * usize(3)]                = position.x();
-        positions[index * usize(3) + usize(1)]     = position.y();
-        positions[index * usize(3) + usize(2)]     = position.z();
+        positions[index * usize(3)]            = position.x();
+        positions[index * usize(3) + usize(1)] = position.y();
+        positions[index * usize(3) + usize(2)] = position.z();
         for (auto* colors : { &lighting_v1_colors_radius, &colors_radius }) {
             // The old arrays get the old kind of light only.
             if (colors == &colors_radius && ! light.desc().old_kind) continue;
@@ -923,7 +923,7 @@ auto LightUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
             (*colors)[index * usize(4) + usize(2)] = color.z();
             (*colors)[index * usize(4) + usize(3)] = light.radius();
         }
-        Eigen::Vector3d local_direction            = Eigen::Vector3d::UnitX();
+        Eigen::Vector3d local_direction = Eigen::Vector3d::UnitX();
         if (light.type() != SceneLightType::Spot) local_direction = -local_direction;
         const auto direction =
             (transform.block<3, 3>(0, 0) * local_direction).normalized().cast<float>();
@@ -1145,7 +1145,8 @@ auto ShadowUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
 
     bool  have_cascades {};
     usize next_slot {};
-    // the lights take the slots as LightUniformSource gives them: hidden ones (or in a hidden layer) take none
+    // the lights take the slots as LightUniformSource gives them: hidden ones (or in a hidden
+    // layer) take none
     for (const auto& light_ref : m_scene->Lights()) {
         const auto& light = *light_ref;
         if (light.node() == nullptr || ! light.runtimeVisible()) continue;
@@ -1158,9 +1159,9 @@ auto ShadowUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
         }
         if (! visible) continue;
         if (next_slot >= max_lights) break;
-        const usize slot  = next_slot;
-        next_slot         = next_slot + usize(1);
-        const auto  first = light.desc().shadow_view;
+        const usize slot = next_slot;
+        next_slot        = next_slot + usize(1);
+        const auto first = light.desc().shadow_view;
         if (first < i32()) continue;
         const auto view = usize(rstd::as_cast<rstd::size_t>(first.to_primitive()));
         if (light.type() == SceneLightType::Point) {
