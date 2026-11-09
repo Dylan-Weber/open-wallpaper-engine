@@ -536,6 +536,71 @@ TEST(TextLayouter, LettersAdvanceByWholePixels) {
     }
 }
 
+// Wallpaper Engine moves down a line by the font's line height rounded to whole pixels, where owe
+// (FreeType's size metrics) rounded its ascent and descent up each (text-composite-lines: DejaVu at
+// 20 points, lines 96.53 px apart in WE and 97.52 in owe: round(97.005) = 97 against 78 + 20).
+TEST(TextLayouter, LinesAreWholePixelsApart) {
+    auto source      = rstd::path::PathBuf::from(__FILE__ ""_str);
+    auto root        = source.as_path().parent().unwrap().parent().unwrap().parent().unwrap();
+    auto path        = rstd::path::PathBuf::from(root).join("fixtures/fonts/Bearings.ttf"_str);
+    auto bytes       = rstd::fs::read(path.as_path()).unwrap();
+    auto resources   = TextResources();
+    auto font_source = resources->RegisterFont(bytes.as_slice()).unwrap();
+    constexpr std::size_t                                                     peak_quads = 8;
+    const rstd::initializer_list<owe::SceneVertexArray::SceneVertexAttribute> attributes {
+        { .name = "a_Position"_Str, .type = owe::VertexType::FLOAT3 },
+        { .name = "a_TexCoord"_Str, .type = owe::VertexType::FLOAT2 },
+        { .name = "a_Color"_Str, .type = owe::VertexType::FLOAT4 },
+    };
+    auto mesh = Arc<owe::SceneMesh>::make();
+    mesh->AddVertexArray(owe::SceneVertexArray(attributes, rstd::usize(peak_quads * 4)));
+    mesh->AddIndexArray(owe::SceneIndexArray(rstd::usize(peak_quads * 6)));
+    owe::text::TextLayoutStyle style;
+    style.mesh_origin = owe::text::TextMeshOrigin::Layout;
+    style.halign      = "left"_Str;
+    // Bearings.ttf at 101 pixels: ascent 80.8, descent 20.2, no gap: a line height of 101, where
+    // the rounded-up ascent and descent make 81 + 21
+    owe::text::TextLayouter layouter(resources.clone(),
+                                     { .source = Some(font_source), .size = 101 },
+                                     mesh.clone(),
+                                     rstd::move(style),
+                                     peak_quads);
+    ASSERT_TRUE(layouter.SetText("L\nL\nL"_str).is_ok());
+    const auto& vertices = mesh->GetVertexArray(rstd::usize());
+    const auto  stride   = vertices.OneSize().to_primitive();
+    const auto  top      = [&](std::size_t quad) { return vertices.Data()[quad * 4 * stride + 1]; };
+    EXPECT_NEAR(top(0) - top(1), 101.0f, 0.01f);
+    EXPECT_NEAR(top(1) - top(2), 101.0f, 0.01f);
+    // and the text is shorter by what that takes off: 3 x 102 - 2
+    EXPECT_NEAR(layouter.Metrics().text_height, 304.0f, 0.01f);
+}
+
+// A text layer another layer samples (its _rt_imageLayerComposite: OoT's clock HUD's blend effect)
+// has a composite of its text's box, not of its authored size (text-composite-blend: in Wallpaper
+// Engine the sampled text starts at the composite's top left whatever the size, and lines wider or
+// taller than the size are not cut; owe centred the text in the authored 268 x 105 and clipped it).
+TEST(TextGeometry, ALinkedLayersCompositeIsItsTextsBox) {
+    const owe::text::TextGeometryPolicy policy {
+        .frame_width  = 268.0f,
+        .frame_height = 105.0f,
+        .frame_bound  = true,
+    };
+    const owe::text::TextLayoutMetrics short_text { .text_width = 60.0f, .text_height = 30.0f, .padding = 5.0f };
+    const auto small = owe::text::ResolveTextGeometry(policy, short_text);
+    EXPECT_FLOAT_EQ(small.rt_width, 70.0f);
+    EXPECT_FLOAT_EQ(small.rt_height, 40.0f);
+    const owe::text::TextLayoutMetrics long_text { .text_width = 400.0f, .text_height = 290.0f };
+    const auto big = owe::text::ResolveTextGeometry(policy, long_text);
+    EXPECT_FLOAT_EQ(big.rt_width, 400.0f);
+    EXPECT_FLOAT_EQ(big.rt_height, 290.0f);
+    // script-written text too (OoT's clock): not the spare room dynamic text gets
+    auto dynamic    = policy;
+    dynamic.dynamic = true;
+    const auto live = owe::text::ResolveTextGeometry(dynamic, short_text);
+    EXPECT_FLOAT_EQ(live.rt_width, 70.0f);
+    EXPECT_FLOAT_EQ(live.rt_height, 40.0f);
+}
+
 TEST(TextGeometry, DynamicEffectFollowsCurrentTextBounds) {
     const owe::text::TextGeometryPolicy policy {
         .frame_width  = 419.0f,

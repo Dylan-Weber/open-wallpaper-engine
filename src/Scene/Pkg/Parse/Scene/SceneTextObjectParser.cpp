@@ -89,6 +89,8 @@ struct TextRuntimeTargets {
     String                     camera_key;
     String                     composite;
     String                     effect_final;
+    // the link target of a layer another layer samples: as big as its composite
+    String                     link_target;
     bool                       has_effect { false };
     i32                        layer_w { 1 };
     i32                        layer_h { 1 };
@@ -101,6 +103,8 @@ struct TextRuntimeTargets {
         bool changed          = false;
         auto [next_w, next_h] = TextLayerExtent(geometry);
         changed |= scene->ResizeRenderTarget(composite.as_str(), next_w, next_h);
+        if (! link_target.is_empty())
+            changed |= scene->ResizeRenderTarget(link_target.as_str(), next_w, next_h);
         if (has_effect) {
             changed |= scene->ResizeRenderTarget(effect_final.as_str(), next_w, next_h);
         }
@@ -329,8 +333,10 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
     }
 
     text::TextLayoutStyle style;
-    style.mesh_origin =
-        direct_text ? text::TextMeshOrigin::Layout : text::TextMeshOrigin::InkBounds;
+    // A layer another layer samples is laid out in its line box, as Wallpaper Engine's composite
+    // holds it: from the line's top, not the ink's (text-composite-blend).
+    style.mesh_origin = direct_text || linked_source ? text::TextMeshOrigin::Layout
+                                                     : text::TextMeshOrigin::InkBounds;
     style.color                 = { obj.color[usize(0)], obj.color[usize(1)], obj.color[usize(2)] };
     style.alpha                 = direct_text ? 1.0f : obj.alpha;
     style.brightness            = obj.brightness;
@@ -438,7 +444,7 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
         .dynamic            = wants_dynamic_text,
         .has_effect         = has_text_effect,
         .frame_bound        = linked_source,
-        .preserve_text_bbox = has_bg || obj.copybackground,
+        .preserve_text_bbox = has_bg || obj.copybackground || linked_source,
     };
     const auto initial_geometry = text::ResolveTextGeometry(geometry_policy, layouter->Metrics());
     const auto [initial_layer_w, initial_layer_h] = TextLayerExtent(initial_geometry);
@@ -507,14 +513,12 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
         layer_node->CopyTrans(*sp_node.as_ptr());
         layer_node->SetSize({ initial_geometry.draw_width, initial_geometry.draw_height });
         if (linked_source) {
+            // the text's composite, not the authored size (text-composite-blend)
             const auto link_source = WallpaperLayerId { .value = obj.id };
-            const auto link_width =
-                rstd::cmp::max(i32(1), rstd::as_cast<i32>(f32(object_w).ceil().to_primitive()));
-            const auto link_height =
-                rstd::cmp::max(i32(1), rstd::as_cast<i32>(f32(object_h).ceil().to_primitive()));
             scene.RegisterLayerLinkSource(
-                link_source, *sp_node.as_ptr(), { link_width, link_height });
+                link_source, *sp_node.as_ptr(), { initial_layer_w, initial_layer_h });
             link_output = scene.EnsureLinkRenderTarget(link_source, *sp_node.as_ptr());
+            (*runtime_targets)->link_target = link_output.clone();
         }
 
         auto layer =
