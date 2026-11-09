@@ -2575,3 +2575,71 @@ TEST(ParticleSubSystem, BoidsTakesTwoHalfStepsAtFifteenFramesASecond) {
                                  u32(15));
     EXPECT_NEAR(alone.velocity[0].x(), 10.0 * (1.0 - step / 2.0) * (1.0 - step / 2.0), 1e-3);
 }
+
+// Emitter flag 4 makes emission periodic: on for minperiodicduration..maxperiodicduration, off
+// for minperiodicdelay..maxperiodicdelay, again and again; maxtoemitperperiod caps each on
+// phase, and a phase switch drops the rest of the frame (particles-emitter-periodic, GPU VM fps
+// 30: 1 s on and 1 s off repeat every 2.06 s, 1 on and 0.5 off every 1.55 s; at most 5 a period
+// gives 5 particles at the start of each; the keys without flag 4 change nothing). "delay" starts
+// the emitter that much later.
+TEST(ParticleEmitterTiming, PeriodicEmissionSwitchesOnAndOff) {
+    auto read = [](ref<str> json) {
+        owe::wpscene::Emitter emitter;
+        EXPECT_TRUE(emitter.FromJson(owe::ParseJson(json).unwrap()));
+        return owe::ParticleEmitterTiming::From(emitter);
+    };
+    auto periodic = read(
+        R"({"name":"boxrandom","rate":10,"flags":4,"minperiodicdelay":1,"maxperiodicdelay":1,"minperiodicduration":1,"maxperiodicduration":1})"_str);
+    EXPECT_TRUE(periodic.periodic);
+    auto unflagged = read(
+        R"({"name":"boxrandom","rate":10,"minperiodicdelay":1,"maxperiodicdelay":1,"minperiodicduration":1,"maxperiodicduration":1})"_str);
+    EXPECT_FALSE(unflagged.periodic);
+
+    // which of `frames` frames at 30 a second an emitter may emit in
+    auto run = [](const owe::ParticleEmitterTiming& timing, int frames) {
+        owe::ParticleInstanceState::EmitterState state;
+        Vec<bool>                                on;
+        for (int k = 0; k < frames; ++k)
+            on.push(owe::AdvanceEmitterTiming(state, timing, 1.0 / 30.0));
+        return on;
+    };
+    // the frames the on phases start at
+    auto starts = [](const Vec<bool>& on) {
+        Vec<int> out;
+        for (usize k {}; k < on.len(); ++k)
+            if (on[k] && (k == usize() || ! on[k - usize(1)]))
+                out.push(rstd::as_cast<int>(k.to_primitive()));
+        return out;
+    };
+    auto cycle = starts(run(periodic, 200));
+    ASSERT_GE(cycle.len(), usize(3));
+    EXPECT_EQ(cycle[usize(0)], 0);
+    // 1 s on and 1 s off lose a frame at each switch: 62 frames, 2.07 s
+    EXPECT_NEAR(cycle[usize(1)] - cycle[usize(0)], 62, 1);
+    EXPECT_NEAR(cycle[usize(2)] - cycle[usize(1)], 62, 1);
+    auto half  = periodic;
+    half.min_delay = half.max_delay = 0.5f;
+    auto quick = starts(run(half, 200));
+    ASSERT_GE(quick.len(), usize(2));
+    EXPECT_NEAR(quick[usize(1)] - quick[usize(0)], 47, 1);
+    // no flag: always on
+    for (bool on : run(unflagged, 90)) EXPECT_TRUE(on);
+    // a start delay of 2 s
+    auto delayed = run(read(R"({"name":"boxrandom","rate":10,"delay":2})"_str), 90);
+    EXPECT_FALSE(delayed[usize(30)]);
+    EXPECT_FALSE(delayed[usize(58)]);
+    EXPECT_TRUE(delayed[usize(62)]);
+    EXPECT_TRUE(delayed[usize(89)]);
+
+    // at most 5 a period
+    auto capped           = periodic;
+    capped.max_per_period = u32(5);
+    owe::ParticleInstanceState::EmitterState state;
+    EXPECT_TRUE(owe::AdvanceEmitterTiming(state, capped, 1.0 / 30.0));
+    EXPECT_EQ(owe::EmitterTimingAllowance(state, capped, u32(3)), u32(3));
+    state.period_emitted = u32(3);
+    EXPECT_EQ(owe::EmitterTimingAllowance(state, capped, u32(3)), u32(2));
+    state.period_emitted = u32(5);
+    EXPECT_EQ(owe::EmitterTimingAllowance(state, capped, u32(3)), u32());
+    EXPECT_EQ(owe::EmitterTimingAllowance(state, periodic, u32(7)), u32(7));
+}

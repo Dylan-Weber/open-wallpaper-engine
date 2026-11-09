@@ -1,0 +1,6 @@
+{
+  "probe": true,
+  "fps": 30,
+  "shots": 20,
+  "shot_interval_ms": 150
+}

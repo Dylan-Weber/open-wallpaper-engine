@@ -64,6 +64,8 @@ public:
     enum class FlagEnum : rstd::uint32_t
     {
         one_per_frame = 1,
+        // 4: emit periodically (minperiodicduration.., minperiodicdelay.., maxtoemitperperiod)
+        periodic = 2,
     };
     using EFlags = BitFlags<FlagEnum>;
 
@@ -89,6 +91,11 @@ public:
     String          name;
     float           rate { 5.0f };
     float           duration { 0.0f };
+    float           delay { 0.0f };
+    float           min_periodic_delay { 0.0f };
+    float           max_periodic_delay { 0.0f };
+    float           min_periodic_duration { 0.0f };
+    float           max_periodic_duration { 0.0f };
 };
 
 class ParticleChild;

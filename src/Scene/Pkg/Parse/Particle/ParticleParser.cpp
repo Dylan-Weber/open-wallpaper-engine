@@ -2527,6 +2527,7 @@ ParticleParser::GenEmitter(const wpscene::Emitter& wpe, ParticleSubSystem& subsy
         box.min_speed      = wpe.speedmin;
         box.max_speed      = wpe.speedmax;
         box.duration       = wpe.duration;
+        box.timing         = ParticleEmitterTiming::From(wpe);
         box.controlpoint   = wpe.controlpoint;
         box.audio_response = audio_response;
         return Box<dyn<particle::ParticleEmitterProgram>>::make(
@@ -2555,6 +2556,7 @@ ParticleParser::GenEmitter(const wpscene::Emitter& wpe, ParticleSubSystem& subsy
         sphere.min_speed      = wpe.speedmin;
         sphere.max_speed      = wpe.speedmax;
         sphere.duration       = wpe.duration;
+        sphere.timing         = ParticleEmitterTiming::From(wpe);
         sphere.controlpoint   = wpe.controlpoint;
         sphere.audio_response = audio_response;
         return Box<dyn<particle::ParticleEmitterProgram>>::make(

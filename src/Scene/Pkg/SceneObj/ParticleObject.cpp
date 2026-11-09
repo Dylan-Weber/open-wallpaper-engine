@@ -133,6 +133,11 @@ auto Emitter::clone() const -> Emitter {
     out.flags               = flags;
     out.rate                = rate;
     out.duration            = duration;
+    out.delay                 = delay;
+    out.min_periodic_delay    = min_periodic_delay;
+    out.max_periodic_delay    = max_periodic_delay;
+    out.min_periodic_duration = min_periodic_duration;
+    out.max_periodic_duration = max_periodic_duration;
     return out;
 }
 
@@ -156,6 +161,11 @@ bool Emitter::FromJson(const owe::Json& json) {
     owe::GetJsonValue(json, "audiobounds"_str, audiobounds, false);
     owe::GetJsonValue(json, "controlpoint"_str, controlpoint, false);
     owe::GetJsonValue(json, "duration"_str, duration, false);
+    owe::GetJsonValue(json, "delay"_str, delay, false);
+    owe::GetJsonValue(json, "minperiodicdelay"_str, min_periodic_delay, false);
+    owe::GetJsonValue(json, "maxperiodicdelay"_str, max_periodic_delay, false);
+    owe::GetJsonValue(json, "minperiodicduration"_str, min_periodic_duration, false);
+    owe::GetJsonValue(json, "maxperiodicduration"_str, max_periodic_duration, false);
 
     if (controlpoint >= i32(8)) rstd_error("wrong controlpoint {}", controlpoint);
     controlpoint = controlpoint % i32(8); // limited to 0-7
