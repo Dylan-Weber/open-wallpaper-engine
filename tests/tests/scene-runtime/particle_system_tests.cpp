@@ -674,7 +674,7 @@ TEST(ParticleSubSystem, ConvertsWorldSpaceFollowAnchorsIntoChildLocalSpace) {
     parent.AddChild(rstd::move(child));
     parent.Finalize();
 
-    parent.Tick(f64(), false);
+    parent.Tick(f64(1.0 / 64.0), false);
 
     ASSERT_EQ(parent.System().InstanceCount(), usize(1));
     ASSERT_EQ(child_system->System().InstanceCount(), usize(1));
@@ -1263,62 +1263,6 @@ TEST(ParticleSubSystem, AppliesVortexAroundWorldSpaceOwner) {
     auto positions = subsystem.System().Instance(usize()).Binding().Read().Positions();
     ASSERT_EQ(positions.len(), usize(1));
     EXPECT_GT(std::abs(positions[usize()].z()), 0.01f);
-}
-
-// A frame of Wallpaper Engine's drag takes drag dt / (1 + (dt / 0.065)^2) of a particle's speed
-// (particles-drag-rest at 15, 30 and 60 frames a second: a particle thrown at drag/2 x D stops at
-// 0.51, 0.80 and 0.95 x D for drag 0.5 to 2, where a drag of exactly drag a second would say 1):
-// at 60 frames a second and drag 0.5 a frame takes 0.78%, so in 2 s a particle thrown at 200
-// has gone 200/60 (1 - r^120) / (1 - r) = 260 units and stops at 200/60 / 0.0078 = 426.
-TEST(ParticleSubSystem, DragSlowsEachFrameByItsLoss) {
-    owe::Scene             scene;
-    auto                   mesh = Arc<owe::SceneMesh>::make();
-    owe::ParticleSubSystem subsystem(scene,
-                                     mesh.clone(),
-                                     u32(1),
-                                     f64(),
-                                     u32(1),
-                                     f64(1.0),
-                                     owe::ParticleSubSystem::SpawnType::STATIC,
-                                     owe::ParticleAnimationSpec {},
-                                     {},
-                                     u32(),
-                                     f64(),
-                                     f64(),
-                                     true);
-    auto                   owner = rstd::sync::Arc<owe::SceneNode>::make(
-        Eigen::Vector3f::Zero(), Eigen::Vector3f::Ones(), Eigen::Vector3f::Zero());
-    auto override = rstd::sync::Arc<owe::wpscene::ParticleInstanceoverride>::make();
-    subsystem.SetOwnerNode(owner.as_ptr());
-    auto modifiers = owe::ParticleInstanceModifiers(
-        override.clone(), owe::wpscene::Particle::EFlags { 0 }, true);
-    subsystem.SetInstanceModifiers(modifiers.Clone());
-    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
-        owe::ParseJson(R"({"name":"lifetimerandom","min":1000,"max":1000})"_str).unwrap(), u32(1)));
-    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
-        owe::ParseJson(R"({"name":"velocityrandom","min":"200 0 0","max":"200 0 0"})"_str).unwrap(),
-        u32(2)));
-    subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
-        owe::BoxEmitterProgram(subsystem.SpawnPipeline(),
-                               owe::ParticleBoxEmitterArgs {
-                                   .instantaneous = u32(1),
-                               },
-                               usize())));
-    subsystem.AddOperator(owe::ParticleParser::GenOperator(
-        owe::ParseJson(R"({"name":"movement","drag":0.5,"gravity":"0 0 0"})"_str).unwrap(),
-        modifiers.Clone(),
-        subsystem,
-        usize()));
-    subsystem.Finalize();
-    for (int frame = 0; frame < 120; ++frame) subsystem.Tick(f64(1.0 / 60.0), false);
-
-    auto positions = subsystem.System().Instance(usize()).Binding().Read().Positions();
-    ASSERT_EQ(positions.len(), usize(1));
-    EXPECT_NEAR(positions[usize()].x(), 260.1f, 4.0f);
-    // ...and it stops at its speed over a frame's loss from the move before the slowing
-    for (int frame = 0; frame < 3000; ++frame) subsystem.Tick(f64(1.0 / 60.0), false);
-    const auto rest = subsystem.System().Instance(usize()).Binding().Read().Positions();
-    EXPECT_NEAR(rest[usize()].x(), 426.3f, 3.0f);
 }
 
 // capvelocity keeps a particle at or under maxspeed (particles-capvelocity: a stream thrown at 200
@@ -2202,7 +2146,7 @@ TEST(ParticleSubSystem, UsesEmitterPeriodLimitForImplicitControlpointSequenceCou
                                   },
                                   usize())));
     subsystem.Finalize();
-    subsystem.Tick(f64(), false);
+    subsystem.Tick(f64(1.0 / 60.0), false);
 
     auto positions = subsystem.System().Instance(usize()).Binding().Read().Positions();
     ASSERT_EQ(positions.len(), usize(4));
@@ -2715,12 +2659,11 @@ TEST(ParticleSubSystem, OperatorsRunOnceFromTwentyOneFramesASecond) {
     }
 }
 
-TEST(ParticleSubSystem, Dt2ComesFromTheTargetFrameTimeNotTheStep) {
-    // a 15 fps target with a longer step (speed, rate): two half steps, dt2 still scaled by 15
-    // fps's factor
+TEST(ParticleSubSystem, Dt2ComesFromTheStepAndThePassesFromTheTarget) {
+    // a 15 fps target with a longer step: two half steps (the target), dt2 scaled by the step's own rate (10 fps)
     auto trace = TraceOperators(u32(15), 0.1);
     ASSERT_EQ(trace.deltas.len(), usize(2));
-    EXPECT_NEAR(trace.deltas2[usize()], 0.05 * Dt2Scale(15.0), 1e-6);
+    EXPECT_NEAR(trace.deltas2[usize()], 0.05 * Dt2Scale(10.0), 1e-6);
     // without a target frame rate the step stands in for the frame time, in one pass
     auto unknown = TraceOperators(u32(), 1.0 / 15.0);
     ASSERT_EQ(unknown.deltas.len(), usize(1));
@@ -3160,4 +3103,272 @@ TEST(ParticleSubSystem, PeriodicEmissionRefiresItsOwnInstantaneousCount) {
     bool again = false;
     for (int k = 60; k < 72; ++k) again = again || lit[usize(k)];
     EXPECT_TRUE(again);
+}
+
+// capvelocity follows its blend window like the other operators (particles-operator-blend: capped at
+// 50 and blended in over 0.25..0.5 of a 4 s life, a stream keeps its 200 units/s for its first second
+// and slows after it): the velocity is moved that much of the way towards the capped one.
+TEST(ParticleSubSystem, CapVelocityWaitsForItsBlendWindow) {
+    auto speed_at = [](ref<str> cap, int frames) -> float {
+        owe::Scene             scene;
+        owe::ParticleSubSystem subsystem(scene,
+                                         Arc<owe::SceneMesh>::make(),
+                                         u32(1),
+                                         f64(1.0),
+                                         u32(1),
+                                         f64(1.0),
+                                         owe::ParticleSubSystem::SpawnType::STATIC,
+                                         owe::ParticleAnimationSpec {});
+        auto modifiers = owe::ParticleInstanceModifiers(
+            Arc<owe::wpscene::ParticleInstanceoverride>::make(),
+            owe::wpscene::Particle::EFlags { 0 },
+            false);
+        subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+            owe::ParseJson(R"({"name":"lifetimerandom","min":4,"max":4})"_str).unwrap(), u32(1)));
+        subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+            owe::ParseJson(R"({"name":"velocityrandom","min":"200 0 0","max":"200 0 0"})"_str)
+                .unwrap(),
+            u32(2)));
+        subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+            owe::BoxEmitterProgram(subsystem.SpawnPipeline(),
+                                   owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) },
+                                   usize())));
+        subsystem.AddOperator(owe::ParticleParser::GenOperator(
+            owe::ParseJson(cap).unwrap(), modifiers.Clone(), subsystem, usize()));
+        subsystem.Finalize();
+        for (int frame = 0; frame < frames; ++frame) subsystem.Tick(f64(1.0 / 30.0), false);
+        auto& storage = subsystem.System().Instance(usize()).Storage();
+        particle::ParticleSlotReader value(storage, particle::ParticleSlot {});
+        return value.Read(subsystem.Attributes().velocity).norm();
+    };
+    const auto window = R"({"name":"capvelocity","maxspeed":100,"blendinstart":0.25,"blendinend":0.5})"_str;
+    EXPECT_NEAR(speed_at(window, 27), 200.0f, 1e-3f);   // 0.9 s: before the window
+    EXPECT_NEAR(speed_at(window, 66), 100.0f, 1e-3f);   // 2.2 s: after it
+    const float halfway = speed_at(window, 45);          // 1.5 s: on the way
+    EXPECT_LT(halfway, 200.0f);
+    EXPECT_GT(halfway, 100.0f);
+    // thunderbolt's spawner: a step at 0.2 of the life
+    const auto step = R"({"name":"capvelocity","maxspeed":100,"blendinstart":0.2,"blendinend":0.2})"_str;
+    EXPECT_NEAR(speed_at(step, 20), 200.0f, 1e-3f);
+    EXPECT_NEAR(speed_at(step, 30), 100.0f, 1e-3f);
+    // no window: capped from the start
+    EXPECT_NEAR(speed_at(R"({"name":"capvelocity","maxspeed":100})"_str, 3), 100.0f, 1e-3f);
+}
+
+// movement, as Wallpaper Engine runs it (FUN_14023fbc0 case 1): gravity is added (v += g dt), the particle moves
+// (p += v dt), then drag takes min(drag dt2, 1) of the speed, dt2 = dt x min(0.025 / frame time, 1)^0.7.
+// particles-drag-rest: a thrown particle stops at 0.503, 0.818 and 1.0 x (speed / drag) at 15, 30 and 60 fps.
+static Eigen::Vector3f MovedVelocity(ref<str> movement, ref<str> velocity, int ticks, double tick,
+                                     Eigen::Vector3f* place = nullptr) {
+    owe::Scene             scene;
+    auto                   mesh = Arc<owe::SceneMesh>::make();
+    owe::ParticleSubSystem subsystem(scene,
+                                     mesh.clone(),
+                                     u32(1),
+                                     f64(1.0),
+                                     u32(1),
+                                     f64(1.0),
+                                     owe::ParticleSubSystem::SpawnType::STATIC,
+                                     owe::ParticleAnimationSpec {});
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"lifetimerandom","min":100,"max":100})"_str).unwrap(), u32(1)));
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(owe::ParseJson(velocity).unwrap(), u32(2)));
+    subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(owe::BoxEmitterProgram(
+        subsystem.SpawnPipeline(), owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) }, usize())));
+    subsystem.AddOperator(owe::ParticleParser::GenOperator(
+        owe::ParseJson(movement).unwrap(),
+        owe::ParticleInstanceModifiers(Arc<owe::wpscene::ParticleInstanceoverride>::make(),
+                                       owe::wpscene::Particle::EFlags { 0 },
+                                       false),
+        subsystem,
+        usize()));
+    subsystem.Finalize();
+    for (int count = 0; count < ticks; ++count) subsystem.Tick(f64(tick), false);
+    auto&                        storage = subsystem.System().Instance(usize()).Storage();
+    particle::ParticleSlotReader value(storage, particle::ParticleSlot {});
+    if (place) *place = value.Read(subsystem.Attributes().position);
+    return value.Read(subsystem.Attributes().velocity);
+}
+
+TEST(ParticleSubSystem, MovementDragTakesDragTimesTheCompensatedStep) {
+    auto thrown = R"({"name":"velocityrandom","min":"300 0 0","max":"300 0 0"})"_str;
+    // not slowed in the frame it is born in
+    EXPECT_NEAR(MovedVelocity(R"({"name":"movement","drag":2})"_str, thrown, 1, 1.0 / 30.0).x(), 300.0, 1e-3);
+    // 30 fps: then 1 - 2 x (1/30 x 0.81766) a frame
+    EXPECT_NEAR(MovedVelocity(R"({"name":"movement","drag":2})"_str, thrown, 2, 1.0 / 30.0).x(),
+                300.0 * (1.0 - 2.0 * (1.0 / 30.0) * 0.81766), 0.02);
+    // 60 fps: the whole step, 1 - 2/60 a frame
+    EXPECT_NEAR(MovedVelocity(R"({"name":"movement","drag":2})"_str, thrown, 3, 1.0 / 60.0).x(),
+                300.0 * (1.0 - 2.0 / 60.0) * (1.0 - 2.0 / 60.0), 0.02);
+}
+
+TEST(ParticleSubSystem, MovementMovesBeforeTheDragAndAddsGravityFirst) {
+    Eigen::Vector3f place;
+    auto            thrown = R"({"name":"velocityrandom","min":"300 0 0","max":"300 0 0"})"_str;
+    MovedVelocity(R"({"name":"movement","drag":2,"gravity":"0 -600 0"})"_str, thrown, 1, 1.0 / 60.0, &place);
+    EXPECT_NEAR(place.x(), 300.0 / 60.0, 1e-3);          // moved at the speed before the drag
+    EXPECT_NEAR(place.y(), -600.0 / 60.0 / 60.0, 1e-3);  // and with this frame's gravity already added
+}
+
+// The scene's first frame passes no time (owe advances the clock after drawing). Wallpaper Engine's first particle
+// frame is a whole step: a burst is born in it, moves at full speed and is only slowed from the next frame on
+// (particles-drag-step: thrown particles stop at (v / drag) x (1 + drag dt2) / g). So nothing is emitted in a step
+// with no time.
+TEST(ParticleSubSystem, EmitsNothingInAStepWithNoTime) {
+    owe::Scene             scene;
+    auto                   mesh = Arc<owe::SceneMesh>::make();
+    owe::ParticleSubSystem subsystem(scene,
+                                     mesh.clone(),
+                                     u32(1),
+                                     f64(1.0),
+                                     u32(1),
+                                     f64(1.0),
+                                     owe::ParticleSubSystem::SpawnType::STATIC,
+                                     owe::ParticleAnimationSpec {});
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"lifetimerandom","min":100,"max":100})"_str).unwrap(), u32(1)));
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"velocityrandom","min":"300 0 0","max":"300 0 0"})"_str).unwrap(), u32(2)));
+    subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(owe::BoxEmitterProgram(
+        subsystem.SpawnPipeline(), owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) }, usize())));
+    subsystem.AddOperator(owe::ParticleParser::GenOperator(
+        owe::ParseJson(R"({"name":"movement","drag":2})"_str).unwrap(),
+        owe::ParticleInstanceModifiers(Arc<owe::wpscene::ParticleInstanceoverride>::make(),
+                                       owe::wpscene::Particle::EFlags { 0 },
+                                       false),
+        subsystem,
+        usize()));
+    subsystem.Finalize();
+    subsystem.Tick(f64(), false);
+    EXPECT_EQ(LiveParticleCount(subsystem), usize());
+    subsystem.Tick(f64(1.0 / 30.0), false);
+    ASSERT_EQ(LiveParticleCount(subsystem), usize(1));
+    auto&                        storage = subsystem.System().Instance(usize()).Storage();
+    particle::ParticleSlotReader value(storage, particle::ParticleSlot {});
+    EXPECT_NEAR(value.Read(subsystem.Attributes().velocity).x(), 300.0f, 1e-3f); // born in the step: not slowed
+    EXPECT_NEAR(value.Read(subsystem.Attributes().position).x(), 10.0f, 1e-3f);  // and moved a whole step
+}
+
+// Wallpaper Engine compensates each frame by its own time, not the target frame rate's (particles-frametime-f15/-f30/
+// -f60: the stops of thrown particles follow the frame times its script recorded in the same run, at every rate).
+// A 33 ms frame at a 60 fps target is shortened like a 30 fps frame; the two passes still follow the target rate.
+TEST(ParticleSubSystem, CompensatedStepUsesTheFramesOwnTime) {
+    auto slow = owe::ParticleOperatorStepsFor(u32(60), f64(1.0 / 30.0));
+    EXPECT_NEAR(slow.delta2.unwrap().to_primitive(), (1.0 / 30.0) * 0.81766, 1e-5);
+    EXPECT_TRUE(slow.passes == u32(1));
+    auto quick = owe::ParticleOperatorStepsFor(u32(15), f64(1.0 / 60.0));
+    EXPECT_NEAR(quick.delta2.unwrap().to_primitive(), 1.0 / 60.0, 1e-6);
+    EXPECT_TRUE(quick.passes == u32(2));
+}
+
+// Wallpaper Engine's frame times in the particles-frametime-f60 and -f15 references (ms, printed by their script) and
+// where its thrown particles stopped in the same takes, x speed / drag, for drag 0.5, 1 and 2. owe given the same
+// frames stops them there too.
+static constexpr double kWeFrames60[] = {
+    0.1, 57.2, 16.4, 17.0, 16.0, 16.6, 16.4, 16.0, 16.0, 16.0, 16.0, 16.0,
+    16.0, 16.0, 16.6, 16.4, 16.0, 16.1, 15.9, 16.0, 16.0, 16.0, 16.0, 18.3,
+    16.3, 16.3, 16.0, 20.5, 16.5, 16.0, 16.0, 16.0, 16.0, 16.0, 16.0, 16.0,
+    16.0, 16.0, 16.0, 16.0, 19.1, 16.8, 16.0, 16.0, 15.0, 26.9, 15.1, 15.4,
+    29.6, 34.6, 27.9, 29.6, 14.5, 17.6, 29.0, 18.6, 16.5, 16.3, 16.0, 15.8,
+    16.3, 16.0, 17.0, 17.0, 17.0, 17.0, 17.2, 16.8, 17.0, 17.0, 17.0, 17.0,
+    17.0, 17.0, 18.2, 16.8, 17.0, 17.0, 17.0, 17.0, 17.0, 17.0, 17.0, 17.9,
+    17.9, 17.2, 17.0, 17.0, 17.0, 16.0, 17.0, 21.0, 15.2, 16.7, 17.0, 16.5,
+    17.5, 17.0, 20.2, 16.8, 16.0, 17.0, 17.0, 16.0, 16.0, 17.0, 18.8, 16.2,
+    16.0, 17.0, 16.0, 17.0, 13.0, 29.4, 30.1, 32.7, 29.3, 27.8, 16.7, 16.0,
+    16.0, 16.0, 16.0, 16.0, 16.0, 16.0, 16.0, 16.0, 16.5, 16.0, 17.0, 17.5,
+    16.5, 16.0, 16.0, 16.0, 16.0, 16.0, 16.1, 16.0, 16.0, 18.7, 16.3, 16.6,
+    16.4, 16.0, 16.0, 16.0, 26.9, 16.5, 17.8, 15.8, 16.0, 15.0, 15.0, 15.0,
+    16.0, 15.0, 16.0, 16.0, 16.0, 16.6, 15.4, 16.0, 15.0, 15.0, 16.0, 15.0,
+    16.0, 14.5, 30.0, 33.4, 30.3, 32.9, 28.9, 31.7, 32.5, 27.7, 15.5, 15.9,
+    16.7, 15.8, 32.9, 30.2, 29.8, 33.4, 14.5, 14.0, 15.0, 14.0, 15.0, 14.0,
+    15.0, 15.9, 14.1, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0,
+    14.0, 14.0, 14.0, 14.0, 14.0, 15.0, 14.0, 15.0, 17.9, 14.1, 14.0, 14.0,
+    14.0, 14.0, 14.0, 14.0, 14.0, 18.6, 13.4, 20.6, 24.5, 35.8, 13.5, 5.7,
+    5.7, 5.3, 5.0, 6.0, 22.5, 32.0, 31.3, 16.2, 16.0, 16.0, 16.0, 16.0,
+    16.0, 17.0, 16.0, 16.0, 16.0, 17.3, 16.7, 18.0, 16.0, 18.5, 16.5, 17.0,
+    16.0, 17.0, 16.0, 16.0, 16.0, 17.0, 16.0, 16.0, 16.0, 17.0, 16.0, 16.0,
+    17.0, 16.9, 16.1, 16.0, 17.0, 16.0, 17.0, 17.0, 17.0, 17.0, 17.0, 16.0,
+    16.0, 16.0, 16.0, 17.0, 16.0, 16.0, 16.0, 17.0, 17.0, 17.0, 16.0, 15.0,
+    16.0, 20.1, 12.9, 15.0, 16.0, 16.0, 17.0, 17.0, 17.0, 16.0, 17.0, 17.0,
+    16.0, 17.0, 16.0, 16.0, 16.0, 16.0, 17.0, 17.0, 17.0, 17.0, 17.0, 17.0,
+    16.0, 16.0, 17.0, 16.0, 16.0, 17.0, 17.0, 17.0, 17.0, 17.9, 16.1, 16.0,
+    17.0, 17.0, 17.0, 18.4, 16.6, 17.0, 17.0, 17.0, 17.0, 17.0, 17.0, 17.0,
+    16.0, 17.0, 17.0, 16.0, 16.0, 17.0, 17.8, 17.3, 17.0, 16.0, 16.0, 16.0,
+    16.0, 17.0, 15.0, 17.0, 17.0, 16.0, 18.8, 17.2, 17.0, 17.0, 17.0, 17.0,
+    17.0, 16.0, 17.0, 17.0, 16.0, 17.0, 17.0, 17.5, 16.5, 17.0, 17.0, 17.0,
+    16.0, 16.0, 16.0, 16.0, 16.0, 16.0, 16.0, 16.0, 16.0, 16.0, 17.0, 17.0,
+    16.0, 17.0, 17.0, 18.6, 16.4, 17.0, 16.0, 17.0, 17.0, 17.0, 16.0, 16.0,
+    17.0, 17.0, 19.7, 16.3,
+};
+static constexpr double kWeFrames15[] = {
+    0.1, 72.2, 70.8, 71.0, 71.0, 71.0, 71.0, 72.0, 71.0, 72.0, 71.0, 71.0,
+    72.0, 72.0, 71.0, 66.0, 67.0, 67.0, 67.0, 66.0, 67.0, 67.0, 66.0, 67.0,
+    67.0, 67.0, 66.0, 67.0, 67.0, 66.0, 67.0, 67.0, 66.0, 67.0, 66.0, 67.0,
+    67.0, 67.0, 67.0, 66.0, 66.0, 67.0, 67.0, 66.0, 67.0, 66.0, 67.0, 66.0,
+    67.0, 67.0, 67.0, 67.0, 67.0, 66.0, 67.0, 67.0, 66.0, 66.0, 67.0, 67.0,
+    67.0, 66.0, 67.0, 67.0, 66.0, 67.0, 67.0, 67.0, 66.0, 67.0, 67.0, 66.0,
+    67.0, 67.0, 66.0, 66.0, 67.0, 67.0, 66.0, 67.0, 67.0, 67.0, 67.0, 66.0,
+    67.0, 65.7, 67.0, 66.0, 67.0, 67.0, 67.0, 66.0, 66.0, 67.0, 67.0, 66.0,
+    67.0, 67.0, 67.0, 66.0, 67.0, 66.0, 67.0, 67.0, 67.0, 67.0, 66.0, 67.0,
+    66.0, 71.6, 66.4, 66.0, 66.0, 66.0, 66.0, 66.0, 66.0, 68.4, 65.6, 65.0,
+    66.0, 67.0, 67.2, 66.9, 66.0, 68.2, 65.8, 66.0, 67.0, 66.0, 67.0, 67.0,
+    67.0, 66.0, 67.0, 66.0, 67.0, 66.0, 67.0, 66.0, 67.0, 66.0, 67.0, 67.0,
+    67.0, 66.0, 67.0, 68.7, 66.3, 66.0, 67.0, 66.0, 68.0, 66.0, 67.0, 66.0,
+    66.0, 67.0, 67.0, 66.8, 66.2, 66.0, 67.0, 67.0, 67.0, 66.7, 66.3, 66.0,
+    66.0, 67.0, 68.2, 67.1, 66.7, 66.0, 66.0, 67.0, 67.0, 66.0, 67.0, 66.0,
+    66.4, 66.6, 66.0, 67.0, 67.3, 66.7, 67.2, 67.7, 66.2, 67.2, 66.8, 67.1,
+    67.4, 65.6, 65.1, 66.9, 67.0, 66.1, 66.0, 66.0, 67.0, 68.0, 67.6, 66.5,
+    67.8, 67.3, 66.3, 68.3, 66.3, 63.0, 66.0, 66.0, 67.0, 66.0, 66.0, 66.0,
+    67.9, 67.1, 67.0, 66.0, 67.0, 66.0, 67.0, 68.0, 66.0, 67.0, 66.0, 67.0,
+    67.0, 67.0, 67.0, 66.0,
+};
+
+static double ThrownStop(double drag, u32 target_fps, const double* frames, int count, double runtime) {
+    owe::Scene scene;
+    scene.SetTargetFps(target_fps);
+    auto                   mesh = Arc<owe::SceneMesh>::make();
+    owe::ParticleSubSystem subsystem(scene,
+                                     mesh.clone(),
+                                     u32(1),
+                                     f64(1.0),
+                                     u32(1),
+                                     f64(1.0),
+                                     owe::ParticleSubSystem::SpawnType::STATIC,
+                                     owe::ParticleAnimationSpec {});
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"lifetimerandom","min":100,"max":100})"_str).unwrap(), u32(1)));
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"velocityrandom","min":"100 0 0","max":"100 0 0"})"_str).unwrap(), u32(2)));
+    subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(owe::BoxEmitterProgram(
+        subsystem.SpawnPipeline(), owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) }, usize())));
+    auto movement = drag == 0.5   ? R"({"name":"movement","drag":0.5})"_str
+                    : drag == 1.0 ? R"({"name":"movement","drag":1})"_str
+                                  : R"({"name":"movement","drag":2})"_str;
+    subsystem.AddOperator(owe::ParticleParser::GenOperator(
+        owe::ParseJson(movement).unwrap(),
+        owe::ParticleInstanceModifiers(Arc<owe::wpscene::ParticleInstanceoverride>::make(),
+                                       owe::wpscene::Particle::EFlags { 0 },
+                                       false),
+        subsystem,
+        usize()));
+    subsystem.Finalize();
+    double time {};
+    for (int index = 0; index < count; ++index) {
+        subsystem.Tick(f64(frames[index] / 1000.0), false);
+        time += frames[index] / 1000.0;
+    }
+    const double rest = 1.0 / static_cast<double>(target_fps.to_primitive());
+    for (; time < runtime; time += rest) subsystem.Tick(f64(rest), false);
+    auto&                        storage = subsystem.System().Instance(usize()).Storage();
+    particle::ParticleSlotReader value(storage, particle::ParticleSlot {});
+    return value.Read(subsystem.Attributes().position).x() / (100.0 / drag);
+}
+
+TEST(ParticleSubSystem, ThrownParticlesStopWhereWallpaperEngineStoppedThemGivenItsFrames) {
+    EXPECT_NEAR(ThrownStop(0.5, u32(60), kWeFrames60, int(sizeof(kWeFrames60) / sizeof(double)), 15.417), 1.0291, 0.002);
+    EXPECT_NEAR(ThrownStop(1.0, u32(60), kWeFrames60, int(sizeof(kWeFrames60) / sizeof(double)), 15.417), 1.0392, 0.002);
+    EXPECT_NEAR(ThrownStop(2.0, u32(60), kWeFrames60, int(sizeof(kWeFrames60) / sizeof(double)), 15.417), 1.0584, 0.002);
+    EXPECT_NEAR(ThrownStop(0.5, u32(15), kWeFrames15, int(sizeof(kWeFrames15) / sizeof(double)), 15.463), 1.9674, 0.003);
+    EXPECT_NEAR(ThrownStop(1.0, u32(15), kWeFrames15, int(sizeof(kWeFrames15) / sizeof(double)), 15.463), 2.0235, 0.003);
+    EXPECT_NEAR(ThrownStop(2.0, u32(15), kWeFrames15, int(sizeof(kWeFrames15) / sizeof(double)), 15.463), 2.0469, 0.003);
 }

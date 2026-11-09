@@ -530,6 +530,8 @@ struct ParticleFrame {
     f64                         time {};
     f64                         delta {};
     f64                         emitter_delta {};
+    // the scene's step before the system's rate: none on the scene's first frame
+    f64                         scene_delta {};
     usize                       trail_sample_steps {};
     f64                         trail_sample_remainder {};
     bool                        world_space { false };
@@ -537,9 +539,8 @@ struct ParticleFrame {
 
 auto ParticleFrameFrom(ref<dyn<rstd::any::Any>>) -> ref<ParticleFrame>;
 
-// Wallpaper Engine's operator steps for a frame (FUN_140236cd0): dt2 = dt x min(0.025 / target
-// frame time, 1)^0.7, and at 1..20 target frames a second two operator passes. Without a target
-// frame rate (0) the step stands in for the frame time.
+// Wallpaper Engine's operator steps for a frame (FUN_140236cd0): dt2 = dt x min(0.025 / dt, 1)^0.7, dt being the
+// frame's own time (particles-frametime-f15/-f30/-f60), and at 1..20 target frames a second two operator passes.
 auto ParticleOperatorStepsFor(u32 target_fps, f64 delta) -> particle::ParticleOperatorSteps;
 
 struct ParticleSpawnColumns {
