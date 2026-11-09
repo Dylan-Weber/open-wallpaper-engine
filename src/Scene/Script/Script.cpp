@@ -2580,8 +2580,9 @@ JSValue NamedLayerSetFrame(JSContext* ctx, JSValueConst value, int argc, JSValue
 }
 
 // An animation layer's getAnimation returns undefined in Wallpaper Engine, whatever it is asked
-// (puppet-layer-getanimation): Ocarina of Time's getAnimationLayer("Surprise").getAnimation("surprise")
-// .isPlaying() throws, and Link keeps his angle.
+// (puppet-layer-getanimation): Ocarina of Time's
+// getAnimationLayer("Surprise").getAnimation("surprise") .isPlaying() throws, and Link keeps his
+// angle.
 JSValue NamedAnimationLayerGetAnimation(JSContext*, JSValueConst, int, JSValueConst*) {
     return JS_UNDEFINED;
 }

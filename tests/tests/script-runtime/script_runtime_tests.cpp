@@ -1303,10 +1303,11 @@ TEST(ScriptCursor, ClickRestartsNamedAnimationLayer) {
 }
 
 TEST(ScriptAnimationLayer, GetAnimationGivesNothing) {
-    // In Wallpaper Engine an animation layer has a getAnimation that returns undefined, whatever it is asked
-    // (puppet-layer-getanimation), and a layer's getAnimation(name) is undefined for a name no property animation
-    // has. Ocarina of Time's getAnimationLayer("Surprise").getAnimation("surprise").isPlaying() therefore throws, and
-    // Link keeps his angle.
+    // In Wallpaper Engine an animation layer has a getAnimation that returns undefined, whatever it
+    // is asked (puppet-layer-getanimation), and a layer's getAnimation(name) is undefined for a
+    // name no property animation has. Ocarina of Time's
+    // getAnimationLayer("Surprise").getAnimation("surprise").isPlaying() therefore throws, and Link
+    // keeps his angle.
     owe::SceneNode node;
     auto           clip     = Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {
         .name = String::make("Arona Drool"_str),
