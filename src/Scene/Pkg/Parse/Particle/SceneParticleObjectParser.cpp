@@ -312,6 +312,25 @@ Vec<LayerImagePoint> LayerImageLattice(const unsigned char* data, int width, int
     return points;
 }
 
+Vec<LayerImagePoint> SolidLayerLattice(int width, int height) {
+    constexpr int        block   = 4;
+    const int            block_x = width < block ? width : block;
+    const int            block_y = height < block ? height : block;
+    Vec<LayerImagePoint> points;
+    if (block_x <= 0 || block_y <= 0) return points;
+    for (int top {}; top + block_y <= height; top += block_y) {
+        for (int left {}; left + block_x <= width; left += block_x) {
+            points.push(LayerImagePoint {
+                .x = static_cast<float>(left) + static_cast<float>(block_x) * 0.5f -
+                     static_cast<float>(width) * 0.5f,
+                .y = static_cast<float>(height) * 0.5f - static_cast<float>(top) -
+                     static_cast<float>(block_y) * 0.5f,
+            });
+        }
+    }
+    return points;
+}
+
 // The lattice of a layer's texture (LayerImageLattice), for one stored as 8-bit colour with or
 // without alpha; None for a format not read (the layer then emits from its texture's rectangle).
 Option<Vec<LayerImagePoint>> LayerImagePixels(const TexImageParser& textures, ref<str> name,
@@ -388,6 +407,10 @@ Option<Arc<LayerImageSource>> BuildLayerImageSource(SceneParseContext& context, 
             texture_pixels = LayerImagePixels(textures, texture.as_str(), alpha);
         }
     }
+    // a solid layer (or one with no texture) emits from the lattice of its size
+    if (texture_pixels.is_none() && size[usize()] >= 1.0f && size[usize(1)] >= 1.0f)
+        texture_pixels = Some(
+            SolidLayerLattice(static_cast<int>(size[usize()]), static_cast<int>(size[usize(1)])));
     LayerImageSource source {
         .node        = (*(*node_ref)->node).clone(),
         .half_width  = size[usize()] * 0.5,
