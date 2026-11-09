@@ -919,15 +919,15 @@ auto LightUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
         if (index >= max_lights) break;
         // The newer interface leaves the old kind of light out; it takes none of the counts.
         const bool lighting_v1 = ! light.desc().old_kind && lit(light.type());
-        auto& node = *light.node();
+        auto&      node        = *light.node();
         node.UpdateTrans();
         const auto transform = node.ModelTrans();
         const auto position  = transform.block<3, 1>(0, 3).cast<float>();
         auto       color     = light.color();
         if (node.IsColorOverridden()) color = node.Color() * light.desc().intensity;
-        positions[index * usize(3)]                = position.x();
-        positions[index * usize(3) + usize(1)]     = position.y();
-        positions[index * usize(3) + usize(2)]     = position.z();
+        positions[index * usize(3)]            = position.x();
+        positions[index * usize(3) + usize(1)] = position.y();
+        positions[index * usize(3) + usize(2)] = position.z();
         for (auto* colors : { &lighting_v1_colors_radius, &colors_radius }) {
             // The old arrays get the old kind of light only.
             if (colors == &colors_radius && ! light.desc().old_kind) continue;
@@ -938,7 +938,7 @@ auto LightUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
             (*colors)[index * usize(4) + usize(2)] = color.z();
             (*colors)[index * usize(4) + usize(3)] = light.radius();
         }
-        Eigen::Vector3d local_direction            = Eigen::Vector3d::UnitX();
+        Eigen::Vector3d local_direction = Eigen::Vector3d::UnitX();
         if (light.type() != SceneLightType::Spot) local_direction = -local_direction;
         const auto direction =
             (transform.block<3, 3>(0, 0) * local_direction).normalized().cast<float>();
@@ -947,10 +947,10 @@ auto LightUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
         directions_type[index * usize(4) + usize(2)] = direction.z();
         directions_type[index * usize(4) + usize(3)] =
             lighting_v1 ? static_cast<float>(light.type()) : -1.0f;
-        cones_exponent[index * usize(4)]             = light.desc().inner_cone_cos;
-        cones_exponent[index * usize(4) + usize(1)]  = light.desc().outer_cone_cos;
-        cones_exponent[index * usize(4) + usize(2)]  = light.desc().exponent;
-        cast_shadow[index]                           = light.desc().cast_shadow ? 1.0f : 0.0f;
+        cones_exponent[index * usize(4)]            = light.desc().inner_cone_cos;
+        cones_exponent[index * usize(4) + usize(1)] = light.desc().outer_cone_cos;
+        cones_exponent[index * usize(4) + usize(2)] = light.desc().exponent;
+        cast_shadow[index]                          = light.desc().cast_shadow ? 1.0f : 0.0f;
         if (index < usize(3) && light.desc().old_kind) {
             const auto premultiplied = color * light.radius() * light.radius();
             for (usize component {}; component < usize(3); ++component) {
