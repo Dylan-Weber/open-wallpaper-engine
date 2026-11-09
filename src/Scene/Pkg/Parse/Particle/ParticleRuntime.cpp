@@ -333,6 +333,7 @@ void ParticleSpawnPipeline::Initialize(ParticleSpawnColumns&          columns,
                                        ref<dyn<rstd::any::Any>>       frame) {
     columns.randoms[request.slot.index] = Random::get(0.0f, 1.0f);
     for (auto& instruction : m_instructions) instruction.Initialize(columns, request, frame);
+    for (auto& instruction : m_last_instructions) instruction.Initialize(columns, request, frame);
     if (! m_world_space) return;
     auto            wp_frame = ParticleFrameFrom(frame);
     auto            index    = request.slot.index;
