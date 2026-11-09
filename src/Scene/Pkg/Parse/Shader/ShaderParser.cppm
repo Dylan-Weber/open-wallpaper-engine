@@ -235,6 +235,8 @@ public:
                                slice<ShaderTexInfo> texs, ShaderCache* cache = nullptr,
                                SceneLoadBenchRecorderView = {});
 
+    // the Lighting V1 functions `#require LightingV1` brings in
+    static auto LightingV1Source() -> ref<str>;
     static String PreShaderHeader(ref<str> src, const Combos& combos, ShaderType);
 
     static Combos ResolveShaderCombos(const ShaderInfo&, const Combos& input_combos);
