@@ -1471,6 +1471,7 @@ struct OscillatePositionOperator {
     array<FrequencyValue, 3>                                        frequencies;
     array<OscillationAttributes, 3>                                 state_attributes;
     array<OscillationIndices, 3>                                    states;
+    ParticleOperatorWindow                                          window;
     particle::ParticleReadIndex<particle::LifetimeAttribute>        lifetime;
     particle::ParticleReadIndex<particle::InitialLifetimeAttribute> initial_lifetime;
 
@@ -1502,6 +1503,8 @@ struct OscillatePositionOperator {
                 frequencies[component].GenFrequency(lifetimes[slot.index] > 0.0f, oscillator);
                 offset[raw] = frequencies[component].GetMove(oscillator, time, context.delta);
             }
+            if (! window.Always())
+                offset *= window.Weight(LifetimePosition(lifetimes[slot.index], initial[slot.index]));
             positions[slot.index] = (positions[slot.index].cast<double>() + offset).cast<float>();
         }
     }
@@ -1513,19 +1516,31 @@ struct TurbulenceOperator {
     ParticleInstanceModifiers                                 modifiers;
     double                                                    phase {};
     double                                                    speed {};
+    ParticleOperatorWindow                                    window;
     particle::ParticleWriteIndex<particle::VelocityAttribute> velocity;
+    particle::ParticleReadIndex<particle::LifetimeAttribute>  lifetime;
+    particle::ParticleReadIndex<particle::InitialLifetimeAttribute> initial_lifetime;
 
     void Compile(particle::ParticleViewCompiler& compiler) {
         compiler.ReadBase(attributes.position);
-        velocity = compiler.Write(attributes.velocity);
+        velocity         = compiler.Write(attributes.velocity);
+        lifetime         = compiler.Read(attributes.lifetime);
+        initial_lifetime = compiler.Read(attributes.initial_lifetime);
     }
 
     void Update(particle::ParticleUpdateContext& context) {
         auto frame      = ParticleFrameFrom(context.frame);
         auto positions  = context.view.Positions();
         auto velocities = context.view.Write(velocity);
+        auto lifetimes  = context.view.Read(lifetime);
+        auto initial    = context.view.Read(initial_lifetime);
         auto delta      = context.delta.to_primitive();
         for (auto slot : context.slots) {
+            const double weight =
+                window.Always()
+                    ? 1.0
+                    : window.Weight(LifetimePosition(lifetimes[slot.index], initial[slot.index]));
+            if (weight <= 0.0) continue;
             Eigen::Vector3d position = positions[slot.index].cast<double>();
             position.x() += phase + config.timescale * frame->time.to_primitive();
             Eigen::Vector3d result = speed * modifiers.Speed() *
@@ -1534,7 +1549,7 @@ struct TurbulenceOperator {
                 result[component.to_primitive()] *= config.mask[component];
             }
             velocities[slot.index] =
-                (velocities[slot.index].cast<double>() + result * delta).cast<float>();
+                (velocities[slot.index].cast<double>() + result * (delta * weight)).cast<float>();
         }
     }
 };
@@ -2382,6 +2397,7 @@ ParticleParser::GenOperator(const Json& wpj, ParticleInstanceModifiers modifiers
                         RegisterOscillationAttributes(subsystem, operator_index, "position_y"_str),
                         RegisterOscillationAttributes(subsystem, operator_index, "position_z"_str),
                     },
+                    .window = ParticleOperatorWindow::FromJson(wpj),
                 });
         } else if (name == "turbulence"_str) {
             auto config = Turbulence::ReadFromJson(wpj);
@@ -2391,6 +2407,7 @@ ParticleParser::GenOperator(const Json& wpj, ParticleInstanceModifiers modifiers
                 .modifiers  = modifiers.Clone(),
                 .phase      = Random::get(config.phasemin, config.phasemax),
                 .speed      = Random::get(config.speedmin, config.speedmax),
+                .window     = ParticleOperatorWindow::FromJson(wpj),
             });
         } else if (name == "vortex"_str) {
             return Box<dyn<particle::ParticleUpdateProgram>>::make(VortexOperator {
