@@ -182,16 +182,19 @@ struct MapSequenceBetweenControlPointsProgram {
     }
 };
 
-// the control point inputs, from a particle's position and the control points' (in the particles' space)
+// the control point inputs, from a particle's position and the control points' (in the particles'
+// space)
 inline auto RemapControlpointInput(const ParticleRemap& remap, const Eigen::Vector3d& position,
                                    const Eigen::Vector3d& first, const Eigen::Vector3d& second)
     -> Eigen::Vector3d {
     switch (remap.input) {
-    case ParticleRemap::Input::DistanceToControlPoint: return Eigen::Vector3d::Constant((position - first).norm());
+    case ParticleRemap::Input::DistanceToControlPoint:
+        return Eigen::Vector3d::Constant((position - first).norm());
     case ParticleRemap::Input::DeltaToControlPoint: return first - position;
     case ParticleRemap::Input::DirectionToControlPoint: {
         const Eigen::Vector3d delta = first - position;
-        return delta.norm() > 1e-12 ? Eigen::Vector3d(delta.normalized()) : Eigen::Vector3d(Eigen::Vector3d::Zero());
+        return delta.norm() > 1e-12 ? Eigen::Vector3d(delta.normalized())
+                                    : Eigen::Vector3d(Eigen::Vector3d::Zero());
     }
     case ParticleRemap::Input::PositionBetweenControlPoints: {
         const Eigen::Vector3d line = second - first;
@@ -203,10 +206,12 @@ inline auto RemapControlpointInput(const ParticleRemap& remap, const Eigen::Vect
 }
 
 // the values of remapvalue's inputs that don't come from the particle
-inline auto RemapFrameInput(const ParticleRemap& remap, const ParticleFrame& frame) -> Eigen::Vector3d {
+inline auto RemapFrameInput(const ParticleRemap& remap, const ParticleFrame& frame)
+    -> Eigen::Vector3d {
     switch (remap.input) {
     case ParticleRemap::Input::SystemTime:
-    case ParticleRemap::Input::LayerTime: return Eigen::Vector3d::Constant(frame.time.to_primitive());
+    case ParticleRemap::Input::LayerTime:
+        return Eigen::Vector3d::Constant(frame.time.to_primitive());
     case ParticleRemap::Input::Runtime:
         return Eigen::Vector3d::Constant(frame.subsystem->SceneRuntimeSeconds());
     case ParticleRemap::Input::TimeOfDay:
@@ -233,13 +238,16 @@ struct RemapInitialValueProgram {
         case ParticleRemap::Input::PositionBetweenControlPoints: {
             auto controlpoints = frame->subsystem->Controlpoints();
             input              = RemapControlpointInput(
-                remap, columns.positions[slot].cast<double>(),
+                remap,
+                columns.positions[slot].cast<double>(),
                 controlpoints[rstd::as_cast<usize>(remap.controlpoint)].offset,
                 controlpoints[rstd::as_cast<usize>(remap.controlpoint1)].offset);
             break;
         }
         case ParticleRemap::Input::Velocity: input = columns.velocities[slot].cast<double>(); break;
-        case ParticleRemap::Input::Opacity: input = Eigen::Vector3d::Constant(columns.alphas[slot]); break;
+        case ParticleRemap::Input::Opacity:
+            input = Eigen::Vector3d::Constant(columns.alphas[slot]);
+            break;
         case ParticleRemap::Input::Rotation:
             input = Eigen::Vector3d::Constant(columns.rotations[slot].z());
             break;
@@ -256,13 +264,15 @@ struct RemapInitialValueProgram {
             break;
         }
         case ParticleRemap::Output::Opacity: {
-            auto value = float(remap.Apply(Eigen::Vector3d::Constant(columns.alphas[slot]), input).x());
+            auto value =
+                float(remap.Apply(Eigen::Vector3d::Constant(columns.alphas[slot]), input).x());
             columns.alphas[slot]         = value;
             columns.initial_alphas[slot] = value;
             break;
         }
         case ParticleRemap::Output::Size: {
-            auto value = float(remap.Apply(Eigen::Vector3d::Constant(columns.sizes[slot]), input).x());
+            auto value =
+                float(remap.Apply(Eigen::Vector3d::Constant(columns.sizes[slot]), input).x());
             columns.sizes[slot]         = value;
             columns.initial_sizes[slot] = value;
             break;
@@ -568,7 +578,9 @@ void ParticleSpawnInstruction::Initialize(ParticleSpawnColumns&          columns
         RSTD_CASE(MapSequenceBetweenControlPoints, instruction) {
             instruction.Initialize(columns, request, frame);
         }
-        RSTD_CASE(RemapInitialValue, instruction) { instruction.Initialize(columns, request, frame); }
+        RSTD_CASE(RemapInitialValue, instruction) {
+            instruction.Initialize(columns, request, frame);
+        }
         RSTD_CASE(Override, instruction) { instruction.Initialize(columns, request, frame); }
     }
 }
@@ -596,7 +608,8 @@ ParticleSpawnInstruction ParticleParser::GenInitializer(const Json& wpj,
         } else if (name == "remapinitialvalue"_str) {
             auto remap = ParticleRemap::FromJson(wpj);
             if (remap.is_none()) break;
-            return ParticleSpawnInstruction::Make(RemapInitialValueProgram { .remap = rstd::move(*remap) });
+            return ParticleSpawnInstruction::Make(
+                RemapInitialValueProgram { .remap = rstd::move(*remap) });
         } else if (name == "lifetimerandom"_str) {
             SingleRandom r = { 0.0f, 1.0f };
             SingleRandom::ReadFromJson(wpj, r);
@@ -1506,8 +1519,10 @@ struct RemapValueOperator {
         rotation         = compiler.Read(attributes.rotation);
         angular_velocity = compiler.Read(attributes.angular_velocity);
         // the output attribute is written, so an input from the same attribute reads it there
-        if (remap.output != ParticleRemap::Output::Velocity) velocity = compiler.Read(attributes.velocity);
-        if (remap.output != ParticleRemap::Output::Opacity) input_alpha = compiler.Read(attributes.alpha);
+        if (remap.output != ParticleRemap::Output::Velocity)
+            velocity = compiler.Read(attributes.velocity);
+        if (remap.output != ParticleRemap::Output::Opacity)
+            input_alpha = compiler.Read(attributes.alpha);
         switch (remap.output) {
         case ParticleRemap::Output::Color: color = compiler.Write(attributes.color); break;
         case ParticleRemap::Output::Opacity: alpha = compiler.Write(attributes.alpha); break;
@@ -1519,16 +1534,18 @@ struct RemapValueOperator {
     }
 
     void Update(particle::ParticleUpdateContext& context) {
-        auto frame      = ParticleFrameFrom(context.frame);
-        auto positions  = context.view.Positions();
-        auto lifetimes  = context.view.Read(lifetime);
-        auto initial    = context.view.Read(initial_lifetime);
-        auto rotations  = context.view.Read(rotation);
-        auto spins      = context.view.Read(angular_velocity);
+        auto                  frame     = ParticleFrameFrom(context.frame);
+        auto                  positions = context.view.Positions();
+        auto                  lifetimes = context.view.Read(lifetime);
+        auto                  initial   = context.view.Read(initial_lifetime);
+        auto                  rotations = context.view.Read(rotation);
+        auto                  spins     = context.view.Read(angular_velocity);
         const Eigen::Vector3d center =
-            frame->subsystem->SimulationControlpoint(rstd::as_cast<usize>(remap.controlpoint)).center;
+            frame->subsystem->SimulationControlpoint(rstd::as_cast<usize>(remap.controlpoint))
+                .center;
         const Eigen::Vector3d center1 =
-            frame->subsystem->SimulationControlpoint(rstd::as_cast<usize>(remap.controlpoint1)).center;
+            frame->subsystem->SimulationControlpoint(rstd::as_cast<usize>(remap.controlpoint1))
+                .center;
         const Eigen::Vector3d frame_input = RemapFrameInput(remap, *frame);
         auto                  input       = [&](particle::ParticleSlot slot) -> Eigen::Vector3d {
             switch (remap.input) {
@@ -1539,11 +1556,14 @@ struct RemapValueOperator {
             case ParticleRemap::Input::DeltaToControlPoint:
             case ParticleRemap::Input::DirectionToControlPoint:
             case ParticleRemap::Input::PositionBetweenControlPoints:
-                return RemapControlpointInput(remap, positions[slot.index].cast<double>(), center, center1);
+                return RemapControlpointInput(
+                    remap, positions[slot.index].cast<double>(), center, center1);
             case ParticleRemap::Input::Velocity:
                 return remap.output == ParticleRemap::Output::Velocity
-                           ? Eigen::Vector3d(context.view.Write(output_velocity)[slot.index].cast<double>())
-                           : Eigen::Vector3d(context.view.Read(velocity)[slot.index].cast<double>());
+                           ? Eigen::Vector3d(
+                                 context.view.Write(output_velocity)[slot.index].cast<double>())
+                           : Eigen::Vector3d(
+                                 context.view.Read(velocity)[slot.index].cast<double>());
             case ParticleRemap::Input::Opacity:
                 return Eigen::Vector3d::Constant(remap.output == ParticleRemap::Output::Opacity
                                                      ? context.view.Write(alpha)[slot.index]
@@ -1566,19 +1586,20 @@ struct RemapValueOperator {
         case ParticleRemap::Output::Opacity: {
             auto values = context.view.Write(alpha);
             for (auto slot : context.slots)
-                values[slot.index] =
-                    float(remap.Apply(Eigen::Vector3d::Constant(values[slot.index]), input(slot)).x());
+                values[slot.index] = float(
+                    remap.Apply(Eigen::Vector3d::Constant(values[slot.index]), input(slot)).x());
             break;
         }
         case ParticleRemap::Output::Size: {
             auto values = context.view.Write(size);
             for (auto slot : context.slots)
-                values[slot.index] =
-                    float(remap.Apply(Eigen::Vector3d::Constant(values[slot.index]), input(slot)).x());
+                values[slot.index] = float(
+                    remap.Apply(Eigen::Vector3d::Constant(values[slot.index]), input(slot)).x());
             break;
         }
         case ParticleRemap::Output::Velocity: {
-            // added or taken each frame, whatever its length (particles-remap-velocity: add 0.01 gave 0.01 a frame)
+            // added or taken each frame, whatever its length (particles-remap-velocity: add 0.01
+            // gave 0.01 a frame)
             auto values = context.view.Write(output_velocity);
             for (auto slot : context.slots)
                 values[slot.index] =
