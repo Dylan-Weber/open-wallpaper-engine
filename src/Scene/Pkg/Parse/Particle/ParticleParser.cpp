@@ -2,6 +2,10 @@ module;
 
 #include <rstd/enum.hpp>
 
+#if defined(__SSE__)
+#    include <xmmintrin.h>
+#endif
+
 module wescene.pkg.parse;
 import eigen;
 import wescene.core;
@@ -1910,12 +1914,23 @@ struct InheritValueFromEventOperator {
     }
 };
 
-// maintaindistancebetweencontrolpoints (particles-maintain-between): along the axis from control point 0 to control point 1
-// a particle is held between them (clamped to the nearer end) and drifts towards control point 0 by an exponential
-// (about 1.08 % a second); its place across the axis does not change.
-struct MaintainDistanceBetweenOperator {
-    static constexpr double kDriftPerSecond = 0.0108;
+// The CPU's approximate reciprocal square root (rsqrtss: about 12 bits), which Wallpaper Engine normalises some
+// vectors with; without SSE, the exact one.
+static float ApproximateReciprocalSqrt(float value) {
+#if defined(__SSE__)
+    return _mm_cvtss_f32(_mm_rsqrt_ss(_mm_set_ss(value)));
+#else
+    return 1.0f / Eigen::numext::sqrt(value);
+#endif
+}
 
+// maintaindistancebetweencontrolpoints (particles-maintain-between, particles-maintain-drift): along the axis from
+// control point 0 to control point 1 a particle is held between them (clamped to the nearer end); its place across the
+// axis does not change. Wallpaper Engine normalises the axis with the approximate reciprocal square root and projects
+// with it, so every frame (not every second) the place along the axis is scaled by |axis|^2: 1 - 3.36e-4 for control
+// points 100, 200 or 400 apart, 1 - 1.45e-4 for 150 or 300, 1 + 4.2e-4 for a 45 degree axis 200 long (moving away
+// from control point 0).
+struct MaintainDistanceBetweenOperator {
     ParticleAttributes attributes;
 
     void Compile(particle::ParticleViewCompiler& compiler) { compiler.WriteBase(attributes.position); }
@@ -1928,12 +1943,13 @@ struct MaintainDistanceBetweenOperator {
         const Eigen::Vector3d span   = second - first;
         const double          length = span.norm();
         if (length <= 1e-9) return;
-        const Eigen::Vector3d axis  = span / length;
-        const double          decay = f64(-kDriftPerSecond * context.delta.to_primitive()).exp().to_primitive();
+        const Eigen::Vector3d axis   = span / length;
+        const Eigen::Vector3f approx = span.cast<float>() * ApproximateReciprocalSqrt(span.cast<float>().squaredNorm());
+        const double          scale  = approx.squaredNorm();
         for (auto slot : context.slots) {
             const Eigen::Vector3d relative = positions[slot.index].cast<double>() - first;
             const double          along    = relative.dot(axis);
-            const double          held     = rstd::cmp::min(rstd::cmp::max(along, 0.0), length) * decay;
+            const double          held     = rstd::cmp::min(rstd::cmp::max(along, 0.0), length) * scale;
             positions[slot.index]          = (first + relative + axis * (held - along)).cast<float>();
         }
     }
