@@ -646,7 +646,7 @@ struct TextLayouter::Impl {
             float       left = line_pen[usize(glyph.line)] +
                                float(glyph.position.x - line.logical.x + atlas.origin.x) -
                                measured.text_width / 2;
-            float top =
+            float       top =
                 measured.text_height / 2 - float(glyph.position.y - bounds.y + atlas.origin.y);
             float right  = left + float(atlas.width / atlas.scale),
                   bottom = top - float(atlas.height / atlas.scale);
