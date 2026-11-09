@@ -63,6 +63,11 @@ public:
     TextResources(vectext::FontCollection collection, AtlasOptions options = {});
     ~TextResources();
     auto RegisterFont(slice<u8> bytes) -> Result<vectext::FontSource, vectext::TextError>;
+    // A glyph's box in whole pixels as Wallpaper Engine's distance atlas has it: its hinted
+    // outline's control box at `size` pixels an em, grid-fitted (left, top, right, bottom; y down
+    // from the baseline). None for a font RegisterFont wasn't given.
+    auto HintedGlyphBox(const vectext::FontSource& font, vectext::Index glyph, double size)
+        -> Option<array<rstd::int32_t, 4>>;
     auto Layout(vectext::TextRequest request) -> Result<vectext::TextLayout, vectext::TextError>;
     // `outline` > 0: the glyph's outline stroked that many pixels to either side with mitred
     // corners, filled, for a text outline drawn behind it
