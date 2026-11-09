@@ -1320,3 +1320,29 @@ TEST(TextAtlas, AHintedGlyphsBoxIsInWholePixels) {
     // no box for a font it wasn't given
     EXPECT_TRUE(resources->HintedGlyphBox(vectext::FontSource { 99, 99 }, glyph, 100).is_none());
 }
+
+TEST(TextLayouter, AnOutlinedLetterOnAScaledLayerIsRasterisedAtItsScale) {
+    // Wallpaper Engine's outlined text stays sharp on a scaled layer (text-oot-clock: 7 points on
+    // a layer scaled 4): owe rasterises it `raster_scale` times finer, the quads keeping their size
+    // in layer units
+    auto layout = [](float raster_scale) {
+        auto                       mesh = Arc<owe::SceneMesh>::make();
+        owe::text::TextLayoutStyle style;
+        style.outline           = true;
+        style.outline_thickness = 2.0f;
+        style.raster_scale      = raster_scale;
+        owe::text::TextLayouter layouter(
+            TextResources(), TextFont(), mesh.clone(), rstd::move(style), 8);
+        EXPECT_TRUE(layouter.SetText("H"_str).is_ok());
+        const auto&  vertices = mesh->GetVertexArray(usize());
+        const auto   stride   = vertices.OneSize().to_primitive();
+        const auto   uv       = stride / 3;
+        const auto   first    = vertices.VertexCount().to_primitive() - 4; // the letter
+        const float* data     = vertices.Data();
+        return array<float, 2> { data[(first + 1) * stride] - data[first * stride],
+                                 data[(first + 1) * stride + uv] - data[first * stride + uv] };
+    };
+    const auto fine = layout(4.0f), plain = layout(1.0f);
+    EXPECT_NEAR(fine[usize()], plain[usize()], 1.0f);                   // the same width
+    EXPECT_NEAR(fine[usize(1)] / plain[usize(1)], 4.0f, 0.5f);          // four times the pixels
+}
