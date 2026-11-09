@@ -1364,3 +1364,72 @@ TEST(ParticleSubSystem, BoidsTakesTwoHalfStepsAtFifteenFramesASecond) {
                                  R"({"name":"velocityrandom","min":"10 0 0","max":"10 0 0"})"_str, u32(15));
     EXPECT_NEAR(alone.velocity[0].x(), 10.0 * (1.0 - step / 2.0) * (1.0 - step / 2.0), 1e-3);
 }
+
+// Wallpaper Engine's turbulence samples Gustavson's 3D simplex noise (F3 1/3, G3 1/6, falloff
+// 0.6 - r^2, times 32), with Ken Perlin's permutation and the 12 edge gradients, as read from
+// wallpaper64.exe (the noise object's tables at 0x1404833a0, 0x140483140/170, 0x1404835a0). The
+// expected values come from an independent implementation of the same algorithm.
+TEST(ParticleNoise, SimplexIsWallpaperEnginesNoise) {
+    EXPECT_NEAR(owe::algorism::SimplexNoise3(0.1, 0.2, 0.3), 0.635890368, 2e-5);
+    EXPECT_NEAR(owe::algorism::SimplexNoise3(1.5, -2.25, 0.75), 0.312508333, 2e-5);
+    EXPECT_NEAR(owe::algorism::SimplexNoise3(3.3, 4.4, -5.5), 0.658686337, 2e-5);
+    EXPECT_NEAR(owe::algorism::SimplexNoise3(-0.6, 0.0, 12.1), -0.845244011, 2e-5);
+    EXPECT_NEAR(owe::algorism::SimplexNoise3(31.0, 0.5, 0.25), 0.158448871, 2e-5);
+}
+
+// turbulence (operator case 14 of FUN_14023fbc0): the velocity gains n * mask * speed * dt2, n the
+// noise at (position + phase) * scale for x, and at the same point with its coordinates turned
+// (z x y) and (y z x) for y and z; not normalized. speed = speedmin + r (speedmax - speedmin) and
+// phase = r (phasemax - phasemin) + time * timescale, r a random number per particle.
+TEST(ParticleSubSystem, TurbulenceFollowsSimplexNoise) {
+    auto simulate = [](ref<str> config) -> Eigen::Vector3f {
+        owe::Scene             scene;
+        auto                   mesh = Arc<owe::SceneMesh>::make();
+        owe::ParticleSubSystem subsystem(scene,
+                                         mesh.clone(),
+                                         u32(1),
+                                         f64(1.0),
+                                         u32(1),
+                                         f64(1.0),
+                                         owe::ParticleSubSystem::SpawnType::STATIC,
+                                         owe::ParticleAnimationSpec {});
+        subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+            owe::ParseJson(R"({"name":"lifetimerandom","min":10,"max":10})"_str).unwrap(), u32(1)));
+        subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+            owe::BoxEmitterProgram(subsystem.SpawnPipeline(),
+                                   owe::ParticleBoxEmitterArgs {
+                                       .origin        = { 31.0f, 73.0f, 17.0f },
+                                       .instantaneous = u32(1),
+                                   },
+                                   usize())));
+        subsystem.AddOperator(owe::ParticleParser::GenOperator(
+            owe::ParseJson(config).unwrap(),
+            owe::ParticleInstanceModifiers(Arc<owe::wpscene::ParticleInstanceoverride>::make(),
+                                           owe::wpscene::Particle::EFlags { 0 },
+                                           false),
+            subsystem,
+            usize()));
+        subsystem.Finalize();
+        subsystem.Tick(f64(1.0 / 60.0), false);
+        auto&                        storage = subsystem.System().Instance(usize()).Storage();
+        particle::ParticleSlotReader value(storage, particle::ParticleSlot {});
+        return value.Read(subsystem.Attributes().velocity);
+    };
+    // the noise at the particle, (31 73 17) * 0.01, and turned
+    const Eigen::Vector3d n(owe::algorism::SimplexNoise3(0.31, 0.73, 0.17),
+                            owe::algorism::SimplexNoise3(0.17, 0.31, 0.73),
+                            owe::algorism::SimplexNoise3(0.73, 0.17, 0.31));
+    auto v = simulate(
+        R"({"name":"turbulence","mask":"1 1 1","speedmin":100,"speedmax":100,"scale":0.01,"timescale":0})"_str);
+    ASSERT_GT(v.norm(), 1e-6f);
+    EXPECT_TRUE(v.cast<double>().normalized().isApprox(n.normalized(), 1e-3));
+    // linear in speed, and not a unit vector times the speed
+    auto fast = simulate(
+        R"({"name":"turbulence","mask":"1 1 1","speedmin":300,"speedmax":300,"scale":0.01,"timescale":0})"_str);
+    EXPECT_NEAR(fast.norm() / v.norm(), 3.0f, 1e-3f);
+    auto x_only = simulate(
+        R"({"name":"turbulence","mask":"1 0 0","speedmin":100,"speedmax":100,"scale":0.01,"timescale":0})"_str);
+    EXPECT_FLOAT_EQ(x_only.y(), 0.0f);
+    EXPECT_NEAR(x_only.x(), v.x(), 1e-5f);
+    EXPECT_NEAR(v.norm() / v.x(), static_cast<float>(n.norm() / n.x()), 1e-3f);
+}
