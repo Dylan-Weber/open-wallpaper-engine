@@ -115,6 +115,7 @@ bool ParseAnimCurve(const owe::Json& json, AnimCurve& out) {
     if (auto value = json.get("options"_str); value.is_some())
         ParseAnimOptions(**value, out.options);
     owe::GetJsonValue(json, "relative"_str, out.relative, false);
+    out.relative_key = json.get("relative"_str).is_some();
     return true;
 }
 
@@ -124,7 +125,8 @@ auto AnimCurve::clone() const -> AnimCurve {
     result.c1       = c1.clone();
     result.c2       = c2.clone();
     result.options  = options.clone();
-    result.relative = relative;
+    result.relative     = relative;
+    result.relative_key = relative_key;
     return result;
 }
 
