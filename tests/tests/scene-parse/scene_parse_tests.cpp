@@ -3148,6 +3148,32 @@ TEST(SceneAssetPaths, ModelCameraAndClipRetainTheirReparseSemantics) {
     EXPECT_TRUE(clip.name.is_empty());
 }
 
+// Wallpaper Engine draws an image layer's texture 0.15 texel in from the quad's edges at each end, counted in the
+// texture's own texels (probes texture-uv-inset, -big and -size).
+TEST(LayerTexCoordInset, IsAFixedShareOfATextureTexel) {
+    auto inset = owe::LayerTexCoordInset(4.0f, 1.0f);
+    EXPECT_FLOAT_EQ(inset[rstd::usize(0)], 0.15f / 4.0f);
+    EXPECT_FLOAT_EQ(inset[rstd::usize(1)], 0.15f);
+    auto padded = owe::LayerTexCoordInset(128.0f, 32.0f);
+    EXPECT_FLOAT_EQ(padded[rstd::usize(0)], 0.15f / 128.0f);
+    EXPECT_FLOAT_EQ(padded[rstd::usize(1)], 0.15f / 32.0f);
+}
+
+TEST(LayerTexCoordInset, PutsTexelEdgesWhereWallpaperEngineDraws) {
+    // a 4-texel texture across a quad: Wallpaper Engine's texel edges at 0.919, 2.000 and 3.081 texels of the quad
+    auto       inset = owe::LayerTexCoordInset(4.0f, 4.0f)[rstd::usize(0)];
+    const auto edge  = [&](float u) { return (u - inset) / (1.0f - 2.0f * inset) * 4.0f; };
+    EXPECT_NEAR(edge(0.25f), 0.919f, 0.003f);
+    EXPECT_NEAR(edge(0.5f), 2.0f, 0.003f);
+    EXPECT_NEAR(edge(0.75f), 3.081f, 0.003f);
+}
+
+TEST(LayerTexCoordInset, NoneForAnEmptyTexture) {
+    auto inset = owe::LayerTexCoordInset(0.0f, 0.0f);
+    EXPECT_EQ(inset[rstd::usize(0)], 0.0f);
+    EXPECT_EQ(inset[rstd::usize(1)], 0.0f);
+}
+
 // As in Wallpaper Engine (model-depth-sorted): with the scene's transparentsorting, translucent
 // models write depth as their material says; without it they write none.
 TEST(ModelParsing, SortedTranslucentModelsWriteDepth) {
