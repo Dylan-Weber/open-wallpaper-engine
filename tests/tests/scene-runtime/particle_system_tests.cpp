@@ -1129,3 +1129,53 @@ TEST(ParticleInstanceModifiers, CloneRetainsReadOnlyBindingsAfterSourceReplaceme
     ASSERT_TRUE(binding->animation.is_some());
     EXPECT_FLOAT_EQ(binding->animation->c0[usize()].value, 7.0f);
 }
+
+// capvelocity follows its blend window like the other operators (particles-operator-blend: capped at
+// 50 and blended in over 0.25..0.5 of a 4 s life, a stream keeps its 200 units/s for its first second
+// and slows after it): the velocity is moved that much of the way towards the capped one.
+TEST(ParticleSubSystem, CapVelocityWaitsForItsBlendWindow) {
+    auto speed_at = [](ref<str> cap, int frames) -> float {
+        owe::Scene             scene;
+        owe::ParticleSubSystem subsystem(scene,
+                                         Arc<owe::SceneMesh>::make(),
+                                         u32(1),
+                                         f64(1.0),
+                                         u32(1),
+                                         f64(1.0),
+                                         owe::ParticleSubSystem::SpawnType::STATIC,
+                                         owe::ParticleAnimationSpec {});
+        auto modifiers = owe::ParticleInstanceModifiers(
+            Arc<owe::wpscene::ParticleInstanceoverride>::make(),
+            owe::wpscene::Particle::EFlags { 0 },
+            false);
+        subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+            owe::ParseJson(R"({"name":"lifetimerandom","min":4,"max":4})"_str).unwrap(), u32(1)));
+        subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+            owe::ParseJson(R"({"name":"velocityrandom","min":"200 0 0","max":"200 0 0"})"_str)
+                .unwrap(),
+            u32(2)));
+        subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(
+            owe::BoxEmitterProgram(subsystem.SpawnPipeline(),
+                                   owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) },
+                                   usize())));
+        subsystem.AddOperator(owe::ParticleParser::GenOperator(
+            owe::ParseJson(cap).unwrap(), modifiers.Clone(), subsystem, usize()));
+        subsystem.Finalize();
+        for (int frame = 0; frame < frames; ++frame) subsystem.Tick(f64(1.0 / 30.0), false);
+        auto& storage = subsystem.System().Instance(usize()).Storage();
+        particle::ParticleSlotReader value(storage, particle::ParticleSlot {});
+        return value.Read(subsystem.Attributes().velocity).norm();
+    };
+    const auto window = R"({"name":"capvelocity","maxspeed":100,"blendinstart":0.25,"blendinend":0.5})"_str;
+    EXPECT_NEAR(speed_at(window, 27), 200.0f, 1e-3f);   // 0.9 s: before the window
+    EXPECT_NEAR(speed_at(window, 66), 100.0f, 1e-3f);   // 2.2 s: after it
+    const float halfway = speed_at(window, 45);          // 1.5 s: on the way
+    EXPECT_LT(halfway, 200.0f);
+    EXPECT_GT(halfway, 100.0f);
+    // thunderbolt's spawner: a step at 0.2 of the life
+    const auto step = R"({"name":"capvelocity","maxspeed":100,"blendinstart":0.2,"blendinend":0.2})"_str;
+    EXPECT_NEAR(speed_at(step, 20), 200.0f, 1e-3f);
+    EXPECT_NEAR(speed_at(step, 30), 100.0f, 1e-3f);
+    // no window: capped from the start
+    EXPECT_NEAR(speed_at(R"({"name":"capvelocity","maxspeed":100})"_str, 3), 100.0f, 1e-3f);
+}

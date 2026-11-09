@@ -1389,20 +1389,35 @@ struct ControlPointAttractOperator {
 
 // capvelocity: no particle goes faster than maxspeed (particles-capvelocity).
 struct CapVelocityOperator {
-    ParticleAttributes                                        attributes;
-    double                                                    max_speed {};
-    particle::ParticleWriteIndex<particle::VelocityAttribute> velocity;
+    ParticleAttributes                                              attributes;
+    double                                                          max_speed {};
+    ParticleOperatorWindow                                          window;
+    particle::ParticleWriteIndex<particle::VelocityAttribute>       velocity;
+    particle::ParticleReadIndex<particle::LifetimeAttribute>        lifetime;
+    particle::ParticleReadIndex<particle::InitialLifetimeAttribute> initial_lifetime;
 
     void Compile(particle::ParticleViewCompiler& compiler) {
-        velocity = compiler.Write(attributes.velocity);
+        velocity         = compiler.Write(attributes.velocity);
+        lifetime         = compiler.Read(attributes.lifetime);
+        initial_lifetime = compiler.Read(attributes.initial_lifetime);
     }
 
     void Update(particle::ParticleUpdateContext& context) {
         auto velocities = context.view.Write(velocity);
+        auto lifetimes  = context.view.Read(lifetime);
+        auto initial    = context.view.Read(initial_lifetime);
         for (auto slot : context.slots) {
             const Eigen::Vector3d v     = velocities[slot.index].cast<double>();
             const double          speed = v.norm();
-            if (speed > max_speed) velocities[slot.index] = (v * (max_speed / speed)).cast<float>();
+            if (speed <= max_speed) continue;
+            // the window moves the velocity that much of the way to the capped one
+            const double weight =
+                window.Always()
+                    ? 1.0
+                    : window.Weight(LifetimePosition(lifetimes[slot.index], initial[slot.index]));
+            if (weight <= 0.0) continue;
+            const Eigen::Vector3d capped = v * (max_speed / speed);
+            velocities[slot.index]       = (v + (capped - v) * weight).cast<float>();
         }
     }
 };
@@ -1534,6 +1549,7 @@ ParticleParser::GenOperator(const Json& wpj, ParticleInstanceModifiers modifiers
             return Box<dyn<particle::ParticleUpdateProgram>>::make(CapVelocityOperator {
                 .attributes = attributes,
                 .max_speed  = rstd::cmp::max(0.0, double(max_speed)),
+                .window     = ParticleOperatorWindow::FromJson(wpj),
             });
         }
     } while (false);
