@@ -223,6 +223,38 @@ TEST(BonePhysics, NothingTurnsABoneWithoutGravityOrAlongItsTip) {
     EXPECT_NEAR(SettledTurn(100.0f, "1 0 0"), 0.0f, 1e-4f);
 }
 
+// Wallpaper Engine's solver (FUN_1401fdf90) takes the distance the tip moved, gravity's pull
+// included, as at most 900 scene units a second, so heavy bones hang alike: in
+// puppet-physics-hang the mass-100 and mass-200 tips rest at nearly the same angle, where a pull
+// without that limit keeps turning the tip further as the mass grows.
+TEST(BonePhysics, HeavyBonesHangAlike) {
+    EXPECT_LT(SettledTurn(400.0f, "0 -1 0") - SettledTurn(200.0f, "0 -1 0"), 0.15f);
+    EXPECT_LT(SettledTurn(400.0f, "0 -1 0"), 1.6f);
+    // lighter ones, whose pull is under the limit, are as before
+    EXPECT_NEAR(SettledTurn(50.0f, "0 -1 0"), 0.98f, 0.02f);
+}
+
+// The turn a step's movement gives: towards where the tip was, seen from the bone's place now
+// (a bone carried sideways turns as its tip trails), by how far the tip moved (at most 900 units
+// a second) x the inertia x pi / 180.
+TEST(BonePhysics, ACarriedTipMovesAtMostNineHundredUnitsASecond) {
+    const auto simulation = Parse(Settings(true, false));
+    const auto turn       = [&](float jump) {
+        owe::BonePhysics physics;
+        physics.Resize(usize(1));
+        const Eigen::Affine3f still = Eigen::Affine3f::Identity();
+        (void)physics.Apply(usize(), simulation, still, still, 1.0f / 30.0f);
+        const Eigen::Affine3f carried(Eigen::Translation3f(jump, 0.0f, 0.0f));
+        const auto turned = physics.Apply(usize(), simulation, carried, still, 1.0f / 30.0f);
+        return Eigen::AngleAxisf(Eigen::Quaternionf(turned.rotation())).angle();
+    };
+    const float degrees = 3.14159265f / 180.0f;
+    // the tip is 22 below the bone: carried 20 sideways it was atan(20 / 22) away
+    EXPECT_NEAR(turn(20.0f), 20.0f * 0.7f * degrees * std::atan(20.0f / 22.0f), 1e-3f);
+    // carried 100 in a thirtieth of a second, it moved as if 30
+    EXPECT_NEAR(turn(100.0f), 30.0f * 0.7f * degrees * std::atan(100.0f / 22.0f), 1e-3f);
+}
+
 TEST(Puppet, GravitySettlesABoneBelowItsPlace) {
     auto  puppet  = Arc<owe::Puppet>::make();
     auto& hanging = puppet->bones.emplace_back();
