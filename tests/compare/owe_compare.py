@@ -118,7 +118,8 @@ def labels_of(names):
 
 def default_jobs():
     """How many viewers render at once unless --jobs or WPE_TEST_JOBS says: a few (each has a memory cap of its own,
-    WPE_TEST_MEMORY, 3G), not every core."""
+    WPE_TEST_MEMORY, 6G: a heavy Workshop wallpaper
+    peaks near 6 GB), not every core."""
     return max(1, min(3, (os.cpu_count() or 2) // 2))
 
 
@@ -242,7 +243,7 @@ def render(name, size, viewer, frames=None, script_start=0.0, camera_path_delay=
     if frames is None:
         frames = settings_of(name).get('frames', REFERENCE_FRAMES)
     # in a memory cgroup of its own, so a viewer that runs away is killed, not the machine
-    capped = ['systemd-run', '--user', '--scope', '-q', '-p', 'MemoryMax=' + os.environ.get('WPE_TEST_MEMORY', '3G'),
+    capped = ['systemd-run', '--user', '--scope', '-q', '-p', 'MemoryMax=' + os.environ.get('WPE_TEST_MEMORY', '6G'),
               '-p', 'MemorySwapMax=0']
     os.makedirs(out, exist_ok=True)
     frame = os.path.join(out, 'frame.ppm')
@@ -505,7 +506,7 @@ def main():
     parser.add_argument('--no-render', action='store_true', help='compare the pictures of the last run again')
     parser.add_argument('--jobs', type=int, default=None,
                         help='how many viewers render at once (default %d, or WPE_TEST_JOBS); each has a memory cap of '
-                             'WPE_TEST_MEMORY (3G)' % default_jobs())
+                             'WPE_TEST_MEMORY (6G)' % default_jobs())
     args = parser.parse_args()
     if args.jobs:
         set_jobs(args.jobs)
