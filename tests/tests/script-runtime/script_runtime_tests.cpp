@@ -630,11 +630,16 @@ TEST(ScriptBonePhysics, ImpulsesAndResetsReachTheLayersBones) {
         JsRuntime::BoneIndexResolver::make([](owe::SceneNode*, ref<str> name) -> uint32_t {
             return name == "hair"_str ? 5 : 0;
         }),
-        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t { return 0; }),
+        JsRuntime::BoneCountResolver::make([](owe::SceneNode*) -> uint32_t {
+            return 0;
+        }),
         JsRuntime::BoneTransformResolver::make(
-            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTransformData> { return None(); }),
+            [](owe::SceneNode*, uint32_t, double) -> Option<BoneTransformData> {
+                return None();
+            }),
         JsRuntime::BoneSetTransformResolver::make(
-            [](owe::SceneNode*, uint32_t, const BoneTransformData&) {}));
+            [](owe::SceneNode*, uint32_t, const BoneTransformData&) {
+            }));
     rt.SetBonePhysicsHandler(JsRuntime::BonePhysicsHandler::make(
         [&requests](owe::SceneNode* target, const BonePhysicsRequest& request) {
             EXPECT_NE(target, nullptr);
