@@ -1120,11 +1120,12 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
             }
         }
 
-        if (NeedsEffectFinalPassthrough({ .linked_source           = is_linked_source,
-                                          .fullscreen              = wpimgobj.fullscreen,
-                                          .copybackground          = wpimgobj.copybackground,
-                                          .source_composites_final = passthrough_can_composite_final,
-                                          .last_effect_loaded      = last_effect_loaded })) {
+        if (NeedsEffectFinalPassthrough(
+                { .linked_source           = is_linked_source,
+                  .fullscreen              = wpimgobj.fullscreen,
+                  .copybackground          = wpimgobj.copybackground,
+                  .source_composites_final = passthrough_can_composite_final,
+                  .last_effect_loaded      = last_effect_loaded })) {
             wpscene::Material passthrough_mat;
             auto json = LoadJsonFile(vfs, "/assets/materials/util/effectpassthrough.json"_str);
             if (! json) {

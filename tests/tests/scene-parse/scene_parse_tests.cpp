@@ -2720,9 +2720,10 @@ TEST(SceneAssetPaths, ModelCameraAndClipRetainTheirReparseSemantics) {
     EXPECT_TRUE(clip.name.is_empty());
 }
 
-// Wallpaper Engine draws the last pass of a layer's last effect straight onto the scene, at the screen's resolution,
-// whatever its shader (probes effect-repeat-scaled and effect-pass-resolution): a passthrough of the layer's effect
-// target is only for a layer none of whose effects loaded.
+// Wallpaper Engine draws the last pass of a layer's last effect straight onto the scene, at the
+// screen's resolution, whatever its shader (probes effect-repeat-scaled and
+// effect-pass-resolution): a passthrough of the layer's effect target is only for a layer none of
+// whose effects loaded.
 TEST(EffectFinalPassthrough, NotNeededAfterAnyLoadedEffect) {
     EXPECT_FALSE(owe::NeedsEffectFinalPassthrough({ .last_effect_loaded = true }));
 }
