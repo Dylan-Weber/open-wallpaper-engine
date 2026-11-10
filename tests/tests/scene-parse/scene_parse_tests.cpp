@@ -3955,6 +3955,7 @@ TEST(AnimationParsing, AVectorAnimationWithoutARelativeKeyReplacesTheValue) {
     EXPECT_FLOAT_EQ(node("colour"_str)->Color().z(), 0.5f);
     EXPECT_FLOAT_EQ(node("colour with key"_str)->Color().y(), 0.5f);
     EXPECT_FLOAT_EQ(node("colour with key"_str)->Color().z(), 0.5f);
+}
 
 // Wallpaper Engine takes an image layer's "size" in whole units, rounded down (layer-size-fraction:
 // sizes 4 x 1.49 and 4 x 1.5 are drawn as 4 x 1; 4 x 0.99, 4 x 0.5 and 0.5 x 1 aren't drawn at all)
