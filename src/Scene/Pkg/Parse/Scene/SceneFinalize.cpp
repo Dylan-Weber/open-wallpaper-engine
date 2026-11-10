@@ -367,6 +367,18 @@ void FinalizeScene(SceneParseContext& context) {
                 if (node.is_none()) rstd_error("layer configuration is unsupported or unavailable");
                 return node;
             }));
+        // scripts' init runs here, before the first frame's inputs: engine.canvasSize is already
+        // the scene's projection (Wallpaper Engine's frame-time recorder places its cells from it
+        // in init)
+        {
+            script::FrameInputs inputs;
+            const auto          ortho = context.scene->Ortho();
+            inputs.canvas_w           = static_cast<float>(ortho[usize()].to_primitive());
+            inputs.canvas_h           = static_cast<float>(ortho[usize(1)].to_primitive());
+            inputs.screen_w           = inputs.canvas_w;
+            inputs.screen_h           = inputs.canvas_h;
+            runtime.SetFrameInputs(inputs);
+        }
         runtime.SetSceneRoot(context.scene->RootMut().as_raw_ptr());
         runtime.ClearLayerFactory();
         runtime.ClearLayerConfigFactory();
