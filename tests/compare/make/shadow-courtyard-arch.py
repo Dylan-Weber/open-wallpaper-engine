@@ -5,7 +5,8 @@
 # foot no longer inside it); -novault, the wall without its vault (only its upright faces); -nowall, the floor alone;
 # -closed, the wall two-sided (each triangle twice); -clipped, the wall's foot raised to the floor's top (y 0.84);
 # -slab / -slab-sunk, a plain box in the wall's place standing on the floor's top / from 0.44 (sunk 0.4);
-# -flat-slab / -flat-slab-sunk, the same under a flat, top-only floor at 0.84.
+# -flat-slab / -flat-slab-sunk, the same under a flat, top-only floor at 0.84; -flat-wall(-clipped), the real wall
+# (clipped) over that flat floor.
 import struct
 CENTER = (8.98972, 1.30595, -0.10218)
 DATA = json.load(open(os.path.join(os.path.dirname(HERE), 'make', 'data', 'courtyard-arch.json')))
@@ -75,3 +76,6 @@ make('shadow-courtyard-arch-slab', wall=False, slab=0.84)
 make('shadow-courtyard-arch-slab-sunk', wall=False, slab=0.44)
 make('shadow-courtyard-arch-flat-slab', wall=False, slab=0.84, flat=True)
 make('shadow-courtyard-arch-flat-slab-sunk', wall=False, slab=0.44, flat=True)
+# the real wall over the flat floor: whether the wall's own shape, rather than the stone floor, makes the strip
+make('shadow-courtyard-arch-flat-wall', flat=True)
+make('shadow-courtyard-arch-flat-wall-clipped', flat=True, clip=0.84)
