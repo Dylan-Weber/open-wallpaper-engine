@@ -391,6 +391,9 @@ TEST(WebState, OwnFlipIsACssTransform) {
 
 // Wallpaper Engine hands applyGeneralProperties its whole general config, 60 keys (read in the VM, probe
 // _scratch/web-general-dump); owe gives the same keys, its own frame rate and neutral values for the rest
+// Wallpaper Engine hands applyGeneralProperties its whole general config, 60 keys (read in the VM,
+// probe _scratch/web-general-dump); owe gives the same keys, its own frame rate and neutral values
+// for the rest
 TEST(WebState, GeneralPropertiesCarryTheWholeConfig) {
     auto expected =
         owe::ParseJson(
@@ -409,17 +412,23 @@ TEST(WebState, GeneralPropertiesCarryTheWholeConfig) {
 // Wallpaper Engine adds a style element to the page's head with these rules (read over DevTools)
 TEST(WebState, PausePseudoAnimationsStyleIsInjectedOnce) {
     auto snippet = BuildPausePseudoAnimationsSnippet();
-    auto text = snippet.as_str();
-    EXPECT_TRUE(text.contains(".wpxPausePseudoAnimations:before{animation-play-state:paused !important}"_str));
-    EXPECT_TRUE(text.contains(".wpxPausePseudoAnimations:after{animation-play-state:paused !important}"_str));
-    EXPECT_TRUE(text.contains(".wpxPausePseudoAnimationAll *{animation-play-state:paused !important}"_str));
-    EXPECT_TRUE(text.contains(".wpxPausePseudoAnimationAll *:before{animation-play-state:paused !important}"_str));
-    EXPECT_TRUE(text.contains(".wpxPausePseudoAnimationAll *:after{animation-play-state:paused !important}"_str));
+    auto text    = snippet.as_str();
+    EXPECT_TRUE(text.contains(
+        ".wpxPausePseudoAnimations:before{animation-play-state:paused !important}"_str));
+    EXPECT_TRUE(text.contains(
+        ".wpxPausePseudoAnimations:after{animation-play-state:paused !important}"_str));
+    EXPECT_TRUE(
+        text.contains(".wpxPausePseudoAnimationAll *{animation-play-state:paused !important}"_str));
+    EXPECT_TRUE(text.contains(
+        ".wpxPausePseudoAnimationAll *:before{animation-play-state:paused !important}"_str));
+    EXPECT_TRUE(text.contains(
+        ".wpxPausePseudoAnimationAll *:after{animation-play-state:paused !important}"_str));
     EXPECT_TRUE(snippet.as_str().contains("type=\"text/css\""_str) ||
                 snippet.as_str().contains("'text/css'"_str));
 }
 
-// setPaused reaches the page, which then gets the class and an inline animation-play-state on every element
+// setPaused reaches the page, which then gets the class and an inline animation-play-state on every
+// element
 TEST(WebState, PausedSnippetCallsSetPausedAndPausesAnimations) {
     auto paused = BuildPausedSnippet(true);
     EXPECT_TRUE(paused.as_str().contains("var paused = true;"_str));
@@ -428,6 +437,17 @@ TEST(WebState, PausedSnippetCallsSetPausedAndPausesAnimations) {
     EXPECT_TRUE(paused.as_str().contains("paused"_str));
     auto playing = BuildPausedSnippet(false);
     EXPECT_TRUE(playing.as_str().contains("var paused = false;"_str));
+}
+
+// the browser stops the page's renderer when the page says it has run setPaused(true), as Wallpaper
+// Engine does: no timer or animation frame runs and the page stays "visible" until resumed;
+// resuming sends no acknowledgement
+TEST(WebState, PausedSnippetAcknowledgesOnlyWhenPausing) {
+    auto paused = BuildPausedSnippet(true);
+    EXPECT_TRUE(paused.as_str().contains("window.__weweb_pauseAck()"_str));
+    auto playing = BuildPausedSnippet(false);
+    EXPECT_TRUE(playing.as_str().contains("window.__weweb_pauseAck()"_str));
+    EXPECT_TRUE(playing.as_str().contains("if (paused && "_str));
 }
 
 TEST(WebManifest, LoadsOwnedStringsAndDefaults) {

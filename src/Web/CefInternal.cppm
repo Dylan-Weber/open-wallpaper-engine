@@ -28,8 +28,8 @@ public:
 
     CefRefPtr<CefBrowserProcessHandler> GetBrowserProcessHandler() override { return this; }
     CefRefPtr<CefRenderProcessHandler>  GetRenderProcessHandler() override { return this; }
-    void OnBeforeCommandLineProcessing(const CefString&          process_type,
-                                       CefRefPtr<CefCommandLine> cmd) override;
+    void                                OnBeforeCommandLineProcessing(const CefString&          process_type,
+                                                                      CefRefPtr<CefCommandLine> cmd) override;
 
     void OnContextInitialized() override;
     void OnContextCreated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
@@ -146,9 +146,13 @@ public:
     ClientHandler(const ClientHandler&)            = delete;
     ClientHandler& operator=(const ClientHandler&) = delete;
 
-    void                  SetAudioDemandCallback(Option<AudioDemandCallback> cb);
-    void                  SetAudioMuted(bool muted);
-    void                  RequestClose();
+    void SetAudioDemandCallback(Option<AudioDemandCallback> cb);
+    void SetAudioMuted(bool muted);
+    void RequestClose();
+    // Wallpaper Engine's pause: the page runs setPaused(true), then its renderer is stopped
+    // (SIGSTOP) once the page says so (weweb.pause-ack); resuming continues it first. Where
+    // processes can't be stopped, the page is hidden.
+    void                  SetPaused(bool paused);
     void                  CloseBrowsers();
     bool                  IsClosing() const;
     bool                  IsClosed() const;
@@ -224,6 +228,8 @@ private:
     Atomic<bool>                property_injected_ { false };
     owe::Json                   property_overrides_ { owe::Json::Null() };
     OwnProperties               own_;
+    bool                        want_paused_ { false };
+    int                         stopped_renderer_ { 0 };
     CefRefCount                 ref_count_;
 };
 
