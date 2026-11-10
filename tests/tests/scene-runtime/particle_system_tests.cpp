@@ -1032,19 +1032,34 @@ TEST(LayerImageLattice, ASolidLayerIsAWhiteImageOfItsSize) {
     EXPECT_TRUE(owe::SolidLayerLattice(0, 10).is_empty());
 }
 
-// A texture thinner than a block (Wallpaper Engine's gradient_rainbow is 64x2) still emits: its rows make one block
-// row, one point every 4 texels across, in the average colour (particles-layerimage-alpha: a rainbow bar).
-TEST(LayerImageLattice, ATextureThinnerThanABlockIsOneBlockAcross) {
+// A texture less than a block high (Wallpaper Engine's gradient_rainbow is 64x2) emits two rows,
+// one every 4 texels across: the first at the image's middle, the second 4 texels below it, both in
+// the column's average colour (particles-layerimage-edge: 32x1, 32x2, 32x3 and the 64x2 rainbow all
+// have rows at h/2 and h/2 + 4 from the top).
+TEST(LayerImageLattice, AStripLessThanABlockHighHasTwoRows) {
     std::vector<unsigned char> thin;
     for (int y {}; y < 2; ++y)
         for (int x {}; x < 64; ++x)
             for (int v : { x < 32 ? 255 : 0, 0, x < 32 ? 0 : 255, 255 }) thin.push_back(static_cast<unsigned char>(v));
     auto points = owe::LayerImageLattice(thin.data(), 64, 2, 4, false, 1.0f);
-    ASSERT_EQ(points.len(), usize(16));
+    ASSERT_EQ(points.len(), usize(32));
     EXPECT_EQ(points[usize()].x, -30.0f);
     EXPECT_EQ(points[usize()].y, 0.0f);
+    EXPECT_EQ(points[usize(16)].x, -30.0f);
+    EXPECT_EQ(points[usize(16)].y, -4.0f);
     EXPECT_NEAR(points[usize()].color.x(), 1.0f, 1e-4f);
     EXPECT_NEAR(points[usize(15)].color.z(), 1.0f, 1e-4f);
+    EXPECT_NEAR(points[usize(31)].color.z(), 1.0f, 1e-4f);
+    // one texel high: the same two rows (the image's middle and 4 below it)
+    std::vector<unsigned char> line(static_cast<std::size_t>(32 * 4), 255);
+    auto                       single = owe::LayerImageLattice(line.data(), 32, 1, 4, false, 1.0f);
+    ASSERT_EQ(single.len(), usize(16));
+    EXPECT_EQ(single[usize()].y, 0.0f);
+    EXPECT_EQ(single[usize(8)].y, -4.0f);
+    // a solid layer 2 high is a white image of that size
+    auto solid = owe::SolidLayerLattice(8, 2);
+    ASSERT_EQ(solid.len(), usize(4));
+    EXPECT_EQ(solid[usize(2)].y, -4.0f);
 }
 
 // Wallpaper Engine reads a layer's image in 4x4 texel blocks (particles-layerimage-pitch, -block):

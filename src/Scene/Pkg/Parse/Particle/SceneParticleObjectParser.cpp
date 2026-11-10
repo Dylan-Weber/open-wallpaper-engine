@@ -287,6 +287,19 @@ void LoadEmitter(ParticleSubSystem& system, const wpscene::Particle& particle,
     }
 }
 
+// An image less than a block high has a second row 4 texels below the first, outside the image
+// (particles-layerimage-edge: 32x1, 32x2, 32x3 and the 64x2 rainbow; images less than a block wide
+// lay their points out otherwise in Wallpaper Engine and are left as one column).
+void AddSecondRowToAStrip(Vec<LayerImagePoint>& points, int width, int height) {
+    if (height >= 4 || width < 4) return;
+    const usize row = points.len();
+    for (usize index {}; index < row; ++index) {
+        auto below = points[index];
+        below.y -= 4.0f;
+        points.push(rstd::move(below));
+    }
+}
+
 Vec<LayerImagePoint> LayerImageLattice(const unsigned char* data, int width, int height,
                                        int channels, bool bgra, float layer_alpha) {
     constexpr int block = 4;
@@ -316,6 +329,7 @@ Vec<LayerImagePoint> LayerImageLattice(const unsigned char* data, int width, int
             });
         }
     }
+    AddSecondRowToAStrip(points, width, height);
     return points;
 }
 
@@ -335,6 +349,7 @@ Vec<LayerImagePoint> SolidLayerLattice(int width, int height) {
             });
         }
     }
+    AddSecondRowToAStrip(points, width, height);
     return points;
 }
 
