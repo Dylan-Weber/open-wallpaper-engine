@@ -1,0 +1,580 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 480,
+      "height": 270
+    },
+    "clearcolor": "0 0 0",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "img0",
+      "image": "models/img0.json",
+      "origin": "30 225 0",
+      "size": "32 1",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": false,
+      "id": 1
+    },
+    {
+      "name": "edge 0",
+      "particle": "particles/c0.json",
+      "origin": "30 225 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "dependencies": [
+        {
+          "id": 1,
+          "index": 0,
+          "type": "emitterimage"
+        }
+      ],
+      "id": 2
+    },
+    {
+      "name": "img1",
+      "image": "models/img1.json",
+      "origin": "90 225 0",
+      "size": "32 2",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": false,
+      "id": 3
+    },
+    {
+      "name": "edge 1",
+      "particle": "particles/c1.json",
+      "origin": "90 225 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "dependencies": [
+        {
+          "id": 3,
+          "index": 0,
+          "type": "emitterimage"
+        }
+      ],
+      "id": 4
+    },
+    {
+      "name": "img2",
+      "image": "models/img2.json",
+      "origin": "150 225 0",
+      "size": "32 3",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": false,
+      "id": 5
+    },
+    {
+      "name": "edge 2",
+      "particle": "particles/c2.json",
+      "origin": "150 225 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "dependencies": [
+        {
+          "id": 5,
+          "index": 0,
+          "type": "emitterimage"
+        }
+      ],
+      "id": 6
+    },
+    {
+      "name": "img3",
+      "image": "models/img3.json",
+      "origin": "210 225 0",
+      "size": "32 5",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": false,
+      "id": 7
+    },
+    {
+      "name": "edge 3",
+      "particle": "particles/c3.json",
+      "origin": "210 225 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "dependencies": [
+        {
+          "id": 7,
+          "index": 0,
+          "type": "emitterimage"
+        }
+      ],
+      "id": 8
+    },
+    {
+      "name": "img4",
+      "image": "models/img4.json",
+      "origin": "270 225 0",
+      "size": "32 6",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": false,
+      "id": 9
+    },
+    {
+      "name": "edge 4",
+      "particle": "particles/c4.json",
+      "origin": "270 225 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "dependencies": [
+        {
+          "id": 9,
+          "index": 0,
+          "type": "emitterimage"
+        }
+      ],
+      "id": 10
+    },
+    {
+      "name": "img5",
+      "image": "models/img5.json",
+      "origin": "330 225 0",
+      "size": "32 7",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": false,
+      "id": 11
+    },
+    {
+      "name": "edge 5",
+      "particle": "particles/c5.json",
+      "origin": "330 225 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "dependencies": [
+        {
+          "id": 11,
+          "index": 0,
+          "type": "emitterimage"
+        }
+      ],
+      "id": 12
+    },
+    {
+      "name": "img6",
+      "image": "models/img6.json",
+      "origin": "390 225 0",
+      "size": "32 9",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": false,
+      "id": 13
+    },
+    {
+      "name": "edge 6",
+      "particle": "particles/c6.json",
+      "origin": "390 225 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "dependencies": [
+        {
+          "id": 13,
+          "index": 0,
+          "type": "emitterimage"
+        }
+      ],
+      "id": 14
+    },
+    {
+      "name": "img7",
+      "image": "models/img7.json",
+      "origin": "30 150 0",
+      "size": "1 32",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": false,
+      "id": 15
+    },
+    {
+      "name": "edge 7",
+      "particle": "particles/c7.json",
+      "origin": "30 150 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "dependencies": [
+        {
+          "id": 15,
+          "index": 0,
+          "type": "emitterimage"
+        }
+      ],
+      "id": 16
+    },
+    {
+      "name": "img8",
+      "image": "models/img8.json",
+      "origin": "90 150 0",
+      "size": "2 32",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": false,
+      "id": 17
+    },
+    {
+      "name": "edge 8",
+      "particle": "particles/c8.json",
+      "origin": "90 150 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "dependencies": [
+        {
+          "id": 17,
+          "index": 0,
+          "type": "emitterimage"
+        }
+      ],
+      "id": 18
+    },
+    {
+      "name": "img9",
+      "image": "models/img9.json",
+      "origin": "150 150 0",
+      "size": "3 32",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": false,
+      "id": 19
+    },
+    {
+      "name": "edge 9",
+      "particle": "particles/c9.json",
+      "origin": "150 150 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "dependencies": [
+        {
+          "id": 19,
+          "index": 0,
+          "type": "emitterimage"
+        }
+      ],
+      "id": 20
+    },
+    {
+      "name": "img10",
+      "image": "models/img10.json",
+      "origin": "210 150 0",
+      "size": "5 32",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": false,
+      "id": 21
+    },
+    {
+      "name": "edge 10",
+      "particle": "particles/c10.json",
+      "origin": "210 150 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "dependencies": [
+        {
+          "id": 21,
+          "index": 0,
+          "type": "emitterimage"
+        }
+      ],
+      "id": 22
+    },
+    {
+      "name": "img11",
+      "image": "models/img11.json",
+      "origin": "270 150 0",
+      "size": "6 32",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": false,
+      "id": 23
+    },
+    {
+      "name": "edge 11",
+      "particle": "particles/c11.json",
+      "origin": "270 150 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "dependencies": [
+        {
+          "id": 23,
+          "index": 0,
+          "type": "emitterimage"
+        }
+      ],
+      "id": 24
+    },
+    {
+      "name": "img12",
+      "image": "models/img12.json",
+      "origin": "330 150 0",
+      "size": "7 32",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": false,
+      "id": 25
+    },
+    {
+      "name": "edge 12",
+      "particle": "particles/c12.json",
+      "origin": "330 150 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "dependencies": [
+        {
+          "id": 25,
+          "index": 0,
+          "type": "emitterimage"
+        }
+      ],
+      "id": 26
+    },
+    {
+      "name": "img13",
+      "image": "models/img13.json",
+      "origin": "390 150 0",
+      "size": "9 32",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": false,
+      "id": 27
+    },
+    {
+      "name": "edge 13",
+      "particle": "particles/c13.json",
+      "origin": "390 150 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "dependencies": [
+        {
+          "id": 27,
+          "index": 0,
+          "type": "emitterimage"
+        }
+      ],
+      "id": 28
+    },
+    {
+      "name": "img14",
+      "image": "models/img14.json",
+      "origin": "260 60 0",
+      "size": "10 10",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": false,
+      "id": 29
+    },
+    {
+      "name": "edge 14",
+      "particle": "particles/c14.json",
+      "origin": "260 60 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "dependencies": [
+        {
+          "id": 29,
+          "index": 0,
+          "type": "emitterimage"
+        }
+      ],
+      "id": 30
+    },
+    {
+      "name": "img15",
+      "image": "models/img15.json",
+      "origin": "340 60 0",
+      "size": "13 6",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": false,
+      "id": 31
+    },
+    {
+      "name": "edge 15",
+      "particle": "particles/c15.json",
+      "origin": "340 60 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "dependencies": [
+        {
+          "id": 31,
+          "index": 0,
+          "type": "emitterimage"
+        }
+      ],
+      "id": 32
+    },
+    {
+      "name": "img16",
+      "image": "models/img16.json",
+      "origin": "120 60 0",
+      "size": "64 2",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "visible": false,
+      "id": 33
+    },
+    {
+      "name": "edge 16",
+      "particle": "particles/c16.json",
+      "origin": "120 60 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "visible": true,
+      "dependencies": [
+        {
+          "id": 33,
+          "index": 0,
+          "type": "emitterimage"
+        }
+      ],
+      "id": 34
+    },
+    {
+      "id": 35,
+      "name": "owe clock probe",
+      "image": "models/util/fullscreenlayer.json",
+      "origin": "0 0 0",
+      "scale": "1 1 1",
+      "angles": "0 0 0",
+      "color": "1 1 1",
+      "alpha": 1,
+      "visible": true,
+      "effects": [
+        {
+          "file": "effects/oweclock/effect.json",
+          "id": 36,
+          "name": "oweclock",
+          "visible": true,
+          "passes": [
+            {
+              "id": 37,
+              "constantshadervalues": {
+                "scriptframe": {
+                  "script": "'use strict';\n\nexport function update(value) {\n\treturn Math.floor(engine.runtime * 30 + 0.5);\n}\n",
+                  "value": -1
+                },
+                "press": {
+                  "script": "'use strict';\n\nlet last = 0;\nlet wasDown = false;\n\nexport function update(value) {\n\ttry {\n\t\tconst down = !!input.cursorLeftDown;\n\t\tif (down && !wasDown) last = Math.min(Math.floor(engine.runtime * 30 + 0.5) + 1, 4094);\n\t\twasDown = down;\n\t\treturn last;\n\t} catch (e) {\n\t\treturn 4095;\n\t}\n}\n",
+                  "value": -1
+                },
+                "date_day": {
+                  "script": "'use strict';\n\nexport function update(value) {\n\treturn Math.floor(Date.now() / 86400000) - 18262;\n}\n",
+                  "value": -1
+                },
+                "date_centis": {
+                  "script": "'use strict';\n\nexport function update(value) {\n\treturn Math.floor((Date.now() % 86400000) / 10);\n}\n",
+                  "value": -1
+                },
+                "timezone": {
+                  "script": "'use strict';\n\nexport function update(value) {\n\treturn new Date().getTimezoneOffset() + 1024;\n}\n",
+                  "value": -1
+                },
+                "updates": {
+                  "script": "'use strict';\n\nlet updates = 0;\n\nexport function update(value) {\n\tupdates = Math.min(updates + 1, 1048574);\n\treturn updates;\n}\n",
+                  "value": -1
+                },
+                "camerax": {
+                  "script": "'use strict';\n\nfunction quantise(value, offset, scale, bits) {\n\tconst most = Math.pow(2, bits) - 1;\n\treturn Math.min(Math.max(Math.floor((value + offset) * scale + 0.5), 0), most);\n}\n\nexport function update(value) {\n\ttry {\n\t\treturn quantise(thisScene.getCameraTransforms().eye.x, 32768, 256, 24);\n\t} catch (e) {\n\t\treturn 16777215;\n\t}\n}\n",
+                  "value": -1
+                },
+                "cameray": {
+                  "script": "'use strict';\n\nfunction quantise(value, offset, scale, bits) {\n\tconst most = Math.pow(2, bits) - 1;\n\treturn Math.min(Math.max(Math.floor((value + offset) * scale + 0.5), 0), most);\n}\n\nexport function update(value) {\n\ttry {\n\t\treturn quantise(thisScene.getCameraTransforms().eye.y, 32768, 256, 24);\n\t} catch (e) {\n\t\treturn 16777215;\n\t}\n}\n",
+                  "value": -1
+                },
+                "cameraz": {
+                  "script": "'use strict';\n\nfunction quantise(value, offset, scale, bits) {\n\tconst most = Math.pow(2, bits) - 1;\n\treturn Math.min(Math.max(Math.floor((value + offset) * scale + 0.5), 0), most);\n}\n\nexport function update(value) {\n\ttry {\n\t\treturn quantise(thisScene.getCameraTransforms().eye.z, 32768, 256, 24);\n\t} catch (e) {\n\t\treturn 16777215;\n\t}\n}\n",
+                  "value": -1
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "version": 1
+}
