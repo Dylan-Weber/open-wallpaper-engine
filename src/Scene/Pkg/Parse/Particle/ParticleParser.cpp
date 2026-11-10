@@ -1871,7 +1871,10 @@ struct CollisionSphereOperator {
 
 // collisionquad: a flat rectangle, size.x across and size.y deep, facing up (its angles do
 // nothing), that a particle falling through from above lands on (particles-collisionshapes,
-// -quad-sides: one rising through it from below passes).
+// -quad-sides: one rising through it from below passes). Wallpaper Engine's kernel (0x140254290)
+// catches a particle on or under it that was strictly above it before the frame's move, and puts it
+// out by 1.05 x how far under it was, so one that lands without bouncing sits a little above and is
+// caught again each frame (ft-collisionquad-sides).
 struct CollisionQuadOperator {
     CollisionState  state;
     Eigen::Vector3d origin { 0.0, -200.0, 0.0 };
@@ -1887,12 +1890,14 @@ struct CollisionQuadOperator {
                           Eigen::Vector3d&       n,
                           Eigen::Vector3d&       on) {
                           const double below = position.y() - origin.y();
-                          if (below >= 0.0 || below - v.y() * delta < 0.0) return false;
+                          if (below > 0.0 || ! (below - v.y() * delta > 0.0)) return false;
                           if (Abs(position.x() - origin.x()) > width * 0.5 ||
                               Abs(position.z() - origin.z()) > depth * 0.5)
                               return false;
                           n  = Eigen::Vector3d(0.0, 1.0, 0.0);
-                          on = Eigen::Vector3d(position.x(), origin.y(), position.z());
+                          on = Eigen::Vector3d(position.x(),
+                                               position.y() - double(float(below) * 1.05f),
+                                               position.z());
                           return true;
                       });
     }
