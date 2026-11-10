@@ -1,6 +1,7 @@
 #include <rstd/test/gtest.hpp>
 
 #include <cmath>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 
@@ -777,6 +778,23 @@ TEST(LightUniformSource, OldKindTakesNoLightingV1Slot) {
     EXPECT_FLOAT_EQ(type[usize(7)], static_cast<float>(owe::SceneLightType::Point));
 }
 
+// Wallpaper Engine's light frames are normalised with its fast inverse square root (the bit trick
+// with 0x5f375a86 and one Newton step), which returns 0.99831 for 1: a cascade's axes are that much
+// shorter than unit, so its square covers 1 / 0.99831 = 1.0017 times the authored width.
+static float WeUnitAxisLength() {
+    const float input = 1.0f;
+    uint32_t    bits;
+    std::memcpy(&bits, &input, sizeof bits);
+    bits = 0x5f375a86u - (bits >> 1);
+    float y;
+    std::memcpy(&y, &bits, sizeof y);
+    return y * (1.5f - 0.5f * input * y * y);
+}
+
+TEST(ShadowUniformSource, CascadeAxesAreWallpaperEnginesFastInverseSquareRoots) {
+    EXPECT_NEAR(WeUnitAxisLength(), 0.9983081f, 1e-7f);
+}
+
 TEST(ShadowUniformSource, UsesAuthoredCascadeExtentAndLightObjectFrame) {
     auto camera =
         Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 1000.0, 50.0));
@@ -805,13 +823,14 @@ TEST(ShadowUniformSource, UsesAuthoredCascadeExtentAndLightObjectFrame) {
     auto            matrices =
         scene_test::Capture(frame, source, owe::ShadowUniformOutput::ViewProjectionMatrices);
     ASSERT_EQ(matrices.size(), usize(96));
-    EXPECT_NEAR(matrices[usize(8)], 0.2f, 1e-6f);
-    EXPECT_NEAR(matrices[usize(5)], 0.2f, 1e-6f);
-    EXPECT_NEAR(matrices[usize(2)], -1.0f / 80.0f, 1e-6f);
-    EXPECT_NEAR(matrices[usize(12)], 1.0f, 1e-6f);
-    EXPECT_NEAR(matrices[usize(14)], 0.5f, 1e-6f);
-    EXPECT_NEAR(matrices[usize(16 + 8)], 0.1f, 1e-6f);
-    EXPECT_NEAR(matrices[usize(32 + 8)], 0.05f, 1e-6f);
+    const float axis = WeUnitAxisLength();
+    EXPECT_NEAR(matrices[usize(8)], 0.2f * axis, 1e-6f);
+    EXPECT_NEAR(matrices[usize(5)], 0.2f * axis, 1e-6f);
+    EXPECT_NEAR(matrices[usize(2)], -axis / 80.0f, 1e-6f);
+    EXPECT_NEAR(matrices[usize(12)], 1.0f * axis, 1e-3f);
+    EXPECT_NEAR(matrices[usize(14)], 0.5f * axis, 1e-3f);
+    EXPECT_NEAR(matrices[usize(16 + 8)], 0.1f * axis, 1e-6f);
+    EXPECT_NEAR(matrices[usize(32 + 8)], 0.05f * axis, 1e-6f);
     EXPECT_FLOAT_EQ(matrices[usize(48)], 0.0f);
 
     auto atlas = scene_test::Capture(frame, source, owe::ShadowUniformOutput::AtlasTransforms);
@@ -2622,12 +2641,13 @@ TEST(ShadowUniformSource, CascadesDefaultToThreeTenAndAHundredInWholeTexels) {
         owe::SceneFrame {}, source, owe::ShadowUniformOutput::ViewProjectionMatrices);
     ASSERT_EQ(matrices.size(), usize(96));
     // widths
-    EXPECT_NEAR(matrices[usize(8)], 2.0f / 3.0f, 1e-6f);
-    EXPECT_NEAR(matrices[usize(16 + 8)], 2.0f / 10.0f, 1e-6f);
-    EXPECT_NEAR(matrices[usize(32 + 8)], 2.0f / 100.0f, 1e-6f);
+    const float axis = WeUnitAxisLength();
+    EXPECT_NEAR(matrices[usize(8)], 2.0f / 3.0f * axis, 1e-6f);
+    EXPECT_NEAR(matrices[usize(16 + 8)], 2.0f / 10.0f * axis, 1e-6f);
+    EXPECT_NEAR(matrices[usize(32 + 8)], 2.0f / 100.0f * axis, 1e-6f);
     // depths: four times the second width (and 1.5 times the third, if more)
-    EXPECT_NEAR(matrices[usize(2)], -1.0f / 40.0f, 1e-6f);
-    EXPECT_NEAR(matrices[usize(32 + 2)], -1.0f / 150.0f, 1e-6f);
+    EXPECT_NEAR(matrices[usize(2)], -axis / 40.0f, 1e-6f);
+    EXPECT_NEAR(matrices[usize(32 + 2)], -axis / 150.0f, 1e-6f);
     // the light's x and y axes see the eye's z and y: each centre is a whole number of texels
     for (usize cascade {}; cascade < usize(3); ++cascade) {
         const float width = cascade == usize() ? 3.0f : cascade == usize(1) ? 10.0f : 100.0f;
