@@ -1023,6 +1023,8 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
                     .sceneNode                = spEffNode.clone(),
                     .uses_unit_final_quad     = UsesUnitFinalQuad(wpmat),
                     .final_quad_shader_values = rstd::move(final_quad_shader_values),
+                    .own_target               = has_target,
+                    .compose                  = wpeffobj.compose,
                 });
             }
 

@@ -2039,11 +2039,25 @@ struct SceneEffectTarget {
     String                key;
 };
 
+// Whether a pass before an effect's last is placed with the layer's own matrix (probe
+// effect-target-matrix): in Wallpaper Engine a pass into a target of the effect's own is, when the
+// effect is the layer's last; an earlier effect's passes, and a compose pass, get the identity.
+struct EffectPassMatrix {
+    bool own_target { false }, compose { false }, in_last_effect { false };
+};
+
+constexpr auto EffectPassUsesLayerMatrix(EffectPassMatrix pass) -> bool {
+    return pass.own_target && ! pass.compose && pass.in_last_effect;
+}
+
 struct SceneImageEffectNode {
     SceneEffectTarget            output;
     Arc<SceneNode>               sceneNode;
     bool                         uses_unit_final_quad { false };
     SceneShaderValueAnimationMap final_quad_shader_values;
+    // a pass into a target of the effect's own (EffectPassUsesLayerMatrix)
+    bool own_target { false };
+    bool compose { false };
 };
 
 struct SceneImageEffect {
