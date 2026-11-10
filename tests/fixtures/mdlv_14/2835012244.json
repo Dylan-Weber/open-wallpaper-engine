@@ -8,8 +8,12 @@
     {
       "anim_tracks": [
         {
+          "blend_curves_count": 0,
           "bone_track_count": 1,
+          "events_count": 0,
           "fps": 20.0,
+          "has_aabb": false,
+          "has_trans": false,
           "id": 376,
           "length": 60,
           "mode": 0,
@@ -22,11 +26,17 @@
             }
           ],
           "name": "动画 1",
-          "total_bone_frames": 61
+          "scalar_curves_count": 0,
+          "total_bone_frames": 61,
+          "v4_events_count": 0
         },
         {
+          "blend_curves_count": 0,
           "bone_track_count": 1,
+          "events_count": 0,
           "fps": 20.0,
+          "has_aabb": false,
+          "has_trans": false,
           "id": 439,
           "length": 60,
           "mode": 0,
@@ -39,7 +49,9 @@
             }
           ],
           "name": "动画 2",
-          "total_bone_frames": 61
+          "scalar_curves_count": 0,
+          "total_bone_frames": 61,
+          "v4_events_count": 0
         }
       ],
       "anims": 2,
@@ -66,23 +78,35 @@
         }
       ],
       "bones": 1,
+      "flag": [
+        "00001001",
+        "00000000",
+        "10000000",
+        "00000001"
+      ],
       "index_count": 181,
       "mat_json_file": "materials/2.json",
       "mdla": 2,
       "mdls": 2,
       "mdlv": 14,
+      "mesh_count": 1,
       "ok": true,
       "part_count": 0,
       "parts": [],
       "path": "/models/2_puppet.mdl",
+      "skin_count": 1,
       "vert_extra_count": 0,
       "vertex_count": 107
     },
     {
       "anim_tracks": [
         {
+          "blend_curves_count": 0,
           "bone_track_count": 6,
+          "events_count": 0,
           "fps": 20.0,
+          "has_aabb": false,
+          "has_trans": false,
           "id": 196,
           "length": 60,
           "mode": 0,
@@ -119,7 +143,9 @@
             }
           ],
           "name": "动画 1",
-          "total_bone_frames": 366
+          "scalar_curves_count": 0,
+          "total_bone_frames": 366,
+          "v4_events_count": 0
         }
       ],
       "anims": 1,
@@ -236,15 +262,23 @@
         }
       ],
       "bones": 6,
+      "flag": [
+        "00001001",
+        "00000000",
+        "10000000",
+        "00000001"
+      ],
       "index_count": 815,
       "mat_json_file": "materials/3.json",
       "mdla": 2,
       "mdls": 2,
       "mdlv": 14,
+      "mesh_count": 1,
       "ok": true,
       "part_count": 0,
       "parts": [],
       "path": "/models/3_puppet.mdl",
+      "skin_count": 1,
       "vert_extra_count": 0,
       "vertex_count": 499
     }
@@ -582,29 +616,186 @@
       },
       {
         "alignment": "center",
+        "alignment_parsed": "center",
+        "alpha": 0.20000000298023224,
         "angles": "0.00000 0.00000 0.00000",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          0.5058799982070923,
+          0.9137300252914429,
+          1.0
+        ],
+        "colorBlendMode": 3,
+        "effect_count": 0,
+        "effects": [],
+        "fullscreen": false,
         "id": 35,
+        "image": "models/util/solidlayer.json",
         "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {},
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "flat",
+          "textures": [],
+          "use_puppet": false
+        },
         "name": "Solid",
+        "nopadding": false,
         "origin": "1656.07983 811.31177 0.00000",
+        "origin_parsed": [
+          1656.079833984375,
+          811.311767578125,
+          0.0
+        ],
         "parallaxDepth": "1.00000 1.00000",
-        "parsed": false,
+        "parsed": true,
+        "puppet": "",
         "scale": "2.99385 2.16308 1.00000",
+        "scale_parsed": [
+          2.993849992752075,
+          2.1630799770355225,
+          1.0
+        ],
         "size": "2560.00000 1440.00000",
-        "visible": true
+        "size_parsed": [
+          2560.0,
+          1440.0
+        ],
+        "visible": true,
+        "visible_parsed": true
       },
       {
         "alignment": "center",
+        "alignment_parsed": "center",
+        "alpha": 1.0,
         "angles": "-0.00000 -0.00000 -0.12932",
+        "angles_parsed": [
+          -0.0,
+          -0.0,
+          -0.12931999564170837
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 1,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "workshop/2779107487/workshop/2084198056/effects/Simple_Audio_Bars",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "Simple Audio Bars",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {
+                  "ANTIALIAS": 1,
+                  "A_SMOOTH_CURVE": 1,
+                  "BLENDMODE": 31,
+                  "CLIP_HIGH": 0,
+                  "CLIP_LOW": 0,
+                  "RESOLUTION": 32,
+                  "SHAPE": 0,
+                  "TRANSPARENCY": 4
+                },
+                "constantshadervalues": {
+                  "Anti-alias blurring": [
+                    0.009999999776482582,
+                    0.009999999776482582
+                  ],
+                  "Bar Color": [
+                    0.615686297416687,
+                    0.47058823704719543,
+                    0.08235294371843338
+                  ],
+                  "Bar Count": [
+                    97.19000244140625
+                  ],
+                  "Bar Spacing": [
+                    0.7200000286102295
+                  ],
+                  "Lower/Upper Bar Bounds": [
+                    0.0,
+                    0.15000000596046448
+                  ],
+                  "ui_editor_properties_opacity": [
+                    1.0
+                  ]
+                },
+                "target": "",
+                "textures": []
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": false,
         "id": 160,
+        "image": "models/util/composelayer.json",
         "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {},
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "composelayer",
+          "textures": [
+            "_rt_FullFrameBuffer"
+          ],
+          "use_puppet": false
+        },
         "name": "Green",
+        "nopadding": false,
         "origin": "3056.10864 894.22540 0.00000",
+        "origin_parsed": [
+          3056.108642578125,
+          894.2254028320313,
+          0.0
+        ],
         "parallaxDepth": "1.00000 1.00000",
-        "parsed": false,
+        "parsed": true,
+        "puppet": "",
         "scale": "0.88105 0.72040 0.62471",
+        "scale_parsed": [
+          0.8810499906539917,
+          0.7203999757766724,
+          0.6247100234031677
+        ],
         "size": "1920.00000 1080.00000",
-        "visible": true
+        "size_parsed": [
+          1920.0,
+          1080.0
+        ],
+        "visible": true,
+        "visible_parsed": true
       },
       {
         "alignment": "center",
@@ -671,16 +862,127 @@
       },
       {
         "alignment": "center",
+        "alignment_parsed": "center",
+        "alpha": 1.0,
         "angles": "0.00000 -0.00000 0.06786",
+        "angles_parsed": [
+          0.0,
+          -0.0,
+          0.06785999983549118
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 1,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "workshop/2779107487/workshop/2084198056/effects/Simple_Audio_Bars",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "Simple Audio Bars",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {
+                  "ANTIALIAS": 1,
+                  "A_SMOOTH_CURVE": 1,
+                  "BLENDMODE": 31,
+                  "CLIP_HIGH": 0,
+                  "CLIP_LOW": 0,
+                  "RESOLUTION": 16,
+                  "SHAPE": 0,
+                  "TRANSPARENCY": 4
+                },
+                "constantshadervalues": {
+                  "Anti-alias blurring": [
+                    0.009999999776482582,
+                    0.009999999776482582
+                  ],
+                  "Bar Color": [
+                    0.22745098173618317,
+                    0.3960784375667572,
+                    0.4588235318660736
+                  ],
+                  "Bar Count": [
+                    97.19000244140625
+                  ],
+                  "Bar Spacing": [
+                    0.7200000286102295
+                  ],
+                  "Lower/Upper Bar Bounds": [
+                    0.0,
+                    0.15000000596046448
+                  ],
+                  "ui_editor_properties_opacity": [
+                    1.0
+                  ]
+                },
+                "target": "",
+                "textures": []
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": false,
         "id": 172,
+        "image": "models/util/composelayer.json",
         "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {},
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "composelayer",
+          "textures": [
+            "_rt_FullFrameBuffer"
+          ],
+          "use_puppet": false
+        },
         "name": "Green",
+        "nopadding": false,
         "origin": "1743.85217 991.23114 0.00000",
+        "origin_parsed": [
+          1743.8521728515625,
+          991.2311401367188,
+          0.0
+        ],
         "parallaxDepth": "1.00000 1.00000",
-        "parsed": false,
+        "parsed": true,
+        "puppet": "",
         "scale": "0.44142 0.72040 0.62471",
+        "scale_parsed": [
+          0.4414199888706207,
+          0.7203999757766724,
+          0.6247100234031677
+        ],
         "size": "1920.00000 1080.00000",
-        "visible": true
+        "size_parsed": [
+          1920.0,
+          1080.0
+        ],
+        "visible": true,
+        "visible_parsed": true
       },
       {
         "angles": "0.00000 0.00000 0.00000",
@@ -806,8 +1108,8 @@
       "texs": 0,
       "texv": 5,
       "width": 4096,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -832,8 +1134,8 @@
       "texs": 0,
       "texv": 5,
       "width": 4096,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -858,8 +1160,8 @@
       "texs": 0,
       "texv": 5,
       "width": 4096,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -884,8 +1186,8 @@
       "texs": 0,
       "texv": 5,
       "width": 256,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -910,8 +1212,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1920,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -936,8 +1238,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1920,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     }
   ],
   "workshop_dir": "2835012244"

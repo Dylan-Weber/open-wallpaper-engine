@@ -8,8 +8,12 @@
     {
       "anim_tracks": [
         {
+          "blend_curves_count": 0,
           "bone_track_count": 11,
+          "events_count": 0,
           "fps": 60.0,
+          "has_aabb": true,
+          "has_trans": false,
           "id": 1046,
           "length": 180,
           "mode": 0,
@@ -22,11 +26,17 @@
             }
           ],
           "name": "动画 1",
-          "total_bone_frames": 1991
+          "scalar_curves_count": 0,
+          "total_bone_frames": 1991,
+          "v4_events_count": 0
         },
         {
+          "blend_curves_count": 0,
           "bone_track_count": 11,
+          "events_count": 0,
           "fps": 60.0,
+          "has_aabb": true,
+          "has_trans": false,
           "id": 1068,
           "length": 240,
           "mode": 0,
@@ -87,7 +97,9 @@
             }
           ],
           "name": "动画 2",
-          "total_bone_frames": 2651
+          "scalar_curves_count": 0,
+          "total_bone_frames": 2651,
+          "v4_events_count": 0
         }
       ],
       "anims": 2,
@@ -98,8 +110,8 @@
           "anim_parent": 4294967295,
           "bind_parent": 4294967295,
           "centroid_offset": [
-            0.0,
-            0.0,
+            -30.104248046875,
+            -53.90150833129883,
             0.0
           ],
           "has_file_skin_pivot": true,
@@ -113,11 +125,11 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 0,
           "bind_parent": 4294967295,
           "centroid_offset": [
-            -431.93255615234375,
-            25.872175216674805,
+            -438.56536865234375,
+            25.423030853271484,
             0.0
           ],
           "has_file_skin_pivot": true,
@@ -131,7 +143,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 0,
           "bind_parent": 4294967295,
           "centroid_offset": [
             -466.14306640625,
@@ -149,7 +161,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 0,
           "bind_parent": 4294967295,
           "centroid_offset": [
             -472.5924377441406,
@@ -167,7 +179,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 0,
           "bind_parent": 4294967295,
           "centroid_offset": [
             -482.9843444824219,
@@ -185,7 +197,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 0,
           "bind_parent": 4294967295,
           "centroid_offset": [
             -462.893798828125,
@@ -203,7 +215,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 0,
           "bind_parent": 4294967295,
           "centroid_offset": [
             -473.5799255371094,
@@ -221,7 +233,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 0,
           "bind_parent": 4294967295,
           "centroid_offset": [
             -469.3397216796875,
@@ -239,7 +251,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 0,
           "bind_parent": 4294967295,
           "centroid_offset": [
             -462.23675537109375,
@@ -257,11 +269,11 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 0,
           "bind_parent": 4294967295,
           "centroid_offset": [
             -470.2042236328125,
-            39.103065490722656,
+            39.10308837890625,
             0.0
           ],
           "has_file_skin_pivot": true,
@@ -275,11 +287,11 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 1,
           "bind_parent": 4294967295,
           "centroid_offset": [
-            0.0,
-            0.0,
+            -455.1014099121094,
+            -81.74964904785156,
             0.0
           ],
           "has_file_skin_pivot": true,
@@ -294,11 +306,18 @@
         }
       ],
       "bones": 11,
+      "flag": [
+        "00001001",
+        "00000000",
+        "10000000",
+        "00000001"
+      ],
       "index_count": 7952,
       "mat_json_file": "materials/HUANG.json",
       "mdla": 6,
       "mdls": 3,
       "mdlv": 21,
+      "mesh_count": 1,
       "ok": true,
       "part_count": 11,
       "parts": [
@@ -359,14 +378,19 @@
         }
       ],
       "path": "/models/HUANG_puppet.mdl",
+      "skin_count": 1,
       "vert_extra_count": 4243,
       "vertex_count": 4243
     },
     {
       "anim_tracks": [
         {
+          "blend_curves_count": 0,
           "bone_track_count": 41,
+          "events_count": 0,
           "fps": 60.0,
+          "has_aabb": true,
+          "has_trans": false,
           "id": 86,
           "length": 360,
           "mode": 0,
@@ -457,11 +481,17 @@
             }
           ],
           "name": "动画 1",
-          "total_bone_frames": 14801
+          "scalar_curves_count": 0,
+          "total_bone_frames": 14801,
+          "v4_events_count": 0
         },
         {
+          "blend_curves_count": 0,
           "bone_track_count": 41,
+          "events_count": 0,
           "fps": 60.0,
+          "has_aabb": true,
+          "has_trans": false,
           "id": 421,
           "length": 180,
           "mode": 0,
@@ -516,11 +546,17 @@
             }
           ],
           "name": "动画 2",
-          "total_bone_frames": 7421
+          "scalar_curves_count": 0,
+          "total_bone_frames": 7421,
+          "v4_events_count": 0
         },
         {
+          "blend_curves_count": 0,
           "bone_track_count": 41,
+          "events_count": 0,
           "fps": 60.0,
+          "has_aabb": true,
+          "has_trans": false,
           "id": 647,
           "length": 180,
           "mode": 0,
@@ -539,7 +575,9 @@
             }
           ],
           "name": "动画 3",
-          "total_bone_frames": 7421
+          "scalar_curves_count": 0,
+          "total_bone_frames": 7421,
+          "v4_events_count": 0
         }
       ],
       "anims": 3,
@@ -554,8 +592,8 @@
           "anim_parent": 4294967295,
           "bind_parent": 4294967295,
           "centroid_offset": [
-            35.358154296875,
-            -51.684326171875,
+            32.18829345703125,
+            -57.62188720703125,
             0.0
           ],
           "has_file_skin_pivot": true,
@@ -569,7 +607,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 0,
           "bind_parent": 4294967295,
           "centroid_offset": [
             760.0929565429688,
@@ -587,7 +625,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 0,
           "bind_parent": 4294967295,
           "centroid_offset": [
             706.4434814453125,
@@ -605,7 +643,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 2,
           "bind_parent": 4294967295,
           "centroid_offset": [
             743.649658203125,
@@ -623,7 +661,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 2,
           "bind_parent": 4294967295,
           "centroid_offset": [
             643.682861328125,
@@ -641,11 +679,11 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 2,
           "bind_parent": 4294967295,
           "centroid_offset": [
-            702.1581420898438,
-            -232.67044067382813,
+            701.7940673828125,
+            -232.07696533203125,
             0.0
           ],
           "has_file_skin_pivot": true,
@@ -659,7 +697,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 2,
           "bind_parent": 4294967295,
           "centroid_offset": [
             673.4271240234375,
@@ -677,7 +715,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 2,
           "bind_parent": 4294967295,
           "centroid_offset": [
             715.951416015625,
@@ -695,7 +733,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 2,
           "bind_parent": 4294967295,
           "centroid_offset": [
             582.3609008789063,
@@ -713,7 +751,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 2,
           "bind_parent": 4294967295,
           "centroid_offset": [
             705.8245849609375,
@@ -731,7 +769,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 2,
           "bind_parent": 4294967295,
           "centroid_offset": [
             588.839111328125,
@@ -749,7 +787,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 2,
           "bind_parent": 4294967295,
           "centroid_offset": [
             732.1204833984375,
@@ -767,7 +805,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 2,
           "bind_parent": 4294967295,
           "centroid_offset": [
             0.0,
@@ -785,7 +823,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 2,
           "bind_parent": 4294967295,
           "centroid_offset": [
             759.5316162109375,
@@ -803,7 +841,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 2,
           "bind_parent": 4294967295,
           "centroid_offset": [
             0.0,
@@ -821,7 +859,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 14,
           "bind_parent": 4294967295,
           "centroid_offset": [
             100.37713623046875,
@@ -839,7 +877,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 14,
           "bind_parent": 4294967295,
           "centroid_offset": [
             92.8782958984375,
@@ -857,7 +895,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 14,
           "bind_parent": 4294967295,
           "centroid_offset": [
             101.93499755859375,
@@ -875,7 +913,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 14,
           "bind_parent": 4294967295,
           "centroid_offset": [
             97.43328857421875,
@@ -893,11 +931,11 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 14,
           "bind_parent": 4294967295,
           "centroid_offset": [
-            99.78219604492188,
-            -352.1231384277344,
+            99.7879638671875,
+            -352.31390380859375,
             0.0
           ],
           "has_file_skin_pivot": true,
@@ -911,7 +949,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 2,
           "bind_parent": 4294967295,
           "centroid_offset": [
             0.0,
@@ -929,7 +967,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 20,
           "bind_parent": 4294967295,
           "centroid_offset": [
             1282.0693359375,
@@ -947,7 +985,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 20,
           "bind_parent": 4294967295,
           "centroid_offset": [
             1267.0693359375,
@@ -965,7 +1003,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 20,
           "bind_parent": 4294967295,
           "centroid_offset": [
             1293.535400390625,
@@ -983,7 +1021,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 20,
           "bind_parent": 4294967295,
           "centroid_offset": [
             1266.8812255859375,
@@ -1001,11 +1039,11 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 20,
           "bind_parent": 4294967295,
           "centroid_offset": [
-            1272.963134765625,
-            -314.4949951171875,
+            1273.011962890625,
+            -314.6689453125,
             0.0
           ],
           "has_file_skin_pivot": true,
@@ -1019,7 +1057,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 2,
           "bind_parent": 4294967295,
           "centroid_offset": [
             692.1566772460938,
@@ -1037,7 +1075,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 2,
           "bind_parent": 4294967295,
           "centroid_offset": [
             694.7489013671875,
@@ -1055,7 +1093,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 2,
           "bind_parent": 4294967295,
           "centroid_offset": [
             678.7347412109375,
@@ -1073,7 +1111,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 2,
           "bind_parent": 4294967295,
           "centroid_offset": [
             502.7313232421875,
@@ -1091,7 +1129,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 2,
           "bind_parent": 4294967295,
           "centroid_offset": [
             491.25494384765625,
@@ -1109,7 +1147,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 2,
           "bind_parent": 4294967295,
           "centroid_offset": [
             744.4177856445313,
@@ -1127,7 +1165,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 2,
           "bind_parent": 4294967295,
           "centroid_offset": [
             677.8158569335938,
@@ -1145,7 +1183,7 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 2,
           "bind_parent": 4294967295,
           "centroid_offset": [
             741.83349609375,
@@ -1163,11 +1201,11 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 5,
           "bind_parent": 4294967295,
           "centroid_offset": [
-            422.2958068847656,
-            -103.8104248046875,
+            422.86932373046875,
+            -101.80001831054688,
             0.0
           ],
           "has_file_skin_pivot": true,
@@ -1181,11 +1219,11 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 25,
           "bind_parent": 4294967295,
           "centroid_offset": [
-            731.81201171875,
-            -209.06443786621094,
+            731.3865356445313,
+            -207.80557250976563,
             0.0
           ],
           "has_file_skin_pivot": true,
@@ -1199,11 +1237,11 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 19,
           "bind_parent": 4294967295,
           "centroid_offset": [
-            482.4036865234375,
-            -283.4940185546875,
+            482.4225158691406,
+            -282.70062255859375,
             0.0
           ],
           "has_file_skin_pivot": true,
@@ -1217,11 +1255,11 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 0,
           "bind_parent": 4294967295,
           "centroid_offset": [
-            0.0,
-            0.0,
+            793.4827880859375,
+            -907.1925048828125,
             0.0
           ],
           "has_file_skin_pivot": true,
@@ -1235,11 +1273,11 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 0,
           "bind_parent": 4294967295,
           "centroid_offset": [
-            634.8067016601563,
-            -1253.2044677734375,
+            784.7464599609375,
+            -1177.8775634765625,
             0.0
           ],
           "has_file_skin_pivot": true,
@@ -1253,11 +1291,11 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 0,
           "bind_parent": 4294967295,
           "centroid_offset": [
-            0.0,
-            0.0,
+            729.575439453125,
+            -1180.9107666015625,
             0.0
           ],
           "has_file_skin_pivot": true,
@@ -1271,11 +1309,11 @@
           ]
         },
         {
-          "anim_parent": 4294967295,
+          "anim_parent": 0,
           "bind_parent": 4294967295,
           "centroid_offset": [
-            727.717529296875,
-            -861.0308837890625,
+            723.4616088867188,
+            -859.9688110351563,
             0.0
           ],
           "has_file_skin_pivot": true,
@@ -1290,11 +1328,18 @@
         }
       ],
       "bones": 41,
+      "flag": [
+        "00001001",
+        "00000000",
+        "10000000",
+        "00000001"
+      ],
       "index_count": 15127,
       "mat_json_file": "materials/RENWU.json",
       "mdla": 6,
       "mdls": 3,
       "mdlv": 21,
+      "mesh_count": 1,
       "ok": true,
       "part_count": 41,
       "parts": [
@@ -1505,13 +1550,1684 @@
         }
       ],
       "path": "/models/RENWU_puppet.mdl",
+      "skin_count": 1,
       "vert_extra_count": 8146,
       "vertex_count": 8146
     }
   ],
   "scene": {
-    "error": "[json.exception.type_error.302] type must be boolean, but is object",
-    "parsed": false
+    "camera": {
+      "center": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "eye": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "up": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    "general": {
+      "ambientcolor": [
+        0.30000001192092896,
+        0.30000001192092896,
+        0.30000001192092896
+      ],
+      "cameraparallax": false,
+      "clearcolor": [
+        0.699999988079071,
+        0.699999988079071,
+        0.699999988079071
+      ],
+      "farz": 10000.0,
+      "fov": 50.0,
+      "nearz": 0.009999999776482582,
+      "skylightcolor": [
+        0.30000001192092896,
+        0.30000001192092896,
+        0.30000001192092896
+      ],
+      "zoom": 1.0
+    },
+    "is_ortho": true,
+    "object_count": 15,
+    "objects": [
+      {
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 6,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/waterwaves",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "TOUFA",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "direction": [
+                    -2.382509708404541
+                  ],
+                  "exponent": [
+                    1.0
+                  ],
+                  "scale": [
+                    11.0600004196167
+                  ],
+                  "speed": [
+                    3.4000000953674316
+                  ],
+                  "strength": [
+                    0.07999999821186066
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/waterwaves_mask_13499454",
+                  "masks/waterwaves_mask_7960f885"
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/waterwaves",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "TOUDING",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "direction": [
+                    -2.788512706756592
+                  ],
+                  "exponent": [
+                    1.0
+                  ],
+                  "scale": [
+                    10.0
+                  ],
+                  "speed": [
+                    3.4000000953674316
+                  ],
+                  "strength": [
+                    0.07999999821186066
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/waterwaves_mask_644109ca",
+                  "masks/waterwaves_mask_32506d6d"
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/waterwaves",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "XIJIE",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "direction": [
+                    -0.6981316804885864
+                  ],
+                  "exponent": [
+                    1.0
+                  ],
+                  "scale": [
+                    60.779998779296875
+                  ],
+                  "speed": [
+                    2.2200000286102295
+                  ],
+                  "strength": [
+                    0.07000000029802322
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/waterwaves_mask_d2bf0f41"
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "workshop/2718465779/effects/pulse_",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "Pulse+",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "amount": [
+                    0.7300000190734863
+                  ],
+                  "bounds": [
+                    0.0,
+                    1.0
+                  ],
+                  "noiseamount": [
+                    0.0
+                  ],
+                  "noisespeed": [
+                    0.5
+                  ],
+                  "phase": [
+                    0.0
+                  ],
+                  "power": [
+                    1.0
+                  ],
+                  "speed": [
+                    1.8799999952316284
+                  ],
+                  "tinthigh": [
+                    0.6000000238418579,
+                    0.40784314274787903,
+                    0.05882352963089943
+                  ],
+                  "tintlow": [
+                    0.7529411911964417,
+                    0.7529411911964417,
+                    0.7529411911964417
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "",
+                  "masks/pulse__mask_48862c3b",
+                  ""
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/foliagesway",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_foliage_sway_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "phase": [
+                    1.559999942779541
+                  ],
+                  "power": [
+                    1.0
+                  ],
+                  "ratio": [
+                    0.30000001192092896
+                  ],
+                  "scale": [
+                    0.05000000074505806
+                  ],
+                  "scrolldirection": [
+                    -0.8981149196624756
+                  ],
+                  "speeduv": [
+                    3.5399999618530273
+                  ],
+                  "strength": [
+                    0.3799999952316284
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/foliagesway_mask_1188e903",
+                  ""
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "workshop/2718465779/effects/pulse_",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "Pulse+",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "amount": [
+                    0.6399999856948853
+                  ],
+                  "bounds": [
+                    0.0,
+                    1.0
+                  ],
+                  "noiseamount": [
+                    0.3400000035762787
+                  ],
+                  "noisespeed": [
+                    0.0
+                  ],
+                  "phase": [
+                    0.0
+                  ],
+                  "power": [
+                    0.6600000262260437
+                  ],
+                  "speed": [
+                    0.0
+                  ],
+                  "tinthigh": [
+                    0.5921568870544434,
+                    0.7098039388656616,
+                    1.0
+                  ],
+                  "tintlow": [
+                    0.7529411911964417,
+                    0.7529411911964417,
+                    0.7529411911964417
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "",
+                  "masks/pulse__mask_89dbf865",
+                  ""
+                ]
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": false,
+        "id": 16,
+        "image": "models/RENWU.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {},
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage4",
+          "textures": [
+            "RENWU"
+          ],
+          "use_puppet": false
+        },
+        "name": "RENWU",
+        "nopadding": false,
+        "origin": "1967.85388 1496.33215 0.00000",
+        "origin_parsed": [
+          1967.8538818359375,
+          1496.3321533203125,
+          0.0
+        ],
+        "parsed": true,
+        "puppet": "models/RENWU_puppet.mdl",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "4000.00000 3000.00000",
+        "size_parsed": [
+          4000.0,
+          3000.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 1,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/waterflow",
+                "textures": [
+                  "",
+                  "",
+                  "effects/waterflowphase"
+                ],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_water_flow_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "phasescale": [
+                    0.7900000214576721
+                  ],
+                  "speed": [
+                    0.14000000059604645
+                  ],
+                  "strength": [
+                    0.6100000143051147
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/waterflow_mask_03f49de6",
+                  "effects/waterflowphase"
+                ]
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": false,
+        "id": 76,
+        "image": "models/图层 1.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {},
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage4",
+          "textures": [
+            "图层 1"
+          ],
+          "use_puppet": false
+        },
+        "name": "BEIJING",
+        "nopadding": false,
+        "origin": "1920.00000 1080.00000 0.00000",
+        "origin_parsed": [
+          1920.0,
+          1080.0,
+          0.0
+        ],
+        "parsed": true,
+        "puppet": "",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "3840.00000 2160.00000",
+        "size_parsed": [
+          3840.0,
+          2160.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 1,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "workshop/2795521260/effects/color_grading",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "Color Grading",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "Brightness": [
+                    0.10000000149011612
+                  ],
+                  "Channel influence": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ],
+                  "Contrast": [
+                    0.029999999329447746
+                  ],
+                  "Corrected display gamma": [
+                    1.940000057220459
+                  ],
+                  "Opacity": [
+                    1.0
+                  ]
+                },
+                "target": "",
+                "textures": []
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": true,
+        "id": 79,
+        "image": "models/util/fullscreenlayer.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {},
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "passthrough",
+          "textures": [
+            "_rt_FullFrameBuffer"
+          ],
+          "use_puppet": false
+        },
+        "name": "后处理层",
+        "nopadding": false,
+        "origin_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "parallaxDepth": "0.00000 0.00000",
+        "parsed": true,
+        "puppet": "",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size_parsed": [
+          2.0,
+          2.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          0.7529399991035461,
+          0.7529399991035461,
+          0.7529399991035461
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 0,
+        "effects": [],
+        "fullscreen": false,
+        "id": 80,
+        "image": "models/图层 5.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {},
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage4",
+          "textures": [
+            "图层 5"
+          ],
+          "use_puppet": false
+        },
+        "name": "LANGAN",
+        "nopadding": false,
+        "origin": "1917.77588 245.74438 0.00000",
+        "origin_parsed": [
+          1917.77587890625,
+          245.744384765625,
+          0.0
+        ],
+        "parsed": true,
+        "puppet": "",
+        "scale": "1.01000 1.01000 1.00000",
+        "scale_parsed": [
+          1.0099999904632568,
+          1.0099999904632568,
+          1.0
+        ],
+        "size": "3840.00000 489.00000",
+        "size_parsed": [
+          3840.0,
+          489.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 1,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "workshop/2718465779/effects/pulse_",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "Pulse+",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "amount": [
+                    0.28999999165534973
+                  ],
+                  "bounds": [
+                    0.0,
+                    1.0
+                  ],
+                  "noiseamount": [
+                    0.0
+                  ],
+                  "noisespeed": [
+                    0.4000000059604645
+                  ],
+                  "phase": [
+                    0.0
+                  ],
+                  "power": [
+                    1.0
+                  ],
+                  "speed": [
+                    1.7100000381469727
+                  ],
+                  "tinthigh": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ],
+                  "tintlow": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "",
+                  "masks/pulse__mask_10d0d88a",
+                  ""
+                ]
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": false,
+        "id": 117,
+        "image": "models/HUANG.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {},
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage4",
+          "textures": [
+            "HUANG"
+          ],
+          "use_puppet": false
+        },
+        "name": "HUANG",
+        "nopadding": false,
+        "origin": "3404.00854 1757.35803 0.00000",
+        "origin_parsed": [
+          3404.008544921875,
+          1757.3580322265625,
+          0.0
+        ],
+        "parsed": true,
+        "puppet": "models/HUANG_puppet.mdl",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "1789.00000 795.00000",
+        "size_parsed": [
+          1789.0,
+          795.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "id": 260,
+        "kind": "sound",
+        "maxtime": 5.0,
+        "mintime": 1.0,
+        "name": "obj_wo3DlMOGwrbDjj7DisKw_31051035817_8b82_a384_6bcd_e8add58f647ab296d6371477a1d221f8.mp3",
+        "parsed": true,
+        "playbackmode": "loop",
+        "sound_paths": [
+          "sounds/obj_wo3DlMOGwrbDjj7DisKw_31051035817_8b82_a384_6bcd_e8add58f647ab296d6371477a1d221f8.mp3"
+        ],
+        "visible": true,
+        "visible_parsed": true,
+        "volume": 0.6000000238418579
+      },
+      {
+        "angles": {
+          "animation": {
+            "c0": [
+              {
+                "back": {
+                  "enabled": true,
+                  "magic": true,
+                  "x": -1,
+                  "y": -0.0
+                },
+                "frame": 0,
+                "front": {
+                  "enabled": true,
+                  "magic": true,
+                  "x": 0.51666665,
+                  "y": 0
+                },
+                "lockangle": true,
+                "locklength": true,
+                "value": 0
+              },
+              {
+                "back": {
+                  "enabled": true,
+                  "magic": true,
+                  "x": -1,
+                  "y": -0.0
+                },
+                "frame": 30,
+                "front": {
+                  "enabled": true,
+                  "magic": true,
+                  "x": 0.75,
+                  "y": 0
+                },
+                "lockangle": true,
+                "locklength": true,
+                "value": 0
+              },
+              {
+                "back": {
+                  "enabled": true,
+                  "magic": true,
+                  "x": -0.99166667,
+                  "y": -0.0
+                },
+                "frame": 90,
+                "front": {
+                  "enabled": true,
+                  "magic": true,
+                  "x": 1,
+                  "y": 0
+                },
+                "lockangle": true,
+                "locklength": true,
+                "value": 0
+              },
+              {
+                "back": {
+                  "enabled": true,
+                  "magic": true,
+                  "x": -0.50847459,
+                  "y": -0.0
+                },
+                "frame": 149,
+                "front": {
+                  "enabled": true,
+                  "magic": true,
+                  "x": 1,
+                  "y": 0
+                },
+                "lockangle": true,
+                "locklength": true,
+                "value": 0
+              }
+            ],
+            "c1": [
+              {
+                "back": {
+                  "enabled": true,
+                  "magic": true,
+                  "x": -1,
+                  "y": -0.0
+                },
+                "frame": 0,
+                "front": {
+                  "enabled": true,
+                  "magic": true,
+                  "x": 0.51666665,
+                  "y": 0
+                },
+                "lockangle": true,
+                "locklength": true,
+                "value": 0
+              },
+              {
+                "back": {
+                  "enabled": true,
+                  "magic": true,
+                  "x": -1,
+                  "y": -0.0077647087
+                },
+                "frame": 30,
+                "front": {
+                  "enabled": true,
+                  "magic": true,
+                  "x": 0.80000001,
+                  "y": 0.012941181
+                },
+                "lockangle": true,
+                "locklength": true,
+                "value": 0
+              },
+              {
+                "back": {
+                  "enabled": true,
+                  "magic": true,
+                  "x": -0.60000002,
+                  "y": -0.0
+                },
+                "frame": 80,
+                "front": {
+                  "enabled": true,
+                  "magic": true,
+                  "x": 1,
+                  "y": 0
+                },
+                "lockangle": true,
+                "locklength": true,
+                "value": 0.12941182
+              },
+              {
+                "back": {
+                  "enabled": true,
+                  "magic": true,
+                  "x": -1,
+                  "y": 0.0021934204
+                },
+                "frame": 90,
+                "front": {
+                  "enabled": true,
+                  "magic": true,
+                  "x": 0.58474576,
+                  "y": -0.012941181
+                },
+                "lockangle": true,
+                "locklength": true,
+                "value": 0
+              },
+              {
+                "back": {
+                  "enabled": true,
+                  "magic": true,
+                  "x": -0.50847459,
+                  "y": -0.0
+                },
+                "frame": 149,
+                "front": {
+                  "enabled": true,
+                  "magic": true,
+                  "x": 1,
+                  "y": 0
+                },
+                "lockangle": true,
+                "locklength": true,
+                "value": 0
+              }
+            ],
+            "c2": [
+              {
+                "back": {
+                  "enabled": true,
+                  "magic": true,
+                  "x": -1,
+                  "y": -0.00143194
+                },
+                "frame": 0,
+                "front": {
+                  "enabled": true,
+                  "magic": true,
+                  "x": 0.51666665,
+                  "y": 0.0429582
+                },
+                "lockangle": true,
+                "locklength": true,
+                "value": -0.51015973
+              },
+              {
+                "back": {
+                  "enabled": true,
+                  "magic": true,
+                  "x": -1,
+                  "y": -0.019366173
+                },
+                "frame": 30,
+                "front": {
+                  "enabled": true,
+                  "magic": true,
+                  "x": 0.75,
+                  "y": 0.038732346
+                },
+                "lockangle": true,
+                "locklength": true,
+                "value": -0.080577716
+              },
+              {
+                "back": {
+                  "enabled": true,
+                  "magic": true,
+                  "x": -0.99166667,
+                  "y": 0.0429582
+                },
+                "frame": 90,
+                "front": {
+                  "enabled": true,
+                  "magic": true,
+                  "x": 1,
+                  "y": -0.042242233
+                },
+                "lockangle": true,
+                "locklength": true,
+                "value": -0.12283627
+              },
+              {
+                "back": {
+                  "enabled": true,
+                  "magic": true,
+                  "x": -0.50847459,
+                  "y": 0.038732346
+                },
+                "frame": 149,
+                "front": {
+                  "enabled": true,
+                  "magic": true,
+                  "x": 1,
+                  "y": -0.00065648044
+                },
+                "lockangle": true,
+                "locklength": true,
+                "value": -0.51015973
+              }
+            ],
+            "options": {
+              "fps": 30,
+              "length": 150,
+              "mode": "loop",
+              "wraploop": true
+            },
+            "relative": true
+          },
+          "value": "0.00000 0.00000 0.51225"
+        },
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.5122500061988831
+        ],
+        "animationmode": "",
+        "child_count": 0,
+        "controlpoint_count": 8,
+        "emitter_count": 1,
+        "id": 1127,
+        "initializer_count": 5,
+        "kind": "particle",
+        "maxcount": 32,
+        "name": "烟雾 1",
+        "operator_count": 5,
+        "origin": "-31.16235 -8.26758 0.00000",
+        "origin_parsed": [
+          -31.162349700927734,
+          -8.267580032348633,
+          0.0
+        ],
+        "parsed": true,
+        "particle": "particles/presets/vapor0.json",
+        "renderer_count": 1,
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "starttime": 0,
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "angles": "0.00000 0.00000 0.26180",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.26179999113082886
+        ],
+        "animationmode": "",
+        "child_count": 2,
+        "controlpoint_count": 8,
+        "emitter_count": 1,
+        "id": 1396,
+        "initializer_count": 4,
+        "kind": "particle",
+        "maxcount": 5,
+        "name": "Twinkling shooting star",
+        "operator_count": 2,
+        "origin": "2369.57397 1807.62500 0.00000",
+        "origin_parsed": [
+          2369.573974609375,
+          1807.625,
+          0.0
+        ],
+        "parsed": true,
+        "particle": "particles/workshop/2914579837/deku_twinkle_shootingstar.json",
+        "renderer_count": 1,
+        "scale": "-1.00000 1.00000 1.00000",
+        "scale_parsed": [
+          -1.0,
+          1.0,
+          1.0
+        ],
+        "starttime": 9,
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment_parsed": "center",
+        "alpha": 0.36000001430511475,
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          0.32548999786376953,
+          0.4745100140571594,
+          0.7254899740219116
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 1,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "workshop/2098390419/effects/scroll",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_scroll_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "repeat": [
+                    1.0,
+                    1.0
+                  ],
+                  "speedx": [
+                    0.10000000149011612
+                  ],
+                  "speedy": [
+                    0.0
+                  ]
+                },
+                "target": "",
+                "textures": []
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": false,
+        "id": 1567,
+        "image": "models/workshop/2098390419/clouds2.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "version": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "workshop/2098390419/clouds2"
+          ],
+          "use_puppet": false
+        },
+        "name": "Basic Clouds Movement",
+        "nopadding": false,
+        "origin": "1841.41296 1696.80420 0.00000",
+        "origin_parsed": [
+          1841.4129638671875,
+          1696.80419921875,
+          0.0
+        ],
+        "parsed": true,
+        "puppet": "",
+        "scale": "2.52579 1.53800 1.00000",
+        "scale_parsed": [
+          2.525789976119995,
+          1.5379999876022339,
+          1.0
+        ],
+        "size": "1920.00000 1080.00000",
+        "size_parsed": [
+          1920.0,
+          1080.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "id": 9722,
+        "kind": "unknown",
+        "name": "Clock",
+        "origin": {
+          "script": "// 使用严格模式\n'use strict';\n\n// 创建脚本属性\nexport var scriptProperties = createScriptProperties ()\n  // 添加 X 坐标的滑块属性\n  .addSlider ( {\n    name: 'x', // 属性名称\n    label: 'X', // 属性标签\n    value: 0.5, // 属性默认值\n    min: 0, // 滑块最小值\n    max: 1, // 滑块最大值\n    integer: false // 是否使用整数\n  })\n  // 添加 Y 坐标的滑块属性\n  .addSlider ( {\n    name: 'y', // 属性名称\n    label: 'Y', // 属性标签\n    value: 0.5, // 属性默认值\n    min: 0, // 滑块最小值\n    max: 1, // 滑块最大值\n    integer: false // 是否使用整数\n  })\n  // 完成脚本属性的创建\n  .finish ();\n\n/**\n * 更新组件的坐标值\n * @param {Vec3} value - 组件的原始坐标值\n * @return {Vec3} - 更新后的坐标值\n */\nexport function update (value) {\n  // 将 X 坐标乘以画布的宽度\n  value.x = scriptProperties.x * engine.canvasSize.x;\n  // 将 Y 坐标乘以画布的高度\n  value.y = scriptProperties.y * engine.canvasSize.y;\n  // 返回更新后的坐标值\n  return value;\n}\n",
+          "scriptproperties": {
+            "x": {
+              "user": "x",
+              "value": 0.5
+            },
+            "y": {
+              "user": "y",
+              "value": 0.5
+            }
+          },
+          "value": "1251.40784 1928.18665 0.00000"
+        },
+        "scale": {
+          "user": "newproperty7",
+          "value": "0.42000 0.42000 0.42000"
+        },
+        "size": "901.00000 416.00000",
+        "visible": true
+      },
+      {
+        "angles": "0.00000 -0.00000 0.01300",
+        "angles_parsed": [
+          0.0,
+          -0.0,
+          0.013000000268220901
+        ],
+        "animationmode": "",
+        "child_count": 0,
+        "controlpoint_count": 8,
+        "emitter_count": 1,
+        "id": 9793,
+        "initializer_count": 3,
+        "kind": "particle",
+        "maxcount": 500,
+        "name": "Blinking Stars",
+        "operator_count": 2,
+        "origin": "2108.42017 2244.69922 0.00000",
+        "origin_parsed": [
+          2108.420166015625,
+          2244.69921875,
+          0.0
+        ],
+        "parsed": true,
+        "particle": "particles/workshop/2232966846/Stars_copy1.json",
+        "renderer_count": 1,
+        "scale": "2.00000 2.00000 1.00000",
+        "scale_parsed": [
+          2.0,
+          2.0,
+          1.0
+        ],
+        "starttime": 0,
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "animationmode": "",
+        "child_count": 1,
+        "controlpoint_count": 8,
+        "emitter_count": 1,
+        "id": 13705,
+        "initializer_count": 4,
+        "kind": "particle",
+        "maxcount": 1,
+        "name": "Spark",
+        "operator_count": 2,
+        "origin": "484.90546 550.02789 0.00000",
+        "origin_parsed": [
+          484.90545654296875,
+          550.0278930664063,
+          0.0
+        ],
+        "parsed": true,
+        "particle": "particles/presets/spark.json",
+        "renderer_count": 1,
+        "scale": "0.80000 0.60000 1.00000",
+        "scale_parsed": [
+          0.800000011920929,
+          0.6000000238418579,
+          1.0
+        ],
+        "starttime": 10,
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles": "-0.00000 -0.00000 -0.06078",
+        "angles_parsed": [
+          -0.0,
+          -0.0,
+          -0.06077999994158745
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 2,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "workshop/2846660316/effects/_________________________________",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "简单的音频响应（汉化）",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {
+                  "RESOLUTION": 64,
+                  "TRANSPARENCY": 0
+                },
+                "constantshadervalues": {
+                  "ui_browse_properties_scheme_color": [
+                    0.14117999374866486,
+                    0.23529000580310822,
+                    0.3803899884223938
+                  ],
+                  "ui_editor_properties_opacity": [
+                    1.0
+                  ],
+                  "栏的上下限": [
+                    0.0,
+                    0.6000000238418579
+                  ],
+                  "栏的条数": [
+                    63.66999816894531
+                  ],
+                  "栏的间距": [
+                    0.5299999713897705
+                  ]
+                },
+                "target": "",
+                "textures": []
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "workshop/2718465779/effects/pulse_",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "Pulse+",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {
+                  "AUDIOPROCESSING": 3
+                },
+                "constantshadervalues": {
+                  "audioamount": [
+                    0.11999999731779099
+                  ],
+                  "audiobounds": [
+                    0.5,
+                    1.0
+                  ],
+                  "audioexponent": [
+                    0.5099999904632568
+                  ],
+                  "frequencymax": [
+                    1.0
+                  ],
+                  "frequencymin": [
+                    0.0
+                  ],
+                  "tinthigh": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ],
+                  "tintlow": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "",
+                  "masks/pulse__mask_a59703be"
+                ]
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": false,
+        "id": 24044,
+        "image": "models/util/composelayer.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {},
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "composelayer",
+          "textures": [
+            "_rt_FullFrameBuffer"
+          ],
+          "use_puppet": false
+        },
+        "name": "YINGPINGXIANGYING",
+        "nopadding": false,
+        "origin": "1934.41467 166.75470 0.00000",
+        "origin_parsed": [
+          1934.4146728515625,
+          166.75469970703125,
+          0.0
+        ],
+        "parsed": true,
+        "puppet": "",
+        "scale": "1.03582 1.00000 1.00000",
+        "scale_parsed": [
+          1.0358200073242188,
+          1.0,
+          1.0
+        ],
+        "size": "3840.00000 300.00000",
+        "size_parsed": [
+          3840.0,
+          300.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 0,
+        "effects": [],
+        "fullscreen": false,
+        "id": 30644,
+        "image": "models/solid_instance_model_42095d61.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "version": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage4",
+          "textures": [
+            "util/white"
+          ],
+          "use_puppet": false
+        },
+        "name": "纯色占位符",
+        "nopadding": false,
+        "origin": "1984.71814 -128.98654 0.00000",
+        "origin_parsed": [
+          1984.7181396484375,
+          -128.98654174804688,
+          0.0
+        ],
+        "parsed": true,
+        "puppet": "",
+        "scale": "17.04288 1.00000 1.00000",
+        "scale_parsed": [
+          17.042879104614258,
+          1.0,
+          1.0
+        ],
+        "size": "256.00000 256.00000",
+        "size_parsed": [
+          256.0,
+          256.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles": "0.00000 -0.00000 0.00000",
+        "angles_parsed": [
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 0,
+        "effects": [],
+        "fullscreen": false,
+        "id": 30759,
+        "image": "models/solid_instance_model_c8f2f69f.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "version": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage4",
+          "textures": [
+            "util/white"
+          ],
+          "use_puppet": false
+        },
+        "name": "纯色占位符",
+        "nopadding": false,
+        "origin": "-0.69792 2418.33447 0.00000",
+        "origin_parsed": [
+          -0.697920024394989,
+          2418.33447265625,
+          0.0
+        ],
+        "parsed": true,
+        "puppet": "",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "256.00000 256.00000",
+        "size_parsed": [
+          256.0,
+          256.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      }
+    ],
+    "ortho": {
+      "height": 2160,
+      "width": 3840
+    },
+    "parsed": true
   },
   "textures": [
     {
@@ -1537,8 +3253,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2048,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -1563,8 +3279,8 @@
       "texs": 0,
       "texv": 5,
       "width": 4096,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -1589,8 +3305,8 @@
       "texs": 0,
       "texv": 5,
       "width": 32,
-      "wrap_s": 1,
-      "wrap_t": 1
+      "wrap_s": "repeat",
+      "wrap_t": "repeat"
     },
     {
       "compo1": 0,
@@ -1615,8 +3331,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2000,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -1641,8 +3357,8 @@
       "texs": 0,
       "texv": 5,
       "width": 894,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -1667,8 +3383,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2000,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -1693,8 +3409,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2000,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -1719,8 +3435,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1920,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -1745,8 +3461,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1920,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -1771,8 +3487,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2000,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -1797,8 +3513,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2000,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -1823,8 +3539,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2000,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -1849,8 +3565,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2000,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -1875,8 +3591,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2000,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -1901,8 +3617,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2048,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -1927,8 +3643,8 @@
       "texs": 0,
       "texv": 5,
       "width": 128,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -1953,8 +3669,8 @@
       "texs": 0,
       "texv": 5,
       "width": 4096,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -1979,8 +3695,8 @@
       "texs": 0,
       "texv": 5,
       "width": 3840,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     }
   ],
   "workshop_dir": "3400879974"

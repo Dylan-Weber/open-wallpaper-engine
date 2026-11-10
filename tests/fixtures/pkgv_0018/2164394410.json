@@ -6,8 +6,504 @@
   },
   "puppets": [],
   "scene": {
-    "error": "[json.exception.type_error.302] type must be boolean, but is object",
-    "parsed": false
+    "camera": {
+      "center": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "eye": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "up": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    "general": {
+      "ambientcolor": [
+        0.30000001192092896,
+        0.30000001192092896,
+        0.30000001192092896
+      ],
+      "cameraparallax": false,
+      "clearcolor": [
+        0.699999988079071,
+        0.699999988079071,
+        0.699999988079071
+      ],
+      "farz": 10000.0,
+      "fov": 50.0,
+      "nearz": 0.009999999776482582,
+      "skylightcolor": [
+        0.30000001192092896,
+        0.30000001192092896,
+        0.30000001192092896
+      ],
+      "zoom": 1.0
+    },
+    "is_ortho": true,
+    "object_count": 8,
+    "objects": [
+      {
+        "alignment": "center",
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles": "0.00000 0.00000 0.00000",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 1,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/xray",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_xray_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "multiply": [
+                    1.0
+                  ],
+                  "size": [
+                    0.17499999701976776
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "symbol1iuudownload-gigapixel-width-3840px",
+                  ""
+                ]
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": false,
+        "id": 13,
+        "image": "models/rien1iuudownload-gigapixel-width-3840px.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "version": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "rien1iuudownload-gigapixel-width-3840px"
+          ],
+          "use_puppet": false
+        },
+        "name": "rien1iuudownload-gigapixel-width-3840px",
+        "nopadding": false,
+        "origin": "1920.00000 1080.00000 0.00000",
+        "origin_parsed": [
+          1920.0,
+          1080.0,
+          0.0
+        ],
+        "parallaxDepth": "1.00000 1.00000",
+        "parsed": true,
+        "puppet": "",
+        "scale": "1.00000 1.00000 1.00000",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "3840.00000 2160.00000",
+        "size_parsed": [
+          3840.0,
+          2160.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "angles": "0.00000 0.00000 0.00000",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "animationmode": "",
+        "child_count": 0,
+        "controlpoint_count": 8,
+        "emitter_count": 1,
+        "id": 29,
+        "initializer_count": 4,
+        "kind": "particle",
+        "maxcount": 40,
+        "name": "Ember",
+        "operator_count": 5,
+        "origin": "131.40900 -39.13800 0.00000",
+        "origin_parsed": [
+          131.40899658203125,
+          -39.13800048828125,
+          0.0
+        ],
+        "parallaxDepth": "1.00000 1.00000",
+        "parsed": true,
+        "particle": "particles/presets/ember.json",
+        "renderer_count": 1,
+        "scale": "1.00000 1.00000 1.00000",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "starttime": 3,
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment": "center",
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles": "0.00000 0.00000 0.00000",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 1,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/shake",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_shake_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {
+                  "DIRECTION": 1
+                },
+                "constantshadervalues": {
+                  "bounds": [
+                    0.0,
+                    1.0
+                  ],
+                  "friction": [
+                    10.0,
+                    10.0
+                  ],
+                  "speed": [
+                    0.25
+                  ],
+                  "strength": [
+                    -1.0
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/shake_mask_ee0d9bbc6d0516b8583c8fb3e841485c0b7ec4e8",
+                  ""
+                ]
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": false,
+        "id": 47,
+        "image": "models/texte NPKKKKK.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "version": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "texte NPKKKKK"
+          ],
+          "use_puppet": false
+        },
+        "name": "texte NPKKKKK",
+        "nopadding": false,
+        "origin": "1920.00000 1080.00000 0.00000",
+        "origin_parsed": [
+          1920.0,
+          1080.0,
+          0.0
+        ],
+        "parallaxDepth": "1.00000 1.00000",
+        "parsed": true,
+        "puppet": "",
+        "scale": "1.00000 1.00000 1.00000",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "3840.00000 2160.00000",
+        "size_parsed": [
+          3840.0,
+          2160.0
+        ],
+        "visible": false,
+        "visible_parsed": false
+      },
+      {
+        "angles": "0.00000 0.00000 0.00000",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "animationmode": "",
+        "child_count": 0,
+        "controlpoint_count": 8,
+        "emitter_count": 1,
+        "id": 55,
+        "initializer_count": 6,
+        "kind": "particle",
+        "maxcount": 20,
+        "name": "Fog 1",
+        "operator_count": 2,
+        "origin": "1258.29114 1794.41516 0.00000",
+        "origin_parsed": [
+          1258.2911376953125,
+          1794.4151611328125,
+          0.0
+        ],
+        "parallaxDepth": "1.00000 1.00000",
+        "parsed": true,
+        "particle": "particles/presets/fog1.json",
+        "renderer_count": 1,
+        "scale": "1.00000 1.00000 1.00000",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "starttime": 2,
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "angles": "0.00000 0.00000 0.00000",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "animationmode": "",
+        "child_count": 0,
+        "controlpoint_count": 8,
+        "emitter_count": 1,
+        "id": 63,
+        "initializer_count": 6,
+        "kind": "particle",
+        "maxcount": 20,
+        "name": "Fog 1",
+        "operator_count": 2,
+        "origin": "2073.85938 1854.62476 0.00000",
+        "origin_parsed": [
+          2073.859375,
+          1854.624755859375,
+          0.0
+        ],
+        "parallaxDepth": "1.00000 1.00000",
+        "parsed": true,
+        "particle": "particles/presets/fog1.json",
+        "renderer_count": 1,
+        "scale": "1.00000 1.00000 1.00000",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "starttime": 2,
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "angles": "0.00000 -0.00000 0.93000",
+        "angles_parsed": [
+          0.0,
+          -0.0,
+          0.9300000071525574
+        ],
+        "animationmode": "",
+        "child_count": 0,
+        "controlpoint_count": 8,
+        "emitter_count": 1,
+        "id": 73,
+        "initializer_count": 6,
+        "kind": "particle",
+        "maxcount": 16,
+        "name": "Light shafts 0",
+        "operator_count": 3,
+        "origin": "-229.74100 1871.79199 0.00000",
+        "origin_parsed": [
+          -229.74099731445313,
+          1871.7919921875,
+          0.0
+        ],
+        "parallaxDepth": "1.00000 1.00000",
+        "parsed": true,
+        "particle": "particles/presets/light_shafts_0.json",
+        "renderer_count": 1,
+        "scale": "10.00000 10.00000 10.00000",
+        "scale_parsed": [
+          10.0,
+          10.0,
+          10.0
+        ],
+        "starttime": 10,
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment": "center",
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles": "0.00000 0.00000 0.00000",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 0,
+        "effects": [],
+        "fullscreen": false,
+        "id": 86,
+        "image": "models/symbol1iuudownload-gigapixel-width-3840px.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "version": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "symbol1iuudownload-gigapixel-width-3840px"
+          ],
+          "use_puppet": false
+        },
+        "name": "symbol1iuudownload-gigapixel-width-3840px",
+        "nopadding": false,
+        "origin": "1920.00000 1080.00000 0.00000",
+        "origin_parsed": [
+          1920.0,
+          1080.0,
+          0.0
+        ],
+        "parallaxDepth": "1.00000 1.00000",
+        "parsed": true,
+        "puppet": "",
+        "scale": "1.00000 1.00000 1.00000",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "3840.00000 2160.00000",
+        "size_parsed": [
+          3840.0,
+          2160.0
+        ],
+        "visible": false,
+        "visible_parsed": false
+      },
+      {
+        "angles": "0.00000 0.00000 0.00000",
+        "id": 143,
+        "kind": "sound",
+        "maxtime": 5.0,
+        "mintime": 1.0,
+        "name": "the-one-ring-theme.mp3",
+        "origin": "0.00000 0.00000 0.00000",
+        "parallaxDepth": "1.00000 1.00000",
+        "parsed": true,
+        "playbackmode": "loop",
+        "scale": "1.00000 1.00000 1.00000",
+        "sound_paths": [
+          "sounds/the-one-ring-theme.mp3"
+        ],
+        "visible": true,
+        "visible_parsed": true,
+        "volume": 0.5
+      }
+    ],
+    "ortho": {
+      "height": 2160,
+      "width": 3840
+    },
+    "parsed": true
   },
   "textures": [
     {
@@ -33,8 +529,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2048,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -59,8 +555,8 @@
       "texs": 0,
       "texv": 5,
       "width": 4096,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -85,8 +581,8 @@
       "texs": 0,
       "texv": 5,
       "width": 4096,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -111,8 +607,8 @@
       "texs": 0,
       "texv": 5,
       "width": 4096,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     }
   ],
   "workshop_dir": "2164394410"

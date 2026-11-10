@@ -8,8 +8,12 @@
     {
       "anim_tracks": [
         {
+          "blend_curves_count": 0,
           "bone_track_count": 7,
+          "events_count": 0,
           "fps": 2.9000000953674316,
+          "has_aabb": false,
+          "has_trans": false,
           "id": 35,
           "length": 29,
           "mode": 0,
@@ -52,7 +56,9 @@
             }
           ],
           "name": "动画 1",
-          "total_bone_frames": 210
+          "scalar_curves_count": 0,
+          "total_bone_frames": 210,
+          "v4_events_count": 0
         }
       ],
       "anims": 1,
@@ -187,15 +193,23 @@
         }
       ],
       "bones": 7,
+      "flag": [
+        "00001001",
+        "00000000",
+        "10000000",
+        "00000001"
+      ],
       "index_count": 902,
       "mat_json_file": "materials/拼图.json",
       "mdla": 3,
       "mdls": 2,
       "mdlv": 16,
+      "mesh_count": 1,
       "ok": true,
       "part_count": 0,
       "parts": [],
       "path": "/models/拼图_puppet.mdl",
+      "skin_count": 1,
       "vert_extra_count": 0,
       "vertex_count": 530
     }
@@ -1031,8 +1045,8 @@
       "texs": 0,
       "texv": 5,
       "width": 256,
-      "wrap_s": 1,
-      "wrap_t": 1
+      "wrap_s": "repeat",
+      "wrap_t": "repeat"
     },
     {
       "compo1": 0,
@@ -1057,8 +1071,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1920,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -1083,8 +1097,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1920,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -1109,8 +1123,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1920,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -1135,8 +1149,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1920,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -1161,8 +1175,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1920,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -1187,8 +1201,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1920,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -1213,8 +1227,8 @@
       "texs": 0,
       "texv": 5,
       "width": 3840,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -1239,8 +1253,8 @@
       "texs": 0,
       "texv": 5,
       "width": 4096,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     }
   ],
   "workshop_dir": "2664591394"
