@@ -355,6 +355,7 @@ struct TextResources::Impl {
     Vec<Font>                      fonts;
     FT_Library                     freetype {};
     HashMap<String, array<rstd::int32_t, 4>> hinted_boxes;
+    HashMap<String, OutlinedCell>            outlined_cells;
     ~Impl() {
         for (auto& font : fonts)
             if (font.face) FT_Done_Face(font.face);
@@ -433,6 +434,15 @@ auto TextResources::HintedGlyphBox(const vectext::FontSource& font, vectext::Ind
     array<rstd::int32_t, 4> box { left, -top_up, right, -bottom_up };
     (void)im.hinted_boxes.insert(rstd::move(key), array<rstd::int32_t, 4>(box));
     return Some(rstd::move(box));
+}
+auto TextResources::SharedOutlinedCell(const vectext::FontSource& font, vectext::Index glyph,
+                                       const OutlinedCell& fresh) -> OutlinedCell {
+    auto& im  = *m_impl;
+    auto  key = rstd::format("{}:{}:{}", font.collection, font.source, glyph);
+    if (auto cached = im.outlined_cells.get(key.as_str()); cached.is_some())
+        return OutlinedCell(**cached);
+    (void)im.outlined_cells.insert(rstd::move(key), OutlinedCell(fresh));
+    return fresh;
 }
 auto TextResources::Layout(vectext::TextRequest request)
     -> Result<vectext::TextLayout, vectext::TextError> {
@@ -808,28 +818,49 @@ void InkEdges(const vectext::GlyphBitmap& bitmap, AtlasGlyph& entry) {
 }
 } // namespace
 
-auto OutlinedGlyphPlace(double left, double right, double top, double bottom, double ppem)
-    -> GlyphPlace {
-    // the atlas's em, and the room round each glyph in it, in atlas pixels
-    constexpr double kAtlasEm = 32, kAtlasRoom = 12;
+auto OutlinedGlyphCell(double left, double right, double top, double bottom, double ppem)
+    -> OutlinedCell {
+    // the atlas's em, in atlas pixels
+    constexpr double kAtlasEm = 32;
     const double     w = right - left, h = bottom - top;
     if (! (ppem > 0) || ! (w > 0) || ! (h > 0)) return {};
     // (Wallpaper Engine's single-precision sizes, truncated)
-    const float  per_px  = float(kAtlasEm) / float(ppem);
-    const double atlas_w = rstd::cmp::max(1.0, double(int(float(w) * per_px))),
-                 atlas_h = rstd::cmp::max(1.0, double(int(float(h) * per_px)));
-    const double scale   = rstd::cmp::max(atlas_w, atlas_h) / rstd::cmp::max(w, h);
-    const double room    = ppem * kAtlasRoom / kAtlasEm;
-    // the atlas glyph (with its room) is drawn on the box grown by room
-    const double kx = (w + 2 * room) / (atlas_w + 2 * kAtlasRoom);
-    const double ky = (h + 2 * room) / (atlas_h + 2 * kAtlasRoom);
+    const float per_px = float(kAtlasEm) / float(ppem);
+    OutlinedCell cell;
+    cell.atlas_w = rstd::cmp::max(1.0, double(int(float(w) * per_px)));
+    cell.atlas_h = rstd::cmp::max(1.0, double(int(float(h) * per_px)));
+    cell.scale   = rstd::cmp::max(cell.atlas_w, cell.atlas_h) / rstd::cmp::max(w, h);
+    cell.left    = left;
+    cell.bottom  = bottom;
+    cell.ppem    = ppem;
+    return cell;
+}
+
+auto OutlinedGlyphPlace(double left, double right, double top, double bottom, double ppem,
+                        const OutlinedCell& cell) -> GlyphPlace {
+    // the room round each glyph in its cell, in atlas pixels
+    constexpr double kAtlasEm = 32, kAtlasRoom = 12;
+    const double     w = right - left, h = bottom - top;
+    if (! (ppem > 0) || ! (w > 0) || ! (h > 0) || ! (cell.ppem > 0)) return {};
+    const double room = ppem * kAtlasRoom / kAtlasEm;
+    // the cell (with its room) is drawn on the box grown by room
+    const double kx = (w + 2 * room) / (cell.atlas_w + 2 * kAtlasRoom);
+    const double ky = (h + 2 * room) / (cell.atlas_h + 2 * kAtlasRoom);
+    // a cell made at another size holds the glyph at that size's pixels
+    const double r = cell.ppem / ppem;
     GlyphPlace   place;
-    place.scale_x  = scale * kx;
-    place.offset_x = left - room + (kAtlasRoom - left * scale) * kx;
+    place.scale_x  = cell.scale * kx * r;
+    place.offset_x = left - room + kx * (kAtlasRoom - cell.scale * cell.left);
     // y is down; the atlas is anchored at the box's bottom
-    place.scale_y  = scale * ky;
-    place.offset_y = bottom + room - (bottom * scale + kAtlasRoom) * ky;
+    place.scale_y  = cell.scale * ky * r;
+    place.offset_y = bottom + room - ky * (kAtlasRoom + cell.scale * cell.bottom);
     return place;
+}
+
+auto OutlinedGlyphPlace(double left, double right, double top, double bottom, double ppem)
+    -> GlyphPlace {
+    return OutlinedGlyphPlace(
+        left, right, top, bottom, ppem, OutlinedGlyphCell(left, right, top, bottom, ppem));
 }
 
 auto TextResources::Rasterize(const vectext::FontInstance& font, vectext::Index glyph, double scale,
@@ -1525,8 +1556,12 @@ struct TextLayouter::Impl {
                     if (auto hinted = resources->HintedGlyphBox(*font.source, glyph.glyph, size);
                         hinted.is_some())
                         for (int i = 0; i < 4; ++i) box[i] = double((*hinted)[usize(i)]);
+                // (Wallpaper Engine draws a font's glyph from the cell of the first size it drew it at)
+                auto cell = OutlinedGlyphCell(box[0], box[2], box[1], box[3], round(size));
+                if (font.source.is_some() && glyph.font == 0 && cell.ppem > 0)
+                    cell = resources->SharedOutlinedCell(*font.source, glyph.glyph, cell);
                 const auto place =
-                    OutlinedGlyphPlace(box[0], box[2], box[1], box[3], round(size));
+                    OutlinedGlyphPlace(box[0], box[2], box[1], box[3], round(size), cell);
                 // a glyph point x (y down) is at left - origin.x + x (top + origin.y - y)
                 auto px = [&](double x) {
                     return float(place.scale_x * x + place.offset_x - x);

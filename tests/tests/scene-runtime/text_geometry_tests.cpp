@@ -1257,6 +1257,84 @@ TEST(TextOutlinePlace, AGlyphGoesWhereWallpaperEnginesSignedDistanceAtlasPutsIt)
     EXPECT_NEAR(place.scale_y * 0 + place.offset_y, -1.0931, 1e-3);
 }
 
+TEST(TextOutlinePlace, AGlyphDrawnAtALaterSizeKeepsTheFirstSizesCell) {
+    // Wallpaper Engine keeps one distance-atlas cell for a glyph of its primary font, made at the
+    // first size the glyph is drawn at (text-outline-stroke: the 36-point rows, then 48 and 60).
+    // DejaVu Sans' H at 150 pixels an em (box 14..99 by -109..0) is a 18 x 23 cell at scale 23 / 109;
+    // at 250 pixels (box 24..164 by -182..0) it is drawn from that cell, on its own box
+    const auto cell = owe::text::OutlinedGlyphCell(14, 99, -109, 0, 150);
+    EXPECT_DOUBLE_EQ(cell.atlas_w, 18);
+    EXPECT_DOUBLE_EQ(cell.atlas_h, 23);
+    EXPECT_NEAR(cell.scale, 23.0 / 109, 1e-9);
+    const auto place = owe::text::OutlinedGlyphPlace(24, 164, -182, 0, 250, cell);
+    EXPECT_NEAR(place.scale_x * 24 + place.offset_x, 24.4796, 1e-3);
+    EXPECT_NEAR(place.scale_x * 164 + place.offset_x, 162.6906, 1e-3);
+    EXPECT_NEAR(place.scale_y * -182 + place.offset_y, -181.7414, 1e-3);
+    EXPECT_NEAR(place.scale_y * 0 + place.offset_y, -0.5904, 1e-3);
+    // a glyph's own cell is what the five-argument form uses
+    const auto own   = owe::text::OutlinedGlyphCell(24, 164, -182, 0, 250);
+    const auto same  = owe::text::OutlinedGlyphPlace(24, 164, -182, 0, 250, own);
+    const auto plain = owe::text::OutlinedGlyphPlace(24, 164, -182, 0, 250);
+    EXPECT_DOUBLE_EQ(same.scale_x, plain.scale_x);
+    EXPECT_DOUBLE_EQ(same.offset_x, plain.offset_x);
+    EXPECT_DOUBLE_EQ(same.scale_y, plain.scale_y);
+    EXPECT_DOUBLE_EQ(same.offset_y, plain.offset_y);
+}
+
+TEST(TextAtlas, AnOutlinedGlyphsCellIsTheFirstOneStored) {
+    auto source    = rstd::path::PathBuf::from(__FILE__ ""_str);
+    auto root      = source.as_path().parent().unwrap().parent().unwrap().parent().unwrap();
+    auto path      = rstd::path::PathBuf::from(root).join("fixtures/fonts/DejaVuSans.ttf"_str);
+    auto bytes     = rstd::fs::read(path.as_path()).unwrap();
+    auto resources = TextResources();
+    auto font      = resources->RegisterFont(bytes.as_slice()).unwrap();
+    const auto small = owe::text::OutlinedGlyphCell(14, 99, -109, 0, 150);
+    const auto large = owe::text::OutlinedGlyphCell(24, 164, -182, 0, 250);
+    EXPECT_NE(small.atlas_w, large.atlas_w);
+    auto first = resources->SharedOutlinedCell(font, 7, small);
+    EXPECT_DOUBLE_EQ(first.atlas_w, small.atlas_w);
+    // the same glyph at another size gets the first cell; another glyph its own
+    auto again = resources->SharedOutlinedCell(font, 7, large);
+    EXPECT_DOUBLE_EQ(again.atlas_w, small.atlas_w);
+    EXPECT_DOUBLE_EQ(again.ppem, 150);
+    auto other = resources->SharedOutlinedCell(font, 8, large);
+    EXPECT_DOUBLE_EQ(other.atlas_w, large.atlas_w);
+}
+
+TEST(TextLayouter, AnOutlinedLetterAtALaterSizeIsDrawnFromTheFirstSizesCell) {
+    // text-outline-ctx: with a 16-point row before it, the 60-point H is 3 pixels narrower
+    auto source = rstd::path::PathBuf::from(__FILE__ ""_str);
+    auto root   = source.as_path().parent().unwrap().parent().unwrap().parent().unwrap();
+    auto path   = rstd::path::PathBuf::from(root).join("fixtures/fonts/DejaVuSans.ttf"_str);
+    auto bytes  = rstd::fs::read(path.as_path()).unwrap();
+    auto width  = [&](Arc<owe::text::TextResources> resources, vectext::FontSource font,
+                     double size) {
+        auto mesh = Arc<owe::SceneMesh>::make();
+        owe::text::TextLayoutStyle style;
+        style.outline           = true;
+        style.outline_thickness = 4.0f;
+        owe::text::TextLayouter layouter(resources.clone(),
+                                         { .source = Some(font), .size = size },
+                                         mesh.clone(),
+                                         rstd::move(style),
+                                         8);
+        EXPECT_TRUE(layouter.SetText("H"_str).is_ok());
+        const auto&  vertices = mesh->GetVertexArray(usize());
+        const auto   stride   = vertices.OneSize().to_primitive();
+        const auto   first    = vertices.VertexCount().to_primitive() - 4; // the letter
+        const float* data     = vertices.Data();
+        return data[(first + 1) * stride] - data[first * stride];
+    };
+    auto       lone   = TextResources();
+    const auto alone  = width(lone.clone(), lone->RegisterFont(bytes.as_slice()).unwrap(), 250);
+    auto       shared = TextResources();
+    auto       font   = shared->RegisterFont(bytes.as_slice()).unwrap();
+    (void)width(shared.clone(), font, 150);
+    const auto later = width(shared.clone(), font, 250);
+    EXPECT_GT(alone - later, 1.5f);
+    EXPECT_LT(alone - later, 5.0f);
+}
+
 TEST(TextOutlinePlace, AGlyphTheAtlasHoldsExactlyStaysPut) {
     // 10 pixels at 32 an em is 10 atlas pixels: nothing is truncated
     const auto place = owe::text::OutlinedGlyphPlace(3, 13, -10, 0, 32);

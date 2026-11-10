@@ -75,6 +75,12 @@ public:
     auto LineHeight(double size) const -> double;
     auto        Pair(rstd::uint32_t left, rstd::uint32_t right) const -> rstd::int32_t;
 };
+// the cell Wallpaper Engine's distance atlas keeps for an outlined glyph (see OutlinedGlyphCell):
+// its size in atlas pixels, the scale from the glyph's pixels, and the pixel box and size it was
+// made from
+struct OutlinedCell {
+    double atlas_w {}, atlas_h {}, scale { 1 }, left {}, bottom {}, ppem {};
+};
 class TextResources {
     struct Impl;
     Box<Impl> m_impl;
@@ -91,6 +97,11 @@ public:
     // from the baseline). None for a font RegisterFont wasn't given.
     auto HintedGlyphBox(const vectext::FontSource& font, vectext::Index glyph, double size)
         -> Option<array<rstd::int32_t, 4>>;
+    // The cell of an outlined glyph of a font RegisterFont was given: the first one stored for it
+    // (at whatever size), else `fresh`, which is stored. Wallpaper Engine makes a glyph's cell
+    // once, at the first size it draws it, and draws every later size from it.
+    auto SharedOutlinedCell(const vectext::FontSource& font, vectext::Index glyph,
+                            const OutlinedCell& fresh) -> OutlinedCell;
     auto Layout(vectext::TextRequest request) -> Result<vectext::TextLayout, vectext::TextError>;
     // `outline` > 0: the glyph's outline stroked that many pixels to either side with mitred
     // corners, filled, for a text outline drawn behind it
@@ -277,6 +288,14 @@ struct TextGeometry {
 struct GlyphPlace {
     double scale_x { 1 }, offset_x {}, scale_y { 1 }, offset_y {};
 };
+// the cell for a glyph whose whole-pixel box (y down, from the pen's baseline) is left..right by
+// top..bottom, at `ppem` pixels an em
+auto OutlinedGlyphCell(double left, double right, double top, double bottom, double ppem)
+    -> OutlinedCell;
+// where the glyph, at `ppem` with that box, is drawn from `cell` (its own, unless an earlier size
+// made one)
+auto OutlinedGlyphPlace(double left, double right, double top, double bottom, double ppem,
+                        const OutlinedCell& cell) -> GlyphPlace;
 auto OutlinedGlyphPlace(double left, double right, double top, double bottom, double ppem)
     -> GlyphPlace;
 
