@@ -607,11 +607,11 @@ TEST(PuppetScriptParsing, VisibilityScriptsInitializeTheirOwnPlayback) {
                 {"id": 1, "name": "First", "image": "models/身体.json",
                  "animationlayers": [{"id": 101, "animation": 3835, "name": "Offset",
                     "visible": {"value": true, "scriptproperties": {"offset": 0.8},
-                    "script": "export var scriptProperties = createScriptProperties().addSlider({name:'offset', value:0}).finish(); export function init(value) { if (thisObject === thisLayer) throw new Error('wrong owner'); const animation = thisObject.getAnimation(); animation.play(); animation.setFrame(animation.frameCount * scriptProperties.offset); return value; }"}}]},
+                    "script": "export var scriptProperties = createScriptProperties().addSlider({name:'offset', value:0}).finish(); export function init(value) { if (thisObject === thisLayer) throw new Error('wrong owner'); const animation = 'addEndedCallback' in thisObject ? thisObject : thisObject.getAnimation(); animation.play(); animation.setFrame(animation.frameCount * scriptProperties.offset); return value; }"}}]},
                 {"id": 2, "name": "Second", "image": "models/身体.json",
                  "animationlayers": [{"id": 201, "animation": 3835, "name": "Offset",
                     "visible": {"value": false, "scriptproperties": {"offset": 0.36},
-                    "script": "export var scriptProperties = createScriptProperties().addSlider({name:'offset', value:0}).finish(); export function init(value) { const animation = thisObject.getAnimation(); animation.play(); animation.setFrame(animation.frameCount * scriptProperties.offset); return true; }"}}]}
+                    "script": "export var scriptProperties = createScriptProperties().addSlider({name:'offset', value:0}).finish(); export function init(value) { const animation = 'addEndedCallback' in thisObject ? thisObject : thisObject.getAnimation(); animation.play(); animation.setFrame(animation.frameCount * scriptProperties.offset); return true; }"}}]}
             ]
         })JSON"_str,
         owe::wpscene::kSceneVersionUnknown);
