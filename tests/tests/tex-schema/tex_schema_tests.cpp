@@ -142,9 +142,19 @@ TexMeta read_tex_meta(const std::string& blob) {
         o += 4;
     }
     if (m.texb >= 4) {
-        std::int32_t reserved = 0;
-        if (! read_pod(buf, len, o, reserved)) return m;
+        // Condition records: u32 count, then per record 12 bytes and a
+        // NUL-terminated string (TexImageParser skips them the same way).
+        std::uint32_t condition_count = 0;
+        if (! read_pod(buf, len, o, condition_count)) return m;
         o += 4;
+        if (condition_count > (len - o) / 13) return m;
+        for (std::uint32_t c = 0; c < condition_count; ++c) {
+            if (o + 12 >= len) return m;
+            o += 12;
+            while (o < len && buf[o] != '\0') ++o;
+            if (o >= len) return m;
+            ++o;
+        }
     }
 
     m.sprite = (flags & (1u << 2)) != 0;
@@ -572,8 +582,10 @@ TEST(TexSchema, ProductionParseDecodesEveryBucket) {
                           << " for " << m.workshop_id << " " << m.pkg_path;
             continue;
         }
-        if (s0.mipmaps.is_empty() || ! s0.mipmaps[usize(0)].data ||
-            s0.mipmaps[usize(0)].size <= rstd::isize()) {
+        // Video textures keep their mp4 in video_source and have no pixel data.
+        if (s0.mipmaps.is_empty() ||
+            ((! s0.mipmaps[usize(0)].data || s0.mipmaps[usize(0)].size <= rstd::isize()) &&
+             s0.mipmaps[usize(0)].video_source.is_none())) {
             ++slot_empty;
             ++per_bucket_fail[key];
             ADD_FAILURE() << "slot 0 mip 0 missing data for " << m.workshop_id << " " << m.pkg_path;
