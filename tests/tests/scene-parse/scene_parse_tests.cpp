@@ -2719,3 +2719,39 @@ TEST(SceneAssetPaths, ModelCameraAndClipRetainTheirReparseSemantics) {
     EXPECT_EQ(camera.path, "motion.json"_str);
     EXPECT_TRUE(clip.name.is_empty());
 }
+
+// Wallpaper Engine takes an image layer's "size" in whole units, rounded down (layer-size-fraction:
+// sizes 4 x 1.49 and 4 x 1.5 are drawn as 4 x 1; 4 x 0.99, 4 x 0.5 and 0.5 x 1 aren't drawn at all)
+TEST(ImageObjectJson, ALayersSizeIsInWholeUnits) {
+    const auto dir = std::filesystem::temp_directory_path() / "owe-size-whole-test";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir / "models");
+    std::filesystem::create_directories(dir / "materials");
+    std::ofstream(dir / "models/plain.json") << R"({"material": "materials/plain.json"})";
+    std::ofstream(dir / "materials/plain.json")
+        << R"({"passes": [{"shader": "genericimage2", "textures": ["white"]}]})";
+    auto assets =
+        owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(dir.string()).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, std::move(assets).unwrap_unchecked()).is_ok());
+    auto size_of = [&](const char* size) {
+        auto json = owe::ParseJson(
+            rstd::cppstd::as_str(std::string(R"({"image": "models/plain.json", "size": ")") + size +
+                                 R"(", "origin": "0 0 0"})")
+                .unwrap());
+        owe::wpscene::ImageObject image;
+        EXPECT_TRUE(image.FromJson(json.unwrap(), vfs));
+        return image.size;
+    };
+    const auto fraction = size_of("4 1.5");
+    EXPECT_EQ(fraction[rstd::usize(0)], 4.0f);
+    EXPECT_EQ(fraction[rstd::usize(1)], 1.0f);
+    const auto under_one = size_of("2 0.5");
+    EXPECT_EQ(under_one[rstd::usize(0)], 2.0f);
+    EXPECT_EQ(under_one[rstd::usize(1)], 0.0f);
+    const auto whole = size_of("256 128");
+    EXPECT_EQ(whole[rstd::usize(0)], 256.0f);
+    EXPECT_EQ(whole[rstd::usize(1)], 128.0f);
+    std::filesystem::remove_all(dir);
+}

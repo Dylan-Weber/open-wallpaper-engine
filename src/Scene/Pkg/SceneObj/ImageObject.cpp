@@ -325,6 +325,8 @@ bool ImageObject::FromJson(const owe::Json& json, fs::VFS& vfs, SceneVersion v) 
             size = { static_cast<float>(w.to_primitive()), static_cast<float>(h.to_primitive()) };
         } else if (json.get("size"_str).is_some()) {
             owe::GetJsonValue(json, "size"_str, size);
+            // in whole units, rounded down: a size below 1 is drawn as nothing (layer-size-fraction)
+            for (auto& value : size) value = f32(value).floor().to_primitive();
         } else {
             size = { origin[usize(0)] * 2, origin[usize(1)] * 2 };
             owe::GetJsonValue(*jImage, "autosize"_str, size_from_texture, false);
