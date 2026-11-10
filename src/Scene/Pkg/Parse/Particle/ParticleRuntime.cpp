@@ -80,6 +80,46 @@ private:
     particle::ParticleReadIndex<particle::InitialColorAttribute> m_initial_color;
 };
 
+// The start of every operator pass: each particle's size, colour and opacity go back to the values it
+// was born with (Wallpaper Engine, FUN_14023fbc0), so operators that scale them take them from there
+// in each of the two half passes at 20 frames a second or less.
+class PassResetProgram {
+public:
+    explicit PassResetProgram(ParticleAttributes attributes): m_attributes(attributes) {}
+
+    void Compile(particle::ParticleViewCompiler& compiler) {
+        m_alpha         = compiler.Write(m_attributes.alpha);
+        m_size          = compiler.Write(m_attributes.size);
+        m_color         = compiler.Write(m_attributes.color);
+        m_initial_alpha = compiler.Read(m_attributes.initial_alpha);
+        m_initial_size  = compiler.Read(m_attributes.initial_size);
+        m_initial_color = compiler.Read(m_attributes.initial_color);
+    }
+
+    void Update(particle::ParticleUpdateContext& context) {
+        auto alpha         = context.view.Write(m_alpha);
+        auto size          = context.view.Write(m_size);
+        auto color         = context.view.Write(m_color);
+        auto initial_alpha = context.view.Read(m_initial_alpha);
+        auto initial_size  = context.view.Read(m_initial_size);
+        auto initial_color = context.view.Read(m_initial_color);
+        for (auto slot : context.slots) {
+            alpha[slot.index] = initial_alpha[slot.index];
+            size[slot.index]  = initial_size[slot.index];
+            color[slot.index] = initial_color[slot.index];
+        }
+    }
+
+private:
+    ParticleAttributes                                           m_attributes;
+    particle::ParticleWriteIndex<particle::AlphaAttribute>       m_alpha;
+    particle::ParticleWriteIndex<particle::SizeAttribute>        m_size;
+    particle::ParticleWriteIndex<particle::ColorAttribute>       m_color;
+    particle::ParticleReadIndex<particle::InitialAlphaAttribute> m_initial_alpha;
+    particle::ParticleReadIndex<particle::InitialSizeAttribute>  m_initial_size;
+    particle::ParticleReadIndex<particle::InitialColorAttribute> m_initial_color;
+};
+
 class ChildEventProgram {
 public:
     explicit ChildEventProgram(ParticleSubSystem& subsystem): m_subsystem(&subsystem) {}
@@ -382,6 +422,9 @@ ParticleSubSystem::ParticleSubSystem(Scene& scene, Arc<SceneMesh> mesh, u32 max_
                                                           "we.rope"_str,
                                                           rstd::as_cast<usize>(m_trail_length)));
     }
+    // first of the updates, so it starts each operator pass
+    m_program.AddUpdate(
+        Box<dyn<particle::ParticleUpdateProgram>>::make(PassResetProgram(m_attributes)));
 }
 
 ParticleSubSystem::~ParticleSubSystem() = default;

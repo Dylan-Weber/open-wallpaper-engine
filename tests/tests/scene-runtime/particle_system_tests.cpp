@@ -3541,3 +3541,39 @@ TEST(ParticleTrail, SegmentMaxCountIsSegmentsLessAHalf) {
     EXPECT_FLOAT_EQ(owe::RopeTrailSegmentMaxCount(0), 0.5f);
     EXPECT_FLOAT_EQ(owe::RopeTrailSegmentMaxCount(100), 31.5f);
 }
+
+// Wallpaper Engine sets each particle's size, colour and opacity back to the values it was born with
+// at the start of every operator pass (FUN_14023fbc0), not once a frame: at 15 frames a second (two
+// half passes) a fade that multiplies the opacity takes it from its initial value each pass, so it
+// isn't applied twice (rt3-remapvalue under replay: a size multiply squared).
+TEST(ParticleSubSystem, OpacityIsResetFromItsInitialValueEachPass) {
+    owe::Scene scene;
+    scene.SetTargetFps(u32(15));
+    auto                   mesh = Arc<owe::SceneMesh>::make();
+    owe::ParticleSubSystem subsystem(scene,
+                                     mesh.clone(),
+                                     u32(1),
+                                     f64(1.0),
+                                     u32(1),
+                                     f64(1.0),
+                                     owe::ParticleSubSystem::SpawnType::STATIC,
+                                     owe::ParticleAnimationSpec {});
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"lifetimerandom","min":1,"max":1})"_str).unwrap(), u32(1)));
+    subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(owe::BoxEmitterProgram(
+        subsystem.SpawnPipeline(), owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) }, usize())));
+    subsystem.AddOperator(owe::ParticleParser::GenOperator(
+        owe::ParseJson(R"({"name":"alphafade","fadeintime":0.5,"fadeouttime":0.9})"_str).unwrap(),
+        owe::ParticleInstanceModifiers(Arc<owe::wpscene::ParticleInstanceoverride>::make(),
+                                       owe::wpscene::Particle::EFlags { 0 },
+                                       false),
+        subsystem,
+        usize()));
+    subsystem.Finalize();
+    subsystem.Tick(f64(), false);
+    subsystem.Tick(f64(1.0 / 15.0), false);
+    auto&                        storage = subsystem.System().Instance(usize()).Storage();
+    particle::ParticleSlotReader value(storage, particle::ParticleSlot {});
+    // a fifteenth of the life into a fade over half of it: 0.1333 once, not 0.1333 squared
+    EXPECT_NEAR(value.Read(subsystem.Attributes().alpha), (1.0f / 15.0f) / 0.5f, 2e-3f);
+}
