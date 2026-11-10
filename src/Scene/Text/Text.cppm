@@ -57,12 +57,16 @@ public:
 // the cell Wallpaper Engine's distance atlas keeps for an outlined glyph (see OutlinedGlyphCell):
 // its size in atlas pixels, the scale from the glyph's pixels, and the pixel box and size it was
 // made from
+// (`hint_size`: the size in pixels an em its outline was hinted at, which the glyph's later sizes are
+// drawn from)
 struct OutlinedCell {
-    double atlas_w {}, atlas_h {}, scale { 1 }, left {}, bottom {}, ppem {};
+    double atlas_w {}, atlas_h {}, scale { 1 }, left {}, bottom {}, ppem {}, hint_size {};
 };
 class TextResources {
     struct Impl;
     Box<Impl> m_impl;
+    auto Store(vectext::GlyphBitmap bitmap, double scale, String key)
+        -> Result<AtlasGlyph, vectext::TextError>;
 
 public:
     explicit TextResources(AtlasOptions options = {});
@@ -84,6 +88,13 @@ public:
     // corners, filled, for a text outline drawn behind it
     auto Rasterize(const vectext::FontInstance& font, vectext::Index glyph, double scale = 1,
                    double outline = 0) -> Result<AtlasGlyph, vectext::TextError>;
+    // An outlined glyph as Wallpaper Engine's distance atlas has it: the glyph's outline hinted at
+    // `hint_size` pixels an em (the size its cell was made at), scaled to `size` pixels an em, then
+    // `scale` pixels to a pixel (as Rasterize's), with `outline` as Rasterize's. For a font
+    // RegisterFont was given.
+    auto RasterizeHinted(const vectext::FontSource& font, vectext::Index glyph, double hint_size,
+                         double size, double scale = 1, double outline = 0)
+        -> Result<AtlasGlyph, vectext::TextError>;
     auto Pages() const -> slice<Arc<AtlasPage>>;
     auto RasterCount() const -> rstd::uint64_t;
     auto LayoutCount() const -> rstd::uint64_t;

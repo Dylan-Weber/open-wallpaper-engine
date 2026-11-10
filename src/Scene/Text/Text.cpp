@@ -639,6 +639,11 @@ auto TextResources::Rasterize(const vectext::FontInstance& font, vectext::Index 
     auto bitmap = rstd::move(raster).unwrap();
     if (outline > 0 && bitmap.width && bitmap.height)
         bitmap = StrokeGlyph(bitmap, trace, outline * scale, scale); // (outline in layer units)
+    return Store(rstd::move(bitmap), scale, rstd::move(key));
+}
+auto TextResources::Store(vectext::GlyphBitmap bitmap, double scale, String key)
+    -> Result<AtlasGlyph, vectext::TextError> {
+    auto& im = *m_impl;
     auto extent = im.options.extent;
     if (extent < 8 || extent > 8192 || ! im.options.max_pages || im.options.max_pages > 64 ||
         rstd::uint64_t(extent) * extent * im.options.max_pages > 268435456 ||
@@ -684,6 +689,82 @@ auto TextResources::Rasterize(const vectext::FontInstance& font, vectext::Index 
     ++im.rasters;
     (void)im.glyphs.insert(rstd::move(key), AtlasGlyph(entry));
     return Ok(entry);
+}
+auto TextResources::RasterizeHinted(const vectext::FontSource& font, vectext::Index glyph,
+                                    double hint_size, double size, double scale, double outline)
+    -> Result<AtlasGlyph, vectext::TextError> {
+    auto& im = *m_impl;
+    if (! vectext::finite(scale) || scale <= 0 || scale > 64 || ! vectext::finite(size) ||
+        size <= 0 || size > 4096 || ! vectext::finite(hint_size) || hint_size <= 0 ||
+        hint_size > 4096)
+        return Err(vectext::TextError::InvalidValue);
+    if (! vectext::finite(outline) || outline < 0 || outline > 256)
+        return Err(vectext::TextError::InvalidValue);
+    Impl::Font* entry {};
+    for (auto& f : im.fonts)
+        if (f.source == font) entry = &f;
+    if (! entry) return Err(vectext::TextError::InvalidValue);
+    auto key = rstd::format("{}:{}:{}:hinted:{}:{}:{}:{}",
+                            font.collection,
+                            font.source,
+                            glyph,
+                            rstd::mem::transmute<rstd::uint64_t>(hint_size),
+                            rstd::mem::transmute<rstd::uint64_t>(size),
+                            rstd::mem::transmute<rstd::uint64_t>(scale),
+                            rstd::mem::transmute<rstd::uint64_t>(outline));
+    if (auto cached = im.glyphs.get(key.as_str()); cached.is_some())
+        return Ok(AtlasGlyph(**cached));
+    if (! im.freetype && FT_Init_FreeType(&im.freetype)) return Err(vectext::TextError::InvalidValue);
+    if (! entry->face &&
+        FT_New_Memory_Face(im.freetype,
+                           reinterpret_cast<const FT_Byte*>(entry->bytes.as_slice().as_raw_ptr()),
+                           FT_Long(entry->bytes.len().to_primitive()),
+                           0,
+                           &entry->face))
+        return Err(vectext::TextError::InvalidValue);
+    // the outline hinted at the cell's size (as the box is), then scaled: to the size drawn, and finer
+    // for an outline's tracing
+    const int trace = outline > 0 && scale * kOutlineTrace <= 64 ? kOutlineTrace : 1;
+    if (FT_Set_Char_Size(entry->face, 0, FT_F26Dot6(hint_size * 64 + 0.5), 72, 72) ||
+        FT_Load_Glyph(entry->face, FT_UInt(glyph), FT_LOAD_NO_BITMAP) ||
+        entry->face->glyph->format != FT_GLYPH_FORMAT_OUTLINE)
+        return Err(vectext::TextError::InvalidValue);
+    FT_Outline& shape = entry->face->glyph->outline;
+    const double factor = size / hint_size * scale * trace;
+    if (factor * hint_size * 1.5 > 8192) return Err(vectext::TextError::Limit);
+    FT_Matrix scaling { FT_Fixed(factor * 65536 + 0.5), 0, 0, FT_Fixed(factor * 65536 + 0.5) };
+    FT_Outline_Transform(&shape, &scaling);
+    FT_BBox cbox;
+    FT_Outline_Get_CBox(&shape, &cbox);
+    // the pixel grid round the box (y up here; the bitmap is y down from the baseline)
+    const long x0 = cbox.xMin >> 6, x1 = (cbox.xMax + 63) >> 6, y0 = cbox.yMin >> 6,
+               y1 = (cbox.yMax + 63) >> 6;
+    const long w = x1 - x0, h = y1 - y0;
+    vectext::GlyphBitmap fine { static_cast<rstd::uint32_t>(w > 0 ? w : 0),
+                                static_cast<rstd::uint32_t>(h > 0 ? h : 0),
+                                { double(x0), double(-y1) },
+                                scale * trace,
+                                {} };
+    if (w > 0 && h > 0) {
+        fine.coverage.resize(usize(w * h), static_cast<unsigned char>(0));
+        FT_Outline_Translate(&shape, -x0 * 64, -y0 * 64);
+        FT_Bitmap target {};
+        target.rows       = unsigned(h);
+        target.width      = unsigned(w);
+        target.pitch      = int(w);
+        target.buffer     = reinterpret_cast<unsigned char*>(fine.coverage.as_mut_ptr().as_raw_ptr());
+        target.num_grays  = 256;
+        target.pixel_mode = FT_PIXEL_MODE_GRAY;
+        // (rows run from the top down, as the bitmap's do)
+        if (FT_Outline_Get_Bitmap(im.freetype, &shape, &target))
+            return Err(vectext::TextError::InvalidValue);
+    }
+    auto bitmap = rstd::move(fine);
+    if (outline > 0 && bitmap.width && bitmap.height)
+        bitmap = StrokeGlyph(bitmap, trace, outline * scale, scale);
+    else
+        bitmap.scale = scale; // (no ink: nothing to bring down from the finer pixels)
+    return Store(rstd::move(bitmap), scale, rstd::move(key));
 }
 auto EnsureSceneTextResources(Scene& scene) -> Arc<TextResources> {
     auto existing = scene.ExtensionMut<Arc<TextResources>>();
@@ -1130,10 +1211,6 @@ struct TextLayouter::Impl {
             }
             float fill_left = left, fill_right = right, fill_bottom = bottom, fill_top = top;
             if (outlined) {
-                auto grown = resources->Rasterize(
-                    output.fonts()[usize(glyph.font)], glyph.glyph, rs, style.outline_thickness);
-                if (grown.is_err()) return Err(grown.unwrap_err());
-                auto outline = grown.unwrap();
                 // the letter and its outline are drawn where Wallpaper Engine's distance atlas has
                 // them (text-outline-offset), from the letter's hinted box in whole pixels; for a
                 // font without its file (a system font), the ink's edges rounded as hinting has them
@@ -1144,16 +1221,45 @@ struct TextLayouter::Impl {
                                 round(oy + atlas.ink_top / rs),
                                 round(ox + atlas.ink_right / rs),
                                 round(oy + atlas.ink_bottom / rs) };
+                bool   hinted_font = false;
                 if (font.source.is_some() && glyph.font == 0)
                     if (auto hinted = resources->HintedGlyphBox(*font.source, glyph.glyph, size);
-                        hinted.is_some())
+                        hinted.is_some()) {
                         for (int i = 0; i < 4; ++i) box[i] = double((*hinted)[usize(i)]);
+                        hinted_font = true;
+                    }
                 // (Wallpaper Engine draws a font's glyph from the cell of the first size it drew it at)
-                auto cell = OutlinedGlyphCell(box[0], box[2], box[1], box[3], round(size));
-                if (font.source.is_some() && glyph.font == 0 && cell.ppem > 0)
+                auto cell      = OutlinedGlyphCell(box[0], box[2], box[1], box[3], round(size));
+                cell.hint_size = size;
+                if (hinted_font && cell.ppem > 0)
                     cell = resources->SharedOutlinedCell(*font.source, glyph.glyph, cell);
                 const auto place =
                     OutlinedGlyphPlace(box[0], box[2], box[1], box[3], round(size), cell);
+                // the letter and its outline are the glyph's outline hinted at the cell's size
+                // (which is where Wallpaper Engine's atlas takes them from: a bar of 2.4 pixels at
+                // 29 an em is 3 there, and 12 at 117), else the glyph as rasterised
+                auto shape = AtlasGlyph(atlas);
+                Option<AtlasGlyph> hinted_shape, hinted_grown;
+                if (hinted_font && cell.hint_size > 0) {
+                    auto flat = resources->RasterizeHinted(
+                        *font.source, glyph.glyph, cell.hint_size, size, rs);
+                    auto grown_h = resources->RasterizeHinted(
+                        *font.source, glyph.glyph, cell.hint_size, size, rs, style.outline_thickness);
+                    if (flat.is_ok() && grown_h.is_ok()) {
+                        hinted_shape = Some(flat.unwrap());
+                        hinted_grown = Some(grown_h.unwrap());
+                    }
+                }
+                AtlasGlyph outline;
+                if (hinted_shape.is_some()) {
+                    shape   = *hinted_shape;
+                    outline = *hinted_grown;
+                } else {
+                    auto grown = resources->Rasterize(
+                        output.fonts()[usize(glyph.font)], glyph.glyph, rs, style.outline_thickness);
+                    if (grown.is_err()) return Err(grown.unwrap_err());
+                    outline = grown.unwrap();
+                }
                 // a glyph point x (y down) is at left - origin.x + x (top + origin.y - y)
                 auto px = [&](double x) {
                     return float(place.scale_x * x + place.offset_x - x);
@@ -1161,16 +1267,19 @@ struct TextLayouter::Impl {
                 auto py = [&](double y) {
                     return float(place.scale_y * y + place.offset_y - y);
                 };
-                const double ow = atlas.width / atlas.scale, oh = atlas.height / atlas.scale;
+                const double sx = shape.origin.x / rs, sy = shape.origin.y / rs;
+                const float  sleft = left + float(sx - ox);
+                const float  stop  = top - float(sy - oy);
+                const double ow = shape.width / shape.scale, oh = shape.height / shape.scale;
                 const double gx = outline.origin.x / rs, gy = outline.origin.y / rs;
                 const double gw = outline.width / outline.scale,
                              gh = outline.height / outline.scale;
-                fill_left       = left + px(ox);
-                fill_right      = right + px(ox + ow);
-                fill_top        = top - py(oy);
-                fill_bottom     = bottom - py(oy + oh);
-                float out_left  = left + float(gx - ox);
-                float out_top   = top - float(gy - oy);
+                fill_left       = sleft + px(sx);
+                fill_right      = sleft + float(ow) + px(sx + ow);
+                fill_top        = stop - py(sy);
+                fill_bottom     = stop - float(oh) - py(sy + oh);
+                float out_left  = sleft + float(gx - sx);
+                float out_top   = stop - float(gy - sy);
                 outlines.push(Quad { outline,
                                      out_left + px(gx),
                                      out_left + float(gw) + px(gx + gw),
@@ -1180,6 +1289,8 @@ struct TextLayouter::Impl {
                                        style.outline_color[usize(1)],
                                        style.outline_color[usize(2)],
                                        style.alpha } });
+                // the letter itself (below) is the hinted one
+                atlas = shape;
             }
             quads.push(Quad { atlas,
                               fill_left,
