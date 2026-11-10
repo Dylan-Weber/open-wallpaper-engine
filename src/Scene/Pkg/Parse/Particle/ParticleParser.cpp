@@ -340,6 +340,16 @@ struct RemapInitialValueProgram {
             columns.velocities[slot] =
                 remap.Apply(columns.velocities[slot].cast<double>(), input).cast<float>();
             break;
+        case ParticleRemap::Output::Rotation: {
+            // as remapvalue: set puts the value on all three angles, the others work about z
+            const float value = float(
+                remap.Apply(Eigen::Vector3d::Constant(columns.rotations[slot].z()), input).x());
+            if (remap.operation == ParticleRemap::Operation::Remap)
+                columns.rotations[slot] = Eigen::Vector3f::Constant(value);
+            else
+                columns.rotations[slot].z() = value;
+            break;
+        }
         }
     }
 };
@@ -2127,13 +2137,17 @@ struct RemapValueOperator {
     particle::ParticleReadIndex<particle::AlphaAttribute>           input_alpha;
     particle::ParticleWriteIndex<particle::VelocityAttribute>       output_velocity;
     particle::ParticleReadIndex<particle::RotationAttribute>        rotation;
+    particle::ParticleWriteIndex<particle::RotationAttribute>       output_rotation;
     particle::ParticleReadIndex<particle::AngularVelocityAttribute> angular_velocity;
 
     void Compile(particle::ParticleViewCompiler& compiler) {
         compiler.ReadBase(attributes.position);
         lifetime         = compiler.Read(attributes.lifetime);
         initial_lifetime = compiler.Read(attributes.initial_lifetime);
-        rotation         = compiler.Read(attributes.rotation);
+        if (remap.output == ParticleRemap::Output::Rotation)
+            output_rotation = compiler.Write(attributes.rotation);
+        else
+            rotation = compiler.Read(attributes.rotation);
         angular_velocity = compiler.Read(attributes.angular_velocity);
         // the output attribute is written, so an input from the same attribute reads it there
         if (remap.output != ParticleRemap::Output::Velocity)
@@ -2147,6 +2161,7 @@ struct RemapValueOperator {
         case ParticleRemap::Output::Velocity:
             output_velocity = compiler.Write(attributes.velocity);
             break;
+        case ParticleRemap::Output::Rotation: break;
         }
     }
 
@@ -2155,7 +2170,6 @@ struct RemapValueOperator {
         auto                  positions = context.view.Positions();
         auto                  lifetimes = context.view.Read(lifetime);
         auto                  initial   = context.view.Read(initial_lifetime);
-        auto                  rotations = context.view.Read(rotation);
         auto                  spins     = context.view.Read(angular_velocity);
         const Eigen::Vector3d center =
             frame->subsystem->SimulationControlpoint(rstd::as_cast<usize>(remap.controlpoint))
@@ -2186,7 +2200,10 @@ struct RemapValueOperator {
                                                      ? context.view.Write(alpha)[slot.index]
                                                      : context.view.Read(input_alpha)[slot.index]);
             case ParticleRemap::Input::Rotation:
-                return Eigen::Vector3d::Constant(rotations[slot.index].z());
+                return Eigen::Vector3d::Constant(
+                    remap.output == ParticleRemap::Output::Rotation
+                        ? context.view.Write(output_rotation)[slot.index].z()
+                        : context.view.Read(rotation)[slot.index].z());
             case ParticleRemap::Input::AngularSpeed:
                 return Eigen::Vector3d::Constant(spins[slot.index].z());
             default: return frame_input;
@@ -2222,6 +2239,25 @@ struct RemapValueOperator {
                                                       input(slot),
                                                       life(slot))
                                                .x());
+            break;
+        }
+        case ParticleRemap::Output::Rotation: {
+            // set (remap) puts the value on all three angles, so the particle turns out of the plane
+            // too; multiply, add and subtract work on the angle about z each frame
+            // (ft-remap-rotation)
+            auto values = context.view.Write(output_rotation);
+            for (auto slot : context.slots) {
+                const float value =
+                    float(remap
+                              .Blend(Eigen::Vector3d::Constant(values[slot.index].z()),
+                                     input(slot),
+                                     life(slot))
+                              .x());
+                if (remap.operation == ParticleRemap::Operation::Remap)
+                    values[slot.index] = Eigen::Vector3f::Constant(value);
+                else
+                    values[slot.index].z() = value;
+            }
             break;
         }
         case ParticleRemap::Output::Velocity: {
