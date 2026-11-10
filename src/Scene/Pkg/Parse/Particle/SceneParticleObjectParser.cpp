@@ -601,7 +601,13 @@ void BuildParticleObjectNode(ParticleObjectParseServices& services,
     Option<Arc<ParticleTrailUniformState>> trail_uniform_state;
     if (hastrail) {
         double          in_SegmentUVTimeOffset = 0.0;
-        double          in_SegmentMaxCount     = rstd::as_cast<double>(maxcount) - 1.0;
+        // a rope trail's is its segments less a half (Wallpaper Engine: 0x140236990); a sprite trail's
+        // the particle count less one
+        double in_SegmentMaxCount =
+            render_rope_trail
+                ? static_cast<double>(
+                      RopeTrailSegmentMaxCount(wppartRenderer.segments.to_primitive()))
+                : rstd::as_cast<double>(maxcount) - 1.0;
         array<float, 4> render_var {
             (float)wppartRenderer.length,
             (float)wppartRenderer.maxlength,
@@ -670,7 +676,7 @@ void BuildParticleObjectNode(ParticleObjectParseServices& services,
     rstd::uint32_t trail_length = 0;
     if (render_rope_trail) {
         rstd::int32_t segments = wppartRenderer.segments.to_primitive();
-        segments               = rstd::cmp::min(256, rstd::cmp::max(1, segments));
+        segments               = rstd::cmp::min(32, rstd::cmp::max(1, segments)); // as Wallpaper Engine
         trail_length           = static_cast<rstd::uint32_t>(segments);
     }
     ParticleFollowAnchor follow_anchor;
