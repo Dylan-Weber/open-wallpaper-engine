@@ -418,12 +418,14 @@ TEST(TexSchema, ProductionParseHeaderAgreesWithMip0Reader) {
     const auto& scan = AllScans();
     ASSERT_FALSE(scan.metas.empty());
 
-    // Production formulas (mirrored from TexImageParser.cpp's
-    // SetHeaderPow2 + the sprite-path inline computation):
-    //   non-sprite mipmap_pow2:   IsPowOfTwo(mip0_w) || IsPowOfTwo(mip0_h)
-    //   non-sprite mipmap_larger: mip0_w * mip0_h > map_w * map_h
-    //   sprite     mipmap_pow2:   IsPowOfTwo(mip0_w * mip0_h)
-    //   sprite     mipmap_larger: never set (stays at the ImageHeader default)
+    // Production formulas (TexImageParser.cpp's SetHeaderPow2, shared by sprites and
+    // plain textures since 4da89208):
+    //   mipmap_pow2:   IsPowOfTwo(mip0_w) || IsPowOfTwo(mip0_h)
+    //   mipmap_larger: mip0_w * mip0_h > map_w * map_h
+    // mipmap_pow2 reaches no shader. mipmap_larger only changes g_TextureNResolution when
+    // a header's width differs from its map width, which a sprite's never does; the real
+    // Wallpaper Engine's resolution for sprites (frame size, per the sprite-resolution
+    // probe) is the same either way.
     std::size_t checked = 0, parity_fail = 0, parity_fail_sprite = 0;
     for (const auto& m : scan.metas) {
         if (m.malformed) continue;
@@ -446,12 +448,18 @@ TEST(TexSchema, ProductionParseHeaderAgreesWithMip0Reader) {
             continue;
         }
 
-        const bool expected_pow2 = m.sprite
-                                       ? IsPowOfTwo(static_cast<std::uint32_t>(m.mip0_w * m.mip0_h))
-                                       : (IsPowOfTwo(static_cast<std::uint32_t>(m.mip0_w)) ||
-                                          IsPowOfTwo(static_cast<std::uint32_t>(m.mip0_h)));
+        const bool expected_pow2 = IsPowOfTwo(static_cast<std::uint32_t>(m.mip0_w)) ||
+                                   IsPowOfTwo(static_cast<std::uint32_t>(m.mip0_h));
+        const bool expected_larger = m.mip0_w * m.mip0_h > m.map_w * m.map_h;
 
         ++checked;
+        if (h.mipmap_larger != expected_larger) {
+            ++parity_fail;
+            if (m.sprite) ++parity_fail_sprite;
+            ADD_FAILURE() << "ParseHeader divergence for " << m.workshop_id << " " << m.pkg_path
+                          << ": expected larger=" << expected_larger
+                          << ", got larger=" << h.mipmap_larger;
+        }
         if (h.mipmap_pow2 != expected_pow2) {
             ++parity_fail;
             if (m.sprite) ++parity_fail_sprite;
