@@ -904,6 +904,50 @@ TEST(SceneParserScript, FractionSliderPreservesAuthoredValue) {
     EXPECT_FLOAT_EQ(group->Scale().y(), 0.00004f);
 }
 
+// engine.canvasSize is the scene's projection already while scripts' init runs (Wallpaper Engine's
+// frame-time recorder, whose init places its cells from it, draws them in the top right of a
+// 3840x2160 scene); owe's init saw 1920x1080.
+TEST(SceneParserScript, InitSeesTheScenesCanvasSize) {
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {},
+            "general": {"orthogonalprojection": {"width": 3840, "height": 2160}},
+            "objects": [
+                {
+                    "id": 90,
+                    "name": "Controller",
+                    "visible": {
+                        "value": true,
+                        "script": "export function init(value) { thisScene.createLayer({image: 'models/util/solidlayer.json', name: 'Probe', size: new Vec2(2, 2), origin: new Vec3(engine.canvasSize.x, engine.canvasSize.y, 0)}); return value; } export function update(value) { return value; }"
+                    }
+                }
+            ]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, rstd::move(assets).unwrap_unchecked()).is_ok());
+
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "canvas-size-init"_str,
+        ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+
+    auto scene = rstd::move(parsed).unwrap();
+    auto probe = scene.scene->RootMut()->FindByName("Probe"_str);
+    ASSERT_NE(probe, nullptr);
+    EXPECT_FLOAT_EQ(probe->Translate().x(), 3840.0f);
+    EXPECT_FLOAT_EQ(probe->Translate().y(), 2160.0f);
+}
+
 TEST(SceneParserScript, DynamicObjectsUseSceneIdentity) {
     auto document = owe::wpscene::ParseSceneDocumentJson(
         R"JSON({
