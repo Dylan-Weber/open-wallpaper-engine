@@ -248,9 +248,13 @@ static void CheckMdlInvariants(const Corpus::MdlRef& ref) {
     EXPECT_GE(JsonI64Or(**mdls, -1), 0);
     EXPECT_GE(JsonI64Or(**mdla, -1), 0);
     if ((*ok)->as_bool().unwrap_or(false)) {
+        // Static meshes (neongrid, neonsun, the Zelda and Link models) carry an
+        // MDLS block with no bones; only animated models need a skeleton.
         auto bones = m.get("bones"_str);
-        ASSERT_TRUE(bones.is_some());
-        EXPECT_GT(JsonI64Or(**bones, 0), 0);
+        auto anims = m.get("anims"_str);
+        ASSERT_TRUE(bones.is_some() && anims.is_some());
+        EXPECT_GE(JsonI64Or(**bones, -1), 0);
+        if (JsonI64Or(**anims, 0) > 0) EXPECT_GT(JsonI64Or(**bones, 0), 0);
     }
 }
 
