@@ -241,13 +241,17 @@ TEST(RenderGraphOwnership, ContentReplacementKeepsGraphUntilSpecificationChanges
     original->content = MakeMissingTexturePlaceholder("asset"_str);
     scene.RegisterRuntimeImage("asset"_Str, original.clone());
     auto shape = vrento::texture::describe_image(*original->content).unwrap()[usize()];
+    // the graph holds the scene's own reference to the texture, as BuildSceneRenderState declares it;
+    // a reference built here would have an id of its own and never match the scene's (2c87a827)
+    auto scene_texture = scene.Texture("asset"_str);
+    ASSERT_TRUE(scene_texture.is_some());
     fg::FrameGraphBuilder builder(77);
     SceneRenderTextures   textures(u64(77));
     auto             version = textures
                                    .declare(builder,
                                             { .key        = "asset"_Str,
                                               .imported   = true,
-                                              .definition = MakeImportedTextureRequest("asset"_str),
+                                              .definition = (**scene_texture).resource.clone(),
                                               .metadata   = Some(shape) })
                                    .unwrap();
     SceneRenderState state;

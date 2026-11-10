@@ -67,6 +67,12 @@ auto MakeBuffers(owe::SceneMesh& mesh, owe::RenderItemId render_item)
         owe::resource::BufferUseHandle { .index = rstd::u64(2), .generation = rstd::u64(1) });
     return buffers;
 }
+// vrento builds a dynamic draw's keys unconfirmed and confirms each stream as it uploads (5cc289e);
+// a test that starts from content already on the GPU confirms them itself.
+void ConfirmUploaded(owe::vulkan::DrawBufferRefs& buffers) {
+    for (auto& key : buffers.vertex_keys) key.content_confirmed = true;
+    if (buffers.index_key.is_some()) buffers.index_key->content_confirmed = true;
+}
 } // namespace
 
 TEST(DynamicDrawBuffer, UploadsUnconfirmedContentBeforeSkippingUnchangedGeometry) {
@@ -149,7 +155,9 @@ TEST(DynamicDrawBuffer, RetriesUploadFailureWithoutInvalidatingLayout) {
     mesh.Submeshes().push(MakeSubmesh());
     owe::RenderItemId render_item { .index = rstd::u32(1), .generation = rstd::u64(2) };
     auto              buffers  = MakeBuffers(mesh, render_item);
+    ConfirmUploaded(buffers);
     auto              original = buffers.vertex_keys[rstd::usize()].data_generation;
+    auto original_index        = buffers.index_key->data_generation;
     auto&             submesh  = mesh.Submeshes()[usize(0)];
     submesh.vertex_arrays[usize(0)].ResetSize();
     const rstd::uint32_t changed[] { 1, 0, 1 };
@@ -162,15 +170,19 @@ TEST(DynamicDrawBuffer, RetriesUploadFailureWithoutInvalidatingLayout) {
     auto sink      = rstd::dyn<owe::resource::BufferContentWriter>::from_ref(writer);
     EXPECT_FALSE(
         owe::vulkan::RenderBufferResolver::updateDrawBuffers(request, buffers, sink.as_mut_ref()));
-    EXPECT_EQ(buffers.vertex_keys[rstd::usize()].data_generation, original);
+    // the vertex stream was uploaded before the index failed, so only the index is retried
+    EXPECT_NE(buffers.vertex_keys[rstd::usize()].data_generation, original);
+    EXPECT_TRUE(buffers.vertex_keys[rstd::usize()].content_confirmed);
+    EXPECT_EQ(buffers.index_key->data_generation, original_index);
+    EXPECT_EQ(writer.update_count, rstd::u32(2));
     EXPECT_EQ(mesh.DirtyFlags() & owe::SceneMeshDirtyLayout, owe::SceneMeshDirtyNone);
     writer.fail_on = rstd::u32();
     EXPECT_TRUE(
         owe::vulkan::RenderBufferResolver::updateDrawBuffers(request, buffers, sink.as_mut_ref()));
-    EXPECT_EQ(writer.update_count, rstd::u32(4));
+    EXPECT_EQ(writer.update_count, rstd::u32(3));
     EXPECT_TRUE(
         owe::vulkan::RenderBufferResolver::updateDrawBuffers(request, buffers, sink.as_mut_ref()));
-    EXPECT_EQ(writer.update_count, rstd::u32(4));
+    EXPECT_EQ(writer.update_count, rstd::u32(3));
 }
 
 TEST(DynamicDrawBuffer, DetectsSharedDataChangesWithoutInstanceDirtyFlag) {
@@ -179,6 +191,7 @@ TEST(DynamicDrawBuffer, DetectsSharedDataChangesWithoutInstanceDirtyFlag) {
     auto              clone = mesh.CloneInstance();
     owe::RenderItemId render_item { .index = rstd::u32(1), .generation = rstd::u64(2) };
     auto              buffers = MakeBuffers(*clone, render_item);
+    ConfirmUploaded(buffers);
     mesh.Submeshes()[usize(0)].vertex_arrays[usize(0)].ResetSize();
     mesh.SetDirty();
     EXPECT_EQ(clone->DirtyFlags(), owe::SceneMeshDirtyNone);
