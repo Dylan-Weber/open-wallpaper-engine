@@ -85,6 +85,8 @@ struct ParticleRemap {
         Opacity,
         Size,
         Velocity,
+        // the rotation about z, from the output range's x (Wallpaper Engine: case 19, output 5)
+        Rotation,
     };
     enum class Operation
     {
@@ -185,6 +187,8 @@ struct ParticleRemap {
             remap.output = Output::Size;
         else if (text == "velocity"_str)
             remap.output = Output::Velocity;
+        else if (text == "rotation"_str)
+            remap.output = Output::Rotation;
         else
             return None();
         text = String {};
@@ -208,7 +212,15 @@ struct ParticleRemap {
         GetJsonValue(json, "inputrangemax"_str, max, false);
         remap.input_min = min;
         remap.input_max = max;
-        if (vector) {
+        if (remap.output == Output::Rotation) {
+            // the range's x, whatever its other components (a number fills all three):
+            // ft-remap-rotation's "0 0 3.14" turns nothing, "3.14 0 0" and 3.14 turn about z
+            array<float, 3> low { 0.0f, 0.0f, 0.0f }, high { 1.0f, 1.0f, 1.0f };
+            GetJsonValue(json, "outputrangemin"_str, low, false);
+            GetJsonValue(json, "outputrangemax"_str, high, false);
+            remap.output_min = Eigen::Vector3d::Constant(low[usize()]);
+            remap.output_max = Eigen::Vector3d::Constant(high[usize()]);
+        } else if (vector) {
             array<float, 3> low { 0.0f, 0.0f, 0.0f }, high { 1.0f, 1.0f, 1.0f };
             GetJsonValue(json, "outputrangemin"_str, low, false);
             GetJsonValue(json, "outputrangemax"_str, high, false);
@@ -540,6 +552,26 @@ auto ParticleFrameFrom(ref<dyn<rstd::any::Any>>) -> ref<ParticleFrame>;
 // Wallpaper Engine's operator steps for a frame (FUN_140236cd0): dt2 = dt x min(0.025 / dt, 1)^0.7, dt being the
 // frame's own time (particles-frametime-f15/-f30/-f60), and at 1..20 target frames a second two operator passes.
 auto ParticleOperatorStepsFor(u32 target_fps, f64 delta) -> particle::ParticleOperatorSteps;
+
+// A rope trail's sampling (Wallpaper Engine, 0x140232cad): the timer counts down by each frame's step
+// and, once it reaches 0, is set back to the interval (length / segments), whatever was left over,
+// and that frame pushes every particle's place.
+// The rope trail shader's in_SegmentMaxCount (g_RenderVar0.w): Wallpaper Engine sets segments - 0.5
+// (0x140236990), segments being held to 1..32.
+inline float RopeTrailSegmentMaxCount(rstd::int32_t segments) {
+    const rstd::int32_t held = segments < 1 ? 1 : (segments > 32 ? 32 : segments);
+    return static_cast<float>(held) - 0.5f;
+}
+
+struct TrailSampleTimer {
+    float remaining {};
+    bool  Step(double step, double interval) {
+        remaining -= static_cast<float>(step);
+        if (remaining > 0.0f) return false;
+        remaining = static_cast<float>(interval);
+        return true;
+    }
+};
 
 struct ParticleSpawnColumns {
     mut_ref<particle::ParticleSlotState[]> states;
@@ -1061,7 +1093,7 @@ private:
     SpawnType                                                m_spawn_type { SpawnType::STATIC };
     u32                                                      m_trail_length {};
     f64                                                      m_trail_sample_interval {};
-    f64                                                      m_trail_sample_accumulator {};
+    TrailSampleTimer                                         m_trail_sample_timer {};
     Option<Arc<ParticleTrailUniformState>>                   m_trail_uniform_state;
     Option<Arc<ParticlePlaybackState>>                       m_playback_state;
     u32                                                      m_seen_reset_sequence {};

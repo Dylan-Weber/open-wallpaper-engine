@@ -1420,6 +1420,86 @@ TEST(ParticleSubSystem, ReduceMovementNearControlPointGoesLinearlyWithTheDistanc
     EXPECT_NEAR(ReducedSpeed(200.0f, reduce), 300.0f * (1.0f - 2.0f / 30.0f), 0.05f);  // beyond: the outer value
 }
 
+// remapvalue's "rotation" output (Wallpaper Engine: case 19, output 5 at 0x140245bac) works on the
+// rotation about z with the output range's x (a number fills all three): "0 0 3.14" turns nothing,
+// "3.14 0 0" and 3.14 turn about z, and multiply by "0 0 v" (x 0) drops a turn to 0
+// (ft-remap-rotation). "angularvelocity" isn't one of its names, so that output does nothing.
+TEST(ParticleRemap, RotationOutputTurnsAboutZByTheRangesX) {
+    auto remap = [](ref<str> json) {
+        return owe::ParticleRemap::FromJson(owe::ParseJson(json).unwrap());
+    };
+    auto x_range = remap(
+        R"({"name":"remapvalue","input":"distancetocontrolpoint","inputrangemax":400,"output":"rotation","outputrangemin":"0 0 0","outputrangemax":"3.14 0 0"})"_str);
+    ASSERT_TRUE(x_range.is_some());
+    EXPECT_TRUE(x_range->output == owe::ParticleRemap::Output::Rotation);
+    EXPECT_NEAR(x_range->Apply(Eigen::Vector3d::Constant(0.0), 200).x(), 1.57, 1e-4);
+    auto z_range = remap(
+        R"({"name":"remapvalue","input":"distancetocontrolpoint","inputrangemax":400,"output":"rotation","outputrangemin":"0 0 0","outputrangemax":"0 0 3.14"})"_str);
+    EXPECT_NEAR(z_range->Apply(Eigen::Vector3d::Constant(0.0), 200).x(), 0.0, 1e-9);
+    auto scalar = remap(
+        R"({"name":"remapvalue","input":"distancetocontrolpoint","inputrangemax":400,"output":"rotation","outputrangemin":0,"outputrangemax":3.14})"_str);
+    EXPECT_NEAR(scalar->Apply(Eigen::Vector3d::Constant(0.0), 200).x(), 1.57, 1e-4);
+    auto multiply = remap(
+        R"({"name":"remapvalue","input":"distancetocontrolpoint","inputrangemax":400,"operation":"multiply","output":"rotation","outputrangemin":"0 0 0","outputrangemax":"0 0 3.14"})"_str);
+    EXPECT_NEAR(multiply->Apply(Eigen::Vector3d::Constant(1.0), 200).x(), 0.0, 1e-9);
+    EXPECT_TRUE(remap(
+        R"({"name":"remapvalue","input":"distancetocontrolpoint","output":"angularvelocity","outputrangemin":"0 0 1","outputrangemax":"0 0 1"})"_str)
+                    .is_none());
+}
+
+// What remapvalue's rotation output does to a particle born with rotation "0 0 1" after half its
+// life: set (remap) puts the value on all three angles, so it turns out of the plane too; add,
+// multiply and subtract work on the angle about z only (ft-remap-rotation under replay: exact
+// only so).
+static Eigen::Vector3f RotationAfterRemap(ref<str> remap_json) {
+    owe::Scene             scene;
+    auto                   mesh = Arc<owe::SceneMesh>::make();
+    owe::ParticleSubSystem subsystem(scene,
+                                     mesh.clone(),
+                                     u32(1),
+                                     f64(1.0),
+                                     u32(1),
+                                     f64(1.0),
+                                     owe::ParticleSubSystem::SpawnType::STATIC,
+                                     owe::ParticleAnimationSpec {});
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"lifetimerandom","min":2,"max":2})"_str).unwrap(), u32(1)));
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"rotationrandom","min":"0 0 1","max":"0 0 1"})"_str).unwrap(),
+        u32(2)));
+    subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(owe::BoxEmitterProgram(
+        subsystem.SpawnPipeline(), owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) }, usize())));
+    subsystem.AddOperator(owe::ParticleParser::GenOperator(
+        owe::ParseJson(remap_json).unwrap(),
+        owe::ParticleInstanceModifiers(Arc<owe::wpscene::ParticleInstanceoverride>::make(),
+                                       owe::wpscene::Particle::EFlags { 0 },
+                                       false),
+        subsystem,
+        usize()));
+    subsystem.Finalize();
+    subsystem.Tick(f64(), false);
+    subsystem.Tick(f64(1.0), false);
+    auto&                        storage = subsystem.System().Instance(usize()).Storage();
+    particle::ParticleSlotReader value(storage, particle::ParticleSlot {});
+    return value.Read(subsystem.Attributes().rotation);
+}
+
+TEST(ParticleRemap, RotationOutputSetsAllAnglesButAddsAndMultipliesAboutZ) {
+    const auto set = RotationAfterRemap(
+        R"({"name":"remapvalue","input":"lifetimefraction","output":"rotation","outputrangemin":"0 0 0","outputrangemax":"3.14 0 0"})"_str);
+    EXPECT_NEAR(set.x(), 1.57f, 1e-3f);
+    EXPECT_NEAR(set.y(), 1.57f, 1e-3f);
+    EXPECT_NEAR(set.z(), 1.57f, 1e-3f);
+    const auto add = RotationAfterRemap(
+        R"({"name":"remapvalue","input":"lifetimefraction","operation":"add","output":"rotation","outputrangemin":"0 0 0","outputrangemax":"0 0 3.14"})"_str);
+    EXPECT_NEAR(add.x(), 0.0f, 1e-6f);
+    EXPECT_NEAR(add.z(), 1.0f, 1e-6f);
+    const auto multiply = RotationAfterRemap(
+        R"({"name":"remapvalue","input":"lifetimefraction","operation":"multiply","output":"rotation","outputrangemin":"2 0 0","outputrangemax":"2 0 0"})"_str);
+    EXPECT_NEAR(multiply.x(), 0.0f, 1e-6f);
+    EXPECT_NEAR(multiply.z(), 4.0f, 1e-6f); // each frame: the first tick and the next
+}
+
 // remapvalue maps the distance to a control point, clamped to its input range, linearly onto its
 // output range (particles-remapvalue: rows 0 to 400 units out remap colour red to blue, size 10 to
 // 80 - drawn 20 to 160, a radius - and opacity 1 to 0.1, and multiply size 40 by 0.2 to 2).
@@ -1879,7 +1959,8 @@ struct CollidedParticle {
 
 static CollidedParticle CollideWithPlane(ref<str> collision, Eigen::Vector3f origin,
                                          ref<str> velocity, int ticks = 1,
-                                         bool scene_bounds = false) {
+                                         bool     scene_bounds = false,
+                                         ref<str> movement     = R"({"name":"movement"})"_str) {
     owe::Scene scene;
     if (scene_bounds) scene.SetOrtho({ i32(1920), i32(1080) });
     auto                   mesh = Arc<owe::SceneMesh>::make();
@@ -1906,7 +1987,7 @@ static CollidedParticle CollideWithPlane(ref<str> collision, Eigen::Vector3f ori
                                              owe::wpscene::Particle::EFlags { 0 },
                                              false);
     subsystem.AddOperator(
-        owe::ParticleParser::GenOperator(owe::ParseJson(R"({"name":"movement"})"_str).unwrap(),
+        owe::ParticleParser::GenOperator(owe::ParseJson(movement).unwrap(),
                                          modifiers.Clone(),
                                          subsystem,
                                          usize()));
@@ -2074,12 +2155,41 @@ TEST(ParticleSubSystem, CollisionSphereKeepsParticlesOutAlongTheSurfaceNormal) {
     EXPECT_NEAR(away.velocity.y(), -60.0f, 1e-3f);
 }
 
+// Wallpaper Engine's quad kernel (0x140254290) catches a particle that is on or under the quad and
+// was strictly above it a frame before, and puts it out by 1.05 x how far under it was, so a
+// particle that lands with no bounce sits a little above the quad and is caught again each frame:
+// it slides along the top under gravity (ft-collisionquad-sides, bouncefactor 0).
+TEST(ParticleSubSystem, CollisionQuadPutsAParticleOutBy105PercentOfHowFarUnderItWas) {
+    // from 0.5 above to 0.5 under the quad in a frame: put at -100.5 + 1.05 x 0.5 = -99.975
+    auto landed = CollideWithPlane(
+        R"({"name":"collisionquad","origin":"0 -100 0","size":"200 100","bouncefactor":0})"_str,
+        { -50, -99.5f, 0 },
+        R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
+    ASSERT_TRUE(landed.alive);
+    EXPECT_NEAR(landed.position.y(), -99.975f, 1e-4f);
+    EXPECT_NEAR(landed.velocity.y(), 0.0f, 1e-4f);
+    // and one that rests on it under gravity stays on it, sliding
+    auto slid = CollideWithPlane(
+        R"({"name":"collisionquad","origin":"0 -100 0","size":"200 100","bouncefactor":0})"_str,
+        { -50, -95, 0 },
+        R"({"name":"velocityrandom","min":"40 -60 0","max":"40 -60 0"})"_str,
+        60,
+        false,
+        R"({"name":"movement","gravity":"0 -500 0"})"_str);
+    ASSERT_TRUE(slid.alive);
+    EXPECT_GE(slid.position.y(), -100.0f);
+    EXPECT_LT(slid.position.y(), -99.0f);
+    EXPECT_NEAR(slid.position.x(), -50.0f + 40.0f, 1e-3f);
+}
+
 TEST(ParticleSubSystem, CollisionQuadCatchesAParticleFallingOnItButNotOneRisingThroughIt) {
     const auto quad =
         R"({"name":"collisionquad","origin":"0 -100 0","size":"200 100","bouncefactor":0.5})"_str;
+    // (from 0.5 above to 0.5 under: put at -100.5 + 1.05 x 0.5; one starting on the quad was not
+    // above it, so it isn't caught)
     auto landed = CollideWithPlane(
-        quad, { 50, -100, 0 }, R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
-    EXPECT_NEAR(landed.position.y(), -100.0f, 1e-4f);
+        quad, { 50, -99.5f, 0 }, R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
+    EXPECT_NEAR(landed.position.y(), -99.975f, 1e-4f);
     EXPECT_NEAR(landed.velocity.y(), 30.0f, 1e-3f);
     auto rising = CollideWithPlane(
         quad, { 50, -100.5f, 0 }, R"({"name":"velocityrandom","min":"0 60 0","max":"0 60 0"})"_str);
@@ -2089,7 +2199,7 @@ TEST(ParticleSubSystem, CollisionQuadCatchesAParticleFallingOnItButNotOneRisingT
     EXPECT_NEAR(beside.velocity.y(), -60.0f, 1e-3f);
     auto angled = CollideWithPlane(
         R"({"name":"collisionquad","origin":"0 -100 0","size":"200 100","angles":"0 0 30","bouncefactor":0.5})"_str,
-        { 50, -100, 0 },
+        { 50, -99.5f, 0 },
         R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
     EXPECT_NEAR(angled.velocity.y(), 30.0f, 1e-3f);
 }
@@ -3411,4 +3521,23 @@ TEST(ParticleRender, RopesUseTheThickFormat) {
     EXPECT_FALSE(owe::ParticleRendererThickFormat("ropetrail"_str, false));
     EXPECT_FALSE(owe::ParticleRendererThickFormat("sprite"_str, false));
     EXPECT_TRUE(owe::ParticleRendererThickFormat("sprite"_str, true));
+}
+
+// A rope trail's history (Wallpaper Engine, 0x140232cad): a timer counts down by each frame's step
+// and, once it reaches 0, is set back to length / segments (not by what is left over) and every
+// particle's current place is pushed. So samples come a whole number of frames apart: every third
+// frame for an interval of 0.1 at 0.04 a frame, not every 2.5 (ft-ropetrail under replay).
+TEST(ParticleTrail, SamplesWhenItsTimerRunsOutAndRestartsIt) {
+    owe::TrailSampleTimer timer;
+    const bool            expected[] = { true, false, false, true, false, false, true };
+    for (bool sample : expected) EXPECT_EQ(timer.Step(0.04, 0.1), sample);
+}
+
+// The rope trail shader's in_SegmentMaxCount (g_RenderVar0.w): Wallpaper Engine sets segments - 0.5
+// (0x140236990, segments clamped to 1..32), so a full trail stops stretching its first piece by
+// the history timer; owe gave the particle count - 1 (ft-ropetrail, 4 segments at 30 fps).
+TEST(ParticleTrail, SegmentMaxCountIsSegmentsLessAHalf) {
+    EXPECT_FLOAT_EQ(owe::RopeTrailSegmentMaxCount(4), 3.5f);
+    EXPECT_FLOAT_EQ(owe::RopeTrailSegmentMaxCount(0), 0.5f);
+    EXPECT_FLOAT_EQ(owe::RopeTrailSegmentMaxCount(100), 31.5f);
 }
