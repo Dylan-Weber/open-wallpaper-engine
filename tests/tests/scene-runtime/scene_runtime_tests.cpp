@@ -4104,7 +4104,7 @@ TEST(SceneParserText, CentredTextSitsBelowItsOrigin) {
     ASSERT_NE(centred, nullptr);
     ASSERT_NE(top, nullptr);
     EXPECT_NEAR(centred->GeometryTransform()(0, 3), 0.0, 1e-5);
-    EXPECT_NEAR(centred->GeometryTransform()(1, 3), -0.118 * 4.0 * 100.0, 0.5); // TODO tighten to the measured value
+    EXPECT_NEAR(centred->GeometryTransform()(1, 3), -49.5, 1e-3);
     EXPECT_NEAR(top->GeometryTransform()(1, 3), -top->Size().y() * 0.5, 1e-3);
 }
 
