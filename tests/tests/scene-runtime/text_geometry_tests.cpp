@@ -711,6 +711,35 @@ TEST(TextLayouter, AnOutlinedLetterAtALaterSizeIsDrawnFromTheFirstSizesCell) {
     EXPECT_LT(alone - later, 5.0f);
 }
 
+TEST(TextAtlas, AnOutlinedGlyphIsRasterisedFromItsOutlineHintedAtTheCellsSize) {
+    // text-outline-scaled: Wallpaper Engine's 28-point letters are drawn from the cell of the
+    // 7-point ones (about 29 pixels an em). DejaVu Sans' "2" hinted at 29.17 pixels is 21 pixels
+    // tall (21.66 unhinted) with a 3-pixel base bar (2.4 unhinted), and drawn at 116.67 pixels
+    // from that cell it is 4 times that
+    auto source    = rstd::path::PathBuf::from(__FILE__ ""_str);
+    auto root      = source.as_path().parent().unwrap().parent().unwrap().parent().unwrap();
+    auto path      = rstd::path::PathBuf::from(root).join("fixtures/fonts/DejaVuSans.ttf"_str);
+    auto bytes     = rstd::fs::read(path.as_path()).unwrap();
+    auto resources = TextResources();
+    auto font      = resources->RegisterFont(bytes.as_slice()).unwrap();
+    constexpr double kHint = 29.17, kSize = 116.67;
+    auto             hinted = resources->RasterizeHinted(font, 21, kHint, kHint, 1, 0).unwrap();
+    EXPECT_NEAR(hinted.ink_bottom - hinted.ink_top, 21.0, 0.1);
+    EXPECT_NEAR(hinted.ink_right - hinted.ink_left, 13.42, 0.1);
+    // y is down from the baseline: the glyph stands on it
+    EXPECT_NEAR(hinted.origin.y + hinted.ink_top, -21.0, 0.1);
+    EXPECT_NEAR(hinted.origin.x + hinted.ink_left, 2.125, 0.1);
+    auto later = resources->RasterizeHinted(font, 21, kHint, kSize, 1, 0).unwrap();
+    EXPECT_NEAR(later.ink_bottom - later.ink_top, 21.0 * kSize / kHint, 0.2);
+    EXPECT_NEAR(later.ink_right - later.ink_left, 13.42 * kSize / kHint, 0.3);
+    // a finer raster (a scaled layer) is the same shape in more pixels
+    auto fine = resources->RasterizeHinted(font, 21, kHint, kSize, 2, 0).unwrap();
+    EXPECT_NEAR((fine.ink_bottom - fine.ink_top) / 2, later.ink_bottom - later.ink_top, 0.3);
+    // outlined: grown by the thickness to either side
+    auto grown = resources->RasterizeHinted(font, 21, kHint, kHint, 1, 3).unwrap();
+    EXPECT_NEAR(grown.height - hinted.height, 6, 1.5);
+}
+
 TEST(TextOutlinePlace, AGlyphTheAtlasHoldsExactlyStaysPut) {
     // 10 pixels at 32 an em is 10 atlas pixels: nothing is truncated
     const auto place = owe::text::OutlinedGlyphPlace(3, 13, -10, 0, 32);
@@ -800,3 +829,4 @@ TEST(TextLayouter, AnOutlinedLetterOnAScaledLayerIsRasterisedAtItsScale) {
     EXPECT_NEAR(fine[usize()], plain[usize()], 1.0f);                   // the same width
     EXPECT_NEAR(fine[usize(1)] / plain[usize(1)], 4.0f, 0.5f);          // four times the pixels
 }
+
