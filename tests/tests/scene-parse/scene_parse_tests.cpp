@@ -628,8 +628,9 @@ TEST(SceneDynamicLayer, CreatesImageConfigurationDuringUpdate) {
     EXPECT_GT(auto_runtime->Size().y(), 0.0f);
     EXPECT_FLOAT_EQ(auto_initial->Size().x(), auto_runtime->Size().x());
     EXPECT_FLOAT_EQ(auto_initial->Size().y(), auto_runtime->Size().y());
-    EXPECT_FLOAT_EQ(explicit_runtime->Size().x(), 20.0f);
-    EXPECT_FLOAT_EQ(explicit_runtime->Size().y(), 10.0f);
+    // an autosize model is drawn at its texture's size whatever the layer's "size" (64f3a70)
+    EXPECT_FLOAT_EQ(explicit_runtime->Size().x(), auto_runtime->Size().x());
+    EXPECT_FLOAT_EQ(explicit_runtime->Size().y(), auto_runtime->Size().y());
 }
 
 TEST(SceneDynamicLayer, CreatesTextConfigurationDuringUpdate) {

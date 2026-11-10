@@ -4066,8 +4066,9 @@ TEST(SceneParserScriptLookup, GetLayerOfAMissingNameReturnsNull) {
     EXPECT_FLOAT_EQ(probe->Translate().y(), 1.0f);
 }
 
-// Measured with text-size: vertically centred text sits 0.11 em (4 units a point) below its
-// origin in Wallpaper Engine; top and bottom aligned text keeps its edge on the origin.
+// Vertically centred text sits half its font's descent below the origin in Wallpaper Engine (text-metrics;
+// DejaVu Sans hhea descent 483 / 2048 em, so about 0.118 em at 4 units a point); top and bottom aligned text
+// keeps its edge on the origin.
 TEST(SceneParserText, CentredTextSitsBelowItsOrigin) {
     auto document = owe::wpscene::ParseSceneDocumentJson(
         R"JSON({
@@ -4103,7 +4104,7 @@ TEST(SceneParserText, CentredTextSitsBelowItsOrigin) {
     ASSERT_NE(centred, nullptr);
     ASSERT_NE(top, nullptr);
     EXPECT_NEAR(centred->GeometryTransform()(0, 3), 0.0, 1e-5);
-    EXPECT_NEAR(centred->GeometryTransform()(1, 3), -0.11 * 4.0 * 100.0, 1e-4);
+    EXPECT_NEAR(centred->GeometryTransform()(1, 3), -49.5, 1e-3);
     EXPECT_NEAR(top->GeometryTransform()(1, 3), -top->Size().y() * 0.5, 1e-3);
 }
 
