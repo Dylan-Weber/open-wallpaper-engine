@@ -80,18 +80,28 @@ String BuildAudioResponseSnippet(slice<float> data) {
     return snippet;
 }
 
-// Wallpaper Engine calls applyGeneralProperties({fps}) with its frame rate setting once the page
-// has loaded.
-String BuildGeneralPropertiesSnippet(int fps) {
-    auto      snippet = "(function(){"
-                        "  if (typeof window.wallpaperPropertyListener !== 'object') return;"
-                        "  if (typeof window.wallpaperPropertyListener.applyGeneralProperties !== "
-                        "'function') return;"
-                        "  try {"
-                        "    window.wallpaperPropertyListener.applyGeneralProperties({\"fps\":"_Str;
-    Formatter formatter(snippet);
+// Wallpaper Engine calls applyGeneralProperties with its whole general config once the page has
+// loaded: 60 keys (read over DevTools in the VM, probe web-general-dump). owe gives its frame rate
+// and, for the rest, Wallpaper Engine's defaults and the values it ran with in the VM, except what
+// belongs to that machine (the monitor map, the CEF command line, the apps list), which is empty.
+String BuildGeneralPropertiesJson(int fps) {
+    String json = R"JSON({"adjustdwmcolormode":"disabled","anticrash":null,"apprules":[],"audioinputdevice":"default","audioinputthreshold":0,"audioinputvolume":50,"autostart":false,"autostartscheduler":false,"autostartx64":false,"browsetransition":{"transition":"none","transitiontime":1500},"cefcommandline":"",)JSON"_Str;
+    Formatter formatter(json);
+    json.push_str("\"fps\":"_str);
     formatter.write_fmt(Arguments::make("{}", fps));
-    snippet.push_str("});"
+    json.push_str(R"JSON(,"hasshownwelcomedialog":true,"highprecisiontimer":true,"iconopacity":100,"language":"en-us","location":{},"loglevel":"error","mediablocklist":null,"mediaintegration":true,"monitordetection":"managed","monitormap":{},"msaa":"none","overridelockscreen":false,"overridewallpaper":false,"pausevram":false,"playbackaudio":"run","playbackfocus":"run","playbackfullscreen":"run","playbackmaximized":"run","playbackonbattery":"run","playbacksleep":"run","plugindelay":0,"plugins":{"ledextensions":{"enabled":true}},"postprocessing":"enabled","preset":"medium","processpriority":"normal","reflection":true,"reloadaudio":true,"resolution":"full","safemode":false,"shadows":"medium","slideshowkiller":false,"uicmd":"","uieffects":null,"uihardwareacceleration":true,"uiquality":"high","uiskin":"dark","uiskinseasonal":true,"unpauseaero":true,"vdesktopenabled":false,"videoaudiooutput":true,"videoframework":"mfEngine","videohardwareacceleration":true,"videoloopmode":"default","videomfstutterhack":false,"videoreadmode":"fromdisk","volumetrics":"medium","webmframework":null,"windowupdaterate":1000})JSON"_str);
+    return json;
+}
+
+String BuildGeneralPropertiesSnippet(int fps) {
+    auto snippet = "(function(){"
+                   "  if (typeof window.wallpaperPropertyListener !== 'object') return;"
+                   "  if (typeof window.wallpaperPropertyListener.applyGeneralProperties !== "
+                   "'function') return;"
+                   "  try {"
+                   "    window.wallpaperPropertyListener.applyGeneralProperties("_Str;
+    snippet.push_str(BuildGeneralPropertiesJson(fps).as_str());
+    snippet.push_str(");"
                      "  } catch (e) {"
                      "    console.error('weweb: applyGeneralProperties threw:', e);"
                      "  }"
@@ -338,6 +348,48 @@ owe::Json AsPropertyValues(const owe::Json& values) {
         });
     }
     return owe::Json::Object(rstd::move(result));
+}
+
+// Wallpaper Engine puts a style element with these rules into every page's head just after it
+// loads, before the first applyUserProperties (read over DevTools in the VM): pausing then sets the
+// class wpxPausePseudoAnimationAll on <html> (BuildPausedSnippet).
+String BuildPausePseudoAnimationsSnippet() {
+    return "(function(){"
+           "  if (window.__weweb_pause_style) return;"
+           "  window.__weweb_pause_style = true;"
+           "  var style = document.createElement('style');"
+           "  style.setAttribute('type', 'text/css');"
+           "  style.textContent ="
+           "    '.wpxPausePseudoAnimations:before{animation-play-state:paused !important}'"
+           "    + '.wpxPausePseudoAnimations:after{animation-play-state:paused !important}'"
+           "    + '.wpxPausePseudoAnimationAll *{animation-play-state:paused !important}'"
+           "    + '.wpxPausePseudoAnimationAll *:before{animation-play-state:paused !important}'"
+           "    + '.wpxPausePseudoAnimationAll *:after{animation-play-state:paused !important}';"
+           "  (document.head || document.documentElement).appendChild(style);"
+           "})();"_Str;
+}
+
+// What Wallpaper Engine does when it pauses or resumes a page (read over DevTools): setPaused,
+// then <html> gets the class wpxPausePseudoAnimationAll and every element an inline
+// animation-play-state: paused, which resuming clears again. The page's setPaused is optional.
+String BuildPausedSnippet(bool paused) {
+    String snippet = "(function(){"
+                     "  var paused = "_Str;
+    snippet.push_str(paused ? "true;"_str : "false;"_str);
+    snippet.push_str(
+        "  var listener = window.wallpaperPropertyListener;"
+        "  if (typeof listener === 'object' && listener && typeof listener.setPaused === 'function') {"
+        "    try { listener.setPaused(paused); }"
+        "    catch (e) { console.error('weweb: setPaused threw:', e); }"
+        "  }"
+        "  var root = document.documentElement;"
+        "  if (!root) return;"
+        "  root.classList.toggle('wpxPausePseudoAnimationAll', paused);"
+        "  var all = document.querySelectorAll('*');"
+        "  root.style.animationPlayState = paused ? 'paused' : '';"
+        "  for (var i = 0; i < all.length; i++) all[i].style.animationPlayState = paused ? 'paused' : '';"
+        "})();"_str);
+    return snippet;
 }
 
 void InjectUserProperties(CefRefPtr<CefBrowser> browser, const owe::Json& props) {

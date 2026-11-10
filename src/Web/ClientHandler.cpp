@@ -150,6 +150,10 @@ void ClientHandler::OnLoadEnd(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>
     if (! property_injected_.compare_exchange_strong(
             expected, true, Ordering::SeqCst, Ordering::SeqCst))
         return;
+    if (auto main = browser->GetMainFrame(); main)
+        main->ExecuteJavaScript(to_string(BuildPausePseudoAnimationsSnippet().as_str()),
+                                "weweb://internal/pause_pseudo_animations.js",
+                                0);
     // as Wallpaper Engine hands them: project.json's with its own flip and colour options added
     InjectUserProperties(browser, WithWallpaperEngineProperties(user_props_));
     if (options_.general_fps > 0) {
