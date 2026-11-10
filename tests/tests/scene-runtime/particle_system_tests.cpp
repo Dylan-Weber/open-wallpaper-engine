@@ -1018,3 +1018,22 @@ TEST(ParticleInstanceModifiers, CloneRetainsReadOnlyBindingsAfterSourceReplaceme
     ASSERT_TRUE(binding->animation.is_some());
     EXPECT_FLOAT_EQ(binding->animation->c0[usize()].value, 7.0f);
 }
+
+// A rope trail's history (Wallpaper Engine, 0x140232cad): a timer counts down by each frame's step
+// and, once it reaches 0, is set back to length / segments (not by what is left over) and every
+// particle's current place is pushed. So samples come a whole number of frames apart: every third
+// frame for an interval of 0.1 at 0.04 a frame, not every 2.5 (ft-ropetrail under replay).
+TEST(ParticleTrail, SamplesWhenItsTimerRunsOutAndRestartsIt) {
+    owe::TrailSampleTimer timer;
+    const bool            expected[] = { true, false, false, true, false, false, true };
+    for (bool sample : expected) EXPECT_EQ(timer.Step(0.04, 0.1), sample);
+}
+
+// The rope trail shader's in_SegmentMaxCount (g_RenderVar0.w): Wallpaper Engine sets segments - 0.5
+// (0x140236990, segments clamped to 1..32), so a full trail stops stretching its first piece by
+// the history timer; owe gave the particle count - 1 (ft-ropetrail, 4 segments at 30 fps).
+TEST(ParticleTrail, SegmentMaxCountIsSegmentsLessAHalf) {
+    EXPECT_FLOAT_EQ(owe::RopeTrailSegmentMaxCount(4), 3.5f);
+    EXPECT_FLOAT_EQ(owe::RopeTrailSegmentMaxCount(0), 0.5f);
+    EXPECT_FLOAT_EQ(owe::RopeTrailSegmentMaxCount(100), 31.5f);
+}
