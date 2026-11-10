@@ -84,11 +84,13 @@ String BuildAudioResponseSnippet(slice<float> data) {
 // and, for the rest, Wallpaper Engine's defaults and the values it ran with in the VM, except what
 // belongs to that machine (the monitor map, the CEF command line, the apps list), which is empty.
 String BuildGeneralPropertiesJson(int fps) {
-    String json = R"JSON({"adjustdwmcolormode":"disabled","anticrash":null,"apprules":[],"audioinputdevice":"default","audioinputthreshold":0,"audioinputvolume":50,"autostart":false,"autostartscheduler":false,"autostartx64":false,"browsetransition":{"transition":"none","transitiontime":1500},"cefcommandline":"",)JSON"_Str;
+    String json =
+        R"JSON({"adjustdwmcolormode":"disabled","anticrash":null,"apprules":[],"audioinputdevice":"default","audioinputthreshold":0,"audioinputvolume":50,"autostart":false,"autostartscheduler":false,"autostartx64":false,"browsetransition":{"transition":"none","transitiontime":1500},"cefcommandline":"",)JSON"_Str;
     Formatter formatter(json);
     json.push_str("\"fps\":"_str);
     formatter.write_fmt(Arguments::make("{}", fps));
-    json.push_str(R"JSON(,"hasshownwelcomedialog":true,"highprecisiontimer":true,"iconopacity":100,"language":"en-us","location":{},"loglevel":"error","mediablocklist":null,"mediaintegration":true,"monitordetection":"managed","monitormap":{},"msaa":"none","overridelockscreen":false,"overridewallpaper":false,"pausevram":false,"playbackaudio":"run","playbackfocus":"run","playbackfullscreen":"run","playbackmaximized":"run","playbackonbattery":"run","playbacksleep":"run","plugindelay":0,"plugins":{"ledextensions":{"enabled":true}},"postprocessing":"enabled","preset":"medium","processpriority":"normal","reflection":true,"reloadaudio":true,"resolution":"full","safemode":false,"shadows":"medium","slideshowkiller":false,"uicmd":"","uieffects":null,"uihardwareacceleration":true,"uiquality":"high","uiskin":"dark","uiskinseasonal":true,"unpauseaero":true,"vdesktopenabled":false,"videoaudiooutput":true,"videoframework":"mfEngine","videohardwareacceleration":true,"videoloopmode":"default","videomfstutterhack":false,"videoreadmode":"fromdisk","volumetrics":"medium","webmframework":null,"windowupdaterate":1000})JSON"_str);
+    json.push_str(
+        R"JSON(,"hasshownwelcomedialog":true,"highprecisiontimer":true,"iconopacity":100,"language":"en-us","location":{},"loglevel":"error","mediablocklist":null,"mediaintegration":true,"monitordetection":"managed","monitormap":{},"msaa":"none","overridelockscreen":false,"overridewallpaper":false,"pausevram":false,"playbackaudio":"run","playbackfocus":"run","playbackfullscreen":"run","playbackmaximized":"run","playbackonbattery":"run","playbacksleep":"run","plugindelay":0,"plugins":{"ledextensions":{"enabled":true}},"postprocessing":"enabled","preset":"medium","processpriority":"normal","reflection":true,"reloadaudio":true,"resolution":"full","safemode":false,"shadows":"medium","slideshowkiller":false,"uicmd":"","uieffects":null,"uihardwareacceleration":true,"uiquality":"high","uiskin":"dark","uiskinseasonal":true,"unpauseaero":true,"vdesktopenabled":false,"videoaudiooutput":true,"videoframework":"mfEngine","videohardwareacceleration":true,"videoloopmode":"default","videomfstutterhack":false,"videoreadmode":"fromdisk","volumetrics":"medium","webmframework":null,"windowupdaterate":1000})JSON"_str);
     return json;
 }
 
@@ -130,22 +132,30 @@ String BuildPausePseudoAnimationsSnippet() {
 // What Wallpaper Engine does when it pauses or resumes a page (read over DevTools): setPaused,
 // then <html> gets the class wpxPausePseudoAnimationAll and every element an inline
 // animation-play-state: paused, which resuming clears again. The page's setPaused is optional.
+// Wallpaper Engine then stops the page's process outright (timers and animation frames included,
+// visibilityState stays "visible", no event): __weweb_pauseAck tells the browser process the page
+// has seen it all, and it stops the renderer.
 String BuildPausedSnippet(bool paused) {
     String snippet = "(function(){"
                      "  var paused = "_Str;
     snippet.push_str(paused ? "true;"_str : "false;"_str);
     snippet.push_str(
         "  var listener = window.wallpaperPropertyListener;"
-        "  if (typeof listener === 'object' && listener && typeof listener.setPaused === 'function') {"
+        "  if (typeof listener === 'object' && listener && typeof listener.setPaused === "
+        "'function') {"
         "    try { listener.setPaused(paused); }"
         "    catch (e) { console.error('weweb: setPaused threw:', e); }"
         "  }"
         "  var root = document.documentElement;"
-        "  if (!root) return;"
-        "  root.classList.toggle('wpxPausePseudoAnimationAll', paused);"
-        "  var all = document.querySelectorAll('*');"
-        "  root.style.animationPlayState = paused ? 'paused' : '';"
-        "  for (var i = 0; i < all.length; i++) all[i].style.animationPlayState = paused ? 'paused' : '';"
+        "  if (root) {"
+        "    root.classList.toggle('wpxPausePseudoAnimationAll', paused);"
+        "    var all = document.querySelectorAll('*');"
+        "    root.style.animationPlayState = paused ? 'paused' : '';"
+        "    for (var i = 0; i < all.length; i++) all[i].style.animationPlayState = paused ? "
+        "'paused' : '';"
+        "  }"
+        // everything the page was to see is done: the browser may now stop the renderer
+        "  if (paused && typeof window.__weweb_pauseAck === 'function') window.__weweb_pauseAck();"
         "})();"_str);
     return snippet;
 }

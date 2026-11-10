@@ -1,3 +1,9 @@
+module;
+
+#if defined(__unix__) || defined(__APPLE__)
+#    include <signal.h>
+#endif
+
 module weweb;
 
 import rstd;
@@ -41,8 +47,20 @@ bool ClientHandler::IsClosed() const { return state_ == State::Closed; }
 
 CefRefPtr<CefBrowser> ClientHandler::GetBrowser() const { return IsClosing() ? nullptr : browser_; }
 
+void ClientHandler::SetPaused(bool paused) {
+    want_paused_ = paused;
+#if defined(__unix__) || defined(__APPLE__)
+    // a stopped renderer continues before the page hears it can run again
+    if (! paused && stopped_renderer_ > 0) {
+        (void)::kill(stopped_renderer_, SIGCONT);
+        stopped_renderer_ = 0;
+    }
+#endif
+}
+
 void ClientHandler::RequestClose() {
     if (IsClosing()) return;
+    SetPaused(false);
     state_ = State::Closing;
     render_handler_->SetAcceleratedPaintCallback(None());
     render_handler_->SetCpuPaintCallback(None());
@@ -119,6 +137,18 @@ bool ClientHandler::OnProcessMessageReceived(CefRefPtr<CefBrowser> /*browser*/,
                                              CefRefPtr<CefFrame> /*frame*/,
                                              CefProcessId                 source_process,
                                              CefRefPtr<CefProcessMessage> message) {
+    if (source_process == PID_RENDERER && message && message->GetName() == "weweb.pause-ack") {
+#if defined(__unix__) || defined(__APPLE__)
+        auto args = message->GetArgumentList();
+        // (a resume that came first leaves the renderer running)
+        if (want_paused_ && ! IsClosing() && args && args->GetSize() >= 1 && args->GetInt(0) > 1 &&
+            stopped_renderer_ == 0) {
+            stopped_renderer_ = args->GetInt(0);
+            (void)::kill(stopped_renderer_, SIGSTOP);
+        }
+#endif
+        return true;
+    }
     if (source_process != PID_RENDERER || ! message || message->GetName() != "weweb.audio-demand")
         return false;
     if (IsClosing()) return true;
