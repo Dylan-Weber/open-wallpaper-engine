@@ -253,6 +253,19 @@ struct ParticleFrame {
 
 auto ParticleFrameFrom(ref<dyn<rstd::any::Any>>) -> ref<ParticleFrame>;
 
+// A rope trail's sampling (Wallpaper Engine, 0x140232cad): the timer counts down by each frame's step
+// and, once it reaches 0, is set back to the interval (length / segments), whatever was left over,
+// and that frame pushes every particle's place.
+struct TrailSampleTimer {
+    float remaining {};
+    bool  Step(double step, double interval) {
+        remaining -= static_cast<float>(step);
+        if (remaining > 0.0f) return false;
+        remaining = static_cast<float>(interval);
+        return true;
+    }
+};
+
 struct ParticleSpawnColumns {
     mut_ref<particle::ParticleSlotState[]> states;
     mut_ref<Eigen::Vector3f[]>             positions;
@@ -577,7 +590,7 @@ private:
     SpawnType                                                m_spawn_type { SpawnType::STATIC };
     u32                                                      m_trail_length {};
     f64                                                      m_trail_sample_interval {};
-    f64                                                      m_trail_sample_accumulator {};
+    TrailSampleTimer                                         m_trail_sample_timer {};
     Option<Arc<ParticleTrailUniformState>>                   m_trail_uniform_state;
     Option<Arc<ParticlePlaybackState>>                       m_playback_state;
     u32                                                      m_seen_reset_sequence {};
