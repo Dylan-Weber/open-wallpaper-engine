@@ -66,6 +66,8 @@ struct ParticleRemap {
         Opacity,
         Size,
         Velocity,
+        // the rotation about z, from the output range's x (Wallpaper Engine: case 19, output 5)
+        Rotation,
     };
     enum class Operation
     {
@@ -166,6 +168,8 @@ struct ParticleRemap {
             remap.output = Output::Size;
         else if (text == "velocity"_str)
             remap.output = Output::Velocity;
+        else if (text == "rotation"_str)
+            remap.output = Output::Rotation;
         else
             return None();
         text = String {};
@@ -189,7 +193,15 @@ struct ParticleRemap {
         GetJsonValue(json, "inputrangemax"_str, max, false);
         remap.input_min = min;
         remap.input_max = max;
-        if (vector) {
+        if (remap.output == Output::Rotation) {
+            // the range's x, whatever its other components (a number fills all three):
+            // ft-remap-rotation's "0 0 3.14" turns nothing, "3.14 0 0" and 3.14 turn about z
+            array<float, 3> low { 0.0f, 0.0f, 0.0f }, high { 1.0f, 1.0f, 1.0f };
+            GetJsonValue(json, "outputrangemin"_str, low, false);
+            GetJsonValue(json, "outputrangemax"_str, high, false);
+            remap.output_min = Eigen::Vector3d::Constant(low[usize()]);
+            remap.output_max = Eigen::Vector3d::Constant(high[usize()]);
+        } else if (vector) {
             array<float, 3> low { 0.0f, 0.0f, 0.0f }, high { 1.0f, 1.0f, 1.0f };
             GetJsonValue(json, "outputrangemin"_str, low, false);
             GetJsonValue(json, "outputrangemax"_str, high, false);

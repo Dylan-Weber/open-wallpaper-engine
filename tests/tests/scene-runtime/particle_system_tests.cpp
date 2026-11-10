@@ -792,6 +792,86 @@ TEST(ParticleSubSystem, AppliesVortexAroundWorldSpaceOwner) {
     EXPECT_GT(std::abs(positions[usize()].z()), 0.01f);
 }
 
+// remapvalue's "rotation" output (Wallpaper Engine: case 19, output 5 at 0x140245bac) works on the
+// rotation about z with the output range's x (a number fills all three): "0 0 3.14" turns nothing,
+// "3.14 0 0" and 3.14 turn about z, and multiply by "0 0 v" (x 0) drops a turn to 0
+// (ft-remap-rotation). "angularvelocity" isn't one of its names, so that output does nothing.
+TEST(ParticleRemap, RotationOutputTurnsAboutZByTheRangesX) {
+    auto remap = [](ref<str> json) {
+        return owe::ParticleRemap::FromJson(owe::ParseJson(json).unwrap());
+    };
+    auto x_range = remap(
+        R"({"name":"remapvalue","input":"distancetocontrolpoint","inputrangemax":400,"output":"rotation","outputrangemin":"0 0 0","outputrangemax":"3.14 0 0"})"_str);
+    ASSERT_TRUE(x_range.is_some());
+    EXPECT_TRUE(x_range->output == owe::ParticleRemap::Output::Rotation);
+    EXPECT_NEAR(x_range->Apply(Eigen::Vector3d::Constant(0.0), 200).x(), 1.57, 1e-4);
+    auto z_range = remap(
+        R"({"name":"remapvalue","input":"distancetocontrolpoint","inputrangemax":400,"output":"rotation","outputrangemin":"0 0 0","outputrangemax":"0 0 3.14"})"_str);
+    EXPECT_NEAR(z_range->Apply(Eigen::Vector3d::Constant(0.0), 200).x(), 0.0, 1e-9);
+    auto scalar = remap(
+        R"({"name":"remapvalue","input":"distancetocontrolpoint","inputrangemax":400,"output":"rotation","outputrangemin":0,"outputrangemax":3.14})"_str);
+    EXPECT_NEAR(scalar->Apply(Eigen::Vector3d::Constant(0.0), 200).x(), 1.57, 1e-4);
+    auto multiply = remap(
+        R"({"name":"remapvalue","input":"distancetocontrolpoint","inputrangemax":400,"operation":"multiply","output":"rotation","outputrangemin":"0 0 0","outputrangemax":"0 0 3.14"})"_str);
+    EXPECT_NEAR(multiply->Apply(Eigen::Vector3d::Constant(1.0), 200).x(), 0.0, 1e-9);
+    EXPECT_TRUE(remap(
+        R"({"name":"remapvalue","input":"distancetocontrolpoint","output":"angularvelocity","outputrangemin":"0 0 1","outputrangemax":"0 0 1"})"_str)
+                    .is_none());
+}
+
+// What remapvalue's rotation output does to a particle born with rotation "0 0 1" after half its
+// life: set (remap) puts the value on all three angles, so it turns out of the plane too; add,
+// multiply and subtract work on the angle about z only (ft-remap-rotation under replay: exact
+// only so).
+static Eigen::Vector3f RotationAfterRemap(ref<str> remap_json) {
+    owe::Scene             scene;
+    auto                   mesh = Arc<owe::SceneMesh>::make();
+    owe::ParticleSubSystem subsystem(scene,
+                                     mesh.clone(),
+                                     u32(1),
+                                     f64(1.0),
+                                     u32(1),
+                                     f64(1.0),
+                                     owe::ParticleSubSystem::SpawnType::STATIC,
+                                     owe::ParticleAnimationSpec {});
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"lifetimerandom","min":2,"max":2})"_str).unwrap(), u32(1)));
+    subsystem.AddInitializer(owe::ParticleParser::GenInitializer(
+        owe::ParseJson(R"({"name":"rotationrandom","min":"0 0 1","max":"0 0 1"})"_str).unwrap(),
+        u32(2)));
+    subsystem.AddEmitter(Box<dyn<particle::ParticleEmitterProgram>>::make(owe::BoxEmitterProgram(
+        subsystem.SpawnPipeline(), owe::ParticleBoxEmitterArgs { .instantaneous = u32(1) }, usize())));
+    subsystem.AddOperator(owe::ParticleParser::GenOperator(
+        owe::ParseJson(remap_json).unwrap(),
+        owe::ParticleInstanceModifiers(Arc<owe::wpscene::ParticleInstanceoverride>::make(),
+                                       owe::wpscene::Particle::EFlags { 0 },
+                                       false),
+        subsystem,
+        usize()));
+    subsystem.Finalize();
+    subsystem.Tick(f64(), false);
+    subsystem.Tick(f64(1.0), false);
+    auto&                        storage = subsystem.System().Instance(usize()).Storage();
+    particle::ParticleSlotReader value(storage, particle::ParticleSlot {});
+    return value.Read(subsystem.Attributes().rotation);
+}
+
+TEST(ParticleRemap, RotationOutputSetsAllAnglesButAddsAndMultipliesAboutZ) {
+    const auto set = RotationAfterRemap(
+        R"({"name":"remapvalue","input":"lifetimefraction","output":"rotation","outputrangemin":"0 0 0","outputrangemax":"3.14 0 0"})"_str);
+    EXPECT_NEAR(set.x(), 1.57f, 1e-3f);
+    EXPECT_NEAR(set.y(), 1.57f, 1e-3f);
+    EXPECT_NEAR(set.z(), 1.57f, 1e-3f);
+    const auto add = RotationAfterRemap(
+        R"({"name":"remapvalue","input":"lifetimefraction","operation":"add","output":"rotation","outputrangemin":"0 0 0","outputrangemax":"0 0 3.14"})"_str);
+    EXPECT_NEAR(add.x(), 0.0f, 1e-6f);
+    EXPECT_NEAR(add.z(), 1.0f, 1e-6f);
+    const auto multiply = RotationAfterRemap(
+        R"({"name":"remapvalue","input":"lifetimefraction","operation":"multiply","output":"rotation","outputrangemin":"2 0 0","outputrangemax":"2 0 0"})"_str);
+    EXPECT_NEAR(multiply.x(), 0.0f, 1e-6f);
+    EXPECT_NEAR(multiply.z(), 4.0f, 1e-6f); // each frame: the first tick and the next
+}
+
 // remapvalue maps the distance to a control point, clamped to its input range, linearly onto its
 // output range (particles-remapvalue: rows 0 to 400 units out remap colour red to blue, size 10 to
 // 80 - drawn 20 to 160, a radius - and opacity 1 to 0.1, and multiply size 40 by 0.2 to 2).
