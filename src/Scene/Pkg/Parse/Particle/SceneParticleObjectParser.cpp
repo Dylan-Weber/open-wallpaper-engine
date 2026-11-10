@@ -287,31 +287,78 @@ void LoadEmitter(ParticleSubSystem& system, const wpscene::Particle& particle,
     }
 }
 
-// An image less than a block high has a second row 4 texels below the first, outside the image
-// (particles-layerimage-edge: 32x1, 32x2, 32x3 and the 64x2 rainbow; images less than a block wide
-// lay their points out otherwise in Wallpaper Engine and are left as one column).
-void AddSecondRowToAStrip(Vec<LayerImagePoint>& points, int width, int height) {
-    if (height >= 4 || width < 4) return;
-    const usize row = points.len();
-    for (usize index {}; index < row; ++index) {
-        auto below = points[index];
-        below.y -= 4.0f;
-        points.push(rstd::move(below));
+// Wallpaper Engine's layer-image points (FUN_1401d3ae0): the image is rendered into a target of
+// nx x ny texels, nx = max(2, w/4) and ny = max(2, h/4) (w, h scaled to fit 3840x2160 if larger;
+// a side under 4 counts as 4), and each target texel that is opaque enough gives a point at
+// int(s * (i + 0.5) - w/2), int(s * (j + 0.5) - h/2) from the middle, with the one scale
+// s = w / nx for both axes. So the thin side of a narrow image has two nodes, not a lattice of 4.
+struct LayerImageGrid {
+    int   nodes_x, nodes_y;
+    int   width, height; // the image's sides, at least 4
+    float scale;
+};
+
+LayerImageGrid LayerImageGridOf(int width, int height) {
+    width            = width < 4 ? 4 : width;
+    height           = height < 4 ? 4 : height;
+    int target_width = width, target_height = height;
+    if (width > 3840 || height > 2160) {
+        const float ratio = static_cast<float>(width) / static_cast<float>(height);
+        if (ratio < 1.7777778f) {
+            target_height = 2160;
+            target_width  = static_cast<int>(ratio * 2160.0f);
+        } else {
+            target_width  = 3840;
+            target_height = static_cast<int>(3840.0f / ratio);
+        }
     }
+    const int nodes_x = target_width / 4 < 2 ? 2 : target_width / 4;
+    const int nodes_y = target_height / 4 < 2 ? 2 : target_height / 4;
+    return {
+        nodes_x, nodes_y, width, height, static_cast<float>(width) / static_cast<float>(nodes_x)
+    };
+}
+
+// node (i, j)'s place from the image's middle (y up), whole texels as in Wallpaper Engine
+LayerImagePoint LayerImageNode(const LayerImageGrid& grid, int i, int j) {
+    const float half = grid.scale * 0.5f;
+    const float x =
+        (grid.scale * static_cast<float>(i) - static_cast<float>(grid.width / 2)) + half;
+    const float y =
+        (grid.scale * static_cast<float>(j) - static_cast<float>(grid.height / 2)) + half;
+    return LayerImagePoint { .x = static_cast<float>(static_cast<int>(x)),
+                             .y = -static_cast<float>(static_cast<int>(y)) };
 }
 
 Vec<LayerImagePoint> LayerImageLattice(const unsigned char* data, int width, int height,
                                        int channels, bool bgra, float layer_alpha) {
-    constexpr int block = 4;
-    // a texture thinner than a block is one block across that way (Wallpaper Engine's 64x2 gradient_rainbow emits a row)
-    const int            block_x = width < block ? width : block;
-    const int            block_y = height < block ? height : block;
     Vec<LayerImagePoint> points;
-    for (int top {}; top + block_y <= height; top += block_y) {
-        for (int left {}; left + block_x <= width; left += block_x) {
+    if (width <= 0 || height <= 0) return points;
+    const auto grid = LayerImageGridOf(width, height);
+    // the target texel (i, j) is the average of the source texels under it (an image under 4 across
+    // is stretched over its 4, the edge texels repeating)
+    const float to_x  = static_cast<float>(width) / static_cast<float>(grid.width);
+    const float to_y  = static_cast<float>(height) / static_cast<float>(grid.height);
+    auto        range = [](float from, float to, float scale, int limit) {
+        int low  = static_cast<int>(from * scale);
+        low      = low < limit ? low : limit - 1;
+        int high = static_cast<int>(std::ceil(to * scale));
+        high     = high > limit ? limit : high;
+        return std::pair { low, high > low ? high : low + 1 };
+    };
+    for (int j {}; j < grid.nodes_y; ++j) {
+        const auto [top, bottom] = range(grid.scale * static_cast<float>(j),
+                                         grid.scale * static_cast<float>(j + 1),
+                                         to_y,
+                                         height);
+        for (int i {}; i < grid.nodes_x; ++i) {
+            const auto [left, right] = range(grid.scale * static_cast<float>(i),
+                                             grid.scale * static_cast<float>(i + 1),
+                                             to_x,
+                                             width);
             float sum[4] {};
-            for (int y = top; y < top + block_y; ++y) {
-                for (int x = left; x < left + block_x; ++x) {
+            for (int y = top; y < bottom; ++y) {
+                for (int x = left; x < right; ++x) {
                     const auto* pixel =
                         data + (static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
                                 static_cast<std::size_t>(x)) *
@@ -320,36 +367,23 @@ Vec<LayerImagePoint> LayerImageLattice(const unsigned char* data, int width, int
                     sum[3] += channels == 4 ? static_cast<float>(pixel[3]) : 255.0f;
                 }
             }
-            const float scale = 1.0f / (255.0f * static_cast<float>(block_x * block_y));
+            const float scale =
+                1.0f / (255.0f * static_cast<float>((right - left) * (bottom - top)));
             if (sum[3] * scale * layer_alpha < 0.5f) continue;
-            points.push(LayerImagePoint {
-                .x = static_cast<float>(left) + static_cast<float>(block_x) * 0.5f - static_cast<float>(width) * 0.5f,
-                .y = static_cast<float>(height) * 0.5f - static_cast<float>(top) - static_cast<float>(block_y) * 0.5f,
-                .color = Eigen::Vector3f(sum[bgra ? 2 : 0], sum[1], sum[bgra ? 0 : 2]) * scale,
-            });
+            auto point  = LayerImageNode(grid, i, j);
+            point.color = Eigen::Vector3f(sum[bgra ? 2 : 0], sum[1], sum[bgra ? 0 : 2]) * scale;
+            points.push(rstd::move(point));
         }
     }
-    AddSecondRowToAStrip(points, width, height);
     return points;
 }
 
 Vec<LayerImagePoint> SolidLayerLattice(int width, int height) {
-    constexpr int        block   = 4;
-    const int            block_x = width < block ? width : block;
-    const int            block_y = height < block ? height : block;
     Vec<LayerImagePoint> points;
-    if (block_x <= 0 || block_y <= 0) return points;
-    for (int top {}; top + block_y <= height; top += block_y) {
-        for (int left {}; left + block_x <= width; left += block_x) {
-            points.push(LayerImagePoint {
-                .x = static_cast<float>(left) + static_cast<float>(block_x) * 0.5f -
-                     static_cast<float>(width) * 0.5f,
-                .y = static_cast<float>(height) * 0.5f - static_cast<float>(top) -
-                     static_cast<float>(block_y) * 0.5f,
-            });
-        }
-    }
-    AddSecondRowToAStrip(points, width, height);
+    if (width <= 0 || height <= 0) return points;
+    const auto grid = LayerImageGridOf(width, height);
+    for (int j {}; j < grid.nodes_y; ++j)
+        for (int i {}; i < grid.nodes_x; ++i) points.push(LayerImageNode(grid, i, j));
     return points;
 }
 
