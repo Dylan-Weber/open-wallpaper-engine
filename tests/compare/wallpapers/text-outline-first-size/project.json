@@ -1,0 +1,9 @@
+{
+ "title": "text-outline-first-size",
+ "type": "scene",
+ "file": "scene.json",
+ "version": 1,
+ "general": {
+  "properties": {}
+ }
+}
