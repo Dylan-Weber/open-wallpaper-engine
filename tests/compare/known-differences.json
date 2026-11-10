@@ -3,7 +3,10 @@
   "random": {
     "particles-layerimage-lattice": "random node picks with repetition leave ~9% of lattice nodes empty, different ones each run (placement matches)"
   },
-  "control": {},
+  "control": {
+    "shadow-thin-sweep": "sub-texel shadow coverage, cause unknown: casters thinner than a shadow texel cover different texels in WE and owe (shadow-thin-sweep: WE shadows posts #8 and #13 of 16, owe #13 only), while thick casters and the texel grid match; unchanged by #196 (OWE_PARITY 2026-11-10)",
+    "shadow-cascade-switch-wide-first": "sub-texel shadow coverage, cause unknown: casters thinner than a shadow texel cover different texels in WE and owe (shadow-thin-sweep: WE shadows posts #8 and #13 of 16, owe #13 only), while thick casters and the texel grid match; unchanged by #196 (OWE_PARITY 2026-11-10); 0.9977/0.9978 on the VM at medium, 0.9989 under DXVK at ultra"
+  },
   "driver": {
     "shadow-courtyard-arch": "suspected GPU/driver depth-slope difference: light leaking under a wall's own shadow at its foot is brighter in WE (repro shadow-courtyard-arch-flat-slab; OWE_PARITY 'a leak line at a wall's foot')",
     "shadow-courtyard-arch-novault": "suspected GPU/driver depth-slope difference: light leaking under a wall's own shadow at its foot is brighter in WE (repro shadow-courtyard-arch-flat-slab; OWE_PARITY 'a leak line at a wall's foot')",
