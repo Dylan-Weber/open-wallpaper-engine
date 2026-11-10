@@ -2720,6 +2720,16 @@ TEST(SceneAssetPaths, ModelCameraAndClipRetainTheirReparseSemantics) {
     EXPECT_TRUE(clip.name.is_empty());
 }
 
+// Wallpaper Engine draws an effect's passes into one buffer the last pass then overwrites: a pass
+// before the last with no target of its own is lost, and the last reads the effect's input
+// (effect-pass-resolution's "two passes" row shows the plain texture)
+TEST(EffectPass, OneBeforeTheLastWithoutATargetIsntDrawn) {
+    EXPECT_FALSE(owe::EffectPassIsDrawn({ .index = 0, .count = 2, .has_target = false }));
+    EXPECT_TRUE(owe::EffectPassIsDrawn({ .index = 1, .count = 2, .has_target = false }));
+    EXPECT_TRUE(owe::EffectPassIsDrawn({ .index = 0, .count = 2, .has_target = true }));
+    EXPECT_TRUE(owe::EffectPassIsDrawn({ .index = 0, .count = 1, .has_target = false }));
+}
+
 // Wallpaper Engine draws the last pass of a layer's last effect straight onto the scene, at the
 // screen's resolution, whatever its shader (probes effect-repeat-scaled and
 // effect-pass-resolution): a passthrough of the layer's effect target is only for a layer none of
