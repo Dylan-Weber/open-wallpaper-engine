@@ -25,3 +25,6 @@ make('shadow-cascade-switch-side', 0.5)
 # a first cascade wider than the second (30 / 5 / 100): WE draws a point outside the second cascade from the
 # third even where the first holds it
 make('shadow-cascade-switch-wide-first', 0.08, cascades=(30.0, 5.0, 100.0))
+# the first cascade 15 and 60 wide: whether the nearest posts' shadows in -wide-first come from it at all
+make('shadow-cascade-switch-wide-first-15', 0.08, cascades=(15.0, 5.0, 100.0))
+make('shadow-cascade-switch-wide-first-60', 0.08, cascades=(60.0, 5.0, 100.0))
