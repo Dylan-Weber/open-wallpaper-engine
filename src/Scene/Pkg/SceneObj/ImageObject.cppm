@@ -80,6 +80,7 @@ public:
     Vec<MaterialPass>  passes;
     Vec<EffectCommand> commands;
     Vec<EffectFbo>     fbos;
+    bool               compose { false };
     // `visible` can also be `{"value": false, "script": "..."}`. The script
     // decides every frame whether the effect draws, so the authored value
     // says nothing about whether the effect is ever needed.

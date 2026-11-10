@@ -99,6 +99,10 @@ void SceneNodeLayer::ResolveEffect(const SceneMesh& default_mesh, ref<str> effec
                 it->sceneNode->SetCamera(effect_cam);
                 it->sceneNode->CopyTrans(default_node);
                 it->sceneNode->Mesh()->ChangeMeshDataFrom(default_mesh);
+                if (it->own_target) {
+                    it->sceneNode->SetPerspective(false);
+                    it->sceneNode->SetParentAnchor(nullptr);
+                }
             }
         }
         m_resolved_effects.push(&eff);
@@ -140,14 +144,39 @@ void SceneNodeLayer::ResolveEffect(const SceneMesh& default_mesh, ref<str> effec
             mesh.ChangeMeshDataFrom(default_mesh);
         } else {
             const bool perspective = m_worldNode != nullptr && m_worldNode->Perspective();
-            final_output->sceneNode->SetCamera(
+            const auto final_camera =
                 m_final_camera.is_empty() ? (perspective ? "global_perspective"_str : ""_str)
-                                          : m_final_camera.as_str());
+                                          : m_final_camera.as_str();
+            final_output->sceneNode->SetCamera(final_camera);
             final_output->sceneNode->SetPerspective(perspective);
             // Anchor to the layer's primary SceneNode so the composite quad
             // inherits the layer's world transform (including any container
             // parent chain) via ModelTrans. Identity local — no CopyTrans dance.
             final_output->sceneNode->SetParentAnchor(m_worldNode);
+            // The last effect's passes into targets of its own are placed with the same matrix,
+            // their unit quads unchanged (EffectPassUsesLayerMatrix).
+            for (auto* eff : m_resolved_effects) {
+                bool in_last_effect { false };
+                for (auto& entry : eff->Nodes()) in_last_effect |= entry.get() == final_output;
+                for (auto& entry : eff->Nodes()) {
+                    auto* it = entry.get();
+                    if (it == final_output ||
+                        ! EffectPassUsesLayerMatrix({ .own_target     = it->own_target,
+                                                      .compose        = it->compose,
+                                                      .in_last_effect = in_last_effect }))
+                        continue;
+                    it->sceneNode->SetCamera(final_camera);
+                    it->sceneNode->SetPerspective(perspective);
+                    it->sceneNode->SetParentAnchor(m_worldNode);
+                    // still writing alpha into its target, as on the effect camera
+                    auto& material = *(it->sceneNode->Mesh()->Material());
+                    if (material.Pipeline().alpha_write.is_none()) {
+                        auto state        = material.Pipeline();
+                        state.alpha_write = Some(true);
+                        (void)material.SetPipeline(rstd::move(state));
+                    }
+                }
+            }
             if (final_output->uses_unit_final_quad) {
                 final_output->sceneNode->SetTranslate({ -m_width * 0.5f, -m_height * 0.5f, 0.0f });
                 final_output->sceneNode->SetScale({ m_width, m_height, 1.0f });

@@ -3181,6 +3181,31 @@ TEST(SceneAssetPaths, ModelCameraAndClipRetainTheirReparseSemantics) {
     EXPECT_TRUE(clip.name.is_empty());
 }
 
+// Wallpaper Engine places every pass of a layer's last effect with the layer's own matrix, a pass
+// into a target of the effect's own too (probe effect-target-matrix: the target pass's
+// g_ModelViewProjectionMatrix is the layer's, translation and all); the passes of an earlier effect
+// get the identity, and a compose pass keeps it (refraction's draws the background with it)
+TEST(EffectPass, OwnTargetInTheLastEffectUsesTheLayersMatrix) {
+    EXPECT_TRUE(owe::EffectPassUsesLayerMatrix(
+        { .own_target = true, .compose = false, .in_last_effect = true }));
+    EXPECT_FALSE(owe::EffectPassUsesLayerMatrix(
+        { .own_target = true, .compose = false, .in_last_effect = false }));
+    EXPECT_FALSE(owe::EffectPassUsesLayerMatrix(
+        { .own_target = true, .compose = true, .in_last_effect = true }));
+    EXPECT_FALSE(owe::EffectPassUsesLayerMatrix(
+        { .own_target = false, .compose = false, .in_last_effect = true }));
+}
+
+// Wallpaper Engine draws an effect's passes into one buffer the last pass then overwrites: a pass
+// before the last with no target of its own is lost, and the last reads the effect's input
+// (effect-pass-resolution's "two passes" row shows the plain texture)
+TEST(EffectPass, OneBeforeTheLastWithoutATargetIsntDrawn) {
+    EXPECT_FALSE(owe::EffectPassIsDrawn({ .index = 0, .count = 2, .has_target = false }));
+    EXPECT_TRUE(owe::EffectPassIsDrawn({ .index = 1, .count = 2, .has_target = false }));
+    EXPECT_TRUE(owe::EffectPassIsDrawn({ .index = 0, .count = 2, .has_target = true }));
+    EXPECT_TRUE(owe::EffectPassIsDrawn({ .index = 0, .count = 1, .has_target = false }));
+}
+
 // Wallpaper Engine draws the last pass of a layer's last effect straight onto the scene, at the
 // screen's resolution, whatever its shader (probes effect-repeat-scaled and
 // effect-pass-resolution): a passthrough of the layer's effect target is only for a layer none of
@@ -3930,6 +3955,7 @@ TEST(AnimationParsing, AVectorAnimationWithoutARelativeKeyReplacesTheValue) {
     EXPECT_FLOAT_EQ(node("colour"_str)->Color().z(), 0.5f);
     EXPECT_FLOAT_EQ(node("colour with key"_str)->Color().y(), 0.5f);
     EXPECT_FLOAT_EQ(node("colour with key"_str)->Color().z(), 0.5f);
+}
 
 // Wallpaper Engine takes an image layer's "size" in whole units, rounded down (layer-size-fraction:
 // sizes 4 x 1.49 and 4 x 1.5 are drawn as 4 x 1; 4 x 0.99, 4 x 0.5 and 0.5 x 1 aren't drawn at all)

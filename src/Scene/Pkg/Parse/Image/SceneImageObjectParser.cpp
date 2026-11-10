@@ -889,6 +889,12 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
             bool eff_mat_ok { true };
 
             for (usize i_mat {}; i_mat < wpeffobj.materials.len(); i_mat++) {
+                const bool has_target = wpeffobj.passes.len() > i_mat &&
+                                        ! wpeffobj.passes.at(i_mat).target.is_empty();
+                if (! EffectPassIsDrawn({ .index      = i_mat.to_primitive(),
+                                          .count      = wpeffobj.materials.len().to_primitive(),
+                                          .has_target = has_target }))
+                    continue;
                 wpscene::Material         wpmat = wpeffobj.materials.at(i_mat).clone();
                 SceneEffectTarget         matOutRT { SceneEffectTarget::LayerNext() };
                 Option<wpscene::Material> user_texture_fallback;
@@ -1097,6 +1103,8 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
                     .sceneNode                = spEffNode.clone(),
                     .uses_unit_final_quad     = UsesUnitFinalQuad(wpmat),
                     .final_quad_shader_values = rstd::move(final_quad_shader_values),
+                    .own_target               = has_target,
+                    .compose                  = wpeffobj.compose,
                 });
             }
 

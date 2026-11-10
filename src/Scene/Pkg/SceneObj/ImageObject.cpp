@@ -252,6 +252,7 @@ bool ImageEffect::FromFileJson(const owe::Json& json, fs::VFS& vfs) {
             passes.push(rstd::move(pass));
             if (jP.get("compose"_str).is_some()) owe::GetJsonValue(jP, "compose"_str, compose);
         }
+        this->compose = compose;
         if (compose) {
             if (passes.len() != usize(2)) {
                 rstd_error("effect compose option error");
