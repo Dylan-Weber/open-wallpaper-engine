@@ -2,6 +2,8 @@ module;
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <cstring>
 
 module wescene.pkg.parse;
 import eigen;
@@ -1082,6 +1084,17 @@ auto ShadowUniformSource::Version(ref<dyn<UniformUpdateContext>> context) const 
 
 namespace
 {
+// Wallpaper Engine's fast inverse square root (the bit trick with 0x5f375a86 and one Newton step).
+// It returns 0.99831 for 1, so every axis it normalises comes out that much too short.
+float FastInverseSquareRoot(float value) {
+    uint32_t bits;
+    std::memcpy(&bits, &value, sizeof bits);
+    bits = 0x5f375a86u - (bits >> 1);
+    float estimate;
+    std::memcpy(&estimate, &bits, sizeof estimate);
+    return estimate * (1.5f - 0.5f * value * estimate * estimate);
+}
+
 // A directional light's three cascades, ahead of the camera (`forward`, normalized).
 auto CascadeMatrices(const SceneLight& light, const Vector3d& eye, const Vector3d& forward,
                      int tile) -> Option<array<float, 48>> {
@@ -1100,6 +1113,13 @@ auto CascadeMatrices(const SceneLight& light, const Vector3d& eye, const Vector3
     view_x.normalize();
     view_y.normalize();
     view_z.normalize();
+    const Vector3d shine = -view_z;
+
+    // Wallpaper Engine's view matrices have axes 0.99831 long (its fast inverse square root's
+    // answer for 1), so each cascade's square covers 1.0017 times the width asked for. The centre's
+    // snapping uses the light's unit axes (casters thinner than a texel show it: which texel
+    // centres they cover differs by a fraction of a texel otherwise).
+    const double axis_length = static_cast<double>(FastInverseSquareRoot(1.0f));
 
     // Wallpaper Engine's cascades: as wide as the light's cascade distances (3, 10 and 100 by
     // default), centred half their width ahead of the camera (less so along the light), moved
@@ -1114,7 +1134,6 @@ auto CascadeMatrices(const SceneLight& light, const Vector3d& eye, const Vector3
     const double   depths[3] { widths[1] * 4.0,
                                widths[1] * 4.0,
                                std::max(widths[2] * 1.5, widths[1] * 4.0) };
-    const Vector3d shine = -view_z;
     const Vector3d ahead = forward - shine * (forward.dot(shine) * 0.5);
     for (usize cascade {}; cascade < usize(3); ++cascade) {
         const double half   = widths[cascade.to_primitive()] * 0.5;
@@ -1123,12 +1142,12 @@ auto CascadeMatrices(const SceneLight& light, const Vector3d& eye, const Vector3
         center -= view_x * std::fmod(view_x.dot(center), texel);
         center -= view_y * std::fmod(view_y.dot(center), texel);
         Eigen::Matrix4d view   = Eigen::Matrix4d::Identity();
-        view.block<1, 3>(0, 0) = view_x.transpose();
-        view.block<1, 3>(1, 0) = view_y.transpose();
-        view.block<1, 3>(2, 0) = view_z.transpose();
-        view(0, 3)             = -view_x.dot(center);
-        view(1, 3)             = -view_y.dot(center);
-        view(2, 3)             = -view_z.dot(center);
+        view.block<1, 3>(0, 0) = (view_x * axis_length).transpose();
+        view.block<1, 3>(1, 0) = (view_y * axis_length).transpose();
+        view.block<1, 3>(2, 0) = (view_z * axis_length).transpose();
+        view(0, 3)             = -axis_length * view_x.dot(center);
+        view(1, 3)             = -axis_length * view_y.dot(center);
+        view(2, 3)             = -axis_length * view_z.dot(center);
 
         const double          depth = depths[cascade.to_primitive()];
         const Eigen::Matrix4f matrix =
