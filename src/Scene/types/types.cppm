@@ -253,7 +253,10 @@ public:
             m_remainTime = m_frames.at(m_curFrame).frametime;
         }
         m_remainTime -= newtime;
-        if (m_remainTime <= 0.0) {
+        // a frame that ends exactly on an update ends in it: updates of 1/30 s (a double) add up a
+        // hair short of a frame's 0.1f (a hair over 0.1), which made every frame last one update
+        // more than Wallpaper Engine's
+        if (m_remainTime <= k_frame_tolerance) {
             SwitchToNext();
             m_remainTime += m_frames.at(m_curFrame).frametime;
             if (m_remainTime < 0.0) m_remainTime = 0.0;
@@ -276,6 +279,7 @@ private:
         else
             m_curFrame++;
     }
+    static constexpr double k_frame_tolerance { 1e-6 }; // seconds
     usize  m_curFrame;
     double m_remainTime { 0 };
     bool   m_started { false };
