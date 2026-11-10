@@ -88,7 +88,7 @@
                 "use_puppet": false
               }
             ],
-            "name": "ui_editor_effect_water_ripple_title",
+            "name": "波纹 水面波纹",
             "pass_count": 1,
             "passes": [
               {
@@ -141,7 +141,7 @@
                 "use_puppet": false
               }
             ],
-            "name": "ui_editor_effect_shake_title",
+            "name": "摆动 左侧水面",
             "pass_count": 1,
             "passes": [
               {
@@ -190,7 +190,7 @@
                 "use_puppet": false
               }
             ],
-            "name": "ui_editor_effect_shake_title",
+            "name": "摆动 上方水面",
             "pass_count": 1,
             "passes": [
               {
@@ -240,7 +240,7 @@
                 "use_puppet": false
               }
             ],
-            "name": "ui_editor_effect_shake_title",
+            "name": "摆动 手臂间水面",
             "pass_count": 1,
             "passes": [
               {
@@ -289,7 +289,7 @@
                 "use_puppet": false
               }
             ],
-            "name": "ui_editor_effect_shake_title",
+            "name": "摇动 呼吸摆动",
             "pass_count": 1,
             "passes": [
               {
@@ -342,7 +342,7 @@
                 "use_puppet": false
               }
             ],
-            "name": "ui_editor_effect_water_waves_title",
+            "name": "水波 头部头发",
             "pass_count": 1,
             "passes": [
               {
@@ -391,7 +391,7 @@
                 "use_puppet": false
               }
             ],
-            "name": "ui_editor_effect_water_waves_title",
+            "name": "水波 尾部头发",
             "pass_count": 1,
             "passes": [
               {
@@ -504,7 +504,7 @@
                 "use_puppet": false
               }
             ],
-            "name": "ui_editor_effect_shake_title",
+            "name": "摆动 耳朵",
             "pass_count": 1,
             "passes": [
               {
@@ -631,8 +631,8 @@
       "texs": 0,
       "texv": 5,
       "width": 256,
-      "wrap_s": 1,
-      "wrap_t": 1
+      "wrap_s": "repeat",
+      "wrap_t": "repeat"
     },
     {
       "compo1": 0,
@@ -657,8 +657,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1920,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -683,8 +683,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1920,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -709,8 +709,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1920,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -735,8 +735,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1920,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -761,8 +761,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1920,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -787,8 +787,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1920,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -813,8 +813,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1920,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -839,8 +839,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1920,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -865,8 +865,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1920,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -891,8 +891,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1920,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -917,8 +917,8 @@
       "texs": 0,
       "texv": 5,
       "width": 4096,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -943,8 +943,8 @@
       "texs": 0,
       "texv": 5,
       "width": 4096,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     }
   ],
   "workshop_dir": "2816746616"

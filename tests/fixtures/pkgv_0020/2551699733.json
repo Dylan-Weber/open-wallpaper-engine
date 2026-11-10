@@ -6,8 +6,1393 @@
   },
   "puppets": [],
   "scene": {
-    "error": "[json.exception.type_error.302] type must be boolean, but is object",
-    "parsed": false
+    "camera": {
+      "center": [
+        882.90283203125,
+        -18.57352066040039,
+        -1.0
+      ],
+      "eye": [
+        882.90283203125,
+        -18.57352066040039,
+        0.0
+      ],
+      "up": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    "general": {
+      "ambientcolor": [
+        0.30000001192092896,
+        0.30000001192092896,
+        0.30000001192092896
+      ],
+      "cameraparallax": false,
+      "clearcolor": [
+        0.699999988079071,
+        0.699999988079071,
+        0.699999988079071
+      ],
+      "farz": 10000.0,
+      "fov": 50.0,
+      "nearz": 0.009999999776482582,
+      "skylightcolor": [
+        0.30000001192092896,
+        0.30000001192092896,
+        0.30000001192092896
+      ],
+      "zoom": 1.0
+    },
+    "is_ortho": true,
+    "object_count": 15,
+    "objects": [
+      {
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 0,
+        "effects": [],
+        "fullscreen": false,
+        "id": 14,
+        "image": "models/背景.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "VERSION": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "背景"
+          ],
+          "use_puppet": false
+        },
+        "name": "背景",
+        "nopadding": false,
+        "origin": "1920.00000 1080.00000 0.00000",
+        "origin_parsed": [
+          1920.0,
+          1080.0,
+          0.0
+        ],
+        "parsed": true,
+        "puppet": "",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "3840.00000 2160.00000",
+        "size_parsed": [
+          3840.0,
+          2160.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 0,
+        "effects": [],
+        "fullscreen": false,
+        "id": 23,
+        "image": "models/白色.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "VERSION": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "白色"
+          ],
+          "use_puppet": false
+        },
+        "name": "白色",
+        "nopadding": false,
+        "origin": "1913.50000 1147.00000 0.00000",
+        "origin_parsed": [
+          1913.5,
+          1147.0,
+          0.0
+        ],
+        "parsed": true,
+        "puppet": "",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "1081.00000 690.00000",
+        "size_parsed": [
+          1081.0,
+          690.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 14,
+        "effect_count": 1,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/pulse",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_pulse_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {
+                  "PULSEALPHA": 1
+                },
+                "constantshadervalues": {
+                  "amount": [
+                    1.0
+                  ],
+                  "bounds": [
+                    0.0,
+                    1.0
+                  ],
+                  "noiseamount": [
+                    0.0
+                  ],
+                  "noisespeed": [
+                    0.5
+                  ],
+                  "phase": [
+                    0.0
+                  ],
+                  "power": [
+                    1.0
+                  ],
+                  "speed": [
+                    1.0
+                  ],
+                  "tinthigh": [
+                    0.0,
+                    0.2666666805744171,
+                    1.0
+                  ],
+                  "tintlow": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ]
+                },
+                "target": "",
+                "textures": []
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": false,
+        "id": 28,
+        "image": "models/蓝.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "VERSION": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "蓝"
+          ],
+          "use_puppet": false
+        },
+        "name": "蓝",
+        "nopadding": false,
+        "origin": "1306.50000 1415.50000 0.00000",
+        "origin_parsed": [
+          1306.5,
+          1415.5,
+          0.0
+        ],
+        "parsed": true,
+        "puppet": "",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "733.00000 743.00000",
+        "size_parsed": [
+          733.0,
+          743.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 11,
+        "effect_count": 1,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/pulse",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_pulse_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {
+                  "PULSEALPHA": 1
+                },
+                "constantshadervalues": {
+                  "amount": [
+                    1.0
+                  ],
+                  "bounds": [
+                    0.0,
+                    1.0
+                  ],
+                  "noiseamount": [
+                    0.0
+                  ],
+                  "noisespeed": [
+                    0.5
+                  ],
+                  "phase": [
+                    0.0
+                  ],
+                  "power": [
+                    1.0
+                  ],
+                  "speed": [
+                    2.0
+                  ],
+                  "tinthigh": [
+                    0.0,
+                    1.0,
+                    0.0
+                  ],
+                  "tintlow": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ]
+                },
+                "target": "",
+                "textures": []
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": false,
+        "id": 34,
+        "image": "models/图层 3.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "VERSION": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "图层 3"
+          ],
+          "use_puppet": false
+        },
+        "name": "图层 3",
+        "nopadding": false,
+        "origin": "1575.50000 1551.50000 0.00000",
+        "origin_parsed": [
+          1575.5,
+          1551.5,
+          0.0
+        ],
+        "parsed": true,
+        "puppet": "",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "319.00000 293.00000",
+        "size_parsed": [
+          319.0,
+          293.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 11,
+        "effect_count": 1,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/pulse",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_pulse_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {
+                  "PULSEALPHA": 1
+                },
+                "constantshadervalues": {
+                  "amount": [
+                    1.0
+                  ],
+                  "bounds": [
+                    0.0,
+                    1.0
+                  ],
+                  "noiseamount": [
+                    0.0
+                  ],
+                  "noisespeed": [
+                    0.5
+                  ],
+                  "phase": [
+                    0.0
+                  ],
+                  "power": [
+                    1.0
+                  ],
+                  "speed": [
+                    1.5
+                  ],
+                  "tinthigh": [
+                    1.0,
+                    0.0,
+                    0.0
+                  ],
+                  "tintlow": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ]
+                },
+                "target": "",
+                "textures": []
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": false,
+        "id": 40,
+        "image": "models/图层 2.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "VERSION": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "图层 2"
+          ],
+          "use_puppet": false
+        },
+        "name": "图层 2",
+        "nopadding": false,
+        "origin": "1414.50000 1496.50000 0.00000",
+        "origin_parsed": [
+          1414.5,
+          1496.5,
+          0.0
+        ],
+        "parsed": true,
+        "puppet": "",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "297.00000 299.00000",
+        "size_parsed": [
+          297.0,
+          299.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "animationmode": "",
+        "child_count": 1,
+        "controlpoint_count": 8,
+        "emitter_count": 1,
+        "id": 59,
+        "initializer_count": 3,
+        "kind": "particle",
+        "maxcount": 32,
+        "name": "Magic charge",
+        "operator_count": 3,
+        "origin": "1302.50256 1412.11597 0.00000",
+        "origin_parsed": [
+          1302.5025634765625,
+          1412.115966796875,
+          0.0
+        ],
+        "parsed": true,
+        "particle": "particles/presets/magic_charge.json",
+        "renderer_count": 1,
+        "scale": "1.17101 1.02850 1.00000",
+        "scale_parsed": [
+          1.1710100173950195,
+          1.028499960899353,
+          1.0
+        ],
+        "starttime": 0,
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "angles": "0.00000 -0.00000 0.56713",
+        "id": 89,
+        "kind": "unknown",
+        "name": "Clock",
+        "origin": "3295.69702 1155.73828 0.00000",
+        "scale": "1.20000 1.24005 1.00000",
+        "size": "479.00000 209.00000",
+        "visible": true
+      },
+      {
+        "angles": "0.00000 -0.00000 0.47952",
+        "angles_parsed": [
+          0.0,
+          -0.0,
+          0.4795199930667877
+        ],
+        "animationmode": "",
+        "child_count": 1,
+        "controlpoint_count": 8,
+        "emitter_count": 1,
+        "id": 102,
+        "initializer_count": 4,
+        "kind": "particle",
+        "maxcount": 8,
+        "name": "Lightning cloud",
+        "operator_count": 1,
+        "origin": "992.49402 1695.67175 0.00000",
+        "origin_parsed": [
+          992.4940185546875,
+          1695.6717529296875,
+          0.0
+        ],
+        "parsed": true,
+        "particle": "particles/presets/lightning1.json",
+        "renderer_count": 1,
+        "scale": "0.58839 0.63923 1.00000",
+        "scale_parsed": [
+          0.5883899927139282,
+          0.6392300128936768,
+          1.0
+        ],
+        "starttime": 0,
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "angles": "0.00000 -0.00000 -2.71414",
+        "angles_parsed": [
+          0.0,
+          -0.0,
+          -2.714139938354492
+        ],
+        "animationmode": "",
+        "child_count": 0,
+        "controlpoint_count": 8,
+        "emitter_count": 1,
+        "id": 115,
+        "initializer_count": 6,
+        "kind": "particle",
+        "maxcount": 16,
+        "name": "Light shafts 0",
+        "operator_count": 3,
+        "origin": "1705.70166 1403.94763 0.00000",
+        "origin_parsed": [
+          1705.70166015625,
+          1403.9476318359375,
+          0.0
+        ],
+        "parsed": true,
+        "particle": "particles/presets/light_shafts_0.json",
+        "renderer_count": 1,
+        "scale": "5.01629 1.26057 1.00000",
+        "scale_parsed": [
+          5.016290187835693,
+          1.2605700492858887,
+          1.0
+        ],
+        "starttime": 10,
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "angles": "0.00000 -0.00000 0.01100",
+        "angles_parsed": [
+          0.0,
+          -0.0,
+          0.010999999940395355
+        ],
+        "animationmode": "",
+        "child_count": 1,
+        "controlpoint_count": 8,
+        "emitter_count": 1,
+        "id": 126,
+        "initializer_count": 4,
+        "kind": "particle",
+        "maxcount": 40,
+        "name": "Ember",
+        "operator_count": 6,
+        "origin": "1278.61426 -361.58826 0.00000",
+        "origin_parsed": [
+          1278.6142578125,
+          -361.5882568359375,
+          0.0
+        ],
+        "parsed": true,
+        "particle": "particles/presets/ember.json",
+        "renderer_count": 1,
+        "scale": "4.73008 4.64138 1.00000",
+        "scale_parsed": [
+          4.7300801277160645,
+          4.6413798332214355,
+          1.0
+        ],
+        "starttime": 3,
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 2,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/pulse",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_pulse_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {
+                  "PULSEALPHA": 1,
+                  "PULSECOLOR": 0
+                },
+                "constantshadervalues": {
+                  "amount": [
+                    1.0
+                  ],
+                  "bounds": [
+                    0.0,
+                    1.0
+                  ],
+                  "noiseamount": [
+                    0.0
+                  ],
+                  "noisespeed": [
+                    0.5
+                  ],
+                  "phase": [
+                    0.0
+                  ],
+                  "power": [
+                    1.0
+                  ],
+                  "speed": [
+                    0.699999988079071
+                  ]
+                },
+                "target": "",
+                "textures": []
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/vhs",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_vhs_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "artifacts": [
+                    1.0
+                  ],
+                  "chromatic": [
+                    0.05000000074505806
+                  ],
+                  "distortionspeed": [
+                    0.5
+                  ],
+                  "distortionstrength": [
+                    0.5
+                  ],
+                  "distortionwidth": [
+                    1.0
+                  ],
+                  "scale": [
+                    0.30000001192092896
+                  ],
+                  "strength": [
+                    0.699999988079071
+                  ]
+                },
+                "target": "",
+                "textures": []
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": false,
+        "id": 128,
+        "image": "models/1.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "SPRITESHEET": 1,
+            "VERSION": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "1"
+          ],
+          "use_puppet": false
+        },
+        "name": "1",
+        "nopadding": false,
+        "origin": "1920.00000 1080.00000 0.00000",
+        "origin_parsed": [
+          1920.0,
+          1080.0,
+          0.0
+        ],
+        "parsed": true,
+        "puppet": "",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "3840.00000 2160.00000",
+        "size_parsed": [
+          3840.0,
+          2160.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "angles": "0.00000 -0.00000 0.54690",
+        "id": 136,
+        "kind": "unknown",
+        "name": "Date",
+        "origin": "2309.68604 648.02350 0.00000",
+        "scale": "0.88435 0.98263 1.00000",
+        "size": "276.00000 82.00000",
+        "visible": true
+      },
+      {
+        "alignment_parsed": "center",
+        "alpha": 0.8999999761581421,
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 22,
+        "effect_count": 3,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/pulse",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_pulse_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {
+                  "PULSEALPHA": 1,
+                  "PULSECOLOR": 0
+                },
+                "constantshadervalues": {
+                  "amount": [
+                    1.0
+                  ],
+                  "bounds": [
+                    0.0,
+                    1.0
+                  ],
+                  "noiseamount": [
+                    0.0
+                  ],
+                  "noisespeed": [
+                    0.5
+                  ],
+                  "phase": [
+                    0.0
+                  ],
+                  "power": [
+                    1.0
+                  ],
+                  "speed": [
+                    0.6800000071525574
+                  ]
+                },
+                "target": "",
+                "textures": []
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/vhs",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_vhs_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "artifacts": [
+                    1.0
+                  ],
+                  "chromatic": [
+                    0.05000000074505806
+                  ],
+                  "distortionspeed": [
+                    0.5
+                  ],
+                  "distortionstrength": [
+                    0.5
+                  ],
+                  "distortionwidth": [
+                    1.0
+                  ],
+                  "scale": [
+                    0.30000001192092896
+                  ],
+                  "strength": [
+                    0.699999988079071
+                  ]
+                },
+                "target": "",
+                "textures": []
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 2,
+            "fbos": [
+              {
+                "format": "rgba_backbuffer",
+                "name": "_rt_HalfCompoBuffer1",
+                "scale": 2
+              },
+              {
+                "format": "rgba_backbuffer",
+                "name": "_rt_HalfCompoBuffer2",
+                "scale": 2
+              }
+            ],
+            "material_count": 5,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/godrays_downsample2",
+                "textures": [],
+                "use_puppet": false
+              },
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/godrays_cast",
+                "textures": [],
+                "use_puppet": false
+              },
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/godrays_gaussian",
+                "textures": [],
+                "use_puppet": false
+              },
+              {
+                "blending": "normal",
+                "combos": {
+                  "VERTICAL": 1
+                },
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/godrays_gaussian",
+                "textures": [],
+                "use_puppet": false
+              },
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/godrays_combine",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_godrays_title",
+            "pass_count": 5,
+            "passes": [
+              {
+                "bind": [
+                  {
+                    "index": 0,
+                    "name": "previous"
+                  }
+                ],
+                "combos": {},
+                "constantshadervalues": {
+                  "noiseamount": [
+                    0.800000011920929
+                  ],
+                  "noisescale": [
+                    3.0
+                  ],
+                  "noisesmoothness": [
+                    0.20000000298023224
+                  ],
+                  "noisespeed": [
+                    0.05000000074505806
+                  ],
+                  "raythreshold": [
+                    0.5
+                  ]
+                },
+                "target": "_rt_HalfCompoBuffer1",
+                "textures": []
+              },
+              {
+                "bind": [
+                  {
+                    "index": 0,
+                    "name": "_rt_HalfCompoBuffer1"
+                  }
+                ],
+                "combos": {},
+                "constantshadervalues": {
+                  "center": [
+                    0.44025513529777527,
+                    0.9804964065551758
+                  ],
+                  "color": [
+                    0.6039215922355652,
+                    0.8156862854957581,
+                    1.0
+                  ],
+                  "rayintensity": [
+                    0.5
+                  ],
+                  "raylength": [
+                    0.5
+                  ]
+                },
+                "target": "_rt_HalfCompoBuffer2",
+                "textures": []
+              },
+              {
+                "bind": [
+                  {
+                    "index": 0,
+                    "name": "_rt_HalfCompoBuffer2"
+                  }
+                ],
+                "combos": {},
+                "constantshadervalues": {
+                  "blurscale": [
+                    1.0,
+                    1.0
+                  ]
+                },
+                "target": "_rt_HalfCompoBuffer1",
+                "textures": []
+              },
+              {
+                "bind": [
+                  {
+                    "index": 0,
+                    "name": "_rt_HalfCompoBuffer1"
+                  }
+                ],
+                "combos": {
+                  "VERTICAL": 1
+                },
+                "constantshadervalues": {
+                  "blurscale": [
+                    1.0,
+                    1.0
+                  ]
+                },
+                "target": "_rt_HalfCompoBuffer2",
+                "textures": []
+              },
+              {
+                "bind": [
+                  {
+                    "index": 0,
+                    "name": "_rt_HalfCompoBuffer2"
+                  },
+                  {
+                    "index": 1,
+                    "name": "previous"
+                  }
+                ],
+                "combos": {
+                  "COPYBG": 1
+                },
+                "constantshadervalues": {},
+                "target": "",
+                "textures": []
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": false,
+        "id": 138,
+        "image": "models/1111.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "SPRITESHEET": 1,
+            "VERSION": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "1111"
+          ],
+          "use_puppet": false
+        },
+        "name": "1111",
+        "nopadding": false,
+        "origin": "1942.86743 1778.10950 0.00000",
+        "origin_parsed": [
+          1942.867431640625,
+          1778.1094970703125,
+          0.0
+        ],
+        "parsed": true,
+        "puppet": "",
+        "scale": "1.10000 1.10000 1.00000",
+        "scale_parsed": [
+          1.100000023841858,
+          1.100000023841858,
+          1.0
+        ],
+        "size": "600.00000 600.00000",
+        "size_parsed": [
+          600.0,
+          600.0
+        ],
+        "visible": false,
+        "visible_parsed": false
+      },
+      {
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles": "0.00000 0.00000 -0.63879",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          -0.6387900114059448
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 1,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "workshop/2084198056/effects/Simple_Audio_Bars",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "Simple Audio Bars",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {
+                  "ANTIALIAS": 1,
+                  "CLIP_HIGH": 1,
+                  "RESOLUTION": 64
+                },
+                "constantshadervalues": {
+                  "Anti-alias blurring": [
+                    0.05000000074505806,
+                    0.05000000074505806
+                  ],
+                  "Bar Color": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ],
+                  "Bar Count": [
+                    50.0
+                  ],
+                  "Bar Spacing": [
+                    0.30000001192092896
+                  ],
+                  "Lower/Upper Bar Bounds": [
+                    0.0,
+                    0.6000000238418579
+                  ],
+                  "ui_editor_properties_opacity": [
+                    0.550000011920929
+                  ]
+                },
+                "target": "",
+                "textures": []
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": false,
+        "id": 140,
+        "image": "models/未标题-2.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "VERSION": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "未标题-2"
+          ],
+          "use_puppet": false
+        },
+        "name": "炫彩音频可视化线条",
+        "nopadding": false,
+        "origin": "2691.68579 1477.07849 0.00000",
+        "origin_parsed": [
+          2691.685791015625,
+          1477.0784912109375,
+          0.0
+        ],
+        "parsed": true,
+        "puppet": "",
+        "scale": "-2.16440 1.72443 1.00000",
+        "scale_parsed": [
+          -2.164400100708008,
+          1.724429965019226,
+          1.0
+        ],
+        "size": "600.00000 350.00000",
+        "size_parsed": [
+          600.0,
+          350.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "id": 159,
+        "kind": "sound",
+        "maxtime": 5.0,
+        "mintime": 1.0,
+        "name": "Kyle Xian - Game Freak - VS芳缘道馆主 X 冠军大吾(戦闘! ジムリーダー X 決戦! ダイゴ (宝石).mp3",
+        "parsed": true,
+        "playbackmode": "random",
+        "sound_paths": [
+          "sounds/Kyle Xian - Game Freak - VS芳缘道馆主 X 冠军大吾(戦闘! ジムリーダー X 決戦! ダイゴ (宝石).mp3",
+          "sounds/Kyle Xian - Game Freak - VS关东道馆主 ~ 戦闘!ジムリーダー(カントー) (四色).mp3",
+          "sounds/Kyle Xian - Game Freak - VS冠军渡 ~ 戦闘!チャンピオン (金银).mp3",
+          "sounds/Kyle Xian - Game Freak - 桧皮镇 ~ ヒワダタウン (金银).mp3",
+          "sounds/Kyle Xian - Game Freak - 火箭队占据播音塔 ~ ラジオとう占拠! (金银).mp3",
+          "sounds/Kyle Xian - Game Freak - 精灵宝可梦中心 ~ ポケモンセンター (历代).mp3",
+          "sounds/Kyle Xian - Game Freak - 未白镇_天元镇 ~ ミシロタウン (宝石).mp3",
+          "sounds/Kyle Xian - Game Freak - 未白镇三连(タイトルデモ ~ホウエン地方の旅立ち X ミシロタウン X トウカシティ (宝石).mp3",
+          "sounds/Kyle Xian - アドバンス・アドベンチャー ~ 冒险前进 (纯音乐).mp3",
+          "sounds/Kyle Xian - オラシオン ~ 奥拉席翁 (纯音乐).mp3",
+          "sounds/Kyle Xian - そこに空があるから ~ 因为那边有天空 (纯音乐).mp3",
+          "sounds/Kyle Xian - そして,冒険は続く~出会いと別れと ~ 冒险继续~相遇与离别.mp3",
+          "sounds/Kyle Xian - タイプ_ワイルド ~ Type_ Wild (纯音乐).mp3",
+          "sounds/Kyle Xian - ニャースのうた ~ 喵喵之歌（精灵宝可梦 无印ED）（原唱_犬山犬子）.mp3",
+          "sounds/Kyle Xian - はてしない世界 ~ 无止尽的世界（原唱_平松晶子） (精灵宝可梦 场版《洛奇亚爆诞》印象曲).mp3",
+          "sounds/Kyle Xian - ポケットにファンタジー ~ 口袋里的幻想（精灵宝可梦 无印ED）.mp3",
+          "sounds/Kyle Xian - めざせポケモンマスター ~ 目标是宝可梦大师 (纯音乐).mp3",
+          "sounds/Kyle Xian - 宠物小精灵 (纯音乐).mp3",
+          "sounds/Kyle Xian - 初代ENDINGBGM (纯音乐).mp3",
+          "sounds/Kyle Xian - 君のそばで ~ヒカリのテーマ~ 在你的身边~小光的主题曲~ (纯音乐).mp3",
+          "sounds/Kyle Xian - 林明日香 - オラシオンのテーマ　～共に歩こう～（精灵宝可梦剧场版《就决定是你了！》ED》）.mp3"
+        ],
+        "visible": true,
+        "visible_parsed": true,
+        "volume": 0.5
+      }
+    ],
+    "ortho": {
+      "height": 2160,
+      "width": 3840
+    },
+    "parsed": true
   },
   "textures": [
     {
@@ -33,8 +1418,8 @@
       "texs": 3,
       "texv": 5,
       "width": 8192,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -59,8 +1444,8 @@
       "texs": 3,
       "texv": 5,
       "width": 4096,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -85,8 +1470,8 @@
       "texs": 0,
       "texv": 5,
       "width": 512,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -111,8 +1496,8 @@
       "texs": 0,
       "texv": 5,
       "width": 512,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -137,8 +1522,8 @@
       "texs": 0,
       "texv": 5,
       "width": 600,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -163,8 +1548,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2048,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -189,8 +1574,8 @@
       "texs": 0,
       "texv": 5,
       "width": 4096,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -215,8 +1600,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     }
   ],
   "workshop_dir": "2551699733"

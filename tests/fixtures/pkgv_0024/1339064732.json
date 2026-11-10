@@ -1,20 +1,20 @@
 {
   "pkg": {
-    "file_count": 60,
+    "file_count": 59,
     "has_scene_json": true,
-    "version": "PKGV0015"
+    "version": "PKGV0024"
   },
   "puppets": [],
   "scene": {
     "camera": {
       "center": [
-        0.0,
-        0.0,
+        0.08914999663829803,
+        -4.524710178375244,
         -1.0
       ],
       "eye": [
-        0.0,
-        0.0,
+        0.08914999663829803,
+        -4.524710178375244,
         0.0
       ],
       "up": [
@@ -46,13 +46,11 @@
       "zoom": 1.0
     },
     "is_ortho": true,
-    "object_count": 25,
+    "object_count": 24,
     "objects": [
       {
-        "alignment": "center",
         "alignment_parsed": "center",
         "alpha": 1.0,
-        "angles": "0.00000 0.00000 0.00000",
         "angles_parsed": [
           0.0,
           0.0,
@@ -165,7 +163,6 @@
           355.0,
           0.0
         ],
-        "parallaxDepth": "1.00000 1.00000",
         "parsed": true,
         "puppet": "",
         "scale": "0.70000 0.40000 0.70000",
@@ -183,10 +180,408 @@
         "visible_parsed": true
       },
       {
-        "alignment": "center",
         "alignment_parsed": "center",
         "alpha": 1.0,
-        "angles": "0.00000 0.00000 0.00000",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 1,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/foliagesway",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_foliage_sway_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "Phase": [
+                    0.0
+                  ],
+                  "Power": [
+                    1.4199999570846558
+                  ],
+                  "Speed": [
+                    2.2699999809265137
+                  ],
+                  "Strength": [
+                    15.0
+                  ],
+                  "ui_editor_properties_corner_weights": [
+                    1.0,
+                    1.0,
+                    0.0,
+                    0.0
+                  ],
+                  "ui_editor_properties_direction_weights": [
+                    1.0,
+                    0.20000000298023224
+                  ],
+                  "ui_editor_properties_phase": [
+                    2.0899999141693115
+                  ],
+                  "ui_editor_properties_power": [
+                    0.9900000095367432
+                  ],
+                  "ui_editor_properties_speed": [
+                    1.0800000429153442
+                  ],
+                  "ui_editor_properties_strength": [
+                    6.679999828338623
+                  ]
+                },
+                "target": "",
+                "textures": []
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": false,
+        "id": 86,
+        "image": "models/presets/fern1.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {},
+          "constantshadervalues": {
+            "Alpha": [
+              1.0
+            ],
+            "Brightness": [
+              0.5899999737739563
+            ]
+          },
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "grays"
+          ],
+          "use_puppet": false
+        },
+        "name": "Fern",
+        "nopadding": false,
+        "origin": "775.00000 368.00000 0.00000",
+        "origin_parsed": [
+          775.0,
+          368.0,
+          0.0
+        ],
+        "parsed": true,
+        "puppet": "",
+        "scale": "0.70000 0.60000 0.70000",
+        "scale_parsed": [
+          0.699999988079071,
+          0.6000000238418579,
+          0.699999988079071
+        ],
+        "size": "22.00000 43.00000",
+        "size_parsed": [
+          22.0,
+          43.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 1,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/foliagesway",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_foliage_sway_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "Phase": [
+                    0.0
+                  ],
+                  "Power": [
+                    1.4199999570846558
+                  ],
+                  "Speed": [
+                    2.2699999809265137
+                  ],
+                  "Strength": [
+                    15.0
+                  ],
+                  "ui_editor_properties_corner_weights": [
+                    1.0,
+                    1.0,
+                    0.0,
+                    0.0
+                  ],
+                  "ui_editor_properties_direction_weights": [
+                    1.0,
+                    0.20000000298023224
+                  ],
+                  "ui_editor_properties_phase": [
+                    0.0
+                  ],
+                  "ui_editor_properties_power": [
+                    1.0
+                  ],
+                  "ui_editor_properties_speed": [
+                    1.340000033378601
+                  ],
+                  "ui_editor_properties_strength": [
+                    7.0
+                  ]
+                },
+                "target": "",
+                "textures": []
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": false,
+        "id": 107,
+        "image": "models/presets/fern1.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {},
+          "constantshadervalues": {
+            "Alpha": [
+              1.0
+            ],
+            "Brightness": [
+              0.5899999737739563
+            ]
+          },
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "grays"
+          ],
+          "use_puppet": false
+        },
+        "name": "Fern",
+        "nopadding": false,
+        "origin": "700.00000 380.00000 0.00000",
+        "origin_parsed": [
+          700.0,
+          380.0,
+          0.0
+        ],
+        "parsed": true,
+        "puppet": "",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "22.00000 43.00000",
+        "size_parsed": [
+          22.0,
+          43.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 1,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/foliagesway",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_foliage_sway_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "Phase": [
+                    0.0
+                  ],
+                  "Power": [
+                    1.4199999570846558
+                  ],
+                  "Speed": [
+                    2.2699999809265137
+                  ],
+                  "Strength": [
+                    15.0
+                  ],
+                  "ui_editor_properties_corner_weights": [
+                    1.0,
+                    1.0,
+                    0.0,
+                    0.0
+                  ],
+                  "ui_editor_properties_direction_weights": [
+                    1.0,
+                    0.20000000298023224
+                  ],
+                  "ui_editor_properties_phase": [
+                    0.0
+                  ],
+                  "ui_editor_properties_power": [
+                    2.0
+                  ],
+                  "ui_editor_properties_speed": [
+                    1.6100000143051147
+                  ],
+                  "ui_editor_properties_strength": [
+                    6.679999828338623
+                  ]
+                },
+                "target": "",
+                "textures": []
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": false,
+        "id": 110,
+        "image": "models/presets/fern1.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {},
+          "constantshadervalues": {
+            "Alpha": [
+              1.0
+            ],
+            "Brightness": [
+              0.5899999737739563
+            ]
+          },
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "grays"
+          ],
+          "use_puppet": false
+        },
+        "name": "Fern",
+        "nopadding": false,
+        "origin": "1400.00000 280.00000 0.00000",
+        "origin_parsed": [
+          1400.0,
+          280.0,
+          0.0
+        ],
+        "parsed": true,
+        "puppet": "",
+        "scale": "1.50000 2.00000 2.00000",
+        "scale_parsed": [
+          1.5,
+          2.0,
+          2.0
+        ],
+        "size": "22.00000 43.00000",
+        "size_parsed": [
+          22.0,
+          43.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "id": 131,
+        "kind": "image",
+        "name": "Snow perspective",
+        "origin": "1000.00000 846.03003 0.00000",
+        "parsed": false,
+        "visible": true
+      },
+      {
+        "alignment_parsed": "center",
+        "alpha": 1.0,
         "angles_parsed": [
           0.0,
           0.0,
@@ -397,7 +792,7 @@
                 "textures": [
                   "",
                   "masks/shake_mask_ee0d9bbc6d0516b8583c8fb3e841485c0b7ec4e8",
-                  "util/white"
+                  ""
                 ]
               }
             ],
@@ -446,7 +841,7 @@
                 "textures": [
                   "",
                   "masks/shake_mask_c4448fde52a4085d8714b1827fa56713014175c8",
-                  "util/white"
+                  ""
                 ]
               }
             ],
@@ -495,7 +890,7 @@
                 "textures": [
                   "",
                   "masks/shake_mask_abc55dd63fd72c35bd5fc28b6f385c6f9bc5ce00",
-                  "util/white"
+                  ""
                 ]
               }
             ],
@@ -544,7 +939,7 @@
                 "textures": [
                   "",
                   "masks/shake_mask_14baecd88cd86197979e9592a3614e57bbd01235",
-                  "util/white"
+                  ""
                 ]
               }
             ],
@@ -572,11 +967,7 @@
             "passes": [
               {
                 "bind": [],
-                "combos": {
-                  "BLENDMODE": 9,
-                  "PULSEALPHA": 0,
-                  "PULSECOLOR": 1
-                },
+                "combos": {},
                 "constantshadervalues": {
                   "ui_editor_properties_noise_amount": [
                     0.8600000143051147
@@ -614,7 +1005,7 @@
                 "target": "",
                 "textures": [
                   "",
-                  "util/noise",
+                  "",
                   "masks/pulse_mask_681d95af21112ea41fc4cd51aa49d9c553ef1173"
                 ]
               }
@@ -713,7 +1104,7 @@
                 "textures": [
                   "",
                   "masks/shake_mask_ea3f2c0d002fe646cc3154bd3826545e6d238d9e",
-                  "util/white"
+                  ""
                 ]
               }
             ],
@@ -762,7 +1153,7 @@
                 "textures": [
                   "",
                   "masks/shake_mask_bbf9ec5cd7f3abeb6119901f8e7ab2dcdddaf1eb",
-                  "util/white"
+                  ""
                 ]
               }
             ],
@@ -811,7 +1202,7 @@
                 "textures": [
                   "",
                   "masks/shake_mask_7bfb13f51be22746c08466c9bb8b3d1e108682d4",
-                  "util/white"
+                  ""
                 ]
               }
             ],
@@ -819,8 +1210,8 @@
           }
         ],
         "fullscreen": false,
-        "id": 77,
-        "image": "models/zeldo walpepr.json",
+        "id": 149,
+        "image": "models/bg_main.json",
         "kind": "image",
         "material": {
           "blending": "translucent",
@@ -829,13 +1220,13 @@
           "cullmode": "nocull",
           "depthtest": "disabled",
           "depthwrite": "disabled",
-          "shader": "genericimage2",
+          "shader": "genericimage4",
           "textures": [
-            "zeldo walpepr"
+            "bg_main"
           ],
           "use_puppet": false
         },
-        "name": "wallpaper_bg",
+        "name": "bg_main",
         "nopadding": false,
         "origin": "960.00000 540.00000 0.00000",
         "origin_parsed": [
@@ -843,10 +1234,8 @@
           540.0,
           0.0
         ],
-        "parallaxDepth": "1.00000 1.00000",
         "parsed": true,
         "puppet": "",
-        "scale": "1.00000 1.00000 1.00000",
         "scale_parsed": [
           1.0,
           1.0,
@@ -861,423 +1250,8 @@
         "visible_parsed": true
       },
       {
-        "alignment": "center",
         "alignment_parsed": "center",
         "alpha": 1.0,
-        "angles": "0.00000 0.00000 0.00000",
-        "angles_parsed": [
-          0.0,
-          0.0,
-          0.0
-        ],
-        "brightness": 1.0,
-        "color": [
-          1.0,
-          1.0,
-          1.0
-        ],
-        "colorBlendMode": 0,
-        "effect_count": 1,
-        "effects": [
-          {
-            "fbo_count": 0,
-            "fbos": [],
-            "material_count": 1,
-            "materials": [
-              {
-                "blending": "normal",
-                "combos": {},
-                "constantshadervalues": {},
-                "cullmode": "nocull",
-                "depthtest": "disabled",
-                "depthwrite": "disabled",
-                "shader": "effects/foliagesway",
-                "textures": [],
-                "use_puppet": false
-              }
-            ],
-            "name": "ui_editor_effect_foliage_sway_title",
-            "pass_count": 1,
-            "passes": [
-              {
-                "bind": [],
-                "combos": {},
-                "constantshadervalues": {
-                  "Phase": [
-                    0.0
-                  ],
-                  "Power": [
-                    1.4199999570846558
-                  ],
-                  "Speed": [
-                    2.2699999809265137
-                  ],
-                  "Strength": [
-                    15.0
-                  ],
-                  "ui_editor_properties_corner_weights": [
-                    1.0,
-                    1.0,
-                    0.0,
-                    0.0
-                  ],
-                  "ui_editor_properties_direction_weights": [
-                    1.0,
-                    0.20000000298023224
-                  ],
-                  "ui_editor_properties_phase": [
-                    2.0899999141693115
-                  ],
-                  "ui_editor_properties_power": [
-                    0.9900000095367432
-                  ],
-                  "ui_editor_properties_speed": [
-                    1.0800000429153442
-                  ],
-                  "ui_editor_properties_strength": [
-                    6.679999828338623
-                  ]
-                },
-                "target": "",
-                "textures": []
-              }
-            ],
-            "visible": true
-          }
-        ],
-        "fullscreen": false,
-        "id": 86,
-        "image": "models/presets/fern1.json",
-        "kind": "image",
-        "material": {
-          "blending": "translucent",
-          "combos": {},
-          "constantshadervalues": {
-            "Alpha": [
-              1.0
-            ],
-            "Brightness": [
-              0.5899999737739563
-            ]
-          },
-          "cullmode": "nocull",
-          "depthtest": "disabled",
-          "depthwrite": "disabled",
-          "shader": "genericimage2",
-          "textures": [
-            "grays"
-          ],
-          "use_puppet": false
-        },
-        "name": "Fern",
-        "nopadding": false,
-        "origin": "775.00000 368.00000 0.00000",
-        "origin_parsed": [
-          775.0,
-          368.0,
-          0.0
-        ],
-        "parallaxDepth": "1.00000 1.00000",
-        "parsed": true,
-        "puppet": "",
-        "scale": "0.70000 0.60000 0.70000",
-        "scale_parsed": [
-          0.699999988079071,
-          0.6000000238418579,
-          0.699999988079071
-        ],
-        "size": "22.00000 43.00000",
-        "size_parsed": [
-          22.0,
-          43.0
-        ],
-        "visible": true,
-        "visible_parsed": true
-      },
-      {
-        "alignment": "center",
-        "alignment_parsed": "center",
-        "alpha": 1.0,
-        "angles": "0.00000 0.00000 0.00000",
-        "angles_parsed": [
-          0.0,
-          0.0,
-          0.0
-        ],
-        "brightness": 1.0,
-        "color": [
-          1.0,
-          1.0,
-          1.0
-        ],
-        "colorBlendMode": 0,
-        "effect_count": 1,
-        "effects": [
-          {
-            "fbo_count": 0,
-            "fbos": [],
-            "material_count": 1,
-            "materials": [
-              {
-                "blending": "normal",
-                "combos": {},
-                "constantshadervalues": {},
-                "cullmode": "nocull",
-                "depthtest": "disabled",
-                "depthwrite": "disabled",
-                "shader": "effects/foliagesway",
-                "textures": [],
-                "use_puppet": false
-              }
-            ],
-            "name": "ui_editor_effect_foliage_sway_title",
-            "pass_count": 1,
-            "passes": [
-              {
-                "bind": [],
-                "combos": {},
-                "constantshadervalues": {
-                  "Phase": [
-                    0.0
-                  ],
-                  "Power": [
-                    1.4199999570846558
-                  ],
-                  "Speed": [
-                    2.2699999809265137
-                  ],
-                  "Strength": [
-                    15.0
-                  ],
-                  "ui_editor_properties_corner_weights": [
-                    1.0,
-                    1.0,
-                    0.0,
-                    0.0
-                  ],
-                  "ui_editor_properties_direction_weights": [
-                    1.0,
-                    0.20000000298023224
-                  ],
-                  "ui_editor_properties_phase": [
-                    0.0
-                  ],
-                  "ui_editor_properties_power": [
-                    1.0
-                  ],
-                  "ui_editor_properties_speed": [
-                    1.340000033378601
-                  ],
-                  "ui_editor_properties_strength": [
-                    7.0
-                  ]
-                },
-                "target": "",
-                "textures": []
-              }
-            ],
-            "visible": true
-          }
-        ],
-        "fullscreen": false,
-        "id": 107,
-        "image": "models/presets/fern1.json",
-        "kind": "image",
-        "material": {
-          "blending": "translucent",
-          "combos": {},
-          "constantshadervalues": {
-            "Alpha": [
-              1.0
-            ],
-            "Brightness": [
-              0.5899999737739563
-            ]
-          },
-          "cullmode": "nocull",
-          "depthtest": "disabled",
-          "depthwrite": "disabled",
-          "shader": "genericimage2",
-          "textures": [
-            "grays"
-          ],
-          "use_puppet": false
-        },
-        "name": "Fern",
-        "nopadding": false,
-        "origin": "700.00000 380.00000 0.00000",
-        "origin_parsed": [
-          700.0,
-          380.0,
-          0.0
-        ],
-        "parallaxDepth": "1.00000 1.00000",
-        "parsed": true,
-        "puppet": "",
-        "scale": "1.00000 1.00000 1.00000",
-        "scale_parsed": [
-          1.0,
-          1.0,
-          1.0
-        ],
-        "size": "22.00000 43.00000",
-        "size_parsed": [
-          22.0,
-          43.0
-        ],
-        "visible": true,
-        "visible_parsed": true
-      },
-      {
-        "alignment": "center",
-        "alignment_parsed": "center",
-        "alpha": 1.0,
-        "angles": "0.00000 0.00000 0.00000",
-        "angles_parsed": [
-          0.0,
-          0.0,
-          0.0
-        ],
-        "brightness": 1.0,
-        "color": [
-          1.0,
-          1.0,
-          1.0
-        ],
-        "colorBlendMode": 0,
-        "effect_count": 1,
-        "effects": [
-          {
-            "fbo_count": 0,
-            "fbos": [],
-            "material_count": 1,
-            "materials": [
-              {
-                "blending": "normal",
-                "combos": {},
-                "constantshadervalues": {},
-                "cullmode": "nocull",
-                "depthtest": "disabled",
-                "depthwrite": "disabled",
-                "shader": "effects/foliagesway",
-                "textures": [],
-                "use_puppet": false
-              }
-            ],
-            "name": "ui_editor_effect_foliage_sway_title",
-            "pass_count": 1,
-            "passes": [
-              {
-                "bind": [],
-                "combos": {},
-                "constantshadervalues": {
-                  "Phase": [
-                    0.0
-                  ],
-                  "Power": [
-                    1.4199999570846558
-                  ],
-                  "Speed": [
-                    2.2699999809265137
-                  ],
-                  "Strength": [
-                    15.0
-                  ],
-                  "ui_editor_properties_corner_weights": [
-                    1.0,
-                    1.0,
-                    0.0,
-                    0.0
-                  ],
-                  "ui_editor_properties_direction_weights": [
-                    1.0,
-                    0.20000000298023224
-                  ],
-                  "ui_editor_properties_phase": [
-                    0.0
-                  ],
-                  "ui_editor_properties_power": [
-                    2.0
-                  ],
-                  "ui_editor_properties_speed": [
-                    1.6100000143051147
-                  ],
-                  "ui_editor_properties_strength": [
-                    6.679999828338623
-                  ]
-                },
-                "target": "",
-                "textures": []
-              }
-            ],
-            "visible": true
-          }
-        ],
-        "fullscreen": false,
-        "id": 110,
-        "image": "models/presets/fern1.json",
-        "kind": "image",
-        "material": {
-          "blending": "translucent",
-          "combos": {},
-          "constantshadervalues": {
-            "Alpha": [
-              1.0
-            ],
-            "Brightness": [
-              0.5899999737739563
-            ]
-          },
-          "cullmode": "nocull",
-          "depthtest": "disabled",
-          "depthwrite": "disabled",
-          "shader": "genericimage2",
-          "textures": [
-            "grays"
-          ],
-          "use_puppet": false
-        },
-        "name": "Fern",
-        "nopadding": false,
-        "origin": "1400.00000 280.00000 0.00000",
-        "origin_parsed": [
-          1400.0,
-          280.0,
-          0.0
-        ],
-        "parallaxDepth": "1.00000 1.00000",
-        "parsed": true,
-        "puppet": "",
-        "scale": "1.50000 2.00000 2.00000",
-        "scale_parsed": [
-          1.5,
-          2.0,
-          2.0
-        ],
-        "size": "22.00000 43.00000",
-        "size_parsed": [
-          22.0,
-          43.0
-        ],
-        "visible": true,
-        "visible_parsed": true
-      },
-      {
-        "angles": "0.00000 0.00000 0.00000",
-        "id": 131,
-        "kind": "image",
-        "name": "Snow perspective",
-        "origin": "1000.00000 846.03003 0.00000",
-        "parallaxDepth": "1.00000 1.00000",
-        "parsed": false,
-        "scale": "1.00000 1.00000 1.00000",
-        "visible": true
-      },
-      {
-        "alignment": "center",
-        "alignment_parsed": "center",
-        "alpha": 1.0,
-        "angles": "0.00000 0.00000 0.00000",
         "angles_parsed": [
           0.0,
           0.0,
@@ -1390,10 +1364,8 @@
           240.0,
           0.0
         ],
-        "parallaxDepth": "1.00000 1.00000",
         "parsed": true,
         "puppet": "",
-        "scale": "1.00000 1.00000 1.00000",
         "scale_parsed": [
           1.0,
           1.0,
@@ -1408,10 +1380,8 @@
         "visible_parsed": true
       },
       {
-        "alignment": "center",
         "alignment_parsed": "center",
         "alpha": 1.0,
-        "angles": "0.00000 0.00000 0.00000",
         "angles_parsed": [
           0.0,
           0.0,
@@ -1524,10 +1494,8 @@
           290.0,
           0.0
         ],
-        "parallaxDepth": "1.00000 1.00000",
         "parsed": true,
         "puppet": "",
-        "scale": "1.00000 1.00000 1.00000",
         "scale_parsed": [
           1.0,
           1.0,
@@ -1542,10 +1510,8 @@
         "visible_parsed": true
       },
       {
-        "alignment": "center",
         "alignment_parsed": "center",
         "alpha": 1.0,
-        "angles": "0.00000 0.00000 0.00000",
         "angles_parsed": [
           0.0,
           0.0,
@@ -1658,7 +1624,6 @@
           320.0,
           0.0
         ],
-        "parallaxDepth": "1.00000 1.00000",
         "parsed": true,
         "puppet": "",
         "scale": "1.00000 1.20000 1.00000",
@@ -1676,10 +1641,8 @@
         "visible_parsed": true
       },
       {
-        "alignment": "center",
         "alignment_parsed": "center",
         "alpha": 1.0,
-        "angles": "0.00000 0.00000 0.00000",
         "angles_parsed": [
           0.0,
           0.0,
@@ -1792,10 +1755,8 @@
           296.0,
           0.0
         ],
-        "parallaxDepth": "1.00000 1.00000",
         "parsed": true,
         "puppet": "",
-        "scale": "1.00000 1.00000 1.00000",
         "scale_parsed": [
           1.0,
           1.0,
@@ -1810,10 +1771,8 @@
         "visible_parsed": true
       },
       {
-        "alignment": "center",
         "alignment_parsed": "center",
         "alpha": 1.0,
-        "angles": "0.00000 0.00000 0.00000",
         "angles_parsed": [
           0.0,
           0.0,
@@ -1926,7 +1885,6 @@
           290.0,
           0.0
         ],
-        "parallaxDepth": "1.00000 1.00000",
         "parsed": true,
         "puppet": "",
         "scale": "1.20000 1.20000 1.20000",
@@ -1944,10 +1902,8 @@
         "visible_parsed": true
       },
       {
-        "alignment": "center",
         "alignment_parsed": "center",
         "alpha": 1.0,
-        "angles": "0.00000 0.00000 0.00000",
         "angles_parsed": [
           0.0,
           0.0,
@@ -2060,10 +2016,8 @@
           308.0,
           0.0
         ],
-        "parallaxDepth": "1.00000 1.00000",
         "parsed": true,
         "puppet": "",
-        "scale": "1.00000 1.00000 1.00000",
         "scale_parsed": [
           1.0,
           1.0,
@@ -2078,10 +2032,8 @@
         "visible_parsed": true
       },
       {
-        "alignment": "center",
         "alignment_parsed": "center",
         "alpha": 1.0,
-        "angles": "0.00000 0.00000 0.00000",
         "angles_parsed": [
           0.0,
           0.0,
@@ -2194,10 +2146,8 @@
           297.1730041503906,
           0.0
         ],
-        "parallaxDepth": "1.00000 1.00000",
         "parsed": true,
         "puppet": "",
-        "scale": "1.00000 1.00000 1.00000",
         "scale_parsed": [
           1.0,
           1.0,
@@ -2212,7 +2162,6 @@
         "visible_parsed": true
       },
       {
-        "angles": "0.00000 0.00000 0.00000",
         "angles_parsed": [
           0.0,
           0.0,
@@ -2234,11 +2183,9 @@
           939.4630126953125,
           0.0
         ],
-        "parallaxDepth": "1.00000 1.00000",
         "parsed": true,
         "particle": "particles/presets/snowperspective.json",
         "renderer_count": 1,
-        "scale": "1.00000 1.00000 1.00000",
         "scale_parsed": [
           1.0,
           1.0,
@@ -2249,17 +2196,14 @@
         "visible_parsed": true
       },
       {
-        "angles": "0.00000 0.00000 0.00000",
         "id": 221,
         "kind": "sound",
         "maxtime": 5.0,
         "mintime": 1.0,
         "name": "",
-        "origin": "0.00000 0.00000 0.00000",
-        "parallaxDepth": "1.00000 1.00000",
+        "origin": "987.92053 485.96753 0.00000",
         "parsed": true,
         "playbackmode": "loop",
-        "scale": "1.00000 1.00000 1.00000",
         "sound_paths": [
           "sounds/Forest Noises.mp3"
         ],
@@ -2268,17 +2212,14 @@
         "volume": 0.6299999952316284
       },
       {
-        "angles": "0.00000 0.00000 0.00000",
         "id": 224,
         "kind": "sound",
         "maxtime": 87.94999694824219,
         "mintime": 57.95000076293945,
         "name": "",
         "origin": "-9.10600 -7.28700 0.00000",
-        "parallaxDepth": "1.00000 1.00000",
         "parsed": true,
         "playbackmode": "random",
-        "scale": "1.00000 1.00000 1.00000",
         "sound_paths": [
           "sounds/Ambient Song.mp3",
           "sounds/Ambient Song 2.mp3",
@@ -2290,17 +2231,13 @@
         "volume": 0.699999988079071
       },
       {
-        "angles": "0.00000 0.00000 0.00000",
         "id": 225,
         "kind": "sound",
         "maxtime": 12.0,
         "mintime": 6.0,
         "name": "",
-        "origin": "0.00000 0.00000 0.00000",
-        "parallaxDepth": "1.00000 1.00000",
         "parsed": true,
         "playbackmode": "random",
-        "scale": "1.00000 1.00000 1.00000",
         "sound_paths": [
           "sounds/Horse noise1.mp3",
           "sounds/2018-03-31 15-30-21.mp3"
@@ -2310,10 +2247,8 @@
         "volume": 0.4000000059604645
       },
       {
-        "alignment": "center",
         "alignment_parsed": "center",
         "alpha": 1.0,
-        "angles": "0.00000 0.00000 0.00000",
         "angles_parsed": [
           0.0,
           0.0,
@@ -2426,10 +2361,8 @@
           320.0,
           0.0
         ],
-        "parallaxDepth": "1.00000 1.00000",
         "parsed": true,
         "puppet": "",
-        "scale": "1.00000 1.00000 1.00000",
         "scale_parsed": [
           1.0,
           1.0,
@@ -2444,29 +2377,8 @@
         "visible_parsed": true
       },
       {
-        "angles": "0.00000 0.00000 0.00000",
-        "id": 227,
-        "kind": "sound",
-        "maxtime": 5.0,
-        "mintime": 1.0,
-        "name": "",
-        "origin": "0.00000 0.00000 0.00000",
-        "parallaxDepth": "1.00000 1.00000",
-        "parsed": true,
-        "playbackmode": "loop",
-        "scale": "1.00000 1.00000 1.00000",
-        "sound_paths": [
-          "sounds/Water noises.mp3"
-        ],
-        "visible": true,
-        "visible_parsed": true,
-        "volume": 0.9100000262260437
-      },
-      {
-        "alignment": "center",
         "alignment_parsed": "center",
         "alpha": 1.0,
-        "angles": "0.00000 0.00000 0.00000",
         "angles_parsed": [
           0.0,
           0.0,
@@ -2579,10 +2491,8 @@
           322.35699462890625,
           0.0
         ],
-        "parallaxDepth": "1.00000 1.00000",
         "parsed": true,
         "puppet": "",
-        "scale": "1.00000 1.00000 1.00000",
         "scale_parsed": [
           1.0,
           1.0,
@@ -2597,10 +2507,8 @@
         "visible_parsed": true
       },
       {
-        "alignment": "center",
         "alignment_parsed": "center",
         "alpha": 1.0,
-        "angles": "0.00000 0.00000 0.00000",
         "angles_parsed": [
           0.0,
           0.0,
@@ -2713,10 +2621,8 @@
           232.0959930419922,
           0.0
         ],
-        "parallaxDepth": "1.00000 1.00000",
         "parsed": true,
         "puppet": "",
-        "scale": "1.00000 1.00000 1.00000",
         "scale_parsed": [
           1.0,
           1.0,
@@ -2731,10 +2637,8 @@
         "visible_parsed": true
       },
       {
-        "alignment": "center",
         "alignment_parsed": "center",
         "alpha": 1.0,
-        "angles": "0.00000 0.00000 0.00000",
         "angles_parsed": [
           0.0,
           0.0,
@@ -2847,10 +2751,8 @@
           108.06099700927734,
           0.0
         ],
-        "parallaxDepth": "1.00000 1.00000",
         "parsed": true,
         "puppet": "",
-        "scale": "1.00000 1.00000 1.00000",
         "scale_parsed": [
           1.0,
           1.0,
@@ -2865,10 +2767,8 @@
         "visible_parsed": true
       },
       {
-        "alignment": "center",
         "alignment_parsed": "center",
         "alpha": 1.0,
-        "angles": "0.00000 0.00000 0.00000",
         "angles_parsed": [
           0.0,
           0.0,
@@ -2981,7 +2881,6 @@
           363.0,
           0.0
         ],
-        "parallaxDepth": "1.00000 1.00000",
         "parsed": true,
         "puppet": "",
         "scale": "0.60000 0.70000 1.00000",
@@ -2999,12 +2898,10 @@
         "visible_parsed": true
       },
       {
-        "angles": "0.00000 0.00000 0.00000",
         "id": 295,
         "kind": "image",
         "name": "Leaves 2",
         "origin": "270.00000 1000.00000 0.00000",
-        "parallaxDepth": "1.00000 1.00000",
         "parsed": false,
         "scale": "-0.80000 0.80000 0.80000",
         "visible": true
@@ -3015,7 +2912,6 @@
         "kind": "image",
         "name": "Light rays",
         "origin": "1000.00000 800.00000 0.00000",
-        "parallaxDepth": "1.00000 1.00000",
         "parsed": false,
         "scale": "-1.00000 0.80000 1.00000",
         "visible": true
@@ -3028,6 +2924,32 @@
     "parsed": true
   },
   "textures": [
+    {
+      "compo1": 0,
+      "compo2": 0,
+      "compo3": 0,
+      "count": 1,
+      "format": 4,
+      "height": 1080,
+      "image_type": 13,
+      "is_sprite": false,
+      "mag_filter": 0,
+      "map_height": 1080,
+      "map_width": 1920,
+      "min_filter": 0,
+      "mipmap_larger": false,
+      "mipmap_pow2": false,
+      "ok": true,
+      "path": "/materials/bg_main.tex",
+      "sprite_frames": 0,
+      "texb": 4,
+      "texi": 1,
+      "texs": 0,
+      "texv": 5,
+      "width": 1920,
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
+    },
     {
       "compo1": 0,
       "compo2": 0,
@@ -3051,8 +2973,8 @@
       "texs": 0,
       "texv": 5,
       "width": 32,
-      "wrap_s": 1,
-      "wrap_t": 1
+      "wrap_s": "repeat",
+      "wrap_t": "repeat"
     },
     {
       "compo1": 0,
@@ -3077,8 +2999,8 @@
       "texs": 0,
       "texv": 5,
       "width": 256,
-      "wrap_s": 1,
-      "wrap_t": 1
+      "wrap_s": "repeat",
+      "wrap_t": "repeat"
     },
     {
       "compo1": 0,
@@ -3103,8 +3025,8 @@
       "texs": 0,
       "texv": 5,
       "width": 32,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3129,8 +3051,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3155,8 +3077,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3181,8 +3103,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3207,8 +3129,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3233,8 +3155,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3259,8 +3181,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3285,8 +3207,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3311,8 +3233,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3337,8 +3259,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3363,8 +3285,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3389,8 +3311,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3415,8 +3337,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3441,8 +3363,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3467,8 +3389,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3493,34 +3415,8 @@
       "texs": 0,
       "texv": 5,
       "width": 128,
-      "wrap_s": 1,
-      "wrap_t": 1
-    },
-    {
-      "compo1": 0,
-      "compo2": 0,
-      "compo3": 0,
-      "count": 1,
-      "format": 4,
-      "height": 2048,
-      "image_type": -1,
-      "is_sprite": false,
-      "mag_filter": 0,
-      "map_height": 1080,
-      "map_width": 1920,
-      "min_filter": 0,
-      "mipmap_larger": true,
-      "mipmap_pow2": true,
-      "ok": true,
-      "path": "/materials/zeldo walpepr.tex",
-      "sprite_frames": 0,
-      "texb": 2,
-      "texi": 1,
-      "texs": 0,
-      "texv": 5,
-      "width": 2048,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "repeat",
+      "wrap_t": "repeat"
     }
   ],
   "workshop_dir": "1339064732"
