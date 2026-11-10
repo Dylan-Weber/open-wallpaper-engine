@@ -279,6 +279,35 @@ uniform float g_OweLightsShadowView[8];
 uniform vec4 g_OweLightsShadowProjection[8];
 #endif
 
+// Wallpaper Engine takes 0.0005 off the depth of a light's view (a spot's or a directional
+// cascade's) in the matrices its lit shaders compare with, and not in the casters' own. owe's
+// casters read the same matrices, so the receivers move their depth themselves (toward the light,
+// in owe's depth).
+float4 OweReceiverProjection(float3 worldPos, float4x4 viewProjection) {
+    float4 proj = mul(float4(worldPos, 1.0), viewProjection);
+    proj.z += 0.0005;
+    return proj;
+}
+float4 OweReceiverCoordsCascades(float3 worldPos, float4x4 viewProjection) {
+    float4 proj = OweReceiverProjection(worldPos, viewProjection);
+    proj.xyz /= proj.w;
+#if REVERSEDEPTH
+    proj.w = step(1.0, dot(float3(1.0, 1.0, 1.0), float3(step(0.99, abs(proj.xy)), step(proj.z, 0.01))));
+#else
+    proj.w = step(1.0, dot(float3(1.0, 1.0, 1.0), step(0.99, abs(proj.xyz))));
+#endif
+    proj.xy = proj.xy * float2(0.5, 0.5) + float2(0.5, 0.5);
+    proj.y = 1.0 - proj.y;
+    return proj;
+}
+float3 OweReceiverCoords(float3 worldPos, float4x4 viewProjection) {
+    float4 proj = OweReceiverProjection(worldPos, viewProjection);
+    proj.xyz /= proj.w;
+    proj.xy = proj.xy * float2(0.5, -0.5) + float2(0.5, 0.5);
+    proj.y = lerp(proj.y, 2.0, step(proj.w, 0.0));
+    return proj.xyz;
+}
+
 float3 PerformLighting_V1(float3 worldPos, float3 albedo, float3 normal, float3 viewVector,
                           float3 specularTint, float3 f0, float roughness, float metallic) {
     float3 light = float3(0.0, 0.0, 0.0);
@@ -303,11 +332,11 @@ float3 PerformLighting_V1(float3 worldPos, float3 albedo, float3 normal, float3 
                 // Wallpaper Engine's cascade choice: the second cascade where the point is outside
                 // the first, then the third wherever it is outside the second (even inside the
                 // first), and lit outside the third
-                float4 c1 = CalculateProjectedCoordsCascades(
+                float4 c1 = OweReceiverCoordsCascades(
                     worldPos, g_OweShadowViewProjections[shadowView]);
-                float4 c2 = CalculateProjectedCoordsCascades(
+                float4 c2 = OweReceiverCoordsCascades(
                     worldPos, g_OweShadowViewProjections[shadowView + 1]);
-                float4 c3 = CalculateProjectedCoordsCascades(
+                float4 c3 = OweReceiverCoordsCascades(
                     worldPos, g_OweShadowViewProjections[shadowView + 2]);
                 float4 uvTransforms = lerp(g_OweShadowAtlasTransforms[shadowView],
                                            g_OweShadowAtlasTransforms[shadowView + 1], c1.w);
@@ -365,7 +394,7 @@ float3 PerformLighting_V1(float3 worldPos, float3 albedo, float3 normal, float3 
 #if LIGHTS_SHADOW_MAPPING
             if (g_OweLightsShadowView[i] > -0.5) {
                 shadowFactor = PerformShadowMapping(
-                    CalculateProjectedCoords(worldPos, g_OweShadowViewProjections[shadowView]),
+                    OweReceiverCoords(worldPos, g_OweShadowViewProjections[shadowView]),
                     g_OweShadowAtlasTransforms[shadowView]);
             }
 #endif
@@ -2010,7 +2039,7 @@ constexpr array<rstd::uint8_t, 8> kShaderCacheMagic { rstd::uint8_t('O'), rstd::
                                                       rstd::uint8_t('P'), rstd::uint8_t('V'),
                                                       rstd::uint8_t('3'), rstd::uint8_t(0) };
 constexpr rstd::uint32_t          kShaderCacheFormatVersion = 3;
-constexpr rstd::uint32_t          kShaderCacheAbiVersion    = 25;
+constexpr rstd::uint32_t          kShaderCacheAbiVersion    = 26;
 // 8-byte magic, six u32 fields, and four SHA-1 digests total 112 bytes.
 constexpr rstd::uint32_t kShaderCacheHeaderSize = static_cast<rstd::uint32_t>(
     kShaderCacheMagic.len().to_primitive() + 6 * sizeof(rstd::uint32_t) +
