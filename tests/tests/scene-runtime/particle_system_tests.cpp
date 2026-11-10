@@ -3522,3 +3522,13 @@ TEST(ParticleRender, RopesUseTheThickFormat) {
     EXPECT_FALSE(owe::ParticleRendererThickFormat("sprite"_str, false));
     EXPECT_TRUE(owe::ParticleRendererThickFormat("sprite"_str, true));
 }
+
+// A rope trail's history (Wallpaper Engine, 0x140232cad): a timer counts down by each frame's step
+// and, once it reaches 0, is set back to length / segments (not by what is left over) and every
+// particle's current place is pushed. So samples come a whole number of frames apart: every third
+// frame for an interval of 0.1 at 0.04 a frame, not every 2.5 (ft-ropetrail under replay).
+TEST(ParticleTrail, SamplesWhenItsTimerRunsOutAndRestartsIt) {
+    owe::TrailSampleTimer timer;
+    const bool            expected[] = { true, false, false, true, false, false, true };
+    for (bool sample : expected) EXPECT_EQ(timer.Step(0.04, 0.1), sample);
+}

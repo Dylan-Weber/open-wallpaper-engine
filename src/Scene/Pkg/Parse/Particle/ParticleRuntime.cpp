@@ -614,16 +614,16 @@ void ParticleSubSystem::UpdateFrameInput(f64 frame_time) {
     if (m_trail_key.is_some()) {
         const auto interval = m_trail_sample_interval.to_primitive();
         if (interval > 0.0) {
-            auto elapsed = m_trail_sample_accumulator.to_primitive() + frame_time.to_primitive();
-            const auto total_steps =
-                u64(static_cast<rstd::uint64_t>(f64(elapsed / interval).floor().to_primitive()));
-            elapsed -= static_cast<double>(total_steps.to_primitive()) * interval;
-            m_trail_sample_accumulator     = f64(elapsed);
-            m_frame.trail_sample_steps     = rstd::as_cast<usize>(total_steps);
-            m_frame.trail_sample_remainder = f64(elapsed);
+            // Wallpaper Engine (0x140232cad): a sample whenever the timer runs out, which then starts
+            // again from the interval; the place pushed is the particle's place this frame
+            const bool sample = m_trail_sample_timer.Step(frame_time.to_primitive(), interval);
+            m_frame.trail_sample_steps     = sample ? usize(1) : usize();
+            m_frame.trail_sample_remainder = f64();
             if (m_trail_uniform_state.is_some()) {
-                (*m_trail_uniform_state)->render_var[usize(2)] = static_cast<float>(
-                    rstd::cmp::min(1.0, rstd::cmp::max(0.0, elapsed / interval)));
+                const double since =
+                    interval - static_cast<double>(m_trail_sample_timer.remaining);
+                (*m_trail_uniform_state)->render_var[usize(2)] =
+                    static_cast<float>(rstd::cmp::min(1.0, rstd::cmp::max(0.0, since / interval)));
             }
         } else {
             m_frame.trail_sample_steps = usize(1);
@@ -840,7 +840,7 @@ bool ParticleSubSystem::SyncPlayback() {
 
     m_seen_reset_sequence      = sequence;
     m_time                     = f64();
-    m_trail_sample_accumulator = f64();
+    m_trail_sample_timer       = TrailSampleTimer {};
     for (usize index {}; index < System().InstanceCount(); ++index) {
         System().Instance(index).Reset();
         m_instance_states[index].Reset();
