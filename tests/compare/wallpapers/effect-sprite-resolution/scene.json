@@ -1,0 +1,133 @@
+{
+  "camera": {
+    "center": "0 0 0",
+    "eye": "0 0 1",
+    "up": "0 1 0"
+  },
+  "general": {
+    "orthogonalprojection": {
+      "width": 1920,
+      "height": 1080
+    },
+    "clearcolor": "0 0 0",
+    "clearenabled": true,
+    "cameraparallax": false,
+    "camerashake": false,
+    "bloom": false,
+    "hdr": false,
+    "zoom": 1.0,
+    "ambientcolor": "0.3 0.3 0.3",
+    "skylightcolor": "0.3 0.3 0.3"
+  },
+  "objects": [
+    {
+      "name": "petals",
+      "image": "models/petals.json",
+      "origin": "960 900 0",
+      "size": "1200 160",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/res/effect.json",
+          "id": 10,
+          "name": "res",
+          "visible": true,
+          "passes": [
+            {
+              "id": 110,
+              "constantshadervalues": {}
+            }
+          ]
+        }
+      ],
+      "id": 1,
+      "visible": true
+    },
+    {
+      "name": "splash",
+      "image": "models/splash.json",
+      "origin": "960 680 0",
+      "size": "1200 160",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/res/effect.json",
+          "id": 11,
+          "name": "res",
+          "visible": true,
+          "passes": [
+            {
+              "id": 111,
+              "constantshadervalues": {}
+            }
+          ]
+        }
+      ],
+      "id": 2,
+      "visible": true
+    },
+    {
+      "name": "ripple",
+      "image": "models/ripple.json",
+      "origin": "960 460 0",
+      "size": "1200 160",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/res/effect.json",
+          "id": 12,
+          "name": "res",
+          "visible": true,
+          "passes": [
+            {
+              "id": 112,
+              "constantshadervalues": {}
+            }
+          ]
+        }
+      ],
+      "id": 3,
+      "visible": true
+    },
+    {
+      "name": "gradient",
+      "image": "models/gradient.json",
+      "origin": "960 240 0",
+      "size": "1200 160",
+      "color": "1 1 1",
+      "alpha": 1,
+      "angles": "0 0 0",
+      "scale": "1 1 1",
+      "alignment": "center",
+      "effects": [
+        {
+          "file": "effects/res/effect.json",
+          "id": 13,
+          "name": "res",
+          "visible": true,
+          "passes": [
+            {
+              "id": 113,
+              "constantshadervalues": {}
+            }
+          ]
+        }
+      ],
+      "id": 4,
+      "visible": true
+    }
+  ],
+  "version": 1
+}
