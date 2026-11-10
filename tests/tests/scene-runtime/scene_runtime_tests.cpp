@@ -936,6 +936,58 @@ TEST(ShadowUniformSource, EachShadowedLightHasItsViews) {
     EXPECT_FLOAT_EQ(atlas[usize(20)], 0.0f);
 }
 
+// A point light's lookup reads its faces' rows a third of its square apart, though the faces are
+// drawn floor(tile / 3) rows high: the square's height in its transform is the whole square's (256,
+// not 3 * 85), which is what puts Wallpaper Engine's shadow a row higher than a lookup of 255.
+TEST(ShadowAtlasTransforms, PointLightsHoldTheirWholeSquare) {
+    auto make_viewport = [](int x, int y, int width, int height) {
+        return owe::SceneShadowViewport {
+            .x              = rstd::f32(float(x)),
+            .y              = rstd::f32(float(y + height)),
+            .width          = rstd::f32(float(width)),
+            .height         = rstd::f32(-float(height)),
+            .scissor_x      = rstd::i32(x),
+            .scissor_y      = rstd::i32(y),
+            .scissor_width  = rstd::u32(unsigned(width)),
+            .scissor_height = rstd::u32(unsigned(height)),
+        };
+    };
+    auto point = Vec<owe::SceneShadowViewport>::make();
+    for (int face = 0; face < 6; ++face)
+        point.push(make_viewport(256 + (face % 2) * 128, (face / 2) * 85, 128, 85));
+    auto spot = Vec<owe::SceneShadowViewport>::make();
+    spot.push(make_viewport(0, 0, 256, 256));
+    auto definitions = Vec<owe::SceneShadowDefinition>::make();
+    definitions.push(owe::SceneShadowDefinition {
+        .target      = String::make("_rt_shadowAtlas"_str),
+        .viewports   = rstd::move(spot),
+        .light_id    = rstd::i32(1),
+        .view_offset = rstd::u32(0),
+        .type        = owe::SceneLightType::Spot,
+    });
+    definitions.push(owe::SceneShadowDefinition {
+        .target      = String::make("_rt_shadowAtlas"_str),
+        .viewports   = rstd::move(point),
+        .light_id    = rstd::i32(2),
+        .view_offset = rstd::u32(1),
+        .type        = owe::SceneLightType::Point,
+    });
+
+    const auto transforms = owe::ShadowAtlasTransforms(definitions.as_slice(), 512.0f, 256.0f);
+    ASSERT_EQ(transforms.len(), usize(7 * 4));
+    // the spot's square
+    EXPECT_FLOAT_EQ(transforms[usize(2)], 0.5f);
+    EXPECT_FLOAT_EQ(transforms[usize(3)], 1.0f);
+    // each face of the point light: the whole square's corner and size, 256 of 512 by 256 of 256
+    for (usize face {}; face < usize(6); ++face) {
+        const usize at = usize(4) + face * usize(4);
+        EXPECT_FLOAT_EQ(transforms[at], 0.5f) << face.to_primitive();
+        EXPECT_FLOAT_EQ(transforms[at + usize(1)], 0.0f) << face.to_primitive();
+        EXPECT_FLOAT_EQ(transforms[at + usize(2)], 0.5f) << face.to_primitive();
+        EXPECT_FLOAT_EQ(transforms[at + usize(3)], 1.0f) << face.to_primitive();
+    }
+}
+
 // A spot light's view looks along it and sees its outer cone, from 0.05 to its radius; nearer is
 // deeper, as the casters keep the greater depth.
 TEST(ShadowUniformSource, SpotLightSeesItsConeFromNearToRadius) {

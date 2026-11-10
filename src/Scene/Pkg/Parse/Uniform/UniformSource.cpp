@@ -1255,6 +1255,31 @@ auto PointMatrices(const SceneLight& light, double fov) -> Option<array<float, 9
 }
 } // namespace
 
+auto ShadowAtlasTransforms(slice<SceneShadowDefinition> definitions, float width, float height)
+    -> Vec<float> {
+    auto transforms = Vec<float>::make();
+    for (const auto& definition : definitions) {
+        transforms.resize(usize(definition.view_offset.to_primitive() * 4), 0.0f);
+        const bool point = definition.type == SceneLightType::Point;
+        for (const auto& viewport : definition.viewports) {
+            // a point light's lookup picks its face itself, from its faces' two columns and three
+            // rows of the square, so each of its views is the square's corner and size
+            const auto& corner = point ? definition.viewports[usize()] : viewport;
+            const float columns = point ? 2.0f : 1.0f;
+            const float square_width =
+                columns * static_cast<float>(viewport.scissor_width.to_primitive());
+            // the faces are floor(tile / 3) rows high; the square is as tall as it is wide
+            const float square_height =
+                point ? square_width : static_cast<float>(viewport.scissor_height.to_primitive());
+            transforms.push(static_cast<float>(corner.scissor_x.to_primitive()) / width);
+            transforms.push(static_cast<float>(corner.scissor_y.to_primitive()) / height);
+            transforms.push(square_width / width);
+            transforms.push(square_height / height);
+        }
+    }
+    return transforms;
+}
+
 auto ShadowUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
                                    mut_ref<dyn<UniformValueSink>> sink) const
     -> Result<empty, UniformError> {

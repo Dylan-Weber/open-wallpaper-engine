@@ -444,6 +444,14 @@ private:
     Option<LightKindLimits> m_limits;
 };
 
+// Each shadow view's square of an atlas `width` by `height` pixels, in its texture coordinates (x,
+// y, width, height) for views from `view_offset` on. A point light's six views all hold the one
+// square of the six, whole: the lookup picks its face itself, a half of it across and a third down
+// (0.5 and 0.3333 of the square), though the faces are drawn floor(tile / 3) rows high, so the
+// third of the square is a row and a third tall to the lookup and a row to the casters.
+auto ShadowAtlasTransforms(slice<SceneShadowDefinition> definitions, float width, float height)
+    -> Vec<float>;
+
 class ShadowUniformSource {
 public:
     // `scene`'s lights and `limits` as LightUniformSource has them, so each light's views go in its

@@ -203,25 +203,7 @@ void FinalizeUniformSources(SceneParseContext& context) {
             static_cast<float>(rstd::cmp::max((**atlas).width, i32(1)).to_primitive());
         const float height =
             static_cast<float>(rstd::cmp::max((**atlas).height, i32(1)).to_primitive());
-        auto transforms = Vec<float>::make();
-        for (const auto& definition : scene.ShadowDefinitions()) {
-            transforms.resize(usize(definition.view_offset.to_primitive() * 4), 0.0f);
-            for (const auto& viewport : definition.viewports) {
-                // a point light's lookup picks its face itself, from its faces' two columns and
-                // three rows
-                const auto& corner  = definition.type == SceneLightType::Point
-                                          ? definition.viewports[usize()]
-                                          : viewport;
-                const float columns = definition.type == SceneLightType::Point ? 2.0f : 1.0f;
-                const float rows    = definition.type == SceneLightType::Point ? 3.0f : 1.0f;
-                transforms.push(static_cast<float>(corner.scissor_x.to_primitive()) / width);
-                transforms.push(static_cast<float>(corner.scissor_y.to_primitive()) / height);
-                transforms.push(columns *
-                                static_cast<float>(viewport.scissor_width.to_primitive()) / width);
-                transforms.push(rows * static_cast<float>(viewport.scissor_height.to_primitive()) /
-                                height);
-            }
-        }
+        auto transforms = ShadowAtlasTransforms(scene.ShadowDefinitions(), width, height);
         const auto shadow_source = registrar->Register(Box<dyn<UniformSource>>::make(
             ShadowUniformSource { (*active_camera).clone(),
                                   ref<Scene>::from_raw_parts(&scene),
