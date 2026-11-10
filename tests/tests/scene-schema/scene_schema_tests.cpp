@@ -484,6 +484,23 @@ void PrintUnparsedReport(std::string_view prefix, std::string_view scope_label,
     }
 }
 
+// Keys Wallpaper Engine understands (their names are in wallpaper64.exe) that
+// no scene of the local Workshop corpus happens to use. The parser reads them,
+// so the "observed somewhere" checks must not call them typos.
+bool IsKnownRareKey(std::string_view full_path) {
+    auto starts = [&](std::string_view prefix) { return full_path.starts_with(prefix); };
+    if (starts("general.fog") || full_path == "general.norecompile") return true;
+    if (full_path == "objects[].controlpoint" || full_path == "objects[].nointerpolation" ||
+        full_path == "objects[].skin")
+        return true;
+    if (starts("objects[].instanceoverride.controlpoint")) return true;
+    if (starts("objects[].") && full_path.find(".animation.options.") != std::string_view::npos) {
+        for (std::string_view k : { "children", "events", "parent" })
+            if (full_path.ends_with(k)) return true;
+    }
+    return false;
+}
+
 } // namespace
 
 TEST(SceneSchema, EveryParsedGeneralKeyIsObservedSomewhere) {
@@ -496,6 +513,7 @@ TEST(SceneSchema, EveryParsedGeneralKeyIsObservedSomewhere) {
     });
 
     for (const auto& k : AllParsedGeneral()) {
+        if (IsKnownRareKey("general." + k)) continue;
         EXPECT_TRUE(observed.contains(k))
             << "general." << k
             << " is read by the parser but never appears in any scene "
@@ -542,6 +560,7 @@ TEST(SceneSchema, EveryParsedObjectKeyIsObservedSomewhere) {
     });
 
     for (const auto& k : kParsedObjectKeys()) {
+        if (IsKnownRareKey("objects[]." + k)) continue;
         EXPECT_TRUE(observed.contains(k))
             << "objects[]." << k
             << " is read by the parser but never appears in any scene "
@@ -572,6 +591,7 @@ TEST(SceneSchema, EveryParsedNestedKeyIsObservedSomewhere) {
             });
         });
         for (const auto& k : parsed) {
+            if (IsKnownRareKey(std::string(parent) + k)) continue;
             EXPECT_TRUE(observed.contains(k))
                 << parent << k
                 << " is read by the parser but never appears in any scene "

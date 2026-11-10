@@ -186,7 +186,7 @@ DEFINE_FIXTURE_TEST_SUITE(Pkgv0014Test,
                           { "2662089955", WAYWALLEN_FIXTURE_DIR "/pkgv_0014/2662089955.json" });
 
 DEFINE_FIXTURE_TEST_SUITE(Pkgv0015Test,
-                          { "1339064732", WAYWALLEN_FIXTURE_DIR "/pkgv_0015/1339064732.json" },
+                          { "2672187332", WAYWALLEN_FIXTURE_DIR "/pkgv_0015/2672187332.json" },
                           { "2740023533", WAYWALLEN_FIXTURE_DIR "/pkgv_0015/2740023533.json" });
 
 DEFINE_FIXTURE_TEST_SUITE(Pkgv0016Test,
@@ -219,6 +219,9 @@ DEFINE_FIXTURE_TEST_SUITE(Pkgv0022Test,
 
 DEFINE_FIXTURE_TEST_SUITE(Pkgv0023Test,
                           { "2135858259", WAYWALLEN_FIXTURE_DIR "/pkgv_0023/2135858259.json" });
+
+DEFINE_FIXTURE_TEST_SUITE(Pkgv0024Test,
+                          { "1339064732", WAYWALLEN_FIXTURE_DIR "/pkgv_0024/1339064732.json" });
 
 DEFINE_FIXTURE_TEST_SUITE(Texb1Test,
                           { "820654165", WAYWALLEN_FIXTURE_DIR "/texb_1/820654165.json" });

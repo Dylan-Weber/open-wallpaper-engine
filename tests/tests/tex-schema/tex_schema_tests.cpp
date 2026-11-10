@@ -142,9 +142,19 @@ TexMeta read_tex_meta(const std::string& blob) {
         o += 4;
     }
     if (m.texb >= 4) {
-        std::int32_t reserved = 0;
-        if (! read_pod(buf, len, o, reserved)) return m;
+        // Condition records: u32 count, then per record 12 bytes and a
+        // NUL-terminated string (TexImageParser skips them the same way).
+        std::uint32_t condition_count = 0;
+        if (! read_pod(buf, len, o, condition_count)) return m;
         o += 4;
+        if (condition_count > (len - o) / 13) return m;
+        for (std::uint32_t c = 0; c < condition_count; ++c) {
+            if (o + 12 >= len) return m;
+            o += 12;
+            while (o < len && buf[o] != '\0') ++o;
+            if (o >= len) return m;
+            ++o;
+        }
     }
 
     m.sprite = (flags & (1u << 2)) != 0;
@@ -418,12 +428,14 @@ TEST(TexSchema, ProductionParseHeaderAgreesWithMip0Reader) {
     const auto& scan = AllScans();
     ASSERT_FALSE(scan.metas.empty());
 
-    // Production formulas (mirrored from TexImageParser.cpp's
-    // SetHeaderPow2 + the sprite-path inline computation):
-    //   non-sprite mipmap_pow2:   IsPowOfTwo(mip0_w) || IsPowOfTwo(mip0_h)
-    //   non-sprite mipmap_larger: mip0_w * mip0_h > map_w * map_h
-    //   sprite     mipmap_pow2:   IsPowOfTwo(mip0_w * mip0_h)
-    //   sprite     mipmap_larger: never set (stays at the ImageHeader default)
+    // Production formulas (TexImageParser.cpp's SetHeaderPow2, shared by sprites and
+    // plain textures since 4da89208):
+    //   mipmap_pow2:   IsPowOfTwo(mip0_w) || IsPowOfTwo(mip0_h)
+    //   mipmap_larger: mip0_w * mip0_h > map_w * map_h
+    // mipmap_pow2 reaches no shader. mipmap_larger only changes g_TextureNResolution when
+    // a header's width differs from its map width, which a sprite's never does; the real
+    // Wallpaper Engine's resolution for sprites (frame size, per the sprite-resolution
+    // probe) is the same either way.
     std::size_t checked = 0, parity_fail = 0, parity_fail_sprite = 0;
     for (const auto& m : scan.metas) {
         if (m.malformed) continue;
@@ -446,12 +458,18 @@ TEST(TexSchema, ProductionParseHeaderAgreesWithMip0Reader) {
             continue;
         }
 
-        const bool expected_pow2 = m.sprite
-                                       ? IsPowOfTwo(static_cast<std::uint32_t>(m.mip0_w * m.mip0_h))
-                                       : (IsPowOfTwo(static_cast<std::uint32_t>(m.mip0_w)) ||
-                                          IsPowOfTwo(static_cast<std::uint32_t>(m.mip0_h)));
+        const bool expected_pow2 = IsPowOfTwo(static_cast<std::uint32_t>(m.mip0_w)) ||
+                                   IsPowOfTwo(static_cast<std::uint32_t>(m.mip0_h));
+        const bool expected_larger = m.mip0_w * m.mip0_h > m.map_w * m.map_h;
 
         ++checked;
+        if (h.mipmap_larger != expected_larger) {
+            ++parity_fail;
+            if (m.sprite) ++parity_fail_sprite;
+            ADD_FAILURE() << "ParseHeader divergence for " << m.workshop_id << " " << m.pkg_path
+                          << ": expected larger=" << expected_larger
+                          << ", got larger=" << h.mipmap_larger;
+        }
         if (h.mipmap_pow2 != expected_pow2) {
             ++parity_fail;
             if (m.sprite) ++parity_fail_sprite;
@@ -572,8 +590,10 @@ TEST(TexSchema, ProductionParseDecodesEveryBucket) {
                           << " for " << m.workshop_id << " " << m.pkg_path;
             continue;
         }
-        if (s0.mipmaps.is_empty() || ! s0.mipmaps[usize(0)].data ||
-            s0.mipmaps[usize(0)].size <= rstd::isize()) {
+        // Video textures keep their mp4 in video_source and have no pixel data.
+        if (s0.mipmaps.is_empty() ||
+            ((! s0.mipmaps[usize(0)].data || s0.mipmaps[usize(0)].size <= rstd::isize()) &&
+             s0.mipmaps[usize(0)].video_source.is_none())) {
             ++slot_empty;
             ++per_bucket_fail[key];
             ADD_FAILURE() << "slot 0 mip 0 missing data for " << m.workshop_id << " " << m.pkg_path;

@@ -1721,11 +1721,11 @@ TEST(PuppetScriptParsing, VisibilityScriptsInitializeTheirOwnPlayback) {
                 {"id": 1, "name": "First", "image": "models/身体.json",
                  "animationlayers": [{"id": 101, "animation": 3835, "name": "Offset",
                     "visible": {"value": true, "scriptproperties": {"offset": 0.8},
-                    "script": "export var scriptProperties = createScriptProperties().addSlider({name:'offset', value:0}).finish(); export function init(value) { if (thisObject === thisLayer) throw new Error('wrong owner'); const animation = thisObject.getAnimation(); animation.play(); animation.setFrame(animation.frameCount * scriptProperties.offset); return value; }"}}]},
+                    "script": "export var scriptProperties = createScriptProperties().addSlider({name:'offset', value:0}).finish(); export function init(value) { if (thisObject === thisLayer) throw new Error('wrong owner'); const animation = 'addEndedCallback' in thisObject ? thisObject : thisObject.getAnimation(); animation.play(); animation.setFrame(animation.frameCount * scriptProperties.offset); return value; }"}}]},
                 {"id": 2, "name": "Second", "image": "models/身体.json",
                  "animationlayers": [{"id": 201, "animation": 3835, "name": "Offset",
                     "visible": {"value": false, "scriptproperties": {"offset": 0.36},
-                    "script": "export var scriptProperties = createScriptProperties().addSlider({name:'offset', value:0}).finish(); export function init(value) { const animation = thisObject.getAnimation(); animation.play(); animation.setFrame(animation.frameCount * scriptProperties.offset); return true; }"}}]}
+                    "script": "export var scriptProperties = createScriptProperties().addSlider({name:'offset', value:0}).finish(); export function init(value) { const animation = 'addEndedCallback' in thisObject ? thisObject : thisObject.getAnimation(); animation.play(); animation.setFrame(animation.frameCount * scriptProperties.offset); return true; }"}}]}
             ]
         })JSON"_str,
         owe::wpscene::kSceneVersionUnknown);
@@ -3607,8 +3607,9 @@ void main() { gl_FragColor = texSample2D(g_Texture0, v_TexCoord); })";
 }
 
 // The first pass of a layer's effects reads the layer's image in Wallpaper Engine, so its
-// g_Texture0Resolution is the image texture's: its size padded to a multiple of 4, and the
-// picture's size in zw (shader-uniforms: a 64x2 gradient reads 64x4, not the layer's 320x200).
+// g_Texture0Resolution is the image texture's: its size padded to a multiple of 4 in all four
+// components (shader-uniforms: a 64x2 gradient reads 64x4, not the layer's 320x200;
+// sprite-resolution: its zw read 64x4 too).
 TEST(EffectParsing, FirstPassSeesTheLayerImageResolution) {
     auto root = std::filesystem::temp_directory_path() /
                 ("owe-effect-resolution-" + std::to_string(rstd::process::id().to_primitive()));
@@ -3689,7 +3690,101 @@ void main() {
     EXPECT_FLOAT_EQ(metadata.source_extent[rstd::usize(0)], 64.0f);
     EXPECT_FLOAT_EQ(metadata.source_extent[rstd::usize(1)], 4.0f);
     EXPECT_FLOAT_EQ(metadata.sample_extent[rstd::usize(0)], 64.0f);
-    EXPECT_FLOAT_EQ(metadata.sample_extent[rstd::usize(1)], 2.0f);
+    EXPECT_FLOAT_EQ(metadata.sample_extent[rstd::usize(1)], 4.0f);
+
+    std::filesystem::remove_all(root);
+}
+
+// ... and for a sprite that image is one frame: sprite-resolution measured prizes.tex (a 5120x128
+// strip) as 128x128, clockHideToggle (256x384) as 256x128 and a 150x150 frame of a 512x512 sheet as
+// 150x150, in all four components.
+TEST(EffectParsing, FirstPassOfASpriteLayerSeesItsFrameSize) {
+    auto root = std::filesystem::temp_directory_path() /
+                ("owe-effect-sprite-resolution-" + std::to_string(rstd::process::id().to_primitive()));
+    std::filesystem::remove_all(root);
+    for (auto folder : { "models", "materials/effects", "effects/copy", "shaders/effects" })
+        std::filesystem::create_directories(root / folder);
+    std::ofstream(root / "models" / "rainbow.json") << R"({"material": "materials/rainbow.json"})";
+    std::ofstream(root / "materials" / "rainbow.json") << R"({"passes": [{
+        "shader": "genericimage2", "blending": "translucent", "cullmode": "nocull",
+        "depthtest": "disabled", "depthwrite": "disabled",
+        "textures": ["particle/nature/rosepetals"]}]})";
+    std::ofstream(root / "effects" / "copy" / "effect.json")
+        << R"({"version": 1, "name": "copy", "passes": [{"material": "materials/effects/copy.json"}]})";
+    std::ofstream(root / "materials" / "effects" / "copy.json") << R"({"passes": [{
+        "shader": "effects/copy", "blending": "normal", "cullmode": "nocull",
+        "depthtest": "disabled", "depthwrite": "disabled"}]})";
+    std::ofstream(root / "shaders" / "effects" / "copy.vert") << R"(
+uniform mat4 g_ModelViewProjectionMatrix;
+attribute vec3 a_Position;
+attribute vec2 a_TexCoord;
+varying vec4 v_TexCoord;
+void main() {
+    gl_Position = mul(vec4(a_Position, 1.0), g_ModelViewProjectionMatrix);
+    v_TexCoord = a_TexCoord.xyxy;
+})";
+    std::ofstream(root / "shaders" / "effects" / "copy.frag") << R"(
+varying vec4 v_TexCoord;
+uniform sampler2D g_Texture0; // {"hidden":true}
+uniform vec4 g_Texture0Resolution;
+void main() {
+    gl_FragColor = texSample2D(g_Texture0, v_TexCoord.xy) + g_Texture0Resolution * 0.0;
+})";
+
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {},
+            "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+            "objects": [{
+                "id": 1, "name": "Rainbow", "image": "models/rainbow.json", "size": "320 200",
+                "visible": true,
+                "effects": [{"file": "effects/copy/effect.json", "visible": true}]
+            }]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    auto own =
+        owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(root.string()).unwrap()));
+    ASSERT_TRUE(own.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, std::move(assets).unwrap_unchecked()).is_ok());
+    ASSERT_TRUE(vfs.mount("/assets"_str, std::move(own).unwrap_unchecked()).is_ok());
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "effect-resolution"_str,
+        rstd::ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        rstd::mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        rstd::mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+    auto node  = scene.scene->RootMut()->FindByName("Rainbow"_str);
+    ASSERT_NE(node, nullptr);
+    ASSERT_TRUE(node->HasLayer());
+    auto& layer = node->Layer();
+    layer->ResolveEffect(*scene.scene->DefaultEffectMesh(), "effect"_str);
+    ASSERT_FALSE(layer->ResolvedEffects().is_empty());
+    auto* first_effect = layer->ResolvedEffects().first().unwrap().get();
+    ASSERT_FALSE(first_effect->Nodes().is_empty());
+    auto* material = first_effect->Nodes().first().unwrap().get()->sceneNode->Mesh()->Material();
+    ASSERT_NE(material, nullptr);
+    ASSERT_FALSE(material->texture_metadata.is_empty());
+    const auto& metadata = material->texture_metadata[rstd::usize()];
+    auto        texture  = scene.scene->Texture("particle/nature/rosepetals"_str);
+    ASSERT_TRUE(texture.is_some());
+    ASSERT_TRUE((**texture).isSprite);
+    ASSERT_GT((**texture).spriteAnim.numFrames(), rstd::usize(1));
+    const auto& frame = (**texture).spriteAnim.GetFrame(rstd::usize(0));
+    EXPECT_TRUE(metadata.has_extent);
+    EXPECT_LT(frame.width, 512.0f); // one frame of the sheet, not the sheet
+    EXPECT_FLOAT_EQ(metadata.source_extent[rstd::usize(0)], frame.width);
+    EXPECT_FLOAT_EQ(metadata.source_extent[rstd::usize(1)], frame.height);
+    EXPECT_FLOAT_EQ(metadata.sample_extent[rstd::usize(0)], frame.width);
+    EXPECT_FLOAT_EQ(metadata.sample_extent[rstd::usize(1)], frame.height);
 
     std::filesystem::remove_all(root);
 }

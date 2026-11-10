@@ -1,0 +1,170 @@
+{
+  "pkg": {
+    "file_count": 5,
+    "has_scene_json": true,
+    "version": "PKGV0015"
+  },
+  "puppets": [],
+  "scene": {
+    "camera": {
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "eye": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "up": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    "general": {
+      "ambientcolor": [
+        0.30000001192092896,
+        0.30000001192092896,
+        0.30000001192092896
+      ],
+      "cameraparallax": false,
+      "clearcolor": [
+        0.699999988079071,
+        0.699999988079071,
+        0.699999988079071
+      ],
+      "farz": 10000.0,
+      "fov": 50.0,
+      "nearz": 0.009999999776482582,
+      "skylightcolor": [
+        0.30000001192092896,
+        0.30000001192092896,
+        0.30000001192092896
+      ],
+      "zoom": 1.0
+    },
+    "is_ortho": true,
+    "object_count": 2,
+    "objects": [
+      {
+        "alignment": "center",
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles": "0.00000 0.00000 0.00000",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 0,
+        "effects": [],
+        "fullscreen": false,
+        "id": 14,
+        "image": "models/sunexplode_1.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "SPRITESHEET": 1,
+            "VERSION": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "sunexplode_1"
+          ],
+          "use_puppet": false
+        },
+        "name": "sunexplode_1",
+        "nopadding": true,
+        "origin": "249.00000 124.50000 0.00000",
+        "origin_parsed": [
+          249.0,
+          124.5,
+          0.0
+        ],
+        "parallaxDepth": "1.00000 1.00000",
+        "parsed": true,
+        "puppet": "",
+        "scale": "1.00000 1.00000 1.00000",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "498.00000 249.00000",
+        "size_parsed": [
+          498.0,
+          249.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "angles": "0.00000 0.00000 0.00000",
+        "id": 19,
+        "kind": "sound",
+        "maxtime": 5.0,
+        "mintime": 1.0,
+        "name": "yt5s.com - End Times (320 kbps).mp3",
+        "origin": "11.87976 -6.17748 0.00000",
+        "parallaxDepth": "1.00000 1.00000",
+        "parsed": true,
+        "playbackmode": "loop",
+        "scale": "1.00000 1.00000 1.00000",
+        "sound_paths": [
+          "sounds/yt5s.com - End Times (320 kbps).mp3"
+        ],
+        "visible": true,
+        "visible_parsed": true,
+        "volume": 0.5
+      }
+    ],
+    "ortho": {
+      "height": 249,
+      "width": 498
+    },
+    "parsed": true
+  },
+  "textures": [
+    {
+      "compo1": 0,
+      "compo2": 0,
+      "compo3": 0,
+      "count": 3,
+      "format": 4,
+      "height": 8192,
+      "image_type": -1,
+      "is_sprite": true,
+      "mag_filter": 1,
+      "map_height": 8192,
+      "map_width": 8192,
+      "min_filter": 1,
+      "mipmap_larger": false,
+      "mipmap_pow2": true,
+      "ok": true,
+      "path": "/materials/sunexplode_1.tex",
+      "sprite_frames": 1190,
+      "texb": 3,
+      "texi": 1,
+      "texs": 3,
+      "texv": 5,
+      "width": 8192,
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
+    }
+  ],
+  "workshop_dir": "2672187332"
+}

@@ -1,5 +1,9 @@
 module;
 
+#if defined(__unix__) || defined(__APPLE__)
+#    include <unistd.h>
+#endif
+
 module weweb;
 
 import rstd;
@@ -20,6 +24,7 @@ namespace
 {
 
 constexpr const char* kAudioDemandMessage = "weweb.audio-demand";
+constexpr const char* kPauseAckMessage    = "weweb.pause-ack";
 
 void SendAudioDemand(CefRefPtr<CefFrame> frame, int generation, bool active) {
     if (! frame) return;
@@ -56,6 +61,38 @@ public:
 private:
     CefRefPtr<CefFrame> m_frame;
     int                 m_generation;
+    CefRefCount         m_ref_count;
+};
+
+// window.__weweb_pauseAck(): the page has run setPaused(true) (BuildPausedSnippet); the browser
+// process stops this renderer, given its process id, as Wallpaper Engine stops its page
+class PauseAckHandler final : public CefV8Handler {
+public:
+    explicit PauseAckHandler(CefRefPtr<CefFrame> frame): m_frame(rstd::move(frame)) {}
+
+    bool Execute(const CefString&, CefRefPtr<CefV8Value>, const CefV8ValueList&,
+                 CefRefPtr<CefV8Value>&, CefString&) override {
+#if defined(__unix__) || defined(__APPLE__)
+        auto message = CefProcessMessage::Create(kPauseAckMessage);
+        message->GetArgumentList()->SetInt(0, int(getpid()));
+        if (m_frame) m_frame->SendProcessMessage(PID_BROWSER, message);
+#endif
+        return true;
+    }
+
+    void AddRef() const override { m_ref_count.AddRef(); }
+    bool Release() const override {
+        if (m_ref_count.Release()) {
+            delete this;
+            return true;
+        }
+        return false;
+    }
+    bool HasOneRef() const override { return m_ref_count.HasOneRef(); }
+    bool HasAtLeastOneRef() const override { return m_ref_count.HasAtLeastOneRef(); }
+
+private:
+    CefRefPtr<CefFrame> m_frame;
     CefRefCount         m_ref_count;
 };
 
@@ -235,6 +272,11 @@ void AppHandler::OnContextCreated(CefRefPtr<CefBrowser> /*browser*/, CefRefPtr<C
                                    CefV8Value::CreateFunction("__weweb_setAudioDemand", handler),
                                    V8_PROPERTY_ATTRIBUTE_DONTDELETE);
     SendAudioDemand(frame, generation, false);
+    context->GetGlobal()->SetValue(
+        "__weweb_pauseAck",
+        CefV8Value::CreateFunction("__weweb_pauseAck",
+                                   CefRefPtr<CefV8Handler>(new PauseAckHandler(frame))),
+        V8_PROPERTY_ATTRIBUTE_DONTDELETE);
 
     frame->ExecuteJavaScript(
         to_string(BuildAudioApiSnippet().as_str()), "weweb://internal/audio_api.js", 0);

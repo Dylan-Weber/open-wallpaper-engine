@@ -8,19 +8,140 @@
     {
       "anim_tracks": [
         {
+          "blend_curves_count": 0,
           "bone_track_count": 30,
+          "events_count": 0,
           "fps": 2.5,
+          "has_aabb": false,
+          "has_trans": false,
           "id": 53,
           "length": 30,
           "mode": 1,
+          "moved_bones": [
+            {
+              "a": true,
+              "i": 1,
+              "p": false,
+              "s": false
+            },
+            {
+              "a": true,
+              "i": 2,
+              "p": false,
+              "s": false
+            },
+            {
+              "a": true,
+              "i": 3,
+              "p": false,
+              "s": false
+            },
+            {
+              "a": true,
+              "i": 4,
+              "p": false,
+              "s": false
+            },
+            {
+              "a": true,
+              "i": 8,
+              "p": false,
+              "s": false
+            },
+            {
+              "a": true,
+              "i": 9,
+              "p": false,
+              "s": false
+            },
+            {
+              "a": true,
+              "i": 10,
+              "p": false,
+              "s": false
+            },
+            {
+              "a": true,
+              "i": 12,
+              "p": false,
+              "s": false
+            },
+            {
+              "a": true,
+              "i": 13,
+              "p": false,
+              "s": false
+            },
+            {
+              "a": true,
+              "i": 14,
+              "p": false,
+              "s": false
+            },
+            {
+              "a": true,
+              "i": 15,
+              "p": false,
+              "s": false
+            },
+            {
+              "a": true,
+              "i": 16,
+              "p": false,
+              "s": false
+            },
+            {
+              "a": true,
+              "i": 19,
+              "p": false,
+              "s": false
+            },
+            {
+              "a": true,
+              "i": 20,
+              "p": true,
+              "s": false
+            },
+            {
+              "a": true,
+              "i": 23,
+              "p": false,
+              "s": false
+            },
+            {
+              "a": true,
+              "i": 24,
+              "p": false,
+              "s": false
+            },
+            {
+              "a": true,
+              "i": 25,
+              "p": false,
+              "s": false
+            }
+          ],
           "name": "动画 1",
-          "total_bone_frames": 930
+          "scalar_curves_count": 0,
+          "total_bone_frames": 930,
+          "v4_events_count": 0
         }
       ],
       "anims": 1,
+      "attachment_count": 0,
+      "attachments": [],
       "bone_tree": [
         {
-          "parent": 4294967295,
+          "anim_parent": 4294967295,
+          "bind_parent": 4294967295,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -29,7 +150,16 @@
           ]
         },
         {
-          "parent": 0,
+          "anim_parent": 0,
+          "bind_parent": 0,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -38,7 +168,16 @@
           ]
         },
         {
-          "parent": 1,
+          "anim_parent": 1,
+          "bind_parent": 1,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -47,7 +186,16 @@
           ]
         },
         {
-          "parent": 2,
+          "anim_parent": 2,
+          "bind_parent": 2,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -56,7 +204,16 @@
           ]
         },
         {
-          "parent": 3,
+          "anim_parent": 3,
+          "bind_parent": 3,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -65,7 +222,16 @@
           ]
         },
         {
-          "parent": 4,
+          "anim_parent": 4,
+          "bind_parent": 4,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -74,7 +240,16 @@
           ]
         },
         {
-          "parent": 5,
+          "anim_parent": 5,
+          "bind_parent": 5,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -83,7 +258,16 @@
           ]
         },
         {
-          "parent": 3,
+          "anim_parent": 3,
+          "bind_parent": 3,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -92,7 +276,16 @@
           ]
         },
         {
-          "parent": 7,
+          "anim_parent": 7,
+          "bind_parent": 7,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -101,7 +294,16 @@
           ]
         },
         {
-          "parent": 8,
+          "anim_parent": 8,
+          "bind_parent": 8,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -110,7 +312,16 @@
           ]
         },
         {
-          "parent": 9,
+          "anim_parent": 9,
+          "bind_parent": 9,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -119,7 +330,16 @@
           ]
         },
         {
-          "parent": 10,
+          "anim_parent": 10,
+          "bind_parent": 10,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -128,7 +348,16 @@
           ]
         },
         {
-          "parent": 11,
+          "anim_parent": 11,
+          "bind_parent": 11,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -137,7 +366,16 @@
           ]
         },
         {
-          "parent": 12,
+          "anim_parent": 12,
+          "bind_parent": 12,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -146,7 +384,16 @@
           ]
         },
         {
-          "parent": 13,
+          "anim_parent": 13,
+          "bind_parent": 13,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -155,7 +402,16 @@
           ]
         },
         {
-          "parent": 14,
+          "anim_parent": 14,
+          "bind_parent": 14,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -164,7 +420,16 @@
           ]
         },
         {
-          "parent": 15,
+          "anim_parent": 15,
+          "bind_parent": 15,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -173,7 +438,16 @@
           ]
         },
         {
-          "parent": 16,
+          "anim_parent": 16,
+          "bind_parent": 16,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -182,7 +456,16 @@
           ]
         },
         {
-          "parent": 3,
+          "anim_parent": 3,
+          "bind_parent": 3,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -191,7 +474,16 @@
           ]
         },
         {
-          "parent": 18,
+          "anim_parent": 18,
+          "bind_parent": 18,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -200,7 +492,16 @@
           ]
         },
         {
-          "parent": 19,
+          "anim_parent": 19,
+          "bind_parent": 19,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -209,7 +510,16 @@
           ]
         },
         {
-          "parent": 20,
+          "anim_parent": 20,
+          "bind_parent": 20,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -218,7 +528,16 @@
           ]
         },
         {
-          "parent": 21,
+          "anim_parent": 21,
+          "bind_parent": 21,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -227,7 +546,16 @@
           ]
         },
         {
-          "parent": 22,
+          "anim_parent": 22,
+          "bind_parent": 22,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -236,7 +564,16 @@
           ]
         },
         {
-          "parent": 23,
+          "anim_parent": 23,
+          "bind_parent": 23,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -245,7 +582,16 @@
           ]
         },
         {
-          "parent": 24,
+          "anim_parent": 24,
+          "bind_parent": 24,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -254,7 +600,16 @@
           ]
         },
         {
-          "parent": 25,
+          "anim_parent": 25,
+          "bind_parent": 25,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -263,7 +618,16 @@
           ]
         },
         {
-          "parent": 5,
+          "anim_parent": 5,
+          "bind_parent": 5,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -272,7 +636,16 @@
           ]
         },
         {
-          "parent": 27,
+          "anim_parent": 27,
+          "bind_parent": 27,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -281,7 +654,16 @@
           ]
         },
         {
-          "parent": 5,
+          "anim_parent": 5,
+          "bind_parent": 5,
+          "centroid_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "has_file_skin_pivot": true,
+          "has_sim_json": true,
+          "name": "",
           "transform_col_sums": [
             1.0,
             1.0,
@@ -291,21 +673,2033 @@
         }
       ],
       "bones": 30,
+      "flag": [
+        "00001001",
+        "00000000",
+        "10000000",
+        "00000001"
+      ],
       "index_count": 3962,
       "mat_json_file": "materials/拼图2.json",
       "mdla": 3,
       "mdls": 2,
       "mdlv": 16,
+      "mesh_count": 1,
       "ok": true,
       "part_count": 0,
+      "parts": [],
       "path": "/models/拼图2_puppet.mdl",
+      "skin_count": 1,
       "vert_extra_count": 0,
       "vertex_count": 2332
     }
   ],
   "scene": {
-    "error": "[json.exception.type_error.302] type must be boolean, but is object",
-    "parsed": false
+    "camera": {
+      "center": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "eye": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "up": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    "general": {
+      "ambientcolor": [
+        0.30000001192092896,
+        0.30000001192092896,
+        0.30000001192092896
+      ],
+      "cameraparallax": false,
+      "clearcolor": [
+        0.699999988079071,
+        0.699999988079071,
+        0.699999988079071
+      ],
+      "farz": 10000.0,
+      "fov": 50.0,
+      "nearz": 0.009999999776482582,
+      "skylightcolor": [
+        0.30000001192092896,
+        0.30000001192092896,
+        0.30000001192092896
+      ],
+      "zoom": 1.0
+    },
+    "is_ortho": true,
+    "object_count": 15,
+    "objects": [
+      {
+        "alignment": "center",
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles": "0.00000 0.00000 0.00000",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 0,
+        "effects": [],
+        "fullscreen": false,
+        "id": 13,
+        "image": "models/未标题-1.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "VERSION": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "未标题-1"
+          ],
+          "use_puppet": false
+        },
+        "name": "未标题-1",
+        "nopadding": false,
+        "origin": "1920.00000 1080.00000 0.00000",
+        "origin_parsed": [
+          1920.0,
+          1080.0,
+          0.0
+        ],
+        "parallaxDepth": "1.00000 1.00000",
+        "parsed": true,
+        "puppet": "",
+        "scale": "1.00000 1.00000 1.00000",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "3840.00000 2160.00000",
+        "size_parsed": [
+          3840.0,
+          2160.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment": "center",
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles": "0.00000 0.00000 0.00000",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 11,
+        "effect_count": 0,
+        "effects": [],
+        "fullscreen": false,
+        "id": 17,
+        "image": "models/人物光.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "VERSION": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "人物光"
+          ],
+          "use_puppet": false
+        },
+        "name": "人物光",
+        "nopadding": false,
+        "origin": "1920.00000 1080.00000 0.00000",
+        "origin_parsed": [
+          1920.0,
+          1080.0,
+          0.0
+        ],
+        "parallaxDepth": "1.00000 1.00000",
+        "parsed": true,
+        "puppet": "",
+        "scale": "1.00000 1.00000 1.00000",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "3840.00000 2160.00000",
+        "size_parsed": [
+          3840.0,
+          2160.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment": "center",
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles": "0.00000 0.00000 0.00000",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          0.8156899809837341,
+          0.4666700065135956,
+          0.22744999825954437
+        ],
+        "colorBlendMode": 27,
+        "effect_count": 1,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/opacity",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_opacity_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "alpha": [
+                    1.0
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/opacity_mask_14ca5c67"
+                ]
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": false,
+        "id": 23,
+        "image": "models/上下光.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "VERSION": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "上下光"
+          ],
+          "use_puppet": false
+        },
+        "name": "上下光",
+        "nopadding": false,
+        "origin": "1920.00000 1080.00000 0.00000",
+        "origin_parsed": [
+          1920.0,
+          1080.0,
+          0.0
+        ],
+        "parallaxDepth": "1.00000 1.00000",
+        "parsed": true,
+        "puppet": "",
+        "scale": "1.00000 1.00000 1.00000",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "3840.00000 2160.00000",
+        "size_parsed": [
+          3840.0,
+          2160.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment": "center",
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles": "0.00000 0.00000 0.00000",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          0.8274499773979187,
+          0.0,
+          0.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 4,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "workshop/2778097794/effects/scroll",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_scroll_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "repeat": [
+                    1.0,
+                    1.0
+                  ],
+                  "speedx": [
+                    -0.30000001192092896
+                  ],
+                  "speedy": [
+                    0.0
+                  ]
+                },
+                "target": "",
+                "textures": []
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "workshop/2778097794/effects/spin",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_spin_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {
+                  "ELLIPTICAL": 1,
+                  "REPEAT": 0
+                },
+                "constantshadervalues": {
+                  "angle": [
+                    0.0
+                  ],
+                  "center": [
+                    0.5,
+                    0.5
+                  ],
+                  "ratio": [
+                    1.0
+                  ],
+                  "speed": [
+                    0.5
+                  ]
+                },
+                "target": "",
+                "textures": []
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 2,
+            "fbos": [
+              {
+                "format": "rgba_backbuffer",
+                "name": "_rt_QuarterCompoBuffer1",
+                "scale": 4
+              },
+              {
+                "format": "rgba_backbuffer",
+                "name": "_rt_QuarterCompoBuffer2",
+                "scale": 4
+              }
+            ],
+            "material_count": 4,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "workshop/2778097794/effects/blur_downsample4",
+                "textures": [],
+                "use_puppet": false
+              },
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "workshop/2778097794/effects/blur_gaussian",
+                "textures": [],
+                "use_puppet": false
+              },
+              {
+                "blending": "normal",
+                "combos": {
+                  "VERTICAL": 1
+                },
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "workshop/2778097794/effects/blur_gaussian",
+                "textures": [],
+                "use_puppet": false
+              },
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "workshop/2778097794/effects/blur_combine",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_blur_title",
+            "pass_count": 4,
+            "passes": [
+              {
+                "bind": [
+                  {
+                    "index": 0,
+                    "name": "previous"
+                  }
+                ],
+                "combos": {},
+                "constantshadervalues": {},
+                "target": "_rt_QuarterCompoBuffer1",
+                "textures": []
+              },
+              {
+                "bind": [
+                  {
+                    "index": 0,
+                    "name": "_rt_QuarterCompoBuffer1"
+                  }
+                ],
+                "combos": {
+                  "KERNEL": 1
+                },
+                "constantshadervalues": {
+                  "scale": [
+                    1.0,
+                    1.0
+                  ]
+                },
+                "target": "_rt_QuarterCompoBuffer2",
+                "textures": []
+              },
+              {
+                "bind": [
+                  {
+                    "index": 0,
+                    "name": "_rt_QuarterCompoBuffer2"
+                  }
+                ],
+                "combos": {
+                  "KERNEL": 1,
+                  "VERTICAL": 1
+                },
+                "constantshadervalues": {
+                  "scale": [
+                    1.0,
+                    1.0
+                  ]
+                },
+                "target": "_rt_QuarterCompoBuffer1",
+                "textures": []
+              },
+              {
+                "bind": [
+                  {
+                    "index": 0,
+                    "name": "_rt_QuarterCompoBuffer1"
+                  },
+                  {
+                    "index": 2,
+                    "name": "previous"
+                  }
+                ],
+                "combos": {},
+                "constantshadervalues": {
+                  "compositecolor": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "workshop/2778097794/masks/blur_combine_mask_c2ef8b26"
+                ]
+              }
+            ],
+            "visible": false
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "workshop/2778097794/effects/transform",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_transform_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {
+                  "CLAMP": 0
+                },
+                "constantshadervalues": {
+                  "angle": [
+                    0.7106479406356812
+                  ],
+                  "offset": [
+                    0.0,
+                    0.0
+                  ],
+                  "scale": [
+                    0.20000000298023224,
+                    0.20000000298023224
+                  ]
+                },
+                "target": "",
+                "textures": []
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": false,
+        "id": 131,
+        "image": "models/workshop/2778097794/214024lkks1h2qhzjtp0lp.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "VERSION": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "workshop/2778097794/214024lkks1h2qhzjtp0lp"
+          ],
+          "use_puppet": false
+        },
+        "name": "微光贴图2（旋转）",
+        "nopadding": false,
+        "origin": "2338.33105 2042.34473 0.00000",
+        "origin_parsed": [
+          2338.3310546875,
+          2042.3447265625,
+          0.0
+        ],
+        "parallaxDepth": "1.00000 1.00000",
+        "parsed": true,
+        "puppet": "",
+        "scale": "1.00000 1.00000 1.00000",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "256.00000 256.00000",
+        "size_parsed": [
+          256.0,
+          256.0
+        ],
+        "visible": false,
+        "visible_parsed": false
+      },
+      {
+        "angles": "0.00000 0.00000 0.00000",
+        "id": 195,
+        "kind": "sound",
+        "maxtime": 5.0,
+        "mintime": 1.0,
+        "name": "Rolling Star [ Piano ].mp3",
+        "origin": "0.00000 0.00000 0.00000",
+        "parallaxDepth": "1.00000 1.00000",
+        "parsed": true,
+        "playbackmode": "loop",
+        "scale": "1.00000 1.00000 1.00000",
+        "sound_paths": [
+          "sounds/【死神】escalon.mp3",
+          "sounds/【死神】never meant to b.mp3",
+          "sounds/【死神ED】感谢.mp3",
+          "sounds/【死神ED】旅立つキミへ.mp3",
+          "sounds/【死神ost】Fade To Black.mp3",
+          "sounds/【死神ost】Soundscape to.mp3",
+          "sounds/chAngE-死神 .mp3",
+          "sounds/HANABI 死神.mp3",
+          "sounds/Harajuku Nation - Rolling Star(From 'Bleach').mp3",
+          "sounds/Harajuku Nation - Wing Stock(From 'Bleach').mp3",
+          "sounds/here to stay——TV Animation BLEACH Original Soundtr.mp3",
+          "sounds/I am Justice - Alones(_Bleach_ Opening) (纯音乐).mp3",
+          "sounds/life is like a boat死神主题曲.mp3",
+          "sounds/MASK 死神ED30.mp3",
+          "sounds/Rolling Star.mp3",
+          "sounds/千の夜をこえて [死神BLEACH].mp3",
+          "sounds/死神 Velonica.mp3",
+          "sounds/死神插曲-少有的钢琴曲.mp3",
+          "sounds/一輪の花 死神.mp3",
+          "sounds/死神 少女s 伴奏.mp3",
+          "sounds/樱日和[BLEACH]ED10朽木白哉.mp3",
+          "sounds/カラオケサウンド - 乱舞のメロディ (カラオケ_カバー).mp3"
+        ],
+        "visible": true,
+        "visible_parsed": true,
+        "volume": 0.5699999928474426
+      },
+      {
+        "angles": "0.00000 0.00000 0.00000",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "animationmode": "",
+        "child_count": 0,
+        "controlpoint_count": 8,
+        "emitter_count": 1,
+        "id": 197,
+        "initializer_count": 4,
+        "kind": "particle",
+        "maxcount": 50,
+        "name": "光转粒子（全范围）",
+        "operator_count": 6,
+        "origin": "2087.92969 1030.38440 0.00000",
+        "origin_parsed": [
+          2087.9296875,
+          1030.3843994140625,
+          0.0
+        ],
+        "parallaxDepth": "1.00000 1.00000",
+        "parsed": true,
+        "particle": "particles/workshop/2620994961/presets/dust_motes_0.json",
+        "renderer_count": 1,
+        "scale": "1.50000 1.49225 1.00000",
+        "scale_parsed": [
+          1.5,
+          1.4922499656677246,
+          1.0
+        ],
+        "starttime": 1,
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "angles": "0.00000 -0.00000 0.41493",
+        "angles_parsed": [
+          0.0,
+          -0.0,
+          0.41492998600006104
+        ],
+        "animationmode": "",
+        "child_count": 0,
+        "controlpoint_count": 0,
+        "emitter_count": 1,
+        "id": 234,
+        "initializer_count": 5,
+        "kind": "particle",
+        "maxcount": 16,
+        "name": "Light shafts 1",
+        "operator_count": 2,
+        "origin": "2147.38867 1317.11707 0.00000",
+        "origin_parsed": [
+          2147.388671875,
+          1317.1170654296875,
+          0.0
+        ],
+        "parallaxDepth": "1.00000 1.00000",
+        "parsed": true,
+        "particle": "particles/presets/light_shafts_1.json",
+        "renderer_count": 1,
+        "scale": "5.06534 7.08577 1.00000",
+        "scale_parsed": [
+          5.065340042114258,
+          7.085770130157471,
+          1.0
+        ],
+        "starttime": 15,
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "angles": "0.00000 -0.00000 0.82055",
+        "angles_parsed": [
+          0.0,
+          -0.0,
+          0.8205500245094299
+        ],
+        "animationmode": "",
+        "child_count": 0,
+        "controlpoint_count": 8,
+        "emitter_count": 1,
+        "id": 258,
+        "initializer_count": 4,
+        "kind": "particle",
+        "maxcount": 200,
+        "name": "Interactive Embers",
+        "operator_count": 6,
+        "origin": "1665.88110 -1278.97668 0.00000",
+        "origin_parsed": [
+          1665.881103515625,
+          -1278.9766845703125,
+          0.0
+        ],
+        "parallaxDepth": "1.00000 1.00000",
+        "parsed": true,
+        "particle": "particles/workshop/2848795535/presets/ember_small.json",
+        "renderer_count": 1,
+        "scale": "0.71944 2.58301 1.00000",
+        "scale_parsed": [
+          0.7194399833679199,
+          2.583009958267212,
+          1.0
+        ],
+        "starttime": 2,
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment": "center",
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles": "-0.00000 -0.00000 -0.18276",
+        "angles_parsed": [
+          -0.0,
+          -0.0,
+          -0.18276000022888184
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 15,
+        "effect_count": 4,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/waterflow",
+                "textures": [
+                  "",
+                  "",
+                  "effects/waterflowphase"
+                ],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_water_flow_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "phasescale": [
+                    2.0
+                  ],
+                  "speed": [
+                    0.800000011920929
+                  ],
+                  "strength": [
+                    2.0
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/waterflow_mask_4e543308",
+                  "effects/waterflowphase"
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/pulse",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_pulse_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {
+                  "PULSEALPHA": 1,
+                  "PULSECOLOR": 0
+                },
+                "constantshadervalues": {
+                  "amount": [
+                    1.0
+                  ],
+                  "bounds": [
+                    0.0,
+                    1.0
+                  ],
+                  "noiseamount": [
+                    0.30000001192092896
+                  ],
+                  "noisespeed": [
+                    0.20000000298023224
+                  ],
+                  "phase": [
+                    0.0
+                  ],
+                  "power": [
+                    1.0
+                  ],
+                  "speed": [
+                    0.5
+                  ]
+                },
+                "target": "",
+                "textures": []
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/waterwaves",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_water_waves_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "direction": [
+                    0.19270075857639313
+                  ],
+                  "perspective": [
+                    0.0
+                  ],
+                  "scale": [
+                    20.0
+                  ],
+                  "speed": [
+                    2.0
+                  ],
+                  "strength": [
+                    0.10000000149011612
+                  ]
+                },
+                "target": "",
+                "textures": []
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/opacity",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_opacity_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "alpha": [
+                    1.0
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/opacity_mask_818f532e"
+                ]
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": false,
+        "id": 261,
+        "image": "models/3.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "VERSION": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "3"
+          ],
+          "use_puppet": false
+        },
+        "name": "3",
+        "nopadding": false,
+        "origin": "1988.56201 1111.38025 0.00000",
+        "origin_parsed": [
+          1988.56201171875,
+          1111.3802490234375,
+          0.0
+        ],
+        "parallaxDepth": "1.00000 1.00000",
+        "parsed": true,
+        "puppet": "",
+        "scale": "2.67837 2.11749 1.00000",
+        "scale_parsed": [
+          2.6783699989318848,
+          2.11749005317688,
+          1.0
+        ],
+        "size": "2110.00000 2760.00000",
+        "size_parsed": [
+          2110.0,
+          2760.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "angles": "0.00000 -0.00000 1.50350",
+        "angles_parsed": [
+          0.0,
+          -0.0,
+          1.503499984741211
+        ],
+        "animationmode": "",
+        "child_count": 0,
+        "controlpoint_count": 8,
+        "emitter_count": 1,
+        "id": 264,
+        "initializer_count": 3,
+        "kind": "particle",
+        "maxcount": 500,
+        "name": "自制火焰",
+        "operator_count": 5,
+        "origin": "1936.54834 -169.05595 0.00000",
+        "origin_parsed": [
+          1936.54833984375,
+          -169.0559539794922,
+          0.0
+        ],
+        "parallaxDepth": "1.00000 1.00000",
+        "parsed": true,
+        "particle": "particles/workshop/2848795535/new_particle_system2.json",
+        "renderer_count": 1,
+        "scale": "15.00000 10.68680 1.00000",
+        "scale_parsed": [
+          15.0,
+          10.686800003051758,
+          1.0
+        ],
+        "starttime": 0,
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "angles": "0.00000 0.00000 0.00000",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "animationmode": "sequence",
+        "child_count": 1,
+        "controlpoint_count": 8,
+        "emitter_count": 1,
+        "id": 270,
+        "initializer_count": 4,
+        "kind": "particle",
+        "maxcount": 100,
+        "name": "Wildfire",
+        "operator_count": 3,
+        "origin": "1713.03503 -671.23853 0.00000",
+        "origin_parsed": [
+          1713.0350341796875,
+          -671.238525390625,
+          0.0
+        ],
+        "parallaxDepth": "1.00000 1.00000",
+        "parsed": true,
+        "particle": "particles/workshop/2848795535/presets/wildfire.json",
+        "renderer_count": 1,
+        "scale": "3.95409 5.10191 1.00000",
+        "scale_parsed": [
+          3.954090118408203,
+          5.10191011428833,
+          1.0
+        ],
+        "starttime": 1,
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "angles": "0.00000 -0.00000 1.02641",
+        "angles_parsed": [
+          0.0,
+          -0.0,
+          1.0264099836349487
+        ],
+        "animationmode": "",
+        "child_count": 0,
+        "controlpoint_count": 8,
+        "emitter_count": 1,
+        "id": 302,
+        "initializer_count": 6,
+        "kind": "particle",
+        "maxcount": 20,
+        "name": "Fog 1",
+        "operator_count": 2,
+        "origin": "3291.36206 1872.83276 0.00000",
+        "origin_parsed": [
+          3291.362060546875,
+          1872.832763671875,
+          0.0
+        ],
+        "parallaxDepth": "1.00000 1.00000",
+        "parsed": true,
+        "particle": "particles/workshop/2848795535/presets/fog1.json",
+        "renderer_count": 1,
+        "scale": "4.05531 1.86388 1.00000",
+        "scale_parsed": [
+          4.055309772491455,
+          1.8638800382614136,
+          1.0
+        ],
+        "starttime": 2,
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment": "center",
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles": "0.00000 0.00000 0.00000",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 10,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/iris",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_iris_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "noiseamount": [
+                    0.30000001192092896
+                  ],
+                  "phase": [
+                    0.5
+                  ],
+                  "rough": [
+                    1.0
+                  ],
+                  "scale": [
+                    1.0,
+                    1.0
+                  ],
+                  "speed": [
+                    0.699999988079071
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/iris_mask_7a94d495"
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/blend",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_blend_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {
+                  "BLENDMODE": 9
+                },
+                "constantshadervalues": {
+                  "multiply": [
+                    1.5
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "_rt_imageLayerComposite_131_a",
+                  "",
+                  "",
+                  "",
+                  "",
+                  "",
+                  "masks/blend_mask_059888c9"
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/nitro",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_nitro_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "bounds": [
+                    0.5,
+                    0.25
+                  ],
+                  "colorend": [
+                    1.0,
+                    0.0,
+                    0.0
+                  ],
+                  "colorstart": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "multiply": [
+                    10.0
+                  ],
+                  "scale": [
+                    1.0,
+                    1.0
+                  ],
+                  "smoothness": [
+                    3.0
+                  ],
+                  "speed": [
+                    0.10000000149011612,
+                    -0.10000000149011612,
+                    0.10000000149011612,
+                    0.0
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "",
+                  "masks/nitro_mask_2632bbbc"
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "workshop/2718465779/effects/pulse_",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "Pulse+",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {
+                  "BLENDMODE": 11
+                },
+                "constantshadervalues": {
+                  "amount": [
+                    1.0
+                  ],
+                  "bounds": [
+                    0.0,
+                    1.0
+                  ],
+                  "noiseamount": [
+                    0.0
+                  ],
+                  "noisespeed": [
+                    0.5
+                  ],
+                  "phase": [
+                    1.4500000476837158
+                  ],
+                  "power": [
+                    1.0
+                  ],
+                  "speed": [
+                    1.0
+                  ],
+                  "tinthigh": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "tintlow": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "",
+                  "masks/pulse__mask_5a62b9fc",
+                  "masks/pulse__mask_5db1cfed"
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/shake",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_shake_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {
+                  "DIRECTION": 1
+                },
+                "constantshadervalues": {
+                  "bounds": [
+                    0.9800000190734863,
+                    0.9980000257492065
+                  ],
+                  "friction": [
+                    1.0,
+                    3.0
+                  ],
+                  "speed": [
+                    1.0
+                  ],
+                  "strength": [
+                    0.08799999952316284
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/shake_mask_0c8a3f5c",
+                  "",
+                  "masks/shake_mask_04a444ec"
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/shake",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_shake_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "bounds": [
+                    0.0,
+                    1.0
+                  ],
+                  "friction": [
+                    1.0,
+                    1.0
+                  ],
+                  "speed": [
+                    0.800000011920929
+                  ],
+                  "strength": [
+                    0.07999999821186066
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/shake_mask_935ed27b",
+                  ""
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/waterwaves",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_water_waves_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "direction": [
+                    0.7463789582252502
+                  ],
+                  "perspective": [
+                    0.0
+                  ],
+                  "scale": [
+                    50.0
+                  ],
+                  "speed": [
+                    3.200000047683716
+                  ],
+                  "strength": [
+                    0.09000000357627869
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/waterwaves_mask_eee0ac00"
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/fire",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_fire_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {
+                  "BLENDMODE": 2
+                },
+                "constantshadervalues": {
+                  "alpha": [
+                    2.0
+                  ],
+                  "colorend": [
+                    1.0,
+                    0.0,
+                    0.0
+                  ],
+                  "colorstart": [
+                    0.3686274588108063,
+                    0.0,
+                    0.0
+                  ],
+                  "distortion": [
+                    1.0
+                  ],
+                  "feather": [
+                    1.0
+                  ],
+                  "scale": [
+                    1.0
+                  ],
+                  "smoothness": [
+                    0.0
+                  ],
+                  "speed": [
+                    1.0
+                  ],
+                  "threshold": [
+                    0.0
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/fire_mask_4caa79df",
+                  ""
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/waterflow",
+                "textures": [
+                  "",
+                  "",
+                  "effects/waterflowphase"
+                ],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_water_flow_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "phasescale": [
+                    1.0
+                  ],
+                  "speed": [
+                    0.20000000298023224
+                  ],
+                  "strength": [
+                    0.5
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/waterflow_mask_e067ddbc",
+                  "effects/waterflowphase"
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/waterwaves",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_water_waves_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "direction": [
+                    2.0513710975646973
+                  ],
+                  "perspective": [
+                    0.0
+                  ],
+                  "scale": [
+                    25.0
+                  ],
+                  "speed": [
+                    3.0
+                  ],
+                  "strength": [
+                    0.10000000149011612
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/waterwaves_mask_50b707b8"
+                ]
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": false,
+        "id": 457,
+        "image": "models/拼图2.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "VERSION": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "拼图2"
+          ],
+          "use_puppet": false
+        },
+        "name": "拼图2",
+        "nopadding": false,
+        "origin": "2087.86597 2037.13611 0.00000",
+        "origin_parsed": [
+          2087.865966796875,
+          2037.1361083984375,
+          0.0
+        ],
+        "parallaxDepth": "1.00000 1.00000",
+        "parsed": true,
+        "puppet": "models/拼图2_puppet.mdl",
+        "scale": "1.00000 1.00000 1.00000",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "5500.00000 4000.00000",
+        "size_parsed": [
+          5500.0,
+          4000.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment": "center",
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 1,
+        "effects": [
+          {
+            "fbo_count": 2,
+            "fbos": [
+              {
+                "format": "rgba_backbuffer",
+                "name": "_rt_QuarterCompoBuffer1",
+                "scale": 4
+              },
+              {
+                "format": "rgba_backbuffer",
+                "name": "_rt_QuarterCompoBuffer2",
+                "scale": 4
+              }
+            ],
+            "material_count": 4,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/blur_downsample4",
+                "textures": [],
+                "use_puppet": false
+              },
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/blur_gaussian",
+                "textures": [],
+                "use_puppet": false
+              },
+              {
+                "blending": "normal",
+                "combos": {
+                  "VERTICAL": 1
+                },
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/blur_gaussian",
+                "textures": [],
+                "use_puppet": false
+              },
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/blur_combine",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_blur_title",
+            "pass_count": 4,
+            "passes": [
+              {
+                "bind": [
+                  {
+                    "index": 0,
+                    "name": "previous"
+                  }
+                ],
+                "combos": {},
+                "constantshadervalues": {},
+                "target": "_rt_QuarterCompoBuffer1",
+                "textures": []
+              },
+              {
+                "bind": [
+                  {
+                    "index": 0,
+                    "name": "_rt_QuarterCompoBuffer1"
+                  }
+                ],
+                "combos": {
+                  "KERNEL": 1
+                },
+                "constantshadervalues": {
+                  "scale": [
+                    1.0,
+                    1.0
+                  ]
+                },
+                "target": "_rt_QuarterCompoBuffer2",
+                "textures": []
+              },
+              {
+                "bind": [
+                  {
+                    "index": 0,
+                    "name": "_rt_QuarterCompoBuffer2"
+                  }
+                ],
+                "combos": {
+                  "KERNEL": 1,
+                  "VERTICAL": 1
+                },
+                "constantshadervalues": {
+                  "scale": [
+                    1.0,
+                    1.0
+                  ]
+                },
+                "target": "_rt_QuarterCompoBuffer1",
+                "textures": []
+              },
+              {
+                "bind": [
+                  {
+                    "index": 0,
+                    "name": "_rt_QuarterCompoBuffer1"
+                  },
+                  {
+                    "index": 2,
+                    "name": "previous"
+                  }
+                ],
+                "combos": {},
+                "constantshadervalues": {
+                  "compositecolor": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/blur_combine_mask_04222c7f",
+                  ""
+                ]
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": true,
+        "id": 480,
+        "image": "models/util/fullscreenlayer.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {},
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "passthrough",
+          "textures": [
+            "_rt_FullFrameBuffer"
+          ],
+          "use_puppet": false
+        },
+        "name": "后处理层",
+        "nopadding": false,
+        "origin_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "parallaxDepth": "0.00000 0.00000",
+        "parsed": true,
+        "puppet": "",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size_parsed": [
+          2.0,
+          2.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment": "center",
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles": "0.00000 0.00000 0.00000",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 9,
+        "effect_count": 0,
+        "effects": [],
+        "fullscreen": false,
+        "id": 555,
+        "image": "models/横刀光.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "VERSION": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "横刀光"
+          ],
+          "use_puppet": false
+        },
+        "name": "横刀光",
+        "nopadding": false,
+        "origin": "2674.53052 1151.87769 0.00000",
+        "origin_parsed": [
+          2674.530517578125,
+          1151.877685546875,
+          0.0
+        ],
+        "parallaxDepth": "1.00000 1.00000",
+        "parsed": true,
+        "puppet": "",
+        "scale": "1.00000 1.00000 1.00000",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "3128.00000 1202.00000",
+        "size_parsed": [
+          3128.0,
+          1202.0
+        ],
+        "visible": false,
+        "visible_parsed": false
+      }
+    ],
+    "ortho": {
+      "height": 2160,
+      "width": 3840
+    },
+    "parsed": true
   },
   "textures": [
     {
@@ -331,8 +2725,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2112,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -357,8 +2751,8 @@
       "texs": 0,
       "texv": 5,
       "width": 32,
-      "wrap_s": 1,
-      "wrap_t": 1
+      "wrap_s": "repeat",
+      "wrap_t": "repeat"
     },
     {
       "compo1": 0,
@@ -383,8 +2777,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1375,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -409,8 +2803,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1920,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -435,8 +2829,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1375,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -461,8 +2855,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1375,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -487,8 +2881,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1375,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -513,8 +2907,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1920,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -539,8 +2933,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1055,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -565,8 +2959,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1375,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -591,8 +2985,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1375,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -617,8 +3011,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1375,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -643,8 +3037,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1375,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -669,8 +3063,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1375,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -695,8 +3089,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1055,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -721,8 +3115,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1375,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -747,8 +3141,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1375,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -773,8 +3167,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1375,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -799,8 +3193,8 @@
       "texs": 0,
       "texv": 5,
       "width": 256,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -825,8 +3219,8 @@
       "texs": 0,
       "texv": 5,
       "width": 64,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -851,8 +3245,8 @@
       "texs": 0,
       "texv": 5,
       "width": 3840,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -877,8 +3271,8 @@
       "texs": 0,
       "texv": 5,
       "width": 3840,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -903,8 +3297,8 @@
       "texs": 0,
       "texv": 5,
       "width": 5504,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -929,8 +3323,8 @@
       "texs": 0,
       "texv": 5,
       "width": 4096,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -955,8 +3349,8 @@
       "texs": 0,
       "texv": 5,
       "width": 3136,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     }
   ],
   "workshop_dir": "2854277071"

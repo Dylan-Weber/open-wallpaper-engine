@@ -216,12 +216,23 @@ struct TexMeta {
     int64_t     sprite_frames { 0 };
     bool        mipmap_pow2 { false };
     bool        mipmap_larger { false };
-    int         wrap_s { 0 };
-    int         wrap_t { 0 };
+    std::string wrap_s;
+    std::string wrap_t;
     int         min_filter { 0 };
     int         mag_filter { 0 };
     bool        ok { false };
 };
+
+// Fixtures name the wrap mode so renumbering the enum does not read as drift.
+std::string WrapName(owe::TextureWrap wrap) {
+    switch (wrap) {
+    case owe::TextureWrap::CLAMP_TO_EDGE: return "clamp_to_edge";
+    case owe::TextureWrap::CLAMP_TO_BORDER: return "clamp_to_border";
+    case owe::TextureWrap::REPEAT: return "repeat";
+    case owe::TextureWrap::MIRRORED_REPEAT: return "mirrored_repeat";
+    }
+    return "unknown";
+}
 
 TexMeta ReadTexMeta(owe::fs::VFS& vfs, const std::string& pkg_path) {
     TexMeta meta;
@@ -267,8 +278,8 @@ TexMeta ReadTexMeta(owe::fs::VFS& vfs, const std::string& pkg_path) {
     meta.sprite_frames = static_cast<int64_t>(h.spriteAnim.numFrames().to_primitive());
     meta.mipmap_pow2   = h.mipmap_pow2;
     meta.mipmap_larger = h.mipmap_larger;
-    meta.wrap_s        = static_cast<int>(h.sample.wrapS);
-    meta.wrap_t        = static_cast<int>(h.sample.wrapT);
+    meta.wrap_s        = WrapName(h.sample.wrapS);
+    meta.wrap_t        = WrapName(h.sample.wrapT);
     meta.min_filter    = static_cast<int>(h.sample.minFilter);
     meta.mag_filter    = static_cast<int>(h.sample.magFilter);
     meta.ok            = (meta.texv > 0 && meta.width > 0 && meta.height > 0);

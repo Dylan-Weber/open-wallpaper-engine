@@ -236,8 +236,8 @@
       "texs": 0,
       "texv": 5,
       "width": 32,
-      "wrap_s": 1,
-      "wrap_t": 1
+      "wrap_s": "repeat",
+      "wrap_t": "repeat"
     },
     {
       "compo1": 0,
@@ -262,8 +262,8 @@
       "texs": 0,
       "texv": 5,
       "width": 256,
-      "wrap_s": 1,
-      "wrap_t": 1
+      "wrap_s": "repeat",
+      "wrap_t": "repeat"
     },
     {
       "compo1": 0,
@@ -288,8 +288,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2048,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -314,8 +314,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2048,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -340,8 +340,8 @@
       "texs": 0,
       "texv": 5,
       "width": 4096,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     }
   ],
   "workshop_dir": "2373012879"

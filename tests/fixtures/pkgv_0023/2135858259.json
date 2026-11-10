@@ -6,8 +6,1302 @@
   },
   "puppets": [],
   "scene": {
-    "error": "[json.exception.type_error.302] type must be boolean, but is object",
-    "parsed": false
+    "camera": {
+      "center": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "eye": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "up": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    "general": {
+      "ambientcolor": [
+        0.30000001192092896,
+        0.30000001192092896,
+        0.30000001192092896
+      ],
+      "cameraparallax": false,
+      "clearcolor": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "farz": 10000.0,
+      "fov": 50.0,
+      "nearz": 0.009999999776482582,
+      "skylightcolor": [
+        0.30000001192092896,
+        0.30000001192092896,
+        0.30000001192092896
+      ],
+      "zoom": 1.0
+    },
+    "is_ortho": true,
+    "object_count": 10,
+    "objects": [
+      {
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 9,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/shake",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_shake_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {
+                  "DIRECTION": 1
+                },
+                "constantshadervalues": {
+                  "bounds": [
+                    0.9940000176429749,
+                    0.996999979019165
+                  ],
+                  "friction": [
+                    1.0,
+                    1.0
+                  ],
+                  "speed": [
+                    1.5
+                  ],
+                  "strength": [
+                    0.07000000029802322
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/shake_mask_23657dea0fdc19cd4ce9754f9aebe6fcdd371e70",
+                  "",
+                  "masks/shake_mask_ce3f6206482256fbc83b943472da2752a307529b"
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/shake",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_shake_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {
+                  "DIRECTION": 1
+                },
+                "constantshadervalues": {
+                  "bounds": [
+                    0.9940000176429749,
+                    0.996999979019165
+                  ],
+                  "friction": [
+                    1.0,
+                    1.0
+                  ],
+                  "speed": [
+                    1.5
+                  ],
+                  "strength": [
+                    0.07999999821186066
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/shake_mask_e13fa19cb9126739191d4f81a34c3211dbc9482d",
+                  "",
+                  "masks/shake_mask_aec9fcca57a024080ec427f574b0e6bbaf06e66d"
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/iris",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_iris_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "noiseamount": [
+                    0.5
+                  ],
+                  "phase": [
+                    0.0
+                  ],
+                  "rough": [
+                    0.5299999713897705
+                  ],
+                  "scale": [
+                    0.5099999904632568,
+                    0.5099999904632568
+                  ],
+                  "speed": [
+                    0.6800000071525574
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/iris_mask_ee0d9bbc6d0516b8583c8fb3e841485c0b7ec4e8"
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/waterwaves",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "arm",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "direction": [
+                    1.899999976158142
+                  ],
+                  "perspective": [
+                    0.0
+                  ],
+                  "scale": [
+                    0.009999999776482582
+                  ],
+                  "speed": [
+                    1.0
+                  ],
+                  "strength": [
+                    0.03999999910593033
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/waterwaves_mask_0f52f786b9869cc9a5be6fbeaae14712e080b84b"
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/waterwaves",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "body",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "direction": [
+                    1.940000057220459
+                  ],
+                  "perspective": [
+                    0.0
+                  ],
+                  "scale": [
+                    0.009999999776482582
+                  ],
+                  "speed": [
+                    1.0
+                  ],
+                  "strength": [
+                    0.03999999910593033
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/waterwaves_mask_21b1e14a59b42e8b0e046896ea1f332e6d6668d5"
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/waterwaves",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "drink",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "direction": [
+                    3.9100000858306885
+                  ],
+                  "perspective": [
+                    0.0
+                  ],
+                  "scale": [
+                    34.29999923706055
+                  ],
+                  "speed": [
+                    1.0
+                  ],
+                  "strength": [
+                    0.03999999910593033
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/waterwaves_mask_df9aff1e82f25115a723e56cdb560b46a44864ca"
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/pulse",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_pulse_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "amount": [
+                    0.07000000029802322
+                  ],
+                  "bounds": [
+                    0.0,
+                    1.0
+                  ],
+                  "noiseamount": [
+                    0.1599999964237213
+                  ],
+                  "noisespeed": [
+                    0.05000000074505806
+                  ],
+                  "phase": [
+                    1.0
+                  ],
+                  "power": [
+                    1.0
+                  ],
+                  "speed": [
+                    1.5
+                  ],
+                  "tinthigh": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ],
+                  "tintlow": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "",
+                  "masks/pulse_mask_dabac8ccef1b6e881b7ca825f3e6dc6f0b28e653"
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/pulse",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_pulse_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "amount": [
+                    0.3499999940395355
+                  ],
+                  "bounds": [
+                    0.9940000176429749,
+                    0.996999979019165
+                  ],
+                  "noiseamount": [
+                    0.25
+                  ],
+                  "noisespeed": [
+                    0.10000000149011612
+                  ],
+                  "phase": [
+                    1.0
+                  ],
+                  "power": [
+                    1.0
+                  ],
+                  "speed": [
+                    1.0
+                  ],
+                  "tinthigh": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ],
+                  "tintlow": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "",
+                  "masks/pulse_mask_8f6c5f20a57fadfdd80504165387d8edf16a476e"
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/waterripple",
+                "textures": [
+                  "",
+                  "",
+                  "effects/waterripplenormal"
+                ],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_water_ripple_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "animationspeed": [
+                    0.10999999940395355
+                  ],
+                  "ratio": [
+                    0.6899999976158142
+                  ],
+                  "ripplestrength": [
+                    0.029999999329447746
+                  ],
+                  "scale": [
+                    0.5699999928474426
+                  ],
+                  "scrolldirection": [
+                    0.0
+                  ],
+                  "scrollspeed": [
+                    0.0
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/waterripple_mask_8f16ac2022198f5cb2820ff665cf6e9a1d806f0c",
+                  "effects/waterripplenormal"
+                ]
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": false,
+        "id": 13,
+        "image": "models/download (4).json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "version": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "download (4)"
+          ],
+          "use_puppet": false
+        },
+        "name": "Base",
+        "nopadding": false,
+        "origin": "960.00000 540.00000 0.00000",
+        "origin_parsed": [
+          960.0,
+          540.0,
+          0.0
+        ],
+        "parsed": true,
+        "puppet": "",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "1920.00000 1080.00000",
+        "size_parsed": [
+          1920.0,
+          1080.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "angles": "0.00000 -0.00000 2.32200",
+        "angles_parsed": [
+          0.0,
+          -0.0,
+          2.322000026702881
+        ],
+        "animationmode": "",
+        "child_count": 0,
+        "controlpoint_count": 8,
+        "emitter_count": 1,
+        "id": 19,
+        "initializer_count": 6,
+        "kind": "particle",
+        "maxcount": 20,
+        "name": "Fog 1",
+        "operator_count": 2,
+        "origin": "201.67700 341.53101 0.00000",
+        "origin_parsed": [
+          201.677001953125,
+          341.531005859375,
+          0.0
+        ],
+        "parsed": true,
+        "particle": "particles/presets/fog1.json",
+        "renderer_count": 1,
+        "scale": "0.07400 0.68700 0.13100",
+        "scale_parsed": [
+          0.07400000095367432,
+          0.6869999766349792,
+          0.13099999725818634
+        ],
+        "starttime": 2,
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "id": 161,
+        "kind": "sound",
+        "maxtime": 5.0,
+        "mintime": 1.0,
+        "name": "Music",
+        "parsed": true,
+        "playbackmode": "loop",
+        "sound_paths": [
+          "sounds/JOAN OSBORNE - ONE OF US - SYNTHESIA (PIANO COVER)-[AudioTrimmer.com].mp3"
+        ],
+        "visible": true,
+        "visible_parsed": true,
+        "volume": 0.15000000596046448
+      },
+      {
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "animationmode": "",
+        "child_count": 0,
+        "controlpoint_count": 8,
+        "emitter_count": 1,
+        "id": 281,
+        "initializer_count": 4,
+        "kind": "particle",
+        "maxcount": 128,
+        "name": "Dust motes",
+        "operator_count": 5,
+        "origin": "960.00000 540.00000 0.00000",
+        "origin_parsed": [
+          960.0,
+          540.0,
+          0.0
+        ],
+        "parsed": true,
+        "particle": "particles/presets/dust_motes_0.json",
+        "renderer_count": 1,
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "starttime": 1,
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "angles": "0.00000 -0.00000 1.04500",
+        "angles_parsed": [
+          0.0,
+          -0.0,
+          1.0449999570846558
+        ],
+        "animationmode": "",
+        "child_count": 0,
+        "controlpoint_count": 8,
+        "emitter_count": 1,
+        "id": 286,
+        "initializer_count": 3,
+        "kind": "particle",
+        "maxcount": 32,
+        "name": "Ocean bubbles",
+        "operator_count": 2,
+        "origin": "959.41998 187.24699 0.00000",
+        "origin_parsed": [
+          959.4199829101563,
+          187.2469940185547,
+          0.0
+        ],
+        "parsed": true,
+        "particle": "particles/presets/bubbles2.json",
+        "renderer_count": 1,
+        "scale": "0.14300 0.14300 0.14300",
+        "scale_parsed": [
+          0.14300000667572021,
+          0.14300000667572021,
+          0.14300000667572021
+        ],
+        "starttime": 0,
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 7,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/shake",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_shake_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {
+                  "DIRECTION": 1
+                },
+                "constantshadervalues": {
+                  "bounds": [
+                    0.9940000176429749,
+                    0.996999979019165
+                  ],
+                  "friction": [
+                    1.0,
+                    1.0
+                  ],
+                  "speed": [
+                    1.5
+                  ],
+                  "strength": [
+                    0.07000000029802322
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/shake_mask_23657dea0fdc19cd4ce9754f9aebe6fcdd371e70",
+                  "",
+                  "masks/shake_mask_ce3f6206482256fbc83b943472da2752a307529b"
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/shake",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_shake_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {
+                  "DIRECTION": 1
+                },
+                "constantshadervalues": {
+                  "bounds": [
+                    0.9940000176429749,
+                    0.996999979019165
+                  ],
+                  "friction": [
+                    1.0,
+                    1.0
+                  ],
+                  "speed": [
+                    1.5
+                  ],
+                  "strength": [
+                    0.07999999821186066
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/shake_mask_e13fa19cb9126739191d4f81a34c3211dbc9482d",
+                  "",
+                  "masks/shake_mask_aec9fcca57a024080ec427f574b0e6bbaf06e66d"
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/waterwaves",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "arm",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "direction": [
+                    1.899999976158142
+                  ],
+                  "perspective": [
+                    0.0
+                  ],
+                  "scale": [
+                    0.009999999776482582
+                  ],
+                  "speed": [
+                    1.0
+                  ],
+                  "strength": [
+                    0.03999999910593033
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/waterwaves_mask_0f52f786b9869cc9a5be6fbeaae14712e080b84b"
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/waterwaves",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "body",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "direction": [
+                    1.940000057220459
+                  ],
+                  "perspective": [
+                    0.0
+                  ],
+                  "scale": [
+                    0.009999999776482582
+                  ],
+                  "speed": [
+                    1.0
+                  ],
+                  "strength": [
+                    0.03999999910593033
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/waterwaves_mask_21b1e14a59b42e8b0e046896ea1f332e6d6668d5"
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/waterwaves",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "drink",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "direction": [
+                    3.9100000858306885
+                  ],
+                  "perspective": [
+                    0.0
+                  ],
+                  "scale": [
+                    34.29999923706055
+                  ],
+                  "speed": [
+                    1.0
+                  ],
+                  "strength": [
+                    0.03999999910593033
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/waterwaves_mask_df9aff1e82f25115a723e56cdb560b46a44864ca"
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/pulse",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_pulse_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {
+                  "AUDIOPROCESSING": 3
+                },
+                "constantshadervalues": {
+                  "audioamount": [
+                    1.0
+                  ],
+                  "audiobounds": [
+                    0.5,
+                    1.0
+                  ],
+                  "audioexponent": [
+                    1.0
+                  ],
+                  "frequencymax": [
+                    1.0
+                  ],
+                  "frequencymin": [
+                    0.0
+                  ],
+                  "tinthigh": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ],
+                  "tintlow": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "",
+                  "masks/pulse_mask_81307a546e4431a6a8f594241b85fad57e284339"
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/waterripple",
+                "textures": [
+                  "",
+                  "",
+                  "effects/waterripplenormal"
+                ],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_water_ripple_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "animationspeed": [
+                    0.10999999940395355
+                  ],
+                  "ratio": [
+                    0.6899999976158142
+                  ],
+                  "ripplestrength": [
+                    0.029999999329447746
+                  ],
+                  "scale": [
+                    0.5699999928474426
+                  ],
+                  "scrolldirection": [
+                    0.0
+                  ],
+                  "scrollspeed": [
+                    0.0
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/waterripple_mask_8f16ac2022198f5cb2820ff665cf6e9a1d806f0c",
+                  "effects/waterripplenormal"
+                ]
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": false,
+        "id": 306,
+        "image": "models/download (4).json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "version": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "download (4)"
+          ],
+          "use_puppet": false
+        },
+        "name": "Base",
+        "nopadding": false,
+        "origin": "960.00000 540.00000 0.00000",
+        "origin_parsed": [
+          960.0,
+          540.0,
+          0.0
+        ],
+        "parsed": true,
+        "puppet": "",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "1920.00000 1080.00000",
+        "size_parsed": [
+          1920.0,
+          1080.0
+        ],
+        "visible": false,
+        "visible_parsed": false
+      },
+      {
+        "angles": "0.00000 -0.00000 0.19100",
+        "angles_parsed": [
+          0.0,
+          -0.0,
+          0.19099999964237213
+        ],
+        "animationmode": "",
+        "child_count": 0,
+        "controlpoint_count": 8,
+        "emitter_count": 1,
+        "id": 413,
+        "initializer_count": 4,
+        "kind": "particle",
+        "maxcount": 256,
+        "name": "drop",
+        "operator_count": 2,
+        "origin": "186.16701 568.70898 0.00000",
+        "origin_parsed": [
+          186.16700744628906,
+          568.708984375,
+          0.0
+        ],
+        "parsed": true,
+        "particle": "particles/workshop/2098184293/Rain_window.json",
+        "renderer_count": 1,
+        "scale": "0.04200 0.30600 0.30600",
+        "scale_parsed": [
+          0.041999999433755875,
+          0.3059999942779541,
+          0.3059999942779541
+        ],
+        "starttime": 0,
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "angles": "0.00000 -0.00000 0.17400",
+        "angles_parsed": [
+          0.0,
+          -0.0,
+          0.17399999499320984
+        ],
+        "animationmode": "",
+        "child_count": 0,
+        "controlpoint_count": 8,
+        "emitter_count": 1,
+        "id": 420,
+        "initializer_count": 4,
+        "kind": "particle",
+        "maxcount": 256,
+        "name": "drop",
+        "operator_count": 2,
+        "origin": "294.39401 589.70099 0.00000",
+        "origin_parsed": [
+          294.3940124511719,
+          589.7009887695313,
+          0.0
+        ],
+        "parsed": true,
+        "particle": "particles/workshop/2098184293/Rain_window.json",
+        "renderer_count": 1,
+        "scale": "0.03000 0.30600 0.30600",
+        "scale_parsed": [
+          0.029999999329447746,
+          0.3059999942779541,
+          0.3059999942779541
+        ],
+        "starttime": 0,
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "angles": "0.00000 -0.00000 0.12700",
+        "angles_parsed": [
+          0.0,
+          -0.0,
+          0.12700000405311584
+        ],
+        "animationmode": "",
+        "child_count": 0,
+        "controlpoint_count": 8,
+        "emitter_count": 1,
+        "id": 426,
+        "initializer_count": 4,
+        "kind": "particle",
+        "maxcount": 256,
+        "name": "drop",
+        "operator_count": 2,
+        "origin": "368.35300 584.95599 0.00000",
+        "origin_parsed": [
+          368.3529968261719,
+          584.9559936523438,
+          0.0
+        ],
+        "parsed": true,
+        "particle": "particles/workshop/2098184293/Rain_window.json",
+        "renderer_count": 1,
+        "scale": "0.02200 0.30600 0.30600",
+        "scale_parsed": [
+          0.02199999988079071,
+          0.3059999942779541,
+          0.3059999942779541
+        ],
+        "starttime": 0,
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "angles": "0.00000 -0.00000 0.21400",
+        "angles_parsed": [
+          0.0,
+          -0.0,
+          0.21400000154972076
+        ],
+        "animationmode": "",
+        "child_count": 0,
+        "controlpoint_count": 8,
+        "emitter_count": 1,
+        "id": 432,
+        "initializer_count": 4,
+        "kind": "particle",
+        "maxcount": 256,
+        "name": "drop",
+        "operator_count": 2,
+        "origin": "-202.77499 447.53601 0.00000",
+        "origin_parsed": [
+          -202.77499389648438,
+          447.5360107421875,
+          0.0
+        ],
+        "parsed": true,
+        "particle": "particles/workshop/2098184293/Rain_window.json",
+        "renderer_count": 1,
+        "scale": "0.29100 0.39900 0.39900",
+        "scale_parsed": [
+          0.29100000858306885,
+          0.39899998903274536,
+          0.39899998903274536
+        ],
+        "starttime": 0,
+        "visible": true,
+        "visible_parsed": true
+      }
+    ],
+    "ortho": {
+      "height": 1080,
+      "width": 1920
+    },
+    "parsed": true
   },
   "textures": [
     {
@@ -33,8 +1327,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2048,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -59,8 +1353,8 @@
       "texs": 0,
       "texv": 5,
       "width": 256,
-      "wrap_s": 1,
-      "wrap_t": 1
+      "wrap_s": "repeat",
+      "wrap_t": "repeat"
     },
     {
       "compo1": 0,
@@ -85,8 +1379,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -111,8 +1405,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -137,8 +1431,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -163,8 +1457,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -189,8 +1483,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -215,8 +1509,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -241,8 +1535,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -267,8 +1561,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -293,8 +1587,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -319,8 +1613,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -345,8 +1639,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -371,8 +1665,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     }
   ],
   "workshop_dir": "2135858259"

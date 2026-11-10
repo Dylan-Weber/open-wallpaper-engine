@@ -8,32 +8,48 @@
     {
       "anims": 0,
       "bones": 0,
-      "index_count": 0,
+      "flag": [
+        "00001111",
+        "00000000",
+        "00000000",
+        "00000000"
+      ],
+      "index_count": 5000,
       "mat_json_file": "materials/neongrid/neongrid.json",
       "mdla": 1,
       "mdls": 1,
       "mdlv": 4,
-      "ok": false,
+      "mesh_count": 1,
+      "ok": true,
       "part_count": 0,
       "parts": [],
       "path": "/models/neongrid/neongrid.mdl",
+      "skin_count": 1,
       "vert_extra_count": 0,
-      "vertex_count": 0
+      "vertex_count": 2601
     },
     {
       "anims": 0,
       "bones": 0,
-      "index_count": 0,
+      "flag": [
+        "00001111",
+        "00000000",
+        "00000000",
+        "00000000"
+      ],
+      "index_count": 2,
       "mat_json_file": "materials/neonsun/neonsun.json",
       "mdla": 1,
       "mdls": 1,
       "mdlv": 4,
-      "ok": false,
+      "mesh_count": 1,
+      "ok": true,
       "part_count": 0,
       "parts": [],
       "path": "/models/neonsun/neonsun.mdl",
+      "skin_count": 1,
       "vert_extra_count": 0,
-      "vertex_count": 0
+      "vertex_count": 4
     }
   ],
   "scene": {
@@ -161,16 +177,110 @@
         "visible_parsed": true
       },
       {
+        "alignment_parsed": "center",
+        "alpha": 1.0,
         "angles": "0.000 0.000 0.000",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 1,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/filmgrain",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_filmgrain_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {
+                  "BLENDMODE": 12
+                },
+                "constantshadervalues": {
+                  "ui_editor_properties_power": [
+                    0.5
+                  ],
+                  "ui_editor_properties_scale": [
+                    4.800000190734863
+                  ],
+                  "ui_editor_properties_strength": [
+                    0.5
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "util/noise"
+                ]
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": true,
         "id": 53,
+        "image": "models/util/fullscreenlayer.json",
         "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {},
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "passthrough",
+          "textures": [
+            "_rt_FullFrameBuffer"
+          ],
+          "use_puppet": false
+        },
         "name": "Fullscreen",
+        "nopadding": false,
         "origin": "0.000 0.000 0.000",
+        "origin_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
         "parallaxDepth": "1.000 1.000",
-        "parsed": false,
+        "parsed": true,
+        "puppet": "",
         "scale": "1.000 1.000 1.000",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
         "size": "1147.000 791.000",
-        "visible": true
+        "size_parsed": [
+          2.0,
+          2.0
+        ],
+        "visible": true,
+        "visible_parsed": true
       },
       {
         "angles": "0.000 0.000 0.000",
@@ -214,8 +324,8 @@
       "texs": 0,
       "texv": 5,
       "width": 512,
-      "wrap_s": 1,
-      "wrap_t": 1
+      "wrap_s": "repeat",
+      "wrap_t": "repeat"
     },
     {
       "compo1": 0,
@@ -240,8 +350,8 @@
       "texs": 0,
       "texv": 5,
       "width": 128,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -266,8 +376,8 @@
       "texs": 0,
       "texv": 5,
       "width": 128,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     }
   ],
   "workshop_dir": "1548688862"
