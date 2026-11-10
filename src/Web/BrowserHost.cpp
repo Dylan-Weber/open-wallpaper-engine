@@ -444,7 +444,12 @@ void BrowserHost::SetFrameRate(int fps) {
 void BrowserHost::SetPaused(bool paused) {
     if (IsClosing() || ! impl_->client) return;
     auto b = impl_->client->GetBrowser();
-    if (b && b->GetHost()) b->GetHost()->WasHidden(paused);
+    if (! b || ! b->GetHost()) return;
+    // the page hears about it while it can still run (hidden pages stop drawing, not scripts)
+    if (auto main = b->GetMainFrame(); main)
+        main->ExecuteJavaScript(
+            to_string(BuildPausedSnippet(paused).as_str()), "weweb://internal/set_paused.js", 0);
+    b->GetHost()->WasHidden(paused);
 }
 
 void BrowserHost::ApplyUserProperty(ref<str> key, const owe::Json& value) {
