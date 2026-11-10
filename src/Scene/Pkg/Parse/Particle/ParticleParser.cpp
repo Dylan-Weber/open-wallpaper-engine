@@ -281,10 +281,16 @@ struct RemapInitialValueProgram {
             columns.velocities[slot] =
                 remap.Apply(columns.velocities[slot].cast<double>(), input).cast<float>();
             break;
-        case ParticleRemap::Output::Rotation:
-            columns.rotations[slot].z() = float(
+        case ParticleRemap::Output::Rotation: {
+            // as remapvalue: set puts the value on all three angles, the others work about z
+            const float value = float(
                 remap.Apply(Eigen::Vector3d::Constant(columns.rotations[slot].z()), input).x());
+            if (remap.operation == ParticleRemap::Operation::Remap)
+                columns.rotations[slot] = Eigen::Vector3f::Constant(value);
+            else
+                columns.rotations[slot].z() = value;
             break;
+        }
         }
     }
 };
@@ -1619,14 +1625,22 @@ struct RemapValueOperator {
             break;
         }
         case ParticleRemap::Output::Rotation: {
-            // the rotation about z (ft-remap-rotation): set, or multiplied, added or taken each frame
+            // set (remap) puts the value on all three angles, so the particle turns out of the plane
+            // too; multiply, add and subtract work on the angle about z each frame
+            // (ft-remap-rotation)
             auto values = context.view.Write(output_rotation);
-            for (auto slot : context.slots)
-                values[slot.index].z() = float(remap
-                                                   .Blend(Eigen::Vector3d::Constant(values[slot.index].z()),
-                                                          input(slot),
-                                                          life(slot))
-                                                   .x());
+            for (auto slot : context.slots) {
+                const float value =
+                    float(remap
+                              .Blend(Eigen::Vector3d::Constant(values[slot.index].z()),
+                                     input(slot),
+                                     life(slot))
+                              .x());
+                if (remap.operation == ParticleRemap::Operation::Remap)
+                    values[slot.index] = Eigen::Vector3f::Constant(value);
+                else
+                    values[slot.index].z() = value;
+            }
             break;
         }
         case ParticleRemap::Output::Velocity: {
