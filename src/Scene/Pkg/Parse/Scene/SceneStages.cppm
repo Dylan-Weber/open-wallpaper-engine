@@ -101,6 +101,18 @@ constexpr auto NeedsEffectFinalPassthrough(EffectFinalDraw draw) -> bool {
            ! draw.source_composites_final && ! draw.last_effect_loaded;
 }
 
+// Whether an effect's pass draws anything (effect-pass-resolution): Wallpaper Engine draws the
+// passes of an effect into one buffer, so a pass before the last with no target of its own is
+// overwritten by the last, which reads the effect's input.
+struct EffectPassDraw {
+    rstd::size_t index { 0 }, count { 1 };
+    bool         has_target { false };
+};
+
+constexpr auto EffectPassIsDrawn(EffectPassDraw pass) -> bool {
+    return pass.has_target || pass.index + 1 >= pass.count;
+}
+
 // Compatibility entry for callers with an already-parsed raw value.
 Vec<SceneObjectVar> ExpandObjects(const Json&, fs::VFS&, wpscene::SceneVersion,
                                   Option<ref<rstd::json::Map>> user_props = None());
