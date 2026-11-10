@@ -677,6 +677,30 @@ TEST(TextAtlas, AnOutlinedGlyphsCellIsTheFirstOneStored) {
     EXPECT_DOUBLE_EQ(other.atlas_w, large.atlas_w);
 }
 
+TEST(TextAtlas, AnOutlinedGlyphsCellIsNotSharedWithAnotherFontsGlyphOfTheSameIndex) {
+    // text-outline-fonts: Wallpaper Engine's Serif H at 60 points is drawn the same after a Sans H
+    // (the same glyph index) at 16 points as alone; only a font's own earlier sizes count
+    auto source = rstd::path::PathBuf::from(__FILE__ ""_str);
+    auto root   = source.as_path().parent().unwrap().parent().unwrap().parent().unwrap();
+    auto read   = [&](ref<str> name) {
+        auto path = rstd::path::PathBuf::from(root).join(name);
+        return rstd::fs::read(path.as_path()).unwrap();
+    };
+    auto       first  = read("fixtures/fonts/DejaVuSans.ttf"_str);
+    auto       second = read("fixtures/fonts/LineGap.ttf"_str);
+    auto       resources = TextResources();
+    auto       sans   = resources->RegisterFont(first.as_slice()).unwrap();
+    auto       other  = resources->RegisterFont(second.as_slice()).unwrap();
+    const auto small  = owe::text::OutlinedGlyphCell(14, 99, -109, 0, 150);
+    const auto large  = owe::text::OutlinedGlyphCell(24, 164, -182, 0, 250);
+    (void)resources->SharedOutlinedCell(sans, 43, small);
+    auto later = resources->SharedOutlinedCell(other, 43, large);
+    EXPECT_DOUBLE_EQ(later.atlas_w, large.atlas_w);
+    EXPECT_DOUBLE_EQ(later.ppem, 250);
+    // and the first font still has its own
+    EXPECT_DOUBLE_EQ(resources->SharedOutlinedCell(sans, 43, large).ppem, 150);
+}
+
 TEST(TextLayouter, AnOutlinedLetterAtALaterSizeIsDrawnFromTheFirstSizesCell) {
     // text-outline-ctx: with a 16-point row before it, the 60-point H is 3 pixels narrower
     auto source = rstd::path::PathBuf::from(__FILE__ ""_str);
