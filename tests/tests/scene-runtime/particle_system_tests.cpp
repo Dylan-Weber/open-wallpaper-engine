@@ -863,7 +863,8 @@ struct CollidedParticle {
 
 static CollidedParticle CollideWithPlane(ref<str> collision, Eigen::Vector3f origin,
                                          ref<str> velocity, int ticks = 1,
-                                         bool scene_bounds = false) {
+                                         bool     scene_bounds = false,
+                                         ref<str> movement     = R"({"name":"movement"})"_str) {
     owe::Scene scene;
     if (scene_bounds) scene.SetOrtho({ i32(1920), i32(1080) });
     auto                   mesh = Arc<owe::SceneMesh>::make();
@@ -890,7 +891,7 @@ static CollidedParticle CollideWithPlane(ref<str> collision, Eigen::Vector3f ori
                                              owe::wpscene::Particle::EFlags { 0 },
                                              false);
     subsystem.AddOperator(
-        owe::ParticleParser::GenOperator(owe::ParseJson(R"({"name":"movement"})"_str).unwrap(),
+        owe::ParticleParser::GenOperator(owe::ParseJson(movement).unwrap(),
                                          modifiers.Clone(),
                                          subsystem,
                                          usize()));
@@ -1058,12 +1059,41 @@ TEST(ParticleSubSystem, CollisionSphereKeepsParticlesOutAlongTheSurfaceNormal) {
     EXPECT_NEAR(away.velocity.y(), -60.0f, 1e-3f);
 }
 
+// Wallpaper Engine's quad kernel (0x140254290) catches a particle that is on or under the quad and
+// was strictly above it a frame before, and puts it out by 1.05 x how far under it was, so a
+// particle that lands with no bounce sits a little above the quad and is caught again each frame:
+// it slides along the top under gravity (ft-collisionquad-sides, bouncefactor 0).
+TEST(ParticleSubSystem, CollisionQuadPutsAParticleOutBy105PercentOfHowFarUnderItWas) {
+    // from 0.5 above to 0.5 under the quad in a frame: put at -100.5 + 1.05 x 0.5 = -99.975
+    auto landed = CollideWithPlane(
+        R"({"name":"collisionquad","origin":"0 -100 0","size":"200 100","bouncefactor":0})"_str,
+        { -50, -99.5f, 0 },
+        R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
+    ASSERT_TRUE(landed.alive);
+    EXPECT_NEAR(landed.position.y(), -99.975f, 1e-4f);
+    EXPECT_NEAR(landed.velocity.y(), 0.0f, 1e-4f);
+    // and one that rests on it under gravity stays on it, sliding
+    auto slid = CollideWithPlane(
+        R"({"name":"collisionquad","origin":"0 -100 0","size":"200 100","bouncefactor":0})"_str,
+        { -50, -95, 0 },
+        R"({"name":"velocityrandom","min":"40 -60 0","max":"40 -60 0"})"_str,
+        60,
+        false,
+        R"({"name":"movement","gravity":"0 -500 0"})"_str);
+    ASSERT_TRUE(slid.alive);
+    EXPECT_GE(slid.position.y(), -100.0f);
+    EXPECT_LT(slid.position.y(), -99.0f);
+    EXPECT_NEAR(slid.position.x(), -50.0f + 40.0f, 1e-3f);
+}
+
 TEST(ParticleSubSystem, CollisionQuadCatchesAParticleFallingOnItButNotOneRisingThroughIt) {
     const auto quad =
         R"({"name":"collisionquad","origin":"0 -100 0","size":"200 100","bouncefactor":0.5})"_str;
+    // (from 0.5 above to 0.5 under: put at -100.5 + 1.05 x 0.5; one starting on the quad was not
+    // above it, so it isn't caught)
     auto landed = CollideWithPlane(
-        quad, { 50, -100, 0 }, R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
-    EXPECT_NEAR(landed.position.y(), -100.0f, 1e-4f);
+        quad, { 50, -99.5f, 0 }, R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
+    EXPECT_NEAR(landed.position.y(), -99.975f, 1e-4f);
     EXPECT_NEAR(landed.velocity.y(), 30.0f, 1e-3f);
     auto rising = CollideWithPlane(
         quad, { 50, -100.5f, 0 }, R"({"name":"velocityrandom","min":"0 60 0","max":"0 60 0"})"_str);
@@ -1073,7 +1103,7 @@ TEST(ParticleSubSystem, CollisionQuadCatchesAParticleFallingOnItButNotOneRisingT
     EXPECT_NEAR(beside.velocity.y(), -60.0f, 1e-3f);
     auto angled = CollideWithPlane(
         R"({"name":"collisionquad","origin":"0 -100 0","size":"200 100","angles":"0 0 30","bouncefactor":0.5})"_str,
-        { 50, -100, 0 },
+        { 50, -99.5f, 0 },
         R"({"name":"velocityrandom","min":"0 -60 0","max":"0 -60 0"})"_str);
     EXPECT_NEAR(angled.velocity.y(), 30.0f, 1e-3f);
 }
