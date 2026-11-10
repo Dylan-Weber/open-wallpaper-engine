@@ -821,12 +821,14 @@ TEST(LayerImageLattice, ASolidLayerIsAWhiteImageOfItsSize) {
     EXPECT_EQ(max_x, 148.0f);
     EXPECT_EQ(max_y, 73.0f);
     EXPECT_EQ(min_y, -71.0f);
-    // thinner than a block: one block across (as a texture)
+    // thinner than a block: the 2x10 layer is a 4x10 image, two nodes across and two down
+    // (nx = max(2, w/4), ny = max(2, h/4); one scale 4 / 2 for both axes)
     auto thin = owe::SolidLayerLattice(2, 10);
-    ASSERT_EQ(thin.len(), usize(2));
-    EXPECT_EQ(thin[usize()].x, 0.0f);
-    EXPECT_EQ(thin[usize()].y, 3.0f);
-    EXPECT_EQ(thin[usize(1)].y, -1.0f);
+    ASSERT_EQ(thin.len(), usize(4));
+    EXPECT_EQ(thin[usize()].x, -1.0f);
+    EXPECT_EQ(thin[usize(1)].x, 1.0f);
+    EXPECT_EQ(thin[usize()].y, 4.0f);
+    EXPECT_EQ(thin[usize(2)].y, 2.0f);
     EXPECT_TRUE(owe::SolidLayerLattice(0, 10).is_empty());
 }
 
@@ -858,6 +860,84 @@ TEST(LayerImageLattice, AStripLessThanABlockHighHasTwoRows) {
     auto solid = owe::SolidLayerLattice(8, 2);
     ASSERT_EQ(solid.len(), usize(4));
     EXPECT_EQ(solid[usize(2)].y, -4.0f);
+}
+
+// Wallpaper Engine renders the image into a target of max(2, w/4) x max(2, h/4) texels (a side
+// under 4 counts as 4) and puts node (i, j) at int(s * (i + 0.5) - w/2), int(s * (j + 0.5) - h/2)
+// with the single scale s = w / nodes across (FUN_1401d3ae0). Positions measured in
+// particles-layerimage-edge, in texels from the image's top left.
+namespace
+{
+std::vector<float> Columns(const Vec<owe::LayerImagePoint>& points, int width) {
+    std::vector<float> columns;
+    for (const auto& point : points) {
+        const float column = static_cast<float>(width) * 0.5f + point.x;
+        if (std::find(columns.begin(), columns.end(), column) == columns.end())
+            columns.push_back(column);
+    }
+    std::sort(columns.begin(), columns.end());
+    return columns;
+}
+std::vector<float> Rows(const Vec<owe::LayerImagePoint>& points, int height) {
+    std::vector<float> rows;
+    for (const auto& point : points) {
+        const float row = static_cast<float>(height) * 0.5f - point.y;
+        if (std::find(rows.begin(), rows.end(), row) == rows.end()) rows.push_back(row);
+    }
+    std::sort(rows.begin(), rows.end());
+    return rows;
+}
+} // namespace
+
+TEST(LayerImageLattice, ANarrowImageHasTwoColumnsAroundItsMiddle) {
+    // 1x32, 2x32, 3x32: columns w/2 - 1 and w/2 + 1, rows 1, 3, ..., 15
+    for (int width : { 1, 2, 3 }) {
+        auto points = owe::SolidLayerLattice(width, 32);
+        ASSERT_EQ(points.len(), usize(16)) << width;
+        EXPECT_EQ(Columns(points, width),
+                  (std::vector<float> { static_cast<float>(width) * 0.5f - 1.0f,
+                                        static_cast<float>(width) * 0.5f + 1.0f }));
+        auto rows = Rows(points, 32);
+        ASSERT_EQ(rows.size(), std::size_t(8));
+        for (std::size_t i {}; i < rows.size(); ++i)
+            EXPECT_EQ(rows[i], 1.0f + 2.0f * static_cast<float>(i));
+    }
+    // 5..9 x 32: two columns 2 or 3 apart, 8 rows whose pitch is the width / 2
+    auto columns_of = [](int width) {
+        return Columns(owe::SolidLayerLattice(width, 32), width);
+    };
+    auto pair = [](int width, float a, float b) {
+        return std::vector<float> { static_cast<float>(width) * 0.5f + a,
+                                    static_cast<float>(width) * 0.5f + b };
+    };
+    EXPECT_EQ(columns_of(5), pair(5, 0.0f, 1.0f)); // int(1.25 - 2), int(3.75 - 2)
+    EXPECT_EQ(columns_of(6), pair(6, -1.0f, 1.0f));
+    EXPECT_EQ(columns_of(9), pair(9, -1.0f, 2.0f));
+    auto rows6 = Rows(owe::SolidLayerLattice(6, 32), 32);
+    ASSERT_EQ(rows6.size(), std::size_t(8));
+    EXPECT_EQ(rows6[1] - rows6[0], 3.0f);
+    EXPECT_EQ(rows6[7] - rows6[6], 3.0f);
+    auto rows9 = Rows(owe::SolidLayerLattice(9, 32), 32);
+    ASSERT_EQ(rows9.size(), std::size_t(8));
+    EXPECT_GT(rows9[7] - rows9[0], 7 * 4.0f); // pitch 4.5, truncated to 4 or 5
+}
+
+TEST(LayerImageLattice, AShortImageHasTwoRowsNotFourApart) {
+    // 32x5, 32x7, 32x9: rows 2.5 and 6.5; 32x6: 2 and 6; columns 2, 6, ..., 30
+    for (int height : { 5, 7, 9 }) {
+        auto points = owe::SolidLayerLattice(32, height);
+        EXPECT_EQ(Rows(points, height), (std::vector<float> { 2.5f, 6.5f })) << height;
+        EXPECT_EQ(Columns(points, 32).size(), std::size_t(8));
+    }
+    EXPECT_EQ(Rows(owe::SolidLayerLattice(32, 6), 6), (std::vector<float> { 2.0f, 6.0f }));
+    // 32x1..3 count as 4 high: the image's middle and 4 below
+    for (int height : { 1, 2, 3 })
+        EXPECT_EQ(Rows(owe::SolidLayerLattice(32, height), height),
+                  (std::vector<float> { static_cast<float>(height) * 0.5f,
+                                        static_cast<float>(height) * 0.5f + 4.0f }));
+    // the node count: 10x10 is 2x2, 13x6 is 3x2
+    EXPECT_EQ(owe::SolidLayerLattice(10, 10).len(), usize(4));
+    EXPECT_EQ(owe::SolidLayerLattice(13, 6).len(), usize(6));
 }
 
 // Wallpaper Engine reads a layer's image in 4x4 texel blocks (particles-layerimage-pitch, -block):
@@ -899,12 +979,12 @@ TEST(LayerImageLattice, OnePointPerFourByFourBlockAtItsCentre) {
     });
     EXPECT_EQ(owe::LayerImageLattice(sparse.data(), 32, 32, 4, false, 1.0f).len(), usize());
     // a block half red, half blue is purple
-    auto halves = image(4, 4, [](int x, int) {
-        return x < 2 ? rstd::array<int, 4> { 255, 0, 0, 255 }
-                     : rstd::array<int, 4> { 0, 0, 255, 255 };
+    auto halves = image(8, 8, [](int x, int) {
+        return x % 4 < 2 ? rstd::array<int, 4> { 255, 0, 0, 255 }
+                         : rstd::array<int, 4> { 0, 0, 255, 255 };
     });
-    auto purple = owe::LayerImageLattice(halves.data(), 4, 4, 4, false, 1.0f);
-    ASSERT_EQ(purple.len(), usize(1));
+    auto purple = owe::LayerImageLattice(halves.data(), 8, 8, 4, false, 1.0f);
+    ASSERT_EQ(purple.len(), usize(4));
     EXPECT_NEAR(purple[usize()].color.x(), 0.5f, 0.01f);
     EXPECT_NEAR(purple[usize()].color.y(), 0.0f, 0.01f);
     EXPECT_NEAR(purple[usize()].color.z(), 0.5f, 0.01f);
