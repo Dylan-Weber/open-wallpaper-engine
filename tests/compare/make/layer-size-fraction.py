@@ -27,3 +27,15 @@ w.save()
 with open(os.path.join(HERE, w.name, 'compare.json'), 'w') as f:
     json.dump({"fps": 30}, f)
 clock_probe.stamp(os.path.join(HERE, w.name))
+
+# the same sizes as solid-colour layers (models/util/solidlayer.json: an image layer without a texture of its own)
+w = Wallpaper('layer-size-fraction-solid', 'solid layers of fractional size', clear='0.1 0.1 0.15', size=(343, 193))
+for k, (width, height) in enumerate(ROWS):
+    w.add({"name": 'solid %g x %g' % (width, height), "image": "models/util/solidlayer.json",
+           "size": '%g %g' % (width, height), "color": "0.2 0.9 0.9", "alpha": 1, "angles": "0 0 0",
+           "scale": '%g %g 1' % (280 / width, 12 / height), "alignment": "center", "visible": True,
+           "origin": '171.5 %g 0' % (45 + 18 * k)})
+w.save()
+with open(os.path.join(HERE, w.name, 'compare.json'), 'w') as f:
+    json.dump({"fps": 30}, f)
+clock_probe.stamp(os.path.join(HERE, w.name))
