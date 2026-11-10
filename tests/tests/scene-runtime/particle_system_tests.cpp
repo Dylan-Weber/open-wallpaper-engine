@@ -1028,3 +1028,12 @@ TEST(ParticleTrail, SamplesWhenItsTimerRunsOutAndRestartsIt) {
     const bool            expected[] = { true, false, false, true, false, false, true };
     for (bool sample : expected) EXPECT_EQ(timer.Step(0.04, 0.1), sample);
 }
+
+// The rope trail shader's in_SegmentMaxCount (g_RenderVar0.w): Wallpaper Engine sets segments - 0.5
+// (0x140236990, segments clamped to 1..32), so a full trail stops stretching its first piece by
+// the history timer; owe gave the particle count - 1 (ft-ropetrail, 4 segments at 30 fps).
+TEST(ParticleTrail, SegmentMaxCountIsSegmentsLessAHalf) {
+    EXPECT_FLOAT_EQ(owe::RopeTrailSegmentMaxCount(4), 3.5f);
+    EXPECT_FLOAT_EQ(owe::RopeTrailSegmentMaxCount(0), 0.5f);
+    EXPECT_FLOAT_EQ(owe::RopeTrailSegmentMaxCount(100), 31.5f);
+}

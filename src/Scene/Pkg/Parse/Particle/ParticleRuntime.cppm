@@ -256,6 +256,13 @@ auto ParticleFrameFrom(ref<dyn<rstd::any::Any>>) -> ref<ParticleFrame>;
 // A rope trail's sampling (Wallpaper Engine, 0x140232cad): the timer counts down by each frame's step
 // and, once it reaches 0, is set back to the interval (length / segments), whatever was left over,
 // and that frame pushes every particle's place.
+// The rope trail shader's in_SegmentMaxCount (g_RenderVar0.w): Wallpaper Engine sets segments - 0.5
+// (0x140236990), segments being held to 1..32.
+inline float RopeTrailSegmentMaxCount(rstd::int32_t segments) {
+    const rstd::int32_t held = segments < 1 ? 1 : (segments > 32 ? 32 : segments);
+    return static_cast<float>(held) - 0.5f;
+}
+
 struct TrailSampleTimer {
     float remaining {};
     bool  Step(double step, double interval) {
