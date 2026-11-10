@@ -543,7 +543,7 @@
                 "use_puppet": false
               }
             ],
-            "name": "ui_editor_effect_pulse_title",
+            "name": "pneon",
             "pass_count": 1,
             "passes": [
               {
@@ -691,7 +691,7 @@
                 "use_puppet": false
               }
             ],
-            "name": "ui_editor_effect_pulse_title",
+            "name": "pglow1",
             "pass_count": 1,
             "passes": [
               {
@@ -1875,7 +1875,7 @@
                 "use_puppet": false
               }
             ],
-            "name": "ui_editor_effect_pulse_title",
+            "name": "pmat",
             "pass_count": 1,
             "passes": [
               {
@@ -2171,16 +2171,175 @@
       },
       {
         "alignment": "center",
+        "alignment_parsed": "center",
+        "alpha": 1.0,
         "angles": "0.00000 0.00000 0.00000",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 30,
+        "effect_count": 2,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/pulse",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "L",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {
+                  "AUDIOPROCESSING": 1,
+                  "PULSEALPHA": 1
+                },
+                "constantshadervalues": {
+                  "audioamount": [
+                    2.0
+                  ],
+                  "audiobounds": [
+                    0.5,
+                    1.0
+                  ],
+                  "tinthigh": [
+                    1.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tintlow": [
+                    0.3450980484485626,
+                    0.0,
+                    0.3450980484485626
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "util/noise",
+                  "mask_left"
+                ]
+              }
+            ],
+            "visible": true
+          },
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/pulse",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "R",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {
+                  "AUDIOPROCESSING": 2,
+                  "PULSEALPHA": 1
+                },
+                "constantshadervalues": {
+                  "audioamount": [
+                    2.0
+                  ],
+                  "audiobounds": [
+                    0.5,
+                    1.0
+                  ],
+                  "tinthigh": [
+                    1.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tintlow": [
+                    0.3450980484485626,
+                    0.0,
+                    0.3450980484485626
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "util/noise",
+                  "mask_right"
+                ]
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": false,
         "id": 402,
+        "image": "models/util/composelayer.json",
         "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {},
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "composelayer",
+          "textures": [
+            "_rt_FullFrameBuffer"
+          ],
+          "use_puppet": false
+        },
         "name": "Compose",
+        "nopadding": false,
         "origin": "100.00000 -100.00000 0.00000",
+        "origin_parsed": [
+          100.0,
+          -100.0,
+          0.0
+        ],
         "parallaxDepth": "1.00000 1.00000",
-        "parsed": false,
+        "parsed": true,
+        "puppet": "",
         "scale": "1.00000 1.00000 1.00000",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
         "size": "80.00000 45.00000",
-        "visible": true
+        "size_parsed": [
+          80.0,
+          45.0
+        ],
+        "visible": true,
+        "visible_parsed": true
       },
       {
         "alignment": "center",
@@ -2818,16 +2977,101 @@
       },
       {
         "alignment": "center",
+        "alignment_parsed": "center",
+        "alpha": 1.0,
         "angles": "0.00000 0.00000 0.00000",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 1,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/tint",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_tint_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "color": [
+                    1.0,
+                    0.0,
+                    1.0
+                  ]
+                },
+                "target": "",
+                "textures": []
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": false,
         "id": 655,
+        "image": "models/util/composelayer.json",
         "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {},
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "composelayer",
+          "textures": [
+            "_rt_FullFrameBuffer"
+          ],
+          "use_puppet": false
+        },
         "name": "Composetint",
+        "nopadding": false,
         "origin": "100.00000 -100.00000 0.00000",
+        "origin_parsed": [
+          100.0,
+          -100.0,
+          0.0
+        ],
         "parallaxDepth": "1.00000 1.00000",
-        "parsed": false,
+        "parsed": true,
+        "puppet": "",
         "scale": "1.00000 1.00000 1.00000",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
         "size": "80.00000 45.00000",
-        "visible": false
+        "size_parsed": [
+          80.0,
+          45.0
+        ],
+        "visible": false,
+        "visible_parsed": false
       }
     ],
     "ortho": {
@@ -2860,8 +3104,8 @@
       "texs": 0,
       "texv": 5,
       "width": 512,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -2886,8 +3130,8 @@
       "texs": 0,
       "texv": 5,
       "width": 8,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -2912,8 +3156,8 @@
       "texs": 0,
       "texv": 5,
       "width": 512,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -2938,8 +3182,8 @@
       "texs": 0,
       "texv": 5,
       "width": 512,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -2964,8 +3208,8 @@
       "texs": 0,
       "texv": 5,
       "width": 512,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -2990,8 +3234,8 @@
       "texs": 0,
       "texv": 5,
       "width": 512,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3016,8 +3260,8 @@
       "texs": 0,
       "texv": 5,
       "width": 512,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3042,8 +3286,8 @@
       "texs": 0,
       "texv": 5,
       "width": 128,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3068,8 +3312,8 @@
       "texs": 0,
       "texv": 5,
       "width": 128,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3094,8 +3338,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3120,8 +3364,8 @@
       "texs": 0,
       "texv": 5,
       "width": 4096,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3146,8 +3390,8 @@
       "texs": 0,
       "texv": 5,
       "width": 128,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     }
   ],
   "workshop_dir": "2004893596"

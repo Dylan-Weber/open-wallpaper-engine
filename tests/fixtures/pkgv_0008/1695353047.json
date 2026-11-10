@@ -193,7 +193,7 @@
       "map_height": 600,
       "map_width": 800,
       "min_filter": 1,
-      "mipmap_larger": false,
+      "mipmap_larger": true,
       "mipmap_pow2": true,
       "ok": true,
       "path": "/materials/kittyyingyang_dribbble.tex",
@@ -203,8 +203,8 @@
       "texs": 2,
       "texv": 5,
       "width": 800,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -229,8 +229,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2048,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     }
   ],
   "workshop_dir": "1695353047"

@@ -8,8 +8,12 @@
     {
       "anim_tracks": [
         {
+          "blend_curves_count": 0,
           "bone_track_count": 3,
+          "events_count": 0,
           "fps": 59.66666793823242,
+          "has_aabb": false,
+          "has_trans": false,
           "id": 482,
           "length": 179,
           "mode": 0,
@@ -34,7 +38,9 @@
             }
           ],
           "name": "抖腿2",
-          "total_bone_frames": 540
+          "scalar_curves_count": 0,
+          "total_bone_frames": 540,
+          "v4_events_count": 0
         }
       ],
       "anims": 1,
@@ -97,23 +103,35 @@
         }
       ],
       "bones": 3,
+      "flag": [
+        "00001001",
+        "00000000",
+        "10000000",
+        "00000001"
+      ],
       "index_count": 241,
       "mat_json_file": "materials/10.json",
       "mdla": 4,
       "mdls": 2,
       "mdlv": 17,
+      "mesh_count": 1,
       "ok": true,
       "part_count": 0,
       "parts": [],
       "path": "/models/10_puppet.mdl",
+      "skin_count": 1,
       "vert_extra_count": 0,
       "vertex_count": 141
     },
     {
       "anim_tracks": [
         {
+          "blend_curves_count": 0,
           "bone_track_count": 3,
+          "events_count": 0,
           "fps": 59.83333206176758,
+          "has_aabb": false,
+          "has_trans": false,
           "id": 453,
           "length": 359,
           "mode": 0,
@@ -138,7 +156,9 @@
             }
           ],
           "name": "弹琴",
-          "total_bone_frames": 1080
+          "scalar_curves_count": 0,
+          "total_bone_frames": 1080,
+          "v4_events_count": 0
         }
       ],
       "anims": 1,
@@ -201,23 +221,35 @@
         }
       ],
       "bones": 3,
+      "flag": [
+        "00001001",
+        "00000000",
+        "10000000",
+        "00000001"
+      ],
       "index_count": 227,
       "mat_json_file": "materials/8.json",
       "mdla": 4,
       "mdls": 2,
       "mdlv": 17,
+      "mesh_count": 1,
       "ok": true,
       "part_count": 0,
       "parts": [],
       "path": "/models/8_puppet.mdl",
+      "skin_count": 1,
       "vert_extra_count": 0,
       "vertex_count": 135
     },
     {
       "anim_tracks": [
         {
+          "blend_curves_count": 0,
           "bone_track_count": 3,
+          "events_count": 0,
           "fps": 59.66666793823242,
+          "has_aabb": false,
+          "has_trans": false,
           "id": 474,
           "length": 179,
           "mode": 0,
@@ -242,7 +274,9 @@
             }
           ],
           "name": "动画 2",
-          "total_bone_frames": 540
+          "scalar_curves_count": 0,
+          "total_bone_frames": 540,
+          "v4_events_count": 0
         }
       ],
       "anims": 1,
@@ -305,15 +339,23 @@
         }
       ],
       "bones": 3,
+      "flag": [
+        "00001001",
+        "00000000",
+        "10000000",
+        "00000001"
+      ],
       "index_count": 282,
       "mat_json_file": "materials/9.json",
       "mdla": 4,
       "mdls": 2,
       "mdlv": 17,
+      "mesh_count": 1,
       "ok": true,
       "part_count": 0,
       "parts": [],
       "path": "/models/9_puppet.mdl",
+      "skin_count": 1,
       "vert_extra_count": 0,
       "vertex_count": 165
     }
@@ -783,7 +825,7 @@
                 "use_puppet": false
               }
             ],
-            "name": "ui_editor_effect_shake_title",
+            "name": "大摇",
             "pass_count": 1,
             "passes": [
               {
@@ -832,7 +874,7 @@
                 "use_puppet": false
               }
             ],
-            "name": "ui_editor_effect_shake_title",
+            "name": "脑袋",
             "pass_count": 1,
             "passes": [
               {
@@ -1039,7 +1081,7 @@
                 "use_puppet": false
               }
             ],
-            "name": "ui_editor_effect_shake_title",
+            "name": "大摇",
             "pass_count": 1,
             "passes": [
               {
@@ -1200,7 +1242,7 @@
                 "use_puppet": false
               }
             ],
-            "name": "ui_editor_effect_shake_title",
+            "name": "大摇",
             "pass_count": 1,
             "passes": [
               {
@@ -2340,7 +2382,7 @@
                 "use_puppet": false
               }
             ],
-            "name": "ui_editor_effect_shake_title",
+            "name": "左耳",
             "pass_count": 1,
             "passes": [
               {
@@ -2389,7 +2431,7 @@
                 "use_puppet": false
               }
             ],
-            "name": "ui_editor_effect_shake_title",
+            "name": "右耳朵",
             "pass_count": 1,
             "passes": [
               {
@@ -2438,7 +2480,7 @@
                 "use_puppet": false
               }
             ],
-            "name": "ui_editor_effect_shake_title",
+            "name": "脑袋",
             "pass_count": 1,
             "passes": [
               {
@@ -2487,7 +2529,7 @@
                 "use_puppet": false
               }
             ],
-            "name": "ui_editor_effect_shake_title",
+            "name": "大摇",
             "pass_count": 1,
             "passes": [
               {
@@ -2701,8 +2743,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2048,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -2727,8 +2769,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2048,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -2753,8 +2795,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2048,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -2779,8 +2821,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2048,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -2805,8 +2847,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2048,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -2831,8 +2873,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2048,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -2857,8 +2899,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2048,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -2883,8 +2925,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2048,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -2909,8 +2951,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2048,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -2935,8 +2977,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2048,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -2961,8 +3003,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2048,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -2987,8 +3029,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3013,8 +3055,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3039,8 +3081,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3065,8 +3107,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3091,8 +3133,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3117,8 +3159,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3143,8 +3185,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3169,8 +3211,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3195,8 +3237,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3221,8 +3263,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3247,8 +3289,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3273,8 +3315,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3299,8 +3341,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3325,8 +3367,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3351,8 +3393,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3377,8 +3419,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3403,8 +3445,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3429,8 +3471,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3455,8 +3497,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -3481,8 +3523,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     }
   ],
   "workshop_dir": "2370640409"

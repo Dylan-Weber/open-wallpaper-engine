@@ -6,8 +6,613 @@
   },
   "puppets": [],
   "scene": {
-    "error": "[json.exception.type_error.302] type must be boolean, but is object",
-    "parsed": false
+    "camera": {
+      "center": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "eye": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "up": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    "general": {
+      "ambientcolor": [
+        0.30000001192092896,
+        0.30000001192092896,
+        0.30000001192092896
+      ],
+      "cameraparallax": true,
+      "cameraparallaxamount": 0.5,
+      "cameraparallaxdelay": 0.10000000149011612,
+      "cameraparallaxmouseinfluence": 0.30000001192092896,
+      "clearcolor": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "farz": 10000.0,
+      "fov": 50.0,
+      "nearz": 0.009999999776482582,
+      "skylightcolor": [
+        0.30000001192092896,
+        0.30000001192092896,
+        0.30000001192092896
+      ],
+      "zoom": 1.0
+    },
+    "is_ortho": true,
+    "object_count": 9,
+    "objects": [
+      {
+        "alignment": "center",
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles": "0.00000 0.00000 0.00000",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          0.5882400274276733,
+          0.5882400274276733,
+          0.5882400274276733
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 1,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/foliagesway",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_foliage_sway_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {
+                  "phase": [
+                    0.800000011920929
+                  ],
+                  "power": [
+                    1.6799999475479126
+                  ],
+                  "ratio": [
+                    0.699999988079071
+                  ],
+                  "scale": [
+                    0.5199999809265137
+                  ],
+                  "speeduv": [
+                    11.430000305175781
+                  ],
+                  "strength": [
+                    0.3100000023841858
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/foliagesway_mask_4122985d011a13fce0660704655d55ee412678c0",
+                  "util/noise"
+                ]
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": false,
+        "id": 31,
+        "image": "models/ar2.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "version": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "ar2"
+          ],
+          "use_puppet": false
+        },
+        "name": "ar2",
+        "nopadding": false,
+        "origin": "1280.00000 720.00000 0.00000",
+        "origin_parsed": [
+          1280.0,
+          720.0,
+          0.0
+        ],
+        "parallaxDepth": "0.20000 0.00000",
+        "parsed": true,
+        "puppet": "",
+        "scale": "1.00000 1.00000 1.00000",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "2560.00000 1440.00000",
+        "size_parsed": [
+          2560.0,
+          1440.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment": "center",
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles": "0.00000 0.00000 0.00000",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          0.9058799743652344,
+          0.9058799743652344,
+          0.9058799743652344
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 0,
+        "effects": [],
+        "fullscreen": false,
+        "id": 35,
+        "image": "models/fff.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "version": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "fff"
+          ],
+          "use_puppet": false
+        },
+        "name": "fff",
+        "nopadding": false,
+        "origin": "1280.00000 720.00000 0.00000",
+        "origin_parsed": [
+          1280.0,
+          720.0,
+          0.0
+        ],
+        "parallaxDepth": "0.00000 0.00000",
+        "parsed": true,
+        "puppet": "",
+        "scale": "1.00000 1.00000 1.00000",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "2560.00000 1440.00000",
+        "size_parsed": [
+          2560.0,
+          1440.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "angles": "0.00000 0.00000 0.00000",
+        "id": 39,
+        "kind": "unknown",
+        "name": "Clock",
+        "origin": "475.35336 1192.85889 0.00000",
+        "parallaxDepth": "0.10000 0.00000",
+        "scale": "1.00000 1.00000 1.00000",
+        "size": "261.00000 120.00000",
+        "visible": true
+      },
+      {
+        "angles": "0.00000 0.00000 -0.17453",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          -0.1745299994945526
+        ],
+        "animationmode": "",
+        "child_count": 0,
+        "controlpoint_count": 8,
+        "emitter_count": 1,
+        "id": 74,
+        "initializer_count": 4,
+        "kind": "particle",
+        "maxcount": 512,
+        "name": "Rain perspective",
+        "operator_count": 1,
+        "origin": "1759.83643 881.47992 0.00000",
+        "origin_parsed": [
+          1759.83642578125,
+          881.4799194335938,
+          0.0
+        ],
+        "parallaxDepth": "0.10000 0.00000",
+        "parsed": true,
+        "particle": "particles/presets/rainperspective.json",
+        "renderer_count": 1,
+        "scale": "0.72681 0.70104 1.00000",
+        "scale_parsed": [
+          0.7268099784851074,
+          0.7010400295257568,
+          1.0
+        ],
+        "starttime": 0,
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "angles": "0.00000 0.00000 -0.17453",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          -0.1745299994945526
+        ],
+        "animationmode": "",
+        "child_count": 0,
+        "controlpoint_count": 8,
+        "emitter_count": 1,
+        "id": 121,
+        "initializer_count": 4,
+        "kind": "particle",
+        "maxcount": 512,
+        "name": "Rain perspective",
+        "operator_count": 1,
+        "origin": "1542.98657 912.86603 0.00000",
+        "origin_parsed": [
+          1542.986572265625,
+          912.8660278320313,
+          0.0
+        ],
+        "parallaxDepth": "0.10000 0.00000",
+        "parsed": true,
+        "particle": "particles/presets/rainperspective.json",
+        "renderer_count": 1,
+        "scale": "0.66084 0.70104 1.00000",
+        "scale_parsed": [
+          0.6608399748802185,
+          0.7010400295257568,
+          1.0
+        ],
+        "starttime": 0,
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment": "center",
+        "alignment_parsed": "center",
+        "alpha": 0.03999999910593033,
+        "angles": "0.00000 0.00000 0.00000",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 1,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/pulse",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_pulse_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {
+                  "PULSEALPHA": 1,
+                  "PULSECOLOR": 0
+                },
+                "constantshadervalues": {
+                  "amount": [
+                    0.0
+                  ],
+                  "bounds": [
+                    0.0,
+                    -15.0
+                  ],
+                  "noiseamount": [
+                    1.5
+                  ],
+                  "noisespeed": [
+                    0.12999999523162842
+                  ],
+                  "phase": [
+                    6.25
+                  ],
+                  "power": [
+                    3.380000114440918
+                  ],
+                  "speed": [
+                    0.10999999940395355
+                  ]
+                },
+                "target": "",
+                "textures": [
+                  "",
+                  "util/noise"
+                ]
+              }
+            ],
+            "visible": false
+          }
+        ],
+        "fullscreen": false,
+        "id": 137,
+        "image": "models/util/solidlayer.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {},
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "flat",
+          "textures": [],
+          "use_puppet": false
+        },
+        "name": "Solid",
+        "nopadding": false,
+        "origin": "1589.12573 850.02948 0.00000",
+        "origin_parsed": [
+          1589.125732421875,
+          850.0294799804688,
+          0.0
+        ],
+        "parallaxDepth": "0.00000 0.00000",
+        "parsed": true,
+        "puppet": "",
+        "scale": "1.51359 1.19973 1.00000",
+        "scale_parsed": [
+          1.5135899782180786,
+          1.1997300386428833,
+          1.0
+        ],
+        "size": "1280.00000 960.00000",
+        "size_parsed": [
+          1280.0,
+          960.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment": "center",
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles": "0.00000 0.00000 0.00000",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          0.6901999711990356,
+          0.6901999711990356,
+          0.6901999711990356
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 0,
+        "effects": [],
+        "fullscreen": false,
+        "id": 139,
+        "image": "models/ppp9.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "version": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "ppp9"
+          ],
+          "use_puppet": false
+        },
+        "name": "ppp9",
+        "nopadding": false,
+        "origin": "1280.00000 720.00000 0.00000",
+        "origin_parsed": [
+          1280.0,
+          720.0,
+          0.0
+        ],
+        "parallaxDepth": "0.10000 0.00000",
+        "parsed": true,
+        "puppet": "",
+        "scale": "1.04000 1.00000 1.00000",
+        "scale_parsed": [
+          1.0399999618530273,
+          1.0,
+          1.0
+        ],
+        "size": "2560.00000 1440.00000",
+        "size_parsed": [
+          2560.0,
+          1440.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment": "center",
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles": "0.00000 0.00000 0.00000",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          0.5882400274276733,
+          0.5882400274276733,
+          0.5882400274276733
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 1,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/shake",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_shake_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {},
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/shake_mask_ee0d9bbc6d0516b8583c8fb3e841485c0b7ec4e8",
+                  "util/white"
+                ]
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": false,
+        "id": 547,
+        "image": "models/gato4.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "version": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "gato4"
+          ],
+          "use_puppet": false
+        },
+        "name": "gato4",
+        "nopadding": false,
+        "origin": "1260.27795 627.49677 0.00000",
+        "origin_parsed": [
+          1260.2779541015625,
+          627.4967651367188,
+          0.0
+        ],
+        "parallaxDepth": "0.10000 0.00000",
+        "parsed": true,
+        "puppet": "",
+        "scale": "0.45000 0.45000 1.00000",
+        "scale_parsed": [
+          0.44999998807907104,
+          0.44999998807907104,
+          1.0
+        ],
+        "size": "960.00000 1280.00000",
+        "size_parsed": [
+          960.0,
+          1280.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "angles": "0.00000 0.00000 0.00000",
+        "id": 551,
+        "kind": "unknown",
+        "name": "Clock",
+        "origin": "475.35336 1192.85889 0.00000",
+        "parallaxDepth": "0.10000 0.00000",
+        "scale": "-1.00000 1.00000 1.00000",
+        "size": "261.00000 120.00000",
+        "visible": false
+      }
+    ],
+    "ortho": {
+      "height": 1440,
+      "width": 2560
+    },
+    "parsed": true
   },
   "textures": [
     {
@@ -33,8 +638,8 @@
       "texs": 0,
       "texv": 5,
       "width": 4096,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -59,8 +664,8 @@
       "texs": 0,
       "texv": 5,
       "width": 4096,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -85,8 +690,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -111,8 +716,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2048,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -137,8 +742,8 @@
       "texs": 0,
       "texv": 5,
       "width": 512,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -163,8 +768,8 @@
       "texs": 0,
       "texv": 5,
       "width": 4096,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     }
   ],
   "workshop_dir": "2513410552"

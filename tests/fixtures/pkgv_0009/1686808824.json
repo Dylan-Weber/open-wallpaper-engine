@@ -6,8 +6,562 @@
   },
   "puppets": [],
   "scene": {
-    "error": "[json.exception.type_error.302] type must be boolean, but is object",
-    "parsed": false
+    "camera": {
+      "center": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "eye": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "up": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    "general": {
+      "ambientcolor": [
+        0.30000001192092896,
+        0.30000001192092896,
+        0.30000001192092896
+      ],
+      "cameraparallax": false,
+      "clearcolor": [
+        0.699999988079071,
+        0.699999988079071,
+        0.699999988079071
+      ],
+      "farz": 10000.0,
+      "fov": 50.0,
+      "nearz": 0.009999999776482582,
+      "skylightcolor": [
+        0.30000001192092896,
+        0.30000001192092896,
+        0.30000001192092896
+      ],
+      "zoom": 1.0
+    },
+    "is_ortho": true,
+    "object_count": 8,
+    "objects": [
+      {
+        "alignment": "center",
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles": "0.000 0.000 0.000",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 0,
+        "effects": [],
+        "fullscreen": false,
+        "id": 12,
+        "image": "models/未标题-1.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {},
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "未标题-1"
+          ],
+          "use_puppet": false
+        },
+        "name": "未标题-1",
+        "nopadding": false,
+        "origin": "960.000 540.000 0.000",
+        "origin_parsed": [
+          960.0,
+          540.0,
+          0.0
+        ],
+        "parallaxDepth": "0.000 0.000",
+        "parsed": true,
+        "puppet": "",
+        "scale": "1.000 1.000 1.000",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "1920.000 1080.000",
+        "size_parsed": [
+          1920.0,
+          1080.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment": "center",
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles": "0.000 0.000 0.000",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 16,
+        "effect_count": 0,
+        "effects": [],
+        "fullscreen": false,
+        "id": 19,
+        "image": "models/20190318232051.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "spritesheet": 1
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "20190318232051"
+          ],
+          "use_puppet": false
+        },
+        "name": "CAT",
+        "nopadding": true,
+        "origin": "960.000 540.000 0.000",
+        "origin_parsed": [
+          960.0,
+          540.0,
+          0.0
+        ],
+        "parallaxDepth": "0.000 0.000",
+        "parsed": true,
+        "puppet": "",
+        "scale": "1.000 1.000 1.000",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "525.000 525.000",
+        "size_parsed": [
+          525.0,
+          525.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment": "center",
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles": "0.000 0.000 0.000",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 1,
+        "effects": [
+          {
+            "fbo_count": 0,
+            "fbos": [],
+            "material_count": 1,
+            "materials": [
+              {
+                "blending": "normal",
+                "combos": {},
+                "constantshadervalues": {},
+                "cullmode": "nocull",
+                "depthtest": "disabled",
+                "depthwrite": "disabled",
+                "shader": "effects/opacity",
+                "textures": [],
+                "use_puppet": false
+              }
+            ],
+            "name": "ui_editor_effect_opacity_title",
+            "pass_count": 1,
+            "passes": [
+              {
+                "bind": [],
+                "combos": {},
+                "constantshadervalues": {},
+                "target": "",
+                "textures": [
+                  "",
+                  "masks/opacity_mask_ee0d9bbc6d0516b8583c8fb3e841485c0b7ec4e8"
+                ]
+              }
+            ],
+            "visible": true
+          }
+        ],
+        "fullscreen": false,
+        "id": 83,
+        "image": "models/workshop/2107481179/clockface10.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "version": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "workshop/2107481179/clockface10"
+          ],
+          "use_puppet": false
+        },
+        "name": "clockface10",
+        "nopadding": false,
+        "origin": "960.000 540.000 0.000",
+        "origin_parsed": [
+          960.0,
+          540.0,
+          0.0
+        ],
+        "parallaxDepth": "1.000 1.000",
+        "parsed": true,
+        "puppet": "",
+        "scale": "1.000 1.000 1.000",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "960.000 960.000",
+        "size_parsed": [
+          960.0,
+          960.0
+        ],
+        "visible": false,
+        "visible_parsed": false
+      },
+      {
+        "alignment": "center",
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles": "0.000 0.000 0.000",
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 0,
+        "effects": [],
+        "fullscreen": false,
+        "id": 87,
+        "image": "models/workshop/2127844565/bar.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "version": 2
+          },
+          "constantshadervalues": {
+            "Alpha": [
+              1.0
+            ],
+            "Scroll 1 X": [
+              0.0
+            ],
+            "Scroll 1 Y": [
+              0.0
+            ],
+            "color": [
+              1.0,
+              1.0,
+              1.0
+            ]
+          },
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "workshop/2127844565/tint",
+          "textures": [
+            "workshop/2127844565/bar"
+          ],
+          "use_puppet": false
+        },
+        "name": "Simple Circle Visualizer",
+        "nopadding": false,
+        "origin": "960.000 540.000 0.000",
+        "origin_parsed": [
+          960.0,
+          540.0,
+          0.0
+        ],
+        "parallaxDepth": "1.000 1.000",
+        "parsed": true,
+        "puppet": "",
+        "scale": "4.022 4.022 4.022",
+        "scale_parsed": [
+          4.021999835968018,
+          4.021999835968018,
+          4.021999835968018
+        ],
+        "size": "4.000 4.000",
+        "size_parsed": [
+          4.0,
+          4.0
+        ],
+        "visible": true,
+        "visible_parsed": true
+      },
+      {
+        "alignment": "center",
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles": {
+          "script": "'use strict';\nexport let __workshopId = '2107481179';\n\n/**\n * Bind this script to the angles property of a layer for a simple 2D rotation.\n */\n\nlet rotationSpeed = 0.1;\n\n/**\n * @param {Vec3} value\n */\nexport function update(value) {\n\tvalue.z = engine.timeOfDay * -720;\n\treturn value;\n}\n",
+          "value": "0.000 0.000 0.000"
+        },
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 0,
+        "effects": [],
+        "fullscreen": false,
+        "id": 106,
+        "image": "models/workshop/2107481179/hour_white.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "version": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "workshop/2107481179/hour_white"
+          ],
+          "use_puppet": false
+        },
+        "name": "hour_white",
+        "nopadding": false,
+        "origin": "960.000 540.000 0.000",
+        "origin_parsed": [
+          960.0,
+          540.0,
+          0.0
+        ],
+        "parallaxDepth": "1.000 1.000",
+        "parsed": true,
+        "puppet": "",
+        "scale": "1.000 1.000 1.000",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "960.000 960.000",
+        "size_parsed": [
+          960.0,
+          960.0
+        ],
+        "visible": false,
+        "visible_parsed": false
+      },
+      {
+        "alignment": "center",
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles": {
+          "script": "'use strict';\nexport let __workshopId = '2107481179';\n\n/**\n * Bind this script to the angles property of a layer for a simple 2D rotation.\n */\n\nlet rotationSpeed = 0.1;\n\n/**\n * @param {Vec3} value\n */\nexport function update(value) {\n\tvalue.z = ((engine.timeOfDay * 24) % 1) * -360;\n\treturn value;\n}\n",
+          "value": "0.000 0.000 0.000"
+        },
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 0,
+        "effects": [],
+        "fullscreen": false,
+        "id": 109,
+        "image": "models/workshop/2107481179/minute_white.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "version": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "workshop/2107481179/minute_white"
+          ],
+          "use_puppet": false
+        },
+        "name": "minute_white",
+        "nopadding": false,
+        "origin": "960.000 540.000 0.000",
+        "origin_parsed": [
+          960.0,
+          540.0,
+          0.0
+        ],
+        "parallaxDepth": "1.000 1.000",
+        "parsed": true,
+        "puppet": "",
+        "scale": "1.000 1.000 1.000",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "960.000 960.000",
+        "size_parsed": [
+          960.0,
+          960.0
+        ],
+        "visible": false,
+        "visible_parsed": false
+      },
+      {
+        "alignment": "center",
+        "alignment_parsed": "center",
+        "alpha": 1.0,
+        "angles": {
+          "script": "'use strict';\nexport let __workshopId = '2107481179';\n\n/**\n* Bind this script to the angles property of a layer for a simple 2D rotation.\n*/\n\nlet rotationSpeed = 0.1;\n\n/**\n* @param {Vec3} value\n*/\nexport function update(value) {\nvalue.z = ((engine.timeOfDay * 1440) % 1) * -360;\nreturn value;\n}\n",
+          "value": "0.000 0.000 0.000"
+        },
+        "angles_parsed": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "brightness": 1.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "colorBlendMode": 0,
+        "effect_count": 0,
+        "effects": [],
+        "fullscreen": false,
+        "id": 112,
+        "image": "models/workshop/2107481179/seconds_white.json",
+        "kind": "image",
+        "material": {
+          "blending": "translucent",
+          "combos": {
+            "version": 2
+          },
+          "constantshadervalues": {},
+          "cullmode": "nocull",
+          "depthtest": "disabled",
+          "depthwrite": "disabled",
+          "shader": "genericimage2",
+          "textures": [
+            "workshop/2107481179/seconds_white"
+          ],
+          "use_puppet": false
+        },
+        "name": "seconds_white",
+        "nopadding": false,
+        "origin": "960.000 540.000 0.000",
+        "origin_parsed": [
+          960.0,
+          540.0,
+          0.0
+        ],
+        "parallaxDepth": "1.000 1.000",
+        "parsed": true,
+        "puppet": "",
+        "scale": "1.000 1.000 1.000",
+        "scale_parsed": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "size": "960.000 960.000",
+        "size_parsed": [
+          960.0,
+          960.0
+        ],
+        "visible": false,
+        "visible_parsed": false
+      },
+      {
+        "angles": "0.000 0.000 0.000",
+        "id": 212,
+        "kind": "unknown",
+        "name": "Clock",
+        "origin": "960.000 341.633 0.000",
+        "parallaxDepth": "1.000 1.000",
+        "scale": "0.789 0.789 0.789",
+        "size": "330.000 160.000",
+        "visible": false
+      }
+    ],
+    "ortho": {
+      "height": 1080,
+      "width": 1920
+    },
+    "parsed": true
   },
   "textures": [
     {
@@ -23,7 +577,7 @@
       "map_height": 525,
       "map_width": 525,
       "min_filter": 1,
-      "mipmap_larger": false,
+      "mipmap_larger": true,
       "mipmap_pow2": true,
       "ok": true,
       "path": "/materials/20190318232051.tex",
@@ -33,8 +587,8 @@
       "texs": 2,
       "texv": 5,
       "width": 525,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -59,8 +613,8 @@
       "texs": 0,
       "texv": 5,
       "width": 512,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -85,8 +639,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -111,8 +665,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -137,8 +691,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -163,8 +717,8 @@
       "texs": 0,
       "texv": 5,
       "width": 1024,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -189,8 +743,8 @@
       "texs": 0,
       "texv": 5,
       "width": 4,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     },
     {
       "compo1": 0,
@@ -215,8 +769,8 @@
       "texs": 0,
       "texv": 5,
       "width": 2048,
-      "wrap_s": 0,
-      "wrap_t": 0
+      "wrap_s": "clamp_to_edge",
+      "wrap_t": "clamp_to_edge"
     }
   ],
   "workshop_dir": "1686808824"
