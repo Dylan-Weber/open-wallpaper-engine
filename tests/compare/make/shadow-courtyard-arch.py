@@ -6,7 +6,7 @@
 # -closed, the wall two-sided (each triangle twice); -clipped, the wall's foot raised to the floor's top (y 0.84);
 # -slab / -slab-sunk, a plain box in the wall's place standing on the floor's top / from 0.44 (sunk 0.4);
 # -flat-slab / -flat-slab-sunk, the same under a flat, top-only floor at 0.84; -flat-wall(-clipped), the real wall
-# (clipped) over that flat floor.
+# (clipped) over that flat floor; -flat-face(-closed), only its main face there.
 import struct
 CENTER = (8.98972, 1.30595, -0.10218)
 DATA = json.load(open(os.path.join(os.path.dirname(HERE), 'make', 'data', 'courtyard-arch.json')))
@@ -26,7 +26,7 @@ def mesh_mdl(parts):
     return data
 
 
-def make(name, floor_dy=0.0, vault=True, wall=True, closed=False, clip=None, slab=None, flat=False):
+def make(name, floor_dy=0.0, vault=True, wall=True, closed=False, clip=None, slab=None, flat=False, face_only=False):
     w = Scene3D(name, 'the courtyard wall that casts the edge (%s)' % name, ambient='0.15 0.15 0.15',
                 eye='0.98868 0.13889 0.05676')
     mat = 'materials/plain.json'
@@ -44,6 +44,8 @@ def make(name, floor_dy=0.0, vault=True, wall=True, closed=False, clip=None, sla
             tris = tris + [[t[0] + n, t[2] + n, t[1] + n] for t in tris]
         return (mat, ps, normals, tris)
     upright = (lambda n: True) if vault else (lambda n: abs(n[1]) < 0.01)
+    if face_only:  # only the wall's main face (normal -z, z 0.80)
+        upright = lambda n: n[2] < -0.99
     mdl = 'models/arch.mdl'
     floor = part('floor', floor_dy)
     if flat:  # one upward quad at the stone floor's top (y 0.84), x 0..16, z -4..4: top only, as the stone floor is
@@ -79,3 +81,6 @@ make('shadow-courtyard-arch-flat-slab-sunk', wall=False, slab=0.44, flat=True)
 # the real wall over the flat floor: whether the wall's own shape, rather than the stone floor, makes the strip
 make('shadow-courtyard-arch-flat-wall', flat=True)
 make('shadow-courtyard-arch-flat-wall-clipped', flat=True, clip=0.84)
+# only the wall's main face (its 6 triangles, z 0.80) over the flat floor, one- and two-sided
+make('shadow-courtyard-arch-flat-face', flat=True, face_only=True)
+make('shadow-courtyard-arch-flat-face-closed', flat=True, face_only=True, closed=True)
