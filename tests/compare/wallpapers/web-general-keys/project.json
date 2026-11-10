@@ -1,0 +1,15 @@
+{
+  "file": "index.html",
+  "type": "web",
+  "title": "general dump ",
+  "general": {
+    "properties": {
+      "probe": {
+        "order": 1,
+        "text": "probe",
+        "type": "bool",
+        "value": true
+      }
+    }
+  }
+}

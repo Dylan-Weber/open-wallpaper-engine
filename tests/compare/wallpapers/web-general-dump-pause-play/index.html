@@ -1,0 +1,81 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>general dump</title>
+<style>
+html, body { margin: 0; background: #000; color: #fff; font: 14px monospace; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes glow { from { opacity: 0.2; } to { opacity: 1; } }
+#real { position: absolute; left: 40px; top: 300px; width: 80px; height: 80px; background: #08f; animation: spin 4s linear infinite; }
+#pseudo { position: absolute; left: 240px; top: 300px; width: 80px; height: 80px; }
+#pseudo::before { content: ""; display: block; width: 80px; height: 80px; background: #f80; animation: glow 2s linear infinite alternate; }
+#pseudo::after { content: ""; position: absolute; left: 100px; top: 0; width: 40px; height: 40px; background: #0f8; animation: spin 3s linear infinite; }
+</style></head>
+<body><pre id="t"></pre><div id="real"></div><div id="pseudo"></div>
+<script>
+var T0 = performance.now(), events = [];
+function now() { return Math.round(performance.now() - T0); }
+function clone(v) { return JSON.parse(JSON.stringify(v)); }
+window.wallpaperPropertyListener = {
+    applyUserProperties: function (p) { events.push({t: now(), ev: 'user', keys: Object.keys(p).length}); },
+    applyGeneralProperties: function (p) { events.push({t: now(), ev: 'general', args: clone(p)}); },
+    setPaused: function (v) { events.push({t: now(), ev: 'paused', value: v}); }
+};
+function sheets() {
+    return Array.prototype.map.call(document.styleSheets, function (s) {
+        var rules = [];
+        try { rules = Array.prototype.map.call(s.cssRules, function (r) { return r.cssText; }); } catch (e) { rules = ['(blocked)']; }
+        return {owner: s.ownerNode ? s.ownerNode.outerHTML.slice(0, 200) : null, href: s.href, rules: rules};
+    });
+}
+new MutationObserver(function (list) {
+    list.forEach(function (m) {
+        if (m.type === 'attributes') events.push({t: now(), ev: 'attr', target: m.target.tagName, name: m.attributeName, value: m.target.getAttribute(m.attributeName)});
+        else m.addedNodes.forEach(function (n) {
+            events.push({t: now(), ev: 'added', in: m.target.tagName, node: n.nodeType === 1 ? n.outerHTML.slice(0, 2000) : '#' + n.nodeType});
+        });
+    });
+}).observe(document, {childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style']});
+// the stable part of dumpProbe (no times): what compare.json "web_eval" of web-general-keys* compares
+window.generalProbe = function () {
+    var general = events.filter(function (e) { return e.ev === 'general'; });
+    var rules = [];
+    Array.prototype.forEach.call(document.styleSheets, function (s) {
+        Array.prototype.forEach.call(s.cssRules, function (r) { if (r.cssText.indexOf('wpx') >= 0) rules.push(r.cssText); });
+    });
+    var d = window.dumpProbe();
+    return {
+        general_calls: general.length,
+        general_keys: general.length ? Object.keys(general[0].args).sort() : null,
+        general_types: general.length ? Object.keys(general[0].args).sort().map(function (k) {
+            var v = general[0].args[k]; return k + ':' + (v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v); }) : null,
+        paused_calls: events.filter(function (e) { return e.ev === 'paused'; }).map(function (e) { return e.value; }),
+        pause_rules: rules,
+        html_class: document.documentElement.className,
+        inline_style_everywhere: Array.prototype.every.call(document.querySelectorAll('*'), function (e) {
+            return e.style.animationPlayState === (document.documentElement.style.animationPlayState); }),
+        html_inline: document.documentElement.getAttribute('style'),
+        animation_states: d.animations.map(function (a) { return a.name + '/' + (a.pseudo || 'element') + ':' + a.state; }),
+        computed_states: d.computed.map(function (c) { return c.id + ':' + c.state + '/' + c.before + '/' + c.after; })
+    };
+};
+window.dumpProbe = function () {
+    return {
+        events: events,
+        general_calls: events.filter(function (e) { return e.ev === 'general'; }).length,
+        html_class: document.documentElement.className, html_style: document.documentElement.getAttribute('style'),
+        body_class: document.body.className,
+        heads: document.head.innerHTML.length,
+        sheets: sheets(),
+        adopted: (document.adoptedStyleSheets || []).map(function (s) { return Array.prototype.map.call(s.cssRules, function (r) { return r.cssText; }); }),
+        animations: document.getAnimations().map(function (a) {
+            return {state: a.playState, name: a.animationName, target: a.effect && a.effect.target ? a.effect.target.id : null,
+                    pseudo: a.effect ? a.effect.pseudoElement : null, time: Math.round(a.currentTime)};
+        }),
+        computed: ['real', 'pseudo'].map(function (id) {
+            var e = document.getElementById(id);
+            return {id: id, state: getComputedStyle(e).animationPlayState, before: getComputedStyle(e, '::before').animationPlayState,
+                    after: getComputedStyle(e, '::after').animationPlayState};
+        }),
+        page_ms: now()
+    };
+};
+</script></body></html>
