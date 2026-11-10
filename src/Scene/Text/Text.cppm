@@ -163,6 +163,9 @@ struct TextLayoutStyle {
     TextMeshOrigin  mesh_origin { TextMeshOrigin::InkBounds };
     array<float, 3> color { 1.0f, 1.0f, 1.0f };
     float           alpha { 1.0f };
+    // how much finer than its layer's units outlined text is rasterised (its layer's scale on
+    // screen), so it stays sharp as Wallpaper Engine's distance-field outlines do
+    float           raster_scale { 1.0f };
     float           brightness { 1.0f };
 
     bool            opaquebackground { false };

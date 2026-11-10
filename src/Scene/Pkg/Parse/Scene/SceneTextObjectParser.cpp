@@ -344,6 +344,16 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
                                     obj.outlinecolor[usize(1)],
                                     obj.outlinecolor[usize(2)] };
     style.outline_thickness     = obj.outlinethickness;
+    // outlined text drawn straight to the scene is rasterised at its layer's scale, as Wallpaper
+    // Engine's distance-field outlines stay sharp when a layer is scaled up (text-oot-clock); text it
+    // composites first (translucent, with effects, a background...) is drawn at the layer's size and
+    // scaled up soft, in both (text-outline-scaled)
+    if (obj.outline && obj.outlinethickness > 0 && direct_text && obj.alpha >= 1.0f) {
+        const float on_screen = rstd::cmp::max(f32(obj.scale[usize()]).abs().to_primitive(),
+                                               f32(obj.scale[usize(1)]).abs().to_primitive());
+        style.raster_scale =
+            rstd::cmp::min(8.0f, rstd::cmp::max(1.0f, f32(on_screen).round().to_primitive()));
+    }
     style.halign  = (obj.horizontalalign.is_empty() ? obj.alignment : obj.horizontalalign).clone();
     style.padding = rstd::as_cast<float>(obj.padding);
     if (obj.limitwidth && obj.maxwidth > 0.0f) style.wrap_width = obj.maxwidth;
