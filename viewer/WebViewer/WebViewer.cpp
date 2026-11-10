@@ -14,6 +14,7 @@ import viewer.web;
 import viewer.glfw_vulkan;
 
 using rstd::time::Duration;
+using rstd::time::Instant;
 
 using namespace viewer::glfw;
 
@@ -36,6 +37,8 @@ struct WebViewerArgs {
     i32    width;
     i32    height;
     i32    remote_debugging_port;
+    i32    pause_after_ms;
+    i32    resume_after_ms;
 };
 
 template<typename T>
@@ -65,6 +68,18 @@ auto ParseWebViewerArgs(int argc, char** argv) -> Result<WebViewerArgs, owe::cli
                             .long_name("remote-debugging-port"_str)
                             .help("if non-zero, expose chrome devtools on this localhost port"_str)
                             .default_value("0"_str));
+    auto pause_after =
+        command.add_arg(Arg<i32>::value("pause-after-ms"_str, from_str_parser<i32>())
+                            .long_name("pause-after-ms"_str)
+                            .help("if non-zero, pause the page (as Wallpaper Engine's -control pause) "
+                                  "this many milliseconds after the window opens"_str)
+                            .default_value("0"_str));
+    auto resume_after =
+        command.add_arg(Arg<i32>::value("resume-after-ms"_str, from_str_parser<i32>())
+                            .long_name("resume-after-ms"_str)
+                            .help("if non-zero, resume the page this many milliseconds after the "
+                                  "window opens"_str)
+                            .default_value("0"_str));
     auto presenter =
         command.add_arg(Arg<String>::value("presenter"_str, string_parser())
                             .long_name("presenter"_str)
@@ -84,6 +99,8 @@ auto ParseWebViewerArgs(int argc, char** argv) -> Result<WebViewerArgs, owe::cli
         .width                 = Value(matches, width),
         .height                = Value(matches, height),
         .remote_debugging_port = Value(matches, remote_debugging_port),
+        .pause_after_ms        = Value(matches, pause_after),
+        .resume_after_ms       = Value(matches, resume_after),
     });
 }
 
@@ -391,8 +408,23 @@ int main(int argc, char** argv) {
 
     // Main loop. ~60Hz nominal. CefDoMessageLoopWork is cheap; the
     // Vulkan FIFO present pacing also throttles us.
+    bool       paused_by_option  = false;
+    bool       resumed_by_option = false;
+    const auto opened_at         = Instant::now();
+    const int  pause_ms          = args.pause_after_ms.to_primitive();
+    const int  resume_ms         = args.resume_after_ms.to_primitive();
     while (! host.ShouldExit()) {
         glfwPollEvents();
+        if (pause_ms > 0 && ! paused_by_option &&
+            Instant::now() >= opened_at + Duration::from_millis(u64(pause_ms))) {
+            paused_by_option = true;
+            host.SetPaused(true);
+        }
+        if (resume_ms > 0 && ! resumed_by_option &&
+            Instant::now() >= opened_at + Duration::from_millis(u64(resume_ms))) {
+            resumed_by_option = true;
+            host.SetPaused(false);
+        }
         if (glfwWindowShouldClose(window)) host.RequestClose();
         host.Pump();
         if (host.IsClosing()) {

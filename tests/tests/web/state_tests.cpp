@@ -225,8 +225,67 @@ TEST(WebState, AudioDemandPassesWithAudioProcessing) {
 // the VM)
 TEST(WebState, GeneralPropertiesSnippetGivesTheFrameRate) {
     auto snippet = BuildGeneralPropertiesSnippet(15);
-    EXPECT_TRUE(snippet.as_str().contains("applyGeneralProperties({\"fps\":15})"_str));
+    EXPECT_TRUE(snippet.as_str().contains("\"fps\":15,"_str));
     EXPECT_TRUE(snippet.as_str().contains("typeof window.wallpaperPropertyListener"_str));
+}
+
+// Wallpaper Engine hands applyGeneralProperties its whole general config, 60 keys (read in the VM,
+// probe _scratch/web-general-dump); owe gives the same keys, its own frame rate and neutral values
+// for the rest
+TEST(WebState, GeneralPropertiesCarryTheWholeConfig) {
+    auto expected =
+        owe::ParseJson(
+            R"({"adjustdwmcolormode":"disabled","anticrash":null,"apprules":[],"audioinputdevice":"default","audioinputthreshold":0,"audioinputvolume":50,"autostart":false,"autostartscheduler":false,"autostartx64":false,"browsetransition":{"transition":"none","transitiontime":1500},"cefcommandline":"","fps":30,"hasshownwelcomedialog":true,"highprecisiontimer":true,"iconopacity":100,"language":"en-us","location":{},"loglevel":"error","mediablocklist":null,"mediaintegration":true,"monitordetection":"managed","monitormap":{},"msaa":"none","overridelockscreen":false,"overridewallpaper":false,"pausevram":false,"playbackaudio":"run","playbackfocus":"run","playbackfullscreen":"run","playbackmaximized":"run","playbackonbattery":"run","playbacksleep":"run","plugindelay":0,"plugins":{"ledextensions":{"enabled":true}},"postprocessing":"enabled","preset":"medium","processpriority":"normal","reflection":true,"reloadaudio":true,"resolution":"full","safemode":false,"shadows":"medium","slideshowkiller":false,"uicmd":"","uieffects":null,"uihardwareacceleration":true,"uiquality":"high","uiskin":"dark","uiskinseasonal":true,"unpauseaero":true,"vdesktopenabled":false,"videoaudiooutput":true,"videoframework":"mfEngine","videohardwareacceleration":true,"videoloopmode":"default","videomfstutterhack":false,"videoreadmode":"fromdisk","volumetrics":"medium","webmframework":null,"windowupdaterate":1000})"_str)
+            .unwrap();
+    auto parsed = owe::ParseJson(BuildGeneralPropertiesJson(30).as_str());
+    ASSERT_TRUE(parsed.is_ok());
+    EXPECT_EQ(owe::DumpString(parsed.unwrap()).as_str(), owe::DumpString(expected).as_str());
+    // this machine's own settings (monitor map, command line) aren't handed to the page
+    auto other = owe::ParseJson(BuildGeneralPropertiesJson(15).as_str()).unwrap();
+    auto fps   = other.pointer("/fps"_str);
+    ASSERT_TRUE(fps.is_some());
+    EXPECT_EQ(owe::DumpString(**fps).as_str(), "15"_str);
+}
+
+// Wallpaper Engine adds a style element to the page's head with these rules (read over DevTools)
+TEST(WebState, PausePseudoAnimationsStyleIsInjectedOnce) {
+    auto snippet = BuildPausePseudoAnimationsSnippet();
+    auto text    = snippet.as_str();
+    EXPECT_TRUE(text.contains(
+        ".wpxPausePseudoAnimations:before{animation-play-state:paused !important}"_str));
+    EXPECT_TRUE(text.contains(
+        ".wpxPausePseudoAnimations:after{animation-play-state:paused !important}"_str));
+    EXPECT_TRUE(
+        text.contains(".wpxPausePseudoAnimationAll *{animation-play-state:paused !important}"_str));
+    EXPECT_TRUE(text.contains(
+        ".wpxPausePseudoAnimationAll *:before{animation-play-state:paused !important}"_str));
+    EXPECT_TRUE(text.contains(
+        ".wpxPausePseudoAnimationAll *:after{animation-play-state:paused !important}"_str));
+    EXPECT_TRUE(snippet.as_str().contains("type=\"text/css\""_str) ||
+                snippet.as_str().contains("'text/css'"_str));
+}
+
+// setPaused reaches the page, which then gets the class and an inline animation-play-state on every
+// element
+TEST(WebState, PausedSnippetCallsSetPausedAndPausesAnimations) {
+    auto paused = BuildPausedSnippet(true);
+    EXPECT_TRUE(paused.as_str().contains("var paused = true;"_str));
+    EXPECT_TRUE(paused.as_str().contains("setPaused(paused)"_str));
+    EXPECT_TRUE(paused.as_str().contains("wpxPausePseudoAnimationAll"_str));
+    EXPECT_TRUE(paused.as_str().contains("paused"_str));
+    auto playing = BuildPausedSnippet(false);
+    EXPECT_TRUE(playing.as_str().contains("var paused = false;"_str));
+}
+
+// the browser stops the page's renderer when the page says it has run setPaused(true), as Wallpaper
+// Engine does: no timer or animation frame runs and the page stays "visible" until resumed;
+// resuming sends no acknowledgement
+TEST(WebState, PausedSnippetAcknowledgesOnlyWhenPausing) {
+    auto paused = BuildPausedSnippet(true);
+    EXPECT_TRUE(paused.as_str().contains("window.__weweb_pauseAck()"_str));
+    auto playing = BuildPausedSnippet(false);
+    EXPECT_TRUE(playing.as_str().contains("window.__weweb_pauseAck()"_str));
+    EXPECT_TRUE(playing.as_str().contains("if (paused && "_str));
 }
 
 TEST(WebManifest, LoadsOwnedStringsAndDefaults) {

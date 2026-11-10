@@ -444,7 +444,20 @@ void BrowserHost::SetFrameRate(int fps) {
 void BrowserHost::SetPaused(bool paused) {
     if (IsClosing() || ! impl_->client) return;
     auto b = impl_->client->GetBrowser();
-    if (b && b->GetHost()) b->GetHost()->WasHidden(paused);
+    if (! b || ! b->GetHost()) return;
+    // Wallpaper Engine's page stays "visible" and has nothing running in the pause, not even timers
+    // (measured over DevTools, web-pause-timing): the renderer is stopped once the page has seen
+    // setPaused(true) (the snippet's acknowledgement) and continues before it hears
+    // setPaused(false) (the script is queued to the renderer before it continues, so it runs before
+    // the page's timers do, as there)
+    if (paused) impl_->client->SetPaused(true);
+    if (auto main = b->GetMainFrame(); main)
+        main->ExecuteJavaScript(
+            to_string(BuildPausedSnippet(paused).as_str()), "weweb://internal/set_paused.js", 0);
+    if (! paused) impl_->client->SetPaused(false);
+#if ! (defined(__unix__) || defined(__APPLE__))
+    b->GetHost()->WasHidden(paused);
+#endif
 }
 
 void BrowserHost::ApplyUserProperty(ref<str> key, const owe::Json& value) {
