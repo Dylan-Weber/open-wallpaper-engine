@@ -1204,6 +1204,46 @@ TEST(ScriptCursor, ClickAndDownUpInside) {
     EXPECT_EQ(fs->last_value().as_Scalar().value.v, 1'010'101);
 }
 
+// getAnimationLayer returns the animation layer: its playback controls, and getAnimation for its
+// animation (Ocarina of Time: getAnimationLayer("Surprise").getAnimation("surprise").isPlaying()).
+TEST(ScriptAnimationLayer, LayerControlsItsAnimation) {
+    owe::SceneNode node;
+    auto           clip     = Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {
+        .name = String::make("Surprise"_str),
+        .mode = String::make("single"_str),
+        .fps  = 30.0f,
+        .end  = i32(60),
+    });
+    auto           playback = Arc<owe::SceneAnimationPlayback>::make(rstd::move(clip));
+    node.RegisterAnimation(playback.clone());
+    auto layer = Arc<owe::SceneAnimationLayer>::make(String::make("Surprise"_str));
+    layer->SetPlayback(Some(playback.clone()));
+    node.RegisterAnimationLayer(rstd::move(layer));
+
+    JsRuntime rt;
+    rt.SetFrameInputs(MakeFi());
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            export function update() {
+                const layer = thisLayer.getAnimationLayer("Surprise");
+                layer.pause();
+                const before = layer.isPlaying();
+                layer.play();
+                const after = layer.isPlaying();
+                return (before ? 10 : 0) + (after ? 1 : 0);
+            }
+        )JS"_str,
+        "test/animation_layer_controls"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+    rt.TickAll();
+    ASSERT_TRUE(fs->last_value().is_Scalar());
+    EXPECT_EQ(fs->last_value().as_Scalar().value.v, 1.0);
+}
+
 TEST(ScriptCursor, ClickRestartsNamedAnimationLayer) {
     owe::SceneNode node;
     node.SetTranslate({ 500.0f, 500.0f, 0.0f });
@@ -1260,6 +1300,48 @@ TEST(ScriptCursor, ClickRestartsNamedAnimationLayer) {
     EXPECT_TRUE(playback->IsPlaying());
     EXPECT_EQ(playback->Frame(), i32());
     EXPECT_EQ(LastScalar(fs), 1000.0);
+}
+
+TEST(ScriptAnimationLayer, GetAnimationGivesNothing) {
+    // In Wallpaper Engine an animation layer has a getAnimation that returns undefined, whatever it
+    // is asked (puppet-layer-getanimation), and a layer's getAnimation(name) is undefined for a
+    // name no property animation has. Ocarina of Time's
+    // getAnimationLayer("Surprise").getAnimation("surprise").isPlaying() therefore throws, and Link
+    // keeps his angle.
+    owe::SceneNode node;
+    auto           clip     = Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {
+        .name = String::make("Arona Drool"_str),
+        .mode = String::make("loop"_str),
+        .fps  = 30.0f,
+        .end  = i32(60),
+    });
+    auto           playback = Arc<owe::SceneAnimationPlayback>::make(rstd::move(clip));
+    node.RegisterAnimation(playback.clone());
+    auto layer = Arc<owe::SceneAnimationLayer>::make(String::make("Arona Drool"_str));
+    layer->SetPlayback(Some(playback.clone()));
+    node.RegisterAnimationLayer(rstd::move(layer));
+
+    JsRuntime rt;
+    rt.SetFrameInputs(MakeFi());
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            export function update() {
+                const layer = thisLayer.getAnimationLayer("Arona Drool");
+                return (typeof layer.getAnimation === 'function' ? 1 : 0) +
+                       (layer.getAnimation() === undefined ? 10 : 0) +
+                       (layer.getAnimation("Arona Drool") === undefined ? 100 : 0) +
+                       (thisLayer.getAnimation("nothing") === undefined ? 1000 : 0);
+            }
+        )JS"_str,
+        "test/animation_layer_get_animation"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        &node);
+    ASSERT_NE(fs, nullptr);
+    rt.SetSceneRoot(&node);
+    rt.TickAll();
+    EXPECT_EQ(LastScalar(fs), 1111.0);
 }
 
 TEST(ScriptCursor, ClickOutsideIsIgnored) {
@@ -3897,9 +3979,9 @@ TEST(ScriptAnimation, NamedPuppetLayerUsesFieldPlaybackAndSample) {
     auto*     script = rt.MakeFieldScript(
         R"JS(
             export function update(value) {
+                // an animation layer's getAnimation is undefined, as in Wallpaper Engine
                 const animation = thisLayer.getAnimationLayer('Surprise').getAnimation('surprise');
-                animation.pause();
-                return value + (animation.getFrame() === 5 ? 1 : 0);
+                return value + (animation === undefined ? 1 : 0);
             }
         )JS"_str,
         "test/puppet_animation_layer"_str,
@@ -3915,7 +3997,6 @@ TEST(ScriptAnimation, NamedPuppetLayerUsesFieldPlaybackAndSample) {
     rt.TickAll();
     EXPECT_FLOAT_EQ(layer->Blend(), 0.5f);
     EXPECT_DOUBLE_EQ(LastScalar(script), 1.5);
-    EXPECT_FALSE(playback->IsPlaying());
 }
 
 TEST(ScriptAnimation, TimerKeepsCurrentPropertyAnimation) {

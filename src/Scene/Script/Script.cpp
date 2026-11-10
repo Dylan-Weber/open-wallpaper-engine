@@ -2579,19 +2579,12 @@ JSValue NamedLayerSetFrame(JSContext* ctx, JSValueConst value, int argc, JSValue
     return JS_UNDEFINED;
 }
 
-JSValue NamedAnimationLayerGetAnimation(JSContext* ctx, JSValueConst value, int argc,
-                                        JSValueConst* argv) {
-    auto* layer = static_cast<Arc<owe::SceneAnimationLayer>*>(
-        JS_GetOpaque(value, s_named_animation_layer_class_id));
-    if (! layer) return JS_UNDEFINED;
-    if (argc == 0 || JS_IsUndefined(argv[0]))
-        return WrapAnimation(ctx, ActivePropertyAnimation(ctx, argc, argv));
-    const char* name = JS_ToCString(ctx, argv[0]);
-    if (! name) return JS_EXCEPTION;
-    auto animation = (*layer)->NamedAnimation(rstd::cppstd::as_str(name).unwrap());
-    JS_FreeCString(ctx, name);
-    if (animation.is_none()) return JS_UNDEFINED;
-    return WrapAnimation(ctx, rstd::move(animation));
+// An animation layer's getAnimation returns undefined in Wallpaper Engine, whatever it is asked
+// (puppet-layer-getanimation): Ocarina of Time's
+// getAnimationLayer("Surprise").getAnimation("surprise") .isPlaying() throws, and Link keeps his
+// angle.
+JSValue NamedAnimationLayerGetAnimation(JSContext*, JSValueConst, int, JSValueConst*) {
+    return JS_UNDEFINED;
 }
 
 JSValue WrapNamedAnimationLayer(JSContext* ctx, Arc<owe::SceneAnimationLayer> layer) {
@@ -2661,6 +2654,8 @@ JSValue NodeGetAnimation(JSContext* ctx, JSValueConst this_val, int argc, JSValu
     }
     auto playback = node->NamedAnimation(rstd::cppstd::as_str(name).unwrap());
     JS_FreeCString(ctx, name);
+    // a name no property animation has gives undefined, as in Wallpaper Engine
+    if (playback.is_none()) return JS_UNDEFINED;
     return WrapAnimation(ctx, rstd::move(playback));
 }
 
