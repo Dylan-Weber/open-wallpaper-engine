@@ -2113,3 +2113,19 @@ TEST(ShaderParser, NativeIncludesPreserveNestedOrderMalformedLinesAndUtf8) {
     EXPECT_TRUE(text->contains("// head"_str));
     EXPECT_TRUE(text->contains("// tail"_str));
 }
+
+// Wallpaper Engine takes 0.0005 off the depth of a spot or directional light's view in the
+// matrices its lit shaders compare with (wallpaper64.exe: the copy into the lighting constants,
+// element 14 less 0.0005), not in the casters' own: owe's casters read the same views, so the
+// receivers move their depth themselves (probes shadow-courtyard-arch-flat-face and oot-repro
+// against Wallpaper Engine under DXVK: the lit strip at a wall's foot)
+TEST(ShaderParser, LightingV1ReceiversCompareSlightlyNearerTheLight) {
+    const std::string source = rstd::cppstd::to_string(owe::ShaderParser::LightingV1Source());
+    EXPECT_NE(source.find("proj.z += 0.0005;"), std::string::npos);
+    EXPECT_NE(source.find("OweReceiverCoordsCascades(\n                        worldPos, "
+                          "g_OweShadowViewProjections[shadowView + cascade]);"),
+              std::string::npos);
+    EXPECT_NE(source.find("OweReceiverCoords(worldPos, g_OweShadowViewProjections[shadowView])"),
+              std::string::npos);
+    EXPECT_EQ(source.find("CalculateProjectedCoordsCascades("), std::string::npos);
+}
