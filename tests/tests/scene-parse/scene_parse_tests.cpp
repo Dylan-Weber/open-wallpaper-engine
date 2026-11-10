@@ -2720,6 +2720,21 @@ TEST(SceneAssetPaths, ModelCameraAndClipRetainTheirReparseSemantics) {
     EXPECT_TRUE(clip.name.is_empty());
 }
 
+// Wallpaper Engine places every pass of a layer's last effect with the layer's own matrix, a pass
+// into a target of the effect's own too (probe effect-target-matrix: the target pass's
+// g_ModelViewProjectionMatrix is the layer's, translation and all); the passes of an earlier effect
+// get the identity, and a compose pass keeps it (refraction's draws the background with it)
+TEST(EffectPass, OwnTargetInTheLastEffectUsesTheLayersMatrix) {
+    EXPECT_TRUE(owe::EffectPassUsesLayerMatrix(
+        { .own_target = true, .compose = false, .in_last_effect = true }));
+    EXPECT_FALSE(owe::EffectPassUsesLayerMatrix(
+        { .own_target = true, .compose = false, .in_last_effect = false }));
+    EXPECT_FALSE(owe::EffectPassUsesLayerMatrix(
+        { .own_target = true, .compose = true, .in_last_effect = true }));
+    EXPECT_FALSE(owe::EffectPassUsesLayerMatrix(
+        { .own_target = false, .compose = false, .in_last_effect = true }));
+}
+
 // Wallpaper Engine draws an effect's passes into one buffer the last pass then overwrites: a pass
 // before the last with no target of its own is lost, and the last reads the effect's input
 // (effect-pass-resolution's "two passes" row shows the plain texture)
