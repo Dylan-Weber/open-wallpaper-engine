@@ -281,6 +281,10 @@ struct RemapInitialValueProgram {
             columns.velocities[slot] =
                 remap.Apply(columns.velocities[slot].cast<double>(), input).cast<float>();
             break;
+        case ParticleRemap::Output::Rotation:
+            columns.rotations[slot].z() = float(
+                remap.Apply(Eigen::Vector3d::Constant(columns.rotations[slot].z()), input).x());
+            break;
         }
     }
 };
@@ -1510,13 +1514,17 @@ struct RemapValueOperator {
     particle::ParticleReadIndex<particle::AlphaAttribute>           input_alpha;
     particle::ParticleWriteIndex<particle::VelocityAttribute>       output_velocity;
     particle::ParticleReadIndex<particle::RotationAttribute>        rotation;
+    particle::ParticleWriteIndex<particle::RotationAttribute>       output_rotation;
     particle::ParticleReadIndex<particle::AngularVelocityAttribute> angular_velocity;
 
     void Compile(particle::ParticleViewCompiler& compiler) {
         compiler.ReadBase(attributes.position);
         lifetime         = compiler.Read(attributes.lifetime);
         initial_lifetime = compiler.Read(attributes.initial_lifetime);
-        rotation         = compiler.Read(attributes.rotation);
+        if (remap.output == ParticleRemap::Output::Rotation)
+            output_rotation = compiler.Write(attributes.rotation);
+        else
+            rotation = compiler.Read(attributes.rotation);
         angular_velocity = compiler.Read(attributes.angular_velocity);
         // the output attribute is written, so an input from the same attribute reads it there
         if (remap.output != ParticleRemap::Output::Velocity)
@@ -1530,6 +1538,7 @@ struct RemapValueOperator {
         case ParticleRemap::Output::Velocity:
             output_velocity = compiler.Write(attributes.velocity);
             break;
+        case ParticleRemap::Output::Rotation: break;
         }
     }
 
@@ -1538,7 +1547,6 @@ struct RemapValueOperator {
         auto                  positions = context.view.Positions();
         auto                  lifetimes = context.view.Read(lifetime);
         auto                  initial   = context.view.Read(initial_lifetime);
-        auto                  rotations = context.view.Read(rotation);
         auto                  spins     = context.view.Read(angular_velocity);
         const Eigen::Vector3d center =
             frame->subsystem->SimulationControlpoint(rstd::as_cast<usize>(remap.controlpoint))
@@ -1569,7 +1577,10 @@ struct RemapValueOperator {
                                                      ? context.view.Write(alpha)[slot.index]
                                                      : context.view.Read(input_alpha)[slot.index]);
             case ParticleRemap::Input::Rotation:
-                return Eigen::Vector3d::Constant(rotations[slot.index].z());
+                return Eigen::Vector3d::Constant(
+                    remap.output == ParticleRemap::Output::Rotation
+                        ? context.view.Write(output_rotation)[slot.index].z()
+                        : context.view.Read(rotation)[slot.index].z());
             case ParticleRemap::Input::AngularSpeed:
                 return Eigen::Vector3d::Constant(spins[slot.index].z());
             default: return frame_input;
@@ -1605,6 +1616,17 @@ struct RemapValueOperator {
                                                       input(slot),
                                                       life(slot))
                                                .x());
+            break;
+        }
+        case ParticleRemap::Output::Rotation: {
+            // the rotation about z (ft-remap-rotation): set, or multiplied, added or taken each frame
+            auto values = context.view.Write(output_rotation);
+            for (auto slot : context.slots)
+                values[slot.index].z() = float(remap
+                                                   .Blend(Eigen::Vector3d::Constant(values[slot.index].z()),
+                                                          input(slot),
+                                                          life(slot))
+                                                   .x());
             break;
         }
         case ParticleRemap::Output::Velocity: {

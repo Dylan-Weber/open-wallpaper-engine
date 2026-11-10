@@ -792,6 +792,33 @@ TEST(ParticleSubSystem, AppliesVortexAroundWorldSpaceOwner) {
     EXPECT_GT(std::abs(positions[usize()].z()), 0.01f);
 }
 
+// remapvalue's "rotation" output (Wallpaper Engine: case 19, output 5 at 0x140245bac) works on the
+// rotation about z with the output range's x (a number fills all three): "0 0 3.14" turns nothing,
+// "3.14 0 0" and 3.14 turn about z, and multiply by "0 0 v" (x 0) drops a turn to 0
+// (ft-remap-rotation). "angularvelocity" isn't one of its names, so that output does nothing.
+TEST(ParticleRemap, RotationOutputTurnsAboutZByTheRangesX) {
+    auto remap = [](ref<str> json) {
+        return owe::ParticleRemap::FromJson(owe::ParseJson(json).unwrap());
+    };
+    auto x_range = remap(
+        R"({"name":"remapvalue","input":"distancetocontrolpoint","inputrangemax":400,"output":"rotation","outputrangemin":"0 0 0","outputrangemax":"3.14 0 0"})"_str);
+    ASSERT_TRUE(x_range.is_some());
+    EXPECT_TRUE(x_range->output == owe::ParticleRemap::Output::Rotation);
+    EXPECT_NEAR(x_range->Apply(Eigen::Vector3d::Constant(0.0), 200).x(), 1.57, 1e-4);
+    auto z_range = remap(
+        R"({"name":"remapvalue","input":"distancetocontrolpoint","inputrangemax":400,"output":"rotation","outputrangemin":"0 0 0","outputrangemax":"0 0 3.14"})"_str);
+    EXPECT_NEAR(z_range->Apply(Eigen::Vector3d::Constant(0.0), 200).x(), 0.0, 1e-9);
+    auto scalar = remap(
+        R"({"name":"remapvalue","input":"distancetocontrolpoint","inputrangemax":400,"output":"rotation","outputrangemin":0,"outputrangemax":3.14})"_str);
+    EXPECT_NEAR(scalar->Apply(Eigen::Vector3d::Constant(0.0), 200).x(), 1.57, 1e-4);
+    auto multiply = remap(
+        R"({"name":"remapvalue","input":"distancetocontrolpoint","inputrangemax":400,"operation":"multiply","output":"rotation","outputrangemin":"0 0 0","outputrangemax":"0 0 3.14"})"_str);
+    EXPECT_NEAR(multiply->Apply(Eigen::Vector3d::Constant(1.0), 200).x(), 0.0, 1e-9);
+    EXPECT_TRUE(remap(
+        R"({"name":"remapvalue","input":"distancetocontrolpoint","output":"angularvelocity","outputrangemin":"0 0 1","outputrangemax":"0 0 1"})"_str)
+                    .is_none());
+}
+
 // remapvalue maps the distance to a control point, clamped to its input range, linearly onto its
 // output range (particles-remapvalue: rows 0 to 400 units out remap colour red to blue, size 10 to
 // 80 - drawn 20 to 160, a radius - and opacity 1 to 0.1, and multiply size 40 by 0.2 to 2).
