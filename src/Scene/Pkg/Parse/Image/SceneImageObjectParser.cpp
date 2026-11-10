@@ -273,15 +273,29 @@ void ParseImageObjImpl(SceneLayerBuildContext& context, wpscene::ImageObject& im
         auto texture = context.scene->Texture(material.textures[usize()].as_str());
         point_source = texture.is_some() && (**texture).sample.magFilter == TextureFilter::NEAREST;
     }
-    // The first pass of the layer's effects reads the layer's image in Wallpaper Engine, so it
-    // sees that texture's resolution: its size padded to a multiple of 4, the picture's in zw.
+    // The first pass of the layer's effects reads the layer's image in Wallpaper Engine, so its
+    // g_Texture0Resolution is that image's size in all four components (sprite-resolution
+    // probe): a sprite's frame, any other texture's size padded to a multiple of 4.
     Option<SceneMaterialTextureMetadata> image_texture_metadata;
     if (! material.texture_metadata.is_empty() && material.texture_metadata[usize()].has_extent) {
         auto metadata = material.texture_metadata[usize()];
-        for (usize axis {}; axis < usize(2); ++axis)
-            metadata.source_extent[axis] =
-                4.0f * f32(metadata.source_extent[axis] / 4.0f).ceil().to_primitive();
-        image_texture_metadata = Some(metadata);
+        bool sprite_frame = false;
+        if (! material.textures.is_empty()) {
+            auto texture = context.scene->Texture(material.textures[usize()].as_str());
+            if (texture.is_some() && (**texture).isSprite &&
+                (**texture).spriteAnim.numFrames() > usize()) {
+                const auto& frame      = (**texture).spriteAnim.GetFrame(usize());
+                metadata.source_extent = { frame.width, frame.height };
+                sprite_frame           = true;
+            }
+        }
+        if (! sprite_frame) {
+            for (usize axis {}; axis < usize(2); ++axis)
+                metadata.source_extent[axis] =
+                    4.0f * f32(metadata.source_extent[axis] / 4.0f).ceil().to_primitive();
+        }
+        metadata.sample_extent = metadata.source_extent;
+        image_texture_metadata  = Some(metadata);
     }
 
     // mesh
