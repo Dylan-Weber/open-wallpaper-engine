@@ -90,8 +90,6 @@ struct TextRuntimeTargets {
     bool                       has_effect { false };
     i32                        layer_w { 1 };
     i32                        layer_h { 1 };
-    // the composite's pixels a layer unit (TextLayoutStyle::raster_scale)
-    i32                        raster_scale { 1 };
     Vec<TextRuntimeFbo>        fbos;
     Vec<TextRuntimeEffectNode> effect_nodes;
 
@@ -100,8 +98,7 @@ struct TextRuntimeTargets {
 
         bool changed          = false;
         auto [next_w, next_h] = TextLayerExtent(geometry);
-        changed |=
-            scene->ResizeRenderTarget(composite.as_str(), next_w * raster_scale, next_h * raster_scale);
+        changed |= scene->ResizeRenderTarget(composite.as_str(), next_w, next_h);
         if (! link_target.is_empty())
             changed |= scene->ResizeRenderTarget(link_target.as_str(), next_w, next_h);
         if (has_effect) {
@@ -357,15 +354,16 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
                                     obj.outlinecolor[usize(1)],
                                     obj.outlinecolor[usize(2)] };
     style.outline_thickness     = obj.outlinethickness;
-    // outlined text is rasterised at its layer's scale (and its composite that much finer), as
-    // Wallpaper Engine's distance-field outlines stay sharp when a layer is scaled up (text-oot-clock)
-    if (obj.outline && obj.outlinethickness > 0 && ! has_text_effect) {
+    // outlined text drawn straight to the scene is rasterised at its layer's scale, as Wallpaper
+    // Engine's distance-field outlines stay sharp when a layer is scaled up (text-oot-clock); text it
+    // composites first (translucent, with effects, a background...) is drawn at the layer's size and
+    // scaled up soft, in both (text-outline-scaled)
+    if (obj.outline && obj.outlinethickness > 0 && direct_text && obj.alpha >= 1.0f) {
         const float on_screen = rstd::cmp::max(f32(obj.scale[usize()]).abs().to_primitive(),
                                                f32(obj.scale[usize(1)]).abs().to_primitive());
         style.raster_scale =
             rstd::cmp::min(8.0f, rstd::cmp::max(1.0f, f32(on_screen).round().to_primitive()));
     }
-    const i32 raster_scale = rstd::as_cast<i32>(style.raster_scale);
     style.halign  = (obj.horizontalalign.is_empty() ? obj.alignment : obj.horizontalalign).clone();
     style.padding = obj.padding[usize(0)];
     style.padding_y = obj.padding[usize(1)];
@@ -506,7 +504,6 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
         (*runtime_targets)->has_effect   = has_text_effect;
         (*runtime_targets)->layer_w      = initial_layer_w;
         (*runtime_targets)->layer_h      = initial_layer_h;
-        (*runtime_targets)->raster_scale = raster_scale;
 
         // Per-layer ortho camera. effect_camera_node sits at origin so the
         // view matrix is identity; ortho extents = bbox so glyph pixel
@@ -521,8 +518,8 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
             return;
 
         SceneRenderTarget text_target {
-            .width                = initial_layer_w * raster_scale,
-            .height               = initial_layer_h * raster_scale,
+            .width                = initial_layer_w,
+            .height               = initial_layer_h,
             .allowReuse           = true,
             .force_clear          = ! copy_background_seed,
             .clear_on_first_write = false,
