@@ -4,6 +4,8 @@ module;
 #include "vvk/macros.hpp"
 
 #include <cerrno>
+#include <cstdlib>
+#include <deque>
 #include <string>
 #include <unistd.h>
 
@@ -64,6 +66,24 @@ struct HostOutputFrame {
     SceneRenderUpdateProgress                     updates;
     Option<vrento::texture::Submission>           work;
 };
+
+// A frame whose commands are submitted (and shown or handed to the host) but not yet known to be complete: it holds
+// the frame, its target and its semaphores until the GPU is done with them.
+struct InFlightFrame {
+    vrento::vulkan::GraphFrame frame;
+    HostOutputFrame            output;
+};
+
+// OWE_FRAMES_IN_FLIGHT=N: frames submitted before the render thread waits for the oldest (1 waits for each frame
+// right after submitting it, as before). The per-frame GPU timestamps of OWE_GPU_TIMING need 1.
+static usize FramesInFlightFromEnvironment() {
+    usize depth = usize(2);
+    if (const char* text = std::getenv("OWE_FRAMES_IN_FLIGHT")) {
+        const long value = std::strtol(text, nullptr, 10);
+        if (value >= 1 && value <= 8) depth = usize(static_cast<rstd::uint64_t>(value));
+    }
+    return depth;
+}
 
 struct ViewerSurfaceFactory {
     owe::CreateSurfaceCallback create;
@@ -263,11 +283,21 @@ struct VulkanRender::Impl {
     Option<Arc<vrento::vulkan::PreparedGraphicsResources>> m_graphics;
     vrento::vulkan::TextureOutput                          m_texture_output;
     VkFormat                                               m_present_format { VK_FORMAT_UNDEFINED };
-    auto waitForPreparedUploads(RenderingResources&) -> Result<empty, vrento::texture::Error>;
+    auto waitForPreparedUploads(RenderingResources&, bool block = true) -> Result<empty, vrento::texture::Error>;
     Option<vrento::vulkan::GraphFrame>                  m_frame;
     Option<vrento::vulkan::GraphExecutionErrorSnapshot> m_last_frame_error;
     Option<HostOutputFrame>                             m_output;
-    bool                                                m_frame_submitted {};
+    std::deque<InFlightFrame>                           m_inflight;
+    usize                                               m_frames_in_flight { FramesInFlightFromEnvironment() };
+    // waits for the oldest submitted frames until at most `keep` are left, and drops the ones already complete
+    void reapInFlight(usize keep);
+    void drainInFlight() { reapInFlight(usize()); }
+    usize depth() const {
+        return perf::Enabled() && vrento::vulkan::pass_timing_enabled() ? usize(1) : m_frames_in_flight;
+    }
+    // the frame under construction is submitted: keep it until the GPU is done, or (depth 1) it is done already
+    void finishFrame();
+    bool m_frame_submitted {};
     auto prepareFontUploads(vrento::texture::Submission&,
                             Vec<vrento::resource_registry::PreparedTextureUpdate>&)
         -> Result<empty, resource::ResourceError>;
@@ -618,6 +648,7 @@ bool VulkanRender::Impl::executeFrame() {
         m_frame_submitted = true;
         ackFontUploads();
     }
+    if (m_frame->state() == FrameState::Submitted && depth() > usize(1)) return true;
     if (m_frame->state() == FrameState::Submitted) {
         const auto perf_wait = perf::Now();
         auto       waited    = m_frame->wait(vk_wait_time);
@@ -660,6 +691,38 @@ void VulkanRender::Impl::closeOutput() {
     auto idle = m_session->wait_idle();
     if (idle != VK_SUCCESS && idle != VK_ERROR_DEVICE_LOST)
         rstd::panic("cannot retire output resources");
+    m_inflight.clear();
+    m_frame  = None();
+    m_output = None();
+}
+
+void VulkanRender::Impl::reapInFlight(usize keep) {
+    while (! m_inflight.empty()) {
+        auto& oldest = m_inflight.front();
+        if (m_inflight.size() > static_cast<std::size_t>(keep.to_primitive())) {
+            const auto perf_wait = perf::Now();
+            auto       waited    = oldest.frame.wait(vk_wait_time);
+            perf::Add(perf::Stage::Wait, perf_wait);
+            if (waited.is_err()) {
+                if (waited.unwrap_err().kind == vrento::texture::ErrorKind::Timeout) return;
+                rstd_error("frame completion wait failed: {}", waited.unwrap_err().native);
+            }
+        } else {
+            if (auto token = oldest.frame.completion()) {
+                auto done = (*token).poll();
+                if (done.is_ok() && ! done.unwrap()) return;
+            }
+            (void)m_rendering_resources.resources.TextureContext().Poll();
+        }
+        m_inflight.pop_front();
+    }
+}
+
+void VulkanRender::Impl::finishFrame() {
+    if (depth() > usize(1) && m_frame && m_output && m_frame->state() == FrameState::Submitted) {
+        m_inflight.push_back(InFlightFrame { m_frame.take().unwrap(), m_output.take().unwrap() });
+        return;
+    }
     m_frame  = None();
     m_output = None();
 }
@@ -694,7 +757,7 @@ bool VulkanRender::frameSubmitted() const { return pImpl->m_frame_submitted; }
 auto VulkanRender::Impl::preparationReady() -> Result<PrepareOutcome, RenderPrepareError> {
     if (! m_inited) return Err(RenderPrepareError::State(PrepareStateError::NotInitialized));
     if (m_frame || m_output || m_renderer->pending()) return Ok(PrepareOutcome::Pending);
-    auto waited = waitForPreparedUploads(m_rendering_resources);
+    auto waited = waitForPreparedUploads(m_rendering_resources, m_inflight.empty());
     if (waited.is_err()) return Err(RenderPrepareError::Upload(waited.unwrap_err()));
     return Ok(PrepareOutcome::Ready);
 }
@@ -727,6 +790,7 @@ auto VulkanRender::renderedTarget(ref<str> name)
 auto VulkanRender::tryClearLastRenderGraph(RenderGraphResourceRetention retention)
     -> Result<PrepareOutcome, RenderPrepareError> {
     if (! pImpl->m_inited) return Err(RenderPrepareError::State(PrepareStateError::NotInitialized));
+    pImpl->drainInFlight();
     if (pImpl->m_frame) return Ok(PrepareOutcome::Pending);
     if (pImpl->m_output) return Ok(PrepareOutcome::Pending);
     pImpl->abortSceneRenderPreparation();
@@ -743,6 +807,7 @@ auto VulkanRender::tryInstallSceneRenderState(Scene& scene, vulkan::SceneRenderS
                                               SceneLoadBenchRecorderView bench)
     -> Result<PrepareOutcome, RenderPrepareError> {
     if (! pImpl->m_inited) return Err(RenderPrepareError::State(PrepareStateError::NotInitialized));
+    pImpl->drainInFlight();
     if (pImpl->m_frame) return Ok(PrepareOutcome::Pending);
     if (pImpl->m_output) return Ok(PrepareOutcome::Pending);
     pImpl->abortSceneRenderPreparation();
@@ -1054,8 +1119,12 @@ void VulkanRender::Impl::DestroyRenderingResource(RenderingResources& rr) {
     rr.shader_reflection_cache = None();
 }
 
-auto VulkanRender::Impl::waitForPreparedUploads(RenderingResources& rr)
+// `block` false (frames in flight): the uploads are submitted but not waited for. They queue behind the frames already
+// in flight, so waiting would stall the render thread until the GPU has caught up; the queue and the texture states
+// order the uploads before the frames that sample them.
+auto VulkanRender::Impl::waitForPreparedUploads(RenderingResources& rr, bool block)
     -> Result<empty, vrento::texture::Error> {
+    if (! block) return rr.resources.TryCommitUploads();
     auto wait_span =
         SceneLoadSpan(m_pending_load_bench, &SceneLoadProbeIds::render_texture_upload_wait);
     auto waited = rr.resources.TryWaitForUploads(vk_wait_time);
@@ -1088,7 +1157,8 @@ void VulkanRender::Impl::drawFrame(Scene& scene) {
 void VulkanRender::Impl::drawFrameSwapchain(Scene& scene) {
     auto& rr = m_rendering_resources;
     if (! m_output) {
-        if (waitForPreparedUploads(rr).is_err()) return;
+        reapInFlight(depth() - usize(1));
+        if (waitForPreparedUploads(rr, m_inflight.empty()).is_err()) return;
         auto synchronization = createFrameSynchronization(false);
         if (! synchronization) return;
         auto           owner = synchronization.take().unwrap();
@@ -1134,20 +1204,20 @@ void VulkanRender::Impl::drawFrameSwapchain(Scene& scene) {
         return;
     }
     ReleaseCompletedRetiredResources(*m_device, rr);
-    m_frame  = None();
-    m_output = None();
+    finishFrame();
 }
 void VulkanRender::Impl::drawFrameOffscreen(Scene& scene) {
     if (! m_ex_swapchain) return;
     auto& rr = m_rendering_resources;
     if (! m_output) {
+        reapInFlight(depth() - usize(1));
         (*m_ex_swapchain)->AsSwapchain().poll();
         if (! (*m_ex_swapchain)->AsSwapchain().ready() || ! sceneRenderReady()) return;
         // The mailbox must rebuild extent-dependent targets before using the new pool.
         if ((*m_ex_swapchain)->AsSwapchain().width() != m_extent.width ||
             (*m_ex_swapchain)->AsSwapchain().height() != m_extent.height)
             return;
-        if (waitForPreparedUploads(rr).is_err()) return;
+        if (waitForPreparedUploads(rr, m_inflight.empty()).is_err()) return;
         auto synchronization = createFrameSynchronization(true);
         if (! synchronization) return;
         auto acquired = (*m_ex_swapchain)->AsSwapchain().acquireRenderTarget();
@@ -1184,8 +1254,7 @@ void VulkanRender::Impl::drawFrameOffscreen(Scene& scene) {
         return;
     }
     ReleaseCompletedRetiredResources(*m_device, rr);
-    m_frame  = None();
-    m_output = None();
+    finishFrame();
 }
 
 bool VulkanRender::Impl::onSwapchainReady(unsigned width, unsigned height) {
@@ -1197,6 +1266,7 @@ bool VulkanRender::Impl::onSwapchainReady(unsigned width, unsigned height) {
         // are handled by drawFrameOffscreen's head check.
         return false;
     }
+    if (! m_output) drainInFlight();
     if (! m_output && waitForPreparedUploads(m_rendering_resources).is_err()) return false;
     m_extent = VkExtent2D { width, height };
     return true;
@@ -1226,6 +1296,7 @@ void VulkanRender::Impl::clearLastRenderGraph(RenderGraphResourceRetention reten
 
 void VulkanRender::Impl::configureRenderTargets(Scene& scene) {
     if (! m_inited) return;
+    drainInFlight();
     const auto&      limits = m_device->limits();
     const VkExtent2D max_framebuffer_extent {
         rstd::cmp::min(limits.maxFramebufferWidth, limits.maxImageDimension2D),
@@ -1240,6 +1311,7 @@ auto VulkanRender::Impl::prepareSceneRenderState(Scene&                         
                                                  SceneLoadBenchRecorderView     load_bench)
     -> Result<PrepareOutcome, RenderPrepareError> {
     // Prepared refresh replaces binding owners before recreating equivalent bindings.
+    drainInFlight();
     [[maybe_unused]] auto audio_demand_reconciliation =
         scene.AudioDemandMut()->BeginReconciliation();
     if (sections == resource::ResourcePlanTextures && ! m_graphics)
@@ -1394,6 +1466,7 @@ auto VulkanRender::Impl::installSceneRenderState(Scene& scene, vulkan::SceneRend
                                                  SceneLoadBenchRecorderView load_bench)
     -> Result<PrepareOutcome, RenderPrepareError> {
     if (! m_inited) return Err(RenderPrepareError::State(PrepareStateError::NotInitialized));
+    drainInFlight();
     m_pending_load_bench = load_bench;
     auto compile_span    = SceneLoadSpan(load_bench, &SceneLoadProbeIds::render_graph_compile);
     m_renderer->clear();

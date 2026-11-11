@@ -452,7 +452,13 @@ int main(int argc, char** argv) {
         rstd::thread::sleep(Duration::from_secs(u64(seconds.to_primitive())));
 #endif
     } else {
+        // OWE_EXIT_AFTER=SECONDS closes the window after that long (benchmarks of the presented path, which must exit
+        // normally to write OWE_PERF_LOG)
+        double exit_after = 0;
+        if (const char* text = std::getenv("OWE_EXIT_AFTER")) exit_after = std::atof(text);
+        const auto exit_deadline = Instant::now() + Duration::from_millis(u64((exit_after * 1000.0)));
         while (! glfwWindowShouldClose(window)) {
+            if (exit_after > 0 && Instant::now() >= exit_deadline) break;
 #if __is_target_os(macos)
             // Keep the Cocoa run loop responsive while MoltenVK drives the
             // CAMetalLayer. A 30 Hz event wait can leave display-link/layer
