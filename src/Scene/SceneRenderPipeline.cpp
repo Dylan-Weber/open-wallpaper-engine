@@ -245,6 +245,21 @@ auto SceneRenderPipeline::rebuild(vulkan::RenderGraphResourceRetention retention
     return finishAttempt(rstd::move(result));
 }
 
+bool SceneRenderPipeline::beginFrameScripts(const script::FrameInputs& inputs) {
+    if (m_scripts_started_early) return true;
+    m_scripts_started_early = script::BeginSceneScripts(m_scene, inputs);
+    return m_scripts_started_early;
+}
+
+void SceneRenderPipeline::endFrameForScripts() {
+    if (! m_scripts_started_early) return;
+    if (! m_animations_ticked_early) {
+        m_scene.TickNodeFieldAnimations();
+        m_animations_ticked_early = true;
+    }
+    script::SceneGate::ReleaseRender();
+}
+
 auto SceneRenderPipeline::prepare(const script::FrameInputs& inputs,
                                   SceneLoadBenchRecorderView bench)
     -> Result<PrepareOutcome, ScenePrepareError> {
@@ -261,12 +276,14 @@ auto SceneRenderPipeline::prepare(const script::FrameInputs& inputs,
     m_input.SetPointerInput(inputs.cursor_x, inputs.cursor_y);
     m_input.SetAudioSpectrum(inputs.audio);
     auto animations_span = SceneLoadSpan(bench, &SceneLoadProbeIds::render_frame_animations);
-    m_scene.TickNodeFieldAnimations();
+    if (! m_animations_ticked_early) m_scene.TickNodeFieldAnimations();
     (void)animations_span.finish();
     {
         auto span = SceneLoadSpan(bench, &SceneLoadProbeIds::render_frame_scripts);
         script::TickSceneScripts(m_scene, inputs);
     }
+    m_scripts_started_early   = false;
+    m_animations_ticked_early = false;
     animations_span = SceneLoadSpan(bench, &SceneLoadProbeIds::render_frame_animations);
     m_scene.TickCameraPaths();
     m_scene.TickMaterialShaderAnimations();

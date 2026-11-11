@@ -64,6 +64,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 // quickjs.h declares JSAtom (a typedef) and JS_GetRuntime, which SpiderMonkey already has under the same names.
@@ -177,6 +178,16 @@ struct Fac {
     // makes many short calls per frame, and a sleep/wake round trip would cost more than the calls themselves.
     std::atomic<int>        state { 0 };
     std::atomic<bool>       quit { false };
+    bool                    asyncPending { false };  // a posted job whose completion has not been collected
+    // Scene gate (see Script.cpp, SceneGate): while an asynchronous job runs, native callbacks take the gate, and a
+    // thread that calls into the engine gives up the gate it holds first, so the two can never wait for each other.
+    void (*gateLock)(void*) { nullptr };
+    void (*gateUnlock)(void*) { nullptr };
+    void (*gateReleaseAll)(void*) { nullptr };
+    void (*gateNotify)(void*, bool) { nullptr };
+    void*             gateArg { nullptr };
+    std::unordered_set<void*> gateExempt;  // natives that run without the gate
+    std::atomic<bool> gateActive { false };
 };
 
 // Several runtimes can be alive at once (tests build many, on several threads); each has its own engine thread.
@@ -212,11 +223,15 @@ inline void cpuRelax() {
     asm volatile("yield");
 #endif
 }
-std::atomic<uint64_t> g_hops { 0 }, g_hopSleeps { 0 }, g_engineSleeps { 0 };
+std::atomic<uint64_t> g_hops { 0 }, g_hopSleeps { 0 }, g_engineSleeps { 0 }, g_asyncPosts { 0 }, g_gateBlocked { 0 };
 // OWE_JS_DEBUG=2: count cross-thread calls by the address of the host code that made them (see JS_FreeContext).
 const bool                       g_traceHops = [] { const char* v = getenv("OWE_JS_DEBUG"); return v && v[0] == '2'; }();
 std::mutex                       g_traceMu;
 std::unordered_map<void*, uint64_t> g_hopCallers;
+// OWE_JS_DEBUG=3: the native callbacks run under the scene gate, in order of first call, with their call counts.
+const bool g_traceNatives = [] { const char* v = getenv("OWE_JS_DEBUG"); return v && v[0] == '3'; }();
+std::vector<void*>                  g_nativeOrder;
+std::unordered_map<void*, uint64_t> g_nativeCalls;
 inline void noteCaller(void* addr, const Fac* f) {
     if (__builtin_expect(g_traceHops, 0) && ! onEngine(f)) {
         std::lock_guard<std::mutex> lock(g_traceMu);
@@ -254,12 +269,28 @@ void stopEngineThread(Fac* f) {
     f->state.notify_all();
 }
 
+// Oracle: waits for a posted job and returns the engine to idle. Caller holds submitMu.
+void collectAsync(Fac* f) {
+    if (f->gateReleaseAll) f->gateReleaseAll(f->gateArg);
+    int v = f->state.load(std::memory_order_acquire);
+    while (v != 2) {
+        for (int i = 0; v != 2 && i < kSpin; ++i) { cpuRelax(); v = f->state.load(std::memory_order_acquire); }
+        if (v != 2) { f->state.wait(v, std::memory_order_acquire); v = f->state.load(std::memory_order_acquire); }
+    }
+    f->state.store(0, std::memory_order_release);
+    f->asyncPending = false;
+    f->gateActive.store(false, std::memory_order_release);
+    if (f->gateNotify) f->gateNotify(f->gateArg, false);
+}
+
 // Runs fn on the runtime's engine thread and returns its result; runs it inline when already there.
 template <class R, class Fn>
 R hop(Fac* f, Fn&& fn) {
     if (onEngine(f)) return fn();
     g_hops.fetch_add(1, std::memory_order_relaxed);
+    if (f->gateActive.load(std::memory_order_acquire) && f->gateReleaseAll) f->gateReleaseAll(f->gateArg);
     std::lock_guard<std::mutex> submit(f->submitMu);
+    if (f->asyncPending) collectAsync(f);
     auto                        wait = [&] {
         int v = f->state.load(std::memory_order_acquire);
         for (int i = 0; v != 2 && i < kSpin; ++i) {
@@ -500,6 +531,13 @@ bool tramp(JSContext* cx, unsigned argc, JS::Value* vp) {
         argv[i] = fromSM(f, tmp);
     }
 
+    // While an asynchronous tick runs, the host side of every native callback runs under the scene gate.
+    const bool gated = f->gateLock && f->gateActive.load(std::memory_order_acquire) && ! f->gateExempt.count(fnp);
+    if (gated) f->gateLock(f->gateArg);
+    if (gated && g_traceNatives) {
+        std::lock_guard<std::mutex> lock(g_traceMu);
+        if (g_nativeCalls[fnp]++ == 0) g_nativeOrder.push_back(fnp);
+    }
     JSValue ret = JS_UNDEFINED;
     int     kind = r1.isInt32() ? (r1.toInt32() & 0xff) : int(kData);
     int     magic = r1.isInt32() ? (r1.toInt32() >> 8) : 0;
@@ -536,6 +574,7 @@ bool tramp(JSContext* cx, unsigned argc, JS::Value* vp) {
     }
     }
 
+    if (gated) f->gateUnlock(f->gateArg);
     releaseV(f, thisv);
     for (unsigned i = 0; i < argc; ++i) releaseV(f, argv[i]);
     if (JS_IsException(ret)) {
@@ -732,6 +771,26 @@ static void teardownOnEngine(Fac* f, JSContext* ctx) {
 void JS_FreeContext(JSContext* ctx) {
     Fac* f = lookupCx(ctx);
     if (! f) return;
+    if (g_traceNatives) {
+        for (size_t i = 0; i < g_nativeOrder.size() && i < 40; ++i) {
+            unsigned long addr = (unsigned long)g_nativeOrder[i], off = 0;
+            char          path[256] = "?";
+            if (FILE* maps = fopen("/proc/self/maps", "r")) {
+                char line[512];
+                while (fgets(line, sizeof line, maps)) {
+                    unsigned long lo, hi, fo;
+                    if (sscanf(line, "%lx-%lx %*s %lx", &lo, &hi, &fo) == 3 && addr >= lo && addr < hi) {
+                        off = addr - lo + fo;
+                        const char* slash = strchr(line, '/');
+                        if (slash) { snprintf(path, sizeof path, "%s", slash); path[strcspn(path, "\n")] = 0; }
+                        break;
+                    }
+                }
+                fclose(maps);
+            }
+            fprintf(stderr, "[js] native #%zu calls %lu  %s 0x%lx\n", i, (unsigned long)g_nativeCalls[g_nativeOrder[i]], path, off);
+        }
+    }
     if (g_traceHops) {
         std::vector<std::pair<uint64_t, void*>> top;
         {
@@ -759,7 +818,7 @@ void JS_FreeContext(JSContext* ctx) {
             fprintf(stderr, "[js] hop caller %8lu  %s 0x%lx\n", (unsigned long)top[i].first, path, off);
         }
     }
-    if (getenv("OWE_JS_DEBUG")) fprintf(stderr, "[js] hops %lu, caller sleeps %lu, engine sleeps %lu\n", (unsigned long)g_hops.load(), (unsigned long)g_hopSleeps.load(), (unsigned long)g_engineSleeps.load());
+    if (getenv("OWE_JS_DEBUG")) fprintf(stderr, "[js] hops %lu, caller sleeps %lu, engine sleeps %lu, async ticks %lu, natives that waited for the gate %lu\n", (unsigned long)g_hops.load(), (unsigned long)g_hopSleeps.load(), (unsigned long)g_engineSleeps.load(), (unsigned long)g_asyncPosts.load(), (unsigned long)g_gateBlocked.load());
     hop<void>(f, [&] { teardownOnEngine(f, ctx); });
     stopEngineThread(f);
     if (pthread_equal(f->pt, pthread_self())) {
@@ -1409,6 +1468,40 @@ extern "C" void owe_js_run_on_engine(JSRuntime* rt, void (*fn)(void*), void* arg
     Fac* f = lookupCx(reinterpret_cast<JSContext*>(rt));
     if (! f) return fn(arg);
     hop<void>(f, [&] { fn(arg); });
+}
+
+// Oracle only: post a job without waiting. Any later engine call from the host waits for it first.
+extern "C" void owe_js_post_on_engine(JSRuntime* rt, void (*fn)(void*), void* arg) {
+    Fac* f = lookupCx(reinterpret_cast<JSContext*>(rt));
+    if (! f || onEngine(f)) return fn(arg);
+    std::lock_guard<std::mutex> submit(f->submitMu);
+    if (f->asyncPending) collectAsync(f);
+    g_asyncPosts.fetch_add(1, std::memory_order_relaxed);
+    f->job = [fn, arg] { fn(arg); };
+    f->asyncPending = true;
+    f->gateActive.store(f->gateLock != nullptr, std::memory_order_release);
+    if (f->gateNotify && f->gateLock) f->gateNotify(f->gateArg, true);
+    f->state.store(1, std::memory_order_release);
+    f->state.notify_one();
+}
+
+extern "C" void owe_js_gate_exempt(JSRuntime* rt, void* fn) {
+    Fac* f = lookupCx(reinterpret_cast<JSContext*>(rt));
+    if (f) hop<void>(f, [&] { f->gateExempt.insert(fn); });
+}
+
+// Installs the scene gate (all four functions or none).
+extern "C" void owe_js_set_gate(JSRuntime* rt, void (*lock)(void*), void (*unlock)(void*), void (*release_all)(void*),
+                                void (*notify)(void*, bool), void* arg) {
+    Fac* f = lookupCx(reinterpret_cast<JSContext*>(rt));
+    if (! f) return;
+    f->gateLock = lock; f->gateUnlock = unlock; f->gateReleaseAll = release_all; f->gateNotify = notify; f->gateArg = arg;
+}
+extern "C" void owe_js_sync_engine(JSRuntime* rt) {
+    Fac* f = lookupCx(reinterpret_cast<JSContext*>(rt));
+    if (! f || onEngine(f)) return;
+    std::lock_guard<std::mutex> submit(f->submitMu);
+    if (f->asyncPending) collectAsync(f);
 }
 
 // ---- host-facing wrappers: forward to the runtime's engine thread ----------------------------------------------------
