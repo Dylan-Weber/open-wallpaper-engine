@@ -41,6 +41,8 @@ struct PuppetLayerRegistry {
 struct SceneShaderEnvironment {
     bool fog_distance { false };
     bool fog_height { false };
+    // one-sample target: alpha-to-coverage materials threshold alpha in the shader (OWE_A2C_DISCARD)
+    bool alpha_to_coverage_discard { false };
     // some light casts a shadow map, and models cast their shadows into it
     bool          shadow_mapping { false };
     ShadowQuality shadow_quality { ShadowQuality::Medium };
@@ -398,7 +400,7 @@ BuildContext(Scene&, fs::VFS&, ref<str> scene_id, const wpscene::SceneMetadata&,
              GeometryShaderLimits geometry_limits = {}, slice<SceneShadowLight> shadow_lights = {},
              ShadowQuality shadow_quality   = ShadowQuality::Medium,
              bool geometry_shader_supported = true, Option<ImageReadyCallback> image_ready = None(),
-             TextureMemoryOptions texture_memory = {});
+             TextureMemoryOptions texture_memory = {}, bool alpha_to_coverage_discard = false);
 
 void IndexSceneDocument(SceneParseContext&, ref<wpscene::SceneDocument>, slice<SceneObjectVar>);
 void ProcessContainers(SceneParseContext&, mut_ref<SceneObjectVar[]>);

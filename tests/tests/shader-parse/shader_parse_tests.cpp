@@ -157,6 +157,63 @@ void main(){}
     EXPECT_EQ(info.defTexs[usize()].texture.as_str(), "_rt_shadowAtlas"_str);
 }
 
+// OpKill / OpTerminateInvocation in a compiled fragment shader.
+static bool FragmentDiscards(const owe::CompileSceneShaderVariantResult& result) {
+    for (const auto& code : (*result.shader)->codes) {
+        std::vector<std::uint32_t> words;
+        for (auto word : code) words.push_back(word);
+        for (std::size_t i = 5; i < words.size();) {
+            const auto op = words[i] & 0xFFFFu, count = words[i] >> 16;
+            if (op == 252u || op == 4416u) return true;
+            if (count == 0) break;
+            i += count;
+        }
+    }
+    return false;
+}
+
+static owe::CompileSceneShaderVariantResult CompileAlphaToCoverage(bool discard_combo) {
+    owe::SceneShaderVariantDesc desc;
+    desc.scene_id    = "a2c-test"_Str;
+    desc.shader_name = "a2c-test"_Str;
+    desc.stages.push(owe::SceneShaderVariantStage {
+        .stage      = owe::ShaderType::VERTEX,
+        .source_key = "/assets/shaders/a2c-test.vert"_Str,
+        .source     = R"(
+attribute vec4 a_Position;
+void main() { gl_Position = a_Position; }
+)"_Str,
+    });
+    desc.stages.push(owe::SceneShaderVariantStage {
+        .stage      = owe::ShaderType::FRAGMENT,
+        .source_key = "/assets/shaders/a2c-test.frag"_Str,
+        .source     = R"(
+uniform float g_Alpha;
+void main() {
+    gl_FragColor = vec4(1.0, 1.0, 1.0, g_Alpha);
+#if ALPHATOCOVERAGE
+    gl_FragColor.a = (gl_FragColor.a - 0.5) / max(fwidth(gl_FragColor.a), 0.0001) + 0.5;
+#endif
+}
+)"_Str,
+    });
+    (void)desc.input_combos.insert("ALPHATOCOVERAGE"_Str, "1"_Str);
+    if (discard_combo) (void)desc.input_combos.insert("OWE_A2C_DISCARD"_Str, "1"_Str);
+    owe::fs::VFS vfs;
+    return owe::ShaderParser::CompileSceneShaderVariant(desc, vfs);
+}
+
+TEST(ShaderParser, AlphaToCoverageDiscardsOnlyWhenTheSingleSampleComboIsSet) {
+    // one sample: the shader thresholds alpha itself; with MSAA the combo is absent and the
+    // hardware's alpha-to-coverage keeps the ramp
+    const auto single = CompileAlphaToCoverage(true);
+    ASSERT_TRUE(single.ok) << rstd::cppstd::as_string_view(single.error.as_str());
+    EXPECT_TRUE(FragmentDiscards(single));
+    const auto msaa = CompileAlphaToCoverage(false);
+    ASSERT_TRUE(msaa.ok) << rstd::cppstd::as_string_view(msaa.error.as_str());
+    EXPECT_FALSE(FragmentDiscards(msaa));
+}
+
 TEST(ShaderParser, ShadowPassAnnotationSelectsCasterShader) {
     auto info = Parse(R"(
 // [PASS] shadow shadowcasterfoliage4
@@ -1865,7 +1922,7 @@ void main() {
                (static_cast<std::uint32_t>(header[offset + 3]) << 24);
     };
     EXPECT_EQ(read_u32(8), 3u);
-    EXPECT_EQ(read_u32(12), 25u);
+    EXPECT_EQ(read_u32(12), 27u);
     EXPECT_EQ(read_u32(16), 112u);
     EXPECT_EQ(read_u32(24), 2u);
     const auto initial_write_time = std::filesystem::last_write_time(artifact_path);

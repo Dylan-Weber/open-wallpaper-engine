@@ -157,6 +157,8 @@ public:
 
     bool               getDrmRenderNode(rstd::uint32_t& out_major, rstd::uint32_t& out_minor) const;
     DeviceCapabilities deviceCapabilities() const;
+    // the render target's sample count (1 until initialised)
+    rstd::uint32_t msaaSamples() const;
 
     VkInstance       vkInstance() const;
     VkPhysicalDevice vkPhysicalDevice() const;
