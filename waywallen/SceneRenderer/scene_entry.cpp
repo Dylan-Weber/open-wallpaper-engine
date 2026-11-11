@@ -266,7 +266,7 @@ Options parse_args(int argc, char** argv) {
     auto hwdec =
         command.add_arg(Arg<String>::value("hwdec"_str, string_parser())
                             .long_name("hwdec"_str)
-                            .help("Video texture decoder mode: auto, vulkan, vaapi, or none"_str)
+                            .help("Video texture decoder mode: auto, vulkan, vaapi, cuda, or none"_str)
                             .default_value(""_str));
     auto load_bench_output =
         command.add_arg(Arg<String>::value("load-bench-output"_str, string_parser())

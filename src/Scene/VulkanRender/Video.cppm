@@ -144,6 +144,7 @@ private:
 wavsen::video::HwAccel ParseHwdec(ref<str> value) {
     if (value == "vulkan"_str) return wavsen::video::HwAccel::Vulkan;
     if (value == "vaapi"_str) return wavsen::video::HwAccel::Vaapi;
+    if (value == "cuda"_str) return wavsen::video::HwAccel::Cuda;
 #if __is_target_os(macos)
     if (value == "videotoolbox"_str) return wavsen::video::HwAccel::VideoToolbox;
 #endif
@@ -156,6 +157,7 @@ const char* HwdecLabel(wavsen::video::HwAccel h) {
     case wavsen::video::HwAccel::Auto: return "auto";
     case wavsen::video::HwAccel::Vulkan: return "vulkan";
     case wavsen::video::HwAccel::Vaapi: return "vaapi";
+    case wavsen::video::HwAccel::Cuda: return "cuda";
     case wavsen::video::HwAccel::VideoToolbox: return "videotoolbox";
     case wavsen::video::HwAccel::None: return "none";
     }
@@ -1130,9 +1132,10 @@ auto OpenMediaRuntime(Arc<MediaRegistry::State> state, const Image& image, tex::
     if (runtime.playback.is_some()) {
         (*runtime.playback)->PublishTime(f64(), (*runtime.decoder)->duration());
     }
-    rstd_info("MediaRegistry::Prepare: {} hwdec={} decoder kind={}",
+    rstd_info("MediaRegistry::Prepare: {} hwdec={} decoder backend={} kind={}",
               image.key,
               HwdecLabel(requested_hwdec),
+              HwdecLabel((*runtime.decoder)->backend()),
               FrameKindLabel((*runtime.decoder)->kind()));
 
     auto owned  = Arc<MediaRegistry::State::Runtime>::make(rstd::move(runtime));
