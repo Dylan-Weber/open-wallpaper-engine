@@ -430,7 +430,7 @@ dependencies = [
 [[packages]]
 name = "vrento"
 version = "0.1.0"
-source = "git+https://github.com/Dylan-Weber/vrento.git#01ab90390531d034508078825386a3f467822727"
+source = "git+https://github.com/Dylan-Weber/vrento.git#1c223747c91211e54ff3b71bd8528cd3c9b8f746"
 dependencies = [
   "lito-spirv",
   "rstd-log",
