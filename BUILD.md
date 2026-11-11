@@ -69,7 +69,8 @@ Scene scripts run on QuickJS-ng by default. The `release-sm` profile runs them o
 it is 10 to 25 times faster on script-heavy wallpapers such as More Physics and changes nothing for the others.
 
 ```bash
-lito build -p owe-sceneviewer --profile release-sm
+scripts/local-build.sh -p owe-sceneviewer      # = lito build --profile release-sm; the local default
+lito build -p owe-sceneviewer --profile release   # QuickJS: what the release bundle uses
 ```
 
 It needs the SpiderMonkey development package (`libmozjs-140-dev` on Debian and Ubuntu; pkg-config module
