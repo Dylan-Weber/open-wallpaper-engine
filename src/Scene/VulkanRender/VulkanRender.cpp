@@ -4,6 +4,7 @@ module;
 #include "vvk/macros.hpp"
 
 #include <cerrno>
+#include <cstdlib>
 #include <unistd.h>
 
 module wescene.vulkan_render;
@@ -269,6 +270,8 @@ struct VulkanRender::Impl {
                             Vec<vrento::resource_registry::PreparedTextureUpdate>&)
         -> Result<empty, resource::ResourceError>;
     bool beginFrame(vrento::texture::Submission);
+    // OWE_GRAPH_STATS=N logs how often the frame graph's binding validation was reused every N frames
+    rstd::uint64_t m_frames_begun {};
     bool prepareOutputFrame(Scene&);
     bool executeFrame();
     void reportFrameError(vrento::vulkan::GraphExecutionErrorSnapshot);
@@ -511,6 +514,18 @@ bool VulkanRender::Impl::beginFrame(vrento::texture::Submission work) {
     }
     m_frame            = Some(frame.unwrap());
     m_last_frame_error = None();
+    static const long stats_every = [] {
+        const char* value = std::getenv("OWE_GRAPH_STATS");
+        return value ? std::atol(value) : 0L;
+    }();
+    if (stats_every > 0 && ++m_frames_begun % static_cast<rstd::uint64_t>(stats_every) == 0) {
+        auto stats = m_renderer->compiled().unwrap().description().binding_check_stats();
+        rstd_error("frame graph bindings: {} frames, validation reused {}, rerun {} (last word that differed: {})",
+                  m_frames_begun,
+                  stats.hits,
+                  stats.misses,
+                  stats.last_difference);
+    }
     return true;
 }
 void VulkanRender::Impl::reportFrameError(vrento::vulkan::GraphExecutionErrorSnapshot error) {
