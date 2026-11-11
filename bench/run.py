@@ -133,8 +133,11 @@ def run_once(viewer, entry, frame, extra):
                 rss_mb=usage.ru_maxrss // 1024, gpu_mem=sampler.gpu_mem, gpu_util=sampler.gpu_util)
 
 
-def bench(viewer, entry, idle_mem, paced):
+def bench(viewer, entry, idle_mem, paced, warmup=False):
     short, long = entry.get('frames_short', 100), entry.get('frames_long', 1100)
+    if warmup:
+        # a cold shader cache makes the first (short) run slow and the difference too small: fill it, drop the run
+        run_once(viewer, entry, short, [])
     a = run_once(viewer, entry, short, [])
     b = run_once(viewer, entry, long, [])
     result = {'name': entry['name'], 'category': entry.get('category', ''), 'size': entry.get('size', '1920x1080')}
@@ -189,6 +192,7 @@ def main():
     ap.add_argument('--gpu', choices=['nvidia', 'intel', 'any'], default='nvidia',
                     help='the Vulkan driver the viewer may use (default nvidia): the loader lists the Intel iGPU first '
                          'and the viewer takes the first device, so without this it renders on the iGPU')
+    ap.add_argument('--warmup', action='store_true', help='run each wallpaper once first and drop it (warms the shader cache)')
     ap.add_argument('--paced', type=int, default=0, metavar='SECONDS',
                     help='also run SECONDS of realtime-paced frames (as on a desktop) for CPU and GPU use at the fps')
     ap.add_argument('--size', help='override every wallpaper\'s resolution, e.g. 5120x1440')
@@ -209,7 +213,7 @@ def main():
     idle_mem = idle[0] if idle else None
     results = []
     for e in entries:
-        r = bench(args.viewer, e, idle_mem, args.paced)
+        r = bench(args.viewer, e, idle_mem, args.paced, args.warmup)
         results.append(r)
         print(json.dumps(r), flush=True)
     out = args.out or os.path.join(HERE, 'results', args.label + '.json')

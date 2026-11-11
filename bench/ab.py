@@ -22,6 +22,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--config', action='append', required=True, help='NAME=VIEWER[:VAR=VALUE...]')
     ap.add_argument('--rounds', type=int, default=3)
+    ap.add_argument('--warmup', action='store_true', help='run each configuration once first and drop it (warms the shader cache)')
     ap.add_argument('--only', nargs='*')
     ap.add_argument('--size')
     ap.add_argument('--out', required=True)
@@ -47,7 +48,7 @@ def main():
                 saved = {k: os.environ.get(k) for k in env}
                 os.environ.update(env)
                 try:
-                    r = run.bench(viewer, e, idle_mem, 0)
+                    r = run.bench(viewer, e, idle_mem, 0, args.warmup and _ == 0)
                 finally:
                     for k, v in saved.items():
                         if v is None:
