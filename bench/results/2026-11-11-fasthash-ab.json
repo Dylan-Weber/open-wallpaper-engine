@@ -1,0 +1,183 @@
+{
+ "configs": [
+  "pose",
+  "fx"
+ ],
+ "rounds": 3,
+ "results": [
+  {
+   "name": "rain",
+   "category": "particles",
+   "size": "1920x1080",
+   "pose": {
+    "ms_per_frame": 5.004,
+    "cpu_ms_per_frame": 3.059,
+    "rss_mb": 398,
+    "gpu_mem_mb": 876,
+    "gpu_util_pct": 68,
+    "all_ms": [
+     4.652,
+     5.004,
+     5.192
+    ]
+   },
+   "fx": {
+    "ms_per_frame": 4.658,
+    "cpu_ms_per_frame": 2.817,
+    "rss_mb": 399,
+    "gpu_mem_mb": 1034,
+    "gpu_util_pct": 70,
+    "all_ms": [
+     4.613,
+     4.658,
+     5.58
+    ]
+   }
+  },
+  {
+   "name": "sculpture-forest",
+   "category": "particles",
+   "size": "1920x1080",
+   "pose": {
+    "ms_per_frame": 6.567,
+    "cpu_ms_per_frame": 2.8,
+    "rss_mb": 1651,
+    "gpu_mem_mb": 1805,
+    "gpu_util_pct": 76,
+    "all_ms": [
+     6.567,
+     6.994,
+     6.279
+    ]
+   },
+   "fx": {
+    "ms_per_frame": 6.267,
+    "cpu_ms_per_frame": 2.597,
+    "rss_mb": 1396,
+    "gpu_mem_mb": 1921,
+    "gpu_util_pct": 80,
+    "all_ms": [
+     6.267,
+     6.162,
+     6.833
+    ]
+   }
+  },
+  {
+   "name": "littlebigplanet",
+   "category": "3d-shadow",
+   "size": "1920x1080",
+   "pose": {
+    "ms_per_frame": 12.426,
+    "cpu_ms_per_frame": 12.311,
+    "rss_mb": 491,
+    "gpu_mem_mb": 383,
+    "gpu_util_pct": 26,
+    "all_ms": [
+     9.061,
+     12.426,
+     15.604
+    ]
+   },
+   "fx": {
+    "ms_per_frame": 12.445,
+    "cpu_ms_per_frame": 12.44,
+    "rss_mb": 491,
+    "gpu_mem_mb": 469,
+    "gpu_util_pct": 19,
+    "all_ms": [
+     8.746,
+     12.705,
+     12.445
+    ]
+   }
+  },
+  {
+   "name": "ocarina-of-time",
+   "category": "3d-shadow",
+   "size": "1920x1080",
+   "pose": {
+    "ms_per_frame": 30.589,
+    "cpu_ms_per_frame": 30.775,
+    "rss_mb": 517,
+    "gpu_mem_mb": 246,
+    "gpu_util_pct": 16,
+    "all_ms": [
+     22.159,
+     30.589,
+     32.019
+    ]
+   },
+   "fx": {
+    "ms_per_frame": 28.902,
+    "cpu_ms_per_frame": 29.149,
+    "rss_mb": 515,
+    "gpu_mem_mb": 253,
+    "gpu_util_pct": 23,
+    "all_ms": [
+     21.344,
+     28.902,
+     31.657
+    ]
+   }
+  },
+  {
+   "name": "reze",
+   "category": "effects",
+   "size": "1920x1080",
+   "pose": {
+    "ms_per_frame": 7.357,
+    "cpu_ms_per_frame": 4.264,
+    "rss_mb": 468,
+    "gpu_mem_mb": 675,
+    "gpu_util_pct": 76,
+    "all_ms": [
+     7.357,
+     7.177,
+     9.401
+    ]
+   },
+   "fx": {
+    "ms_per_frame": 7.175,
+    "cpu_ms_per_frame": 3.499,
+    "rss_mb": 476,
+    "gpu_mem_mb": 833,
+    "gpu_util_pct": 72,
+    "all_ms": [
+     7.175,
+     7.334,
+     7.1
+    ]
+   }
+  },
+  {
+   "name": "arknights",
+   "category": "scripts",
+   "size": "1920x1080",
+   "pose": {
+    "ms_per_frame": 6.344,
+    "cpu_ms_per_frame": 5.232,
+    "rss_mb": 486,
+    "gpu_mem_mb": 735,
+    "gpu_util_pct": 56,
+    "all_ms": [
+     5.6,
+     6.344,
+     6.8
+    ]
+   },
+   "fx": {
+    "ms_per_frame": 5.807,
+    "cpu_ms_per_frame": 4.77,
+    "rss_mb": 488,
+    "gpu_mem_mb": 851,
+    "gpu_util_pct": 47,
+    "all_ms": [
+     5.483,
+     5.859,
+     5.807
+    ]
+   }
+  }
+ ]
+}

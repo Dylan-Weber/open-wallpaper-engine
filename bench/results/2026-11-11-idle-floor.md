@@ -21,3 +21,10 @@ lab-all 59a3b26d build, new = this branch. Raw: `2026-11-11-fence-{before,after}
 
 Images are byte-identical to the base build on noita, water-effect-13 and nebula (particle scenes are not
 deterministic run to run even on the base build). Remaining per-frame syscalls are the sync-fd export (3 ioctls, fd dup).
+
+## Fast hasher for the frame-graph maps (vrento `perf-fast-hash`)
+
+Interleaved A/B, 3 rounds, medians (`2026-11-11-fasthash-ab.json`, config `pose` = before, `fx` = after), uncapped ms / CPU ms:
+ocarina 30.6 -> 28.9, arknights 6.34 -> 5.81, reze 7.36 -> 7.18 (CPU 4.26 -> 3.50), rain 5.00 -> 4.66,
+sculpture-forest 6.57 -> 6.27, littlebigplanet unchanged (12.4). Source: SipHash (`rstd::hash::DefaultHasher`, a byte at a
+time) was 7-10 % of Ocarina's samples.
