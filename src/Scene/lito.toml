@@ -12,6 +12,7 @@ spidermonkey = { default = false }
 condition = 'feature.spidermonkey || profile.name == "release-sm"'
 [when.usage]
 public-definitions = ["OWE_JS_SPIDERMONKEY=1"]
+private-definitions = ["OWE_JS_SPIDERMONKEY=1"]
 
 [source-groups.spidermonkey]
 sources = ["Script/JsSpiderMonkey.cpp"]
