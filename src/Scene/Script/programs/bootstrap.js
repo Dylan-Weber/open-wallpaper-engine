@@ -1,5 +1,8 @@
 
 (() => {
+  // SpiderMonkey (and V8) already implement RegExp.$1..$9 and the other legacy statics, and SpiderMonkey makes them
+  // non-configurable: redefining them throws. Only engines without them (QuickJS) need this polyfill.
+  if (Object.getOwnPropertyDescriptor(RegExp, '$1') !== undefined) return;
   const nativeExec = RegExp.prototype.exec;
   const defineRegExpStatic = (name, value) => {
     Object.defineProperty(RegExp, name, {

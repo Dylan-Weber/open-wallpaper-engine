@@ -3,8 +3,22 @@ name = "owe-scene"
 version.workspace = true
 source-root = "../.."
 
+[features]
+# Run scene scripts on SpiderMonkey (a JIT) through the QuickJS-API facade in Script/JsSpiderMonkey.cpp instead of
+# QuickJS. Needs libmozjs-140-dev (pkg-config module mozjs-140).
+spidermonkey = { default = false }
+
+[[when]]
+condition = 'feature.spidermonkey || profile.name == "release-sm"'
+[when.usage]
+public-definitions = ["OWE_JS_SPIDERMONKEY=1"]
+
+[source-groups.spidermonkey]
+sources = ["Script/JsSpiderMonkey.cpp"]
+
 [lib]
 name = "owe-scene"
+when = [{ condition = 'feature.spidermonkey || profile.name == "release-sm"', source-groups = ["spidermonkey"] }]
 module = "wescene"
 archive = "owe-scene"
 sources = [
@@ -224,6 +238,11 @@ pub = true
 [external-dependencies.cmake.quickjs]
 workspace = true
 targets = [{ name = "qjs", pub = true }]
+
+[external-dependencies.pkg-config.mozjs]
+workspace = true
+pub = true
+condition = 'feature.spidermonkey || profile.name == "release-sm"'
 
 [external-dependencies.pkg-config.lz4]
 workspace = true

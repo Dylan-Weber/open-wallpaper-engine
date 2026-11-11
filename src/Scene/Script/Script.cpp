@@ -3,6 +3,8 @@ module;
 #include <rstd/macro.hpp>
 #include <rstd/enum.hpp>
 #include <cmath>
+#include <optional>
+#include <type_traits>
 #include "quickjs.h"
 
 module wescene.script;
@@ -29,6 +31,33 @@ using rstd::sync::Arc;
 
 namespace owe::script
 {
+
+// Runs f on the thread that owns the JavaScript engine. The SpiderMonkey backend gives each runtime a thread of its own
+// and forwards every engine call made from elsewhere to it; one hop per call is too slow for the many small calls a
+// frame makes, so the public entry points run whole on the engine thread and their inner calls stay direct.
+// With QuickJS this just calls f.
+#ifdef OWE_JS_SPIDERMONKEY
+extern "C" void owe_js_run_on_engine(JSRuntime*, void (*)(void*), void*);
+template<class F>
+auto OnEngine(JSRuntime* rt, F&& f) -> decltype(f()) {
+    using R = decltype(f());
+    if constexpr (std::is_void_v<R>) {
+        owe_js_run_on_engine(
+            rt, [](void* p) { (*static_cast<std::remove_reference_t<F>*>(p))(); }, &f);
+    } else {
+        std::optional<R> result;
+        auto             run = [&] { result.emplace(f()); };
+        owe_js_run_on_engine(
+            rt, [](void* p) { (*static_cast<decltype(run)*>(p))(); }, &run);
+        return std::move(*result);
+    }
+}
+#else
+template<class F>
+auto OnEngine(JSRuntime*, F&& f) -> decltype(f()) {
+    return f();
+}
+#endif
 
 using conversion::CoerceInitialValue;
 using conversion::CoerceReturn;
@@ -3988,7 +4017,8 @@ JsRuntime::JsRuntime(): m_impl(Box<Impl>::make()) {
     // particle emission), `new Date()` and similar built-ins hit the
     // stack-frame guard and throw "Maximum call stack size exceeded".
     // Disable the soft check; the OS stack is plenty for clock/audio-
-    // response style scripts in the corpus.
+    // response style scripts in the corpus. (The SpiderMonkey backend reads 0 as "the engine thread's own, large,
+    // limit": recursion there throws a RangeError instead of overflowing the stack.)
     JS_SetMaxStackSize(m_impl->rt, 0);
     JS_SetContextOpaque(m_impl->ctx, &m_impl->host);
     // Built-in ES modules (WEMath, …). Resolves bare `import 'WEMath'`
@@ -4024,6 +4054,7 @@ void ReleaseFieldScriptValues(JSContext* ctx, FieldScript& script) {
 }
 
 JsRuntime::~JsRuntime() {
+    OnEngine(m_impl->rt, [&]() -> void {
     for (auto& fs : m_impl->scripts) ReleaseFieldScriptValues(m_impl->ctx, *fs);
     for (auto& fs : m_impl->deferred_scripts) ReleaseFieldScriptValues(m_impl->ctx, *fs);
     m_impl->scripts.clear();
@@ -4049,6 +4080,7 @@ JsRuntime::~JsRuntime() {
     for (auto& callback : m_impl->host.ended_callbacks) JS_FreeValue(m_impl->ctx, callback.fn);
     m_impl->host.ended_callbacks.clear();
     PruneSceneLayerBindings(m_impl->ctx, m_impl->host, nullptr);
+    });
     if (m_impl->ctx) JS_FreeContext(m_impl->ctx);
     if (m_impl->rt) JS_FreeRuntime(m_impl->rt);
 }
@@ -4091,6 +4123,7 @@ void DispatchGeneralSettings(JSContext* ctx, JsRuntime::Impl* rt, FieldScript* s
 } // namespace
 
 void JsRuntime::SetGeneralSettings(const Json& changes) {
+    OnEngine(m_impl->rt, [&]() -> void {
     auto object = changes.as_object();
     if (object.is_none()) return;
     for (const auto& [key, value] : (**object).iter())
@@ -4102,9 +4135,11 @@ void JsRuntime::SetGeneralSettings(const Json& changes) {
         if (script->m_impl->init_done)
             DispatchGeneralSettings(m_impl->ctx, m_impl.get(), script, changes);
     }
+});
 }
 
 void JsRuntime::SetUserProperty(ref<str> key, const Json& property) {
+    OnEngine(m_impl->rt, [&]() -> void {
     if (! m_impl->ctx) return;
     auto key_bytes = Vec<u8>::from(key.as_bytes());
     key_bytes.push(u8());
@@ -4150,9 +4185,11 @@ void JsRuntime::SetUserProperty(ref<str> key, const Json& property) {
     JS_FreeValue(ctx, props);
     JS_FreeValue(ctx, engine);
     JS_FreeValue(ctx, global);
+});
 }
 
 void JsRuntime::SetUserProperties(const rstd::json::Map& properties) {
+    OnEngine(m_impl->rt, [&]() -> void {
     if (! m_impl->ctx) return;
     JSContext* ctx    = m_impl->ctx;
     JSValue    global = JS_GetGlobalObject(ctx);
@@ -4203,9 +4240,11 @@ void JsRuntime::SetUserProperties(const rstd::json::Map& properties) {
     JS_FreeValue(ctx, props);
     JS_FreeValue(ctx, engine);
     JS_FreeValue(ctx, global);
+});
 }
 
 void JsRuntime::SetMediaStatus(const MediaStatus& status) {
+    OnEngine(m_impl->rt, [&]() -> void {
     if (! m_impl->ctx) return;
     JSContext* ctx         = m_impl->ctx;
     auto&      host        = m_impl->host;
@@ -4249,6 +4288,7 @@ void JsRuntime::SetMediaStatus(const MediaStatus& status) {
         }
     }
     m_impl->host.active_field_script = nullptr;
+});
 }
 
 void JsRuntime::SetAnimationLayerResolvers(AnimationLayerCreator   creator,
@@ -4294,10 +4334,12 @@ void JsRuntime::SetBonePhysicsHandler(BonePhysicsHandler handler) {
 }
 
 void JsRuntime::SetPersistence(PathBuf path) {
+    OnEngine(m_impl->rt, [&]() -> void {
     m_impl->host.ls_path = rstd::move(path);
     m_impl->host.ls_data.clear();
     m_impl->host.ls_pending.clear();
     (void)LoadLocalStorage(&m_impl->host, m_impl->host.ls_path);
+});
 }
 
 namespace
@@ -4306,15 +4348,20 @@ void RunFieldScriptInit(JSContext* ctx, JsRuntime::Impl* rt, FieldScript* fs);
 }
 
 void JsRuntime::SetScene(owe::Scene* scene) {
+    OnEngine(m_impl->rt, [&]() -> void {
     m_impl->host.scene = scene;
     if (scene) m_impl->host.registered_layer_queries = true;
+});
 }
 
 void JsRuntime::InvalidateLayer(owe::SceneNode& node) {
+    OnEngine(m_impl->rt, [&]() -> void {
     InvalidateLayerPointer(rstd::addressof(node));
+});
 }
 
 void JsRuntime::InvalidateLayerPointer(owe::SceneNode* pointer) {
+    OnEngine(m_impl->rt, [&]() -> void {
     auto& host = m_impl->host;
     for (auto& timer : host.deferred) {
         if (timer.dead || ! timer.owner || timer.owner->m_impl->node != pointer) continue;
@@ -4343,11 +4390,14 @@ void JsRuntime::InvalidateLayerPointer(owe::SceneNode* pointer) {
     (void)host.node_origin_hooks.remove(pointer);
     (void)host.image_alignment_hooks.remove(pointer);
     (void)host.initial_layer_configs.remove(pointer);
+});
 }
 
 void JsRuntime::SetInitializationOrder(FieldScript& script, rstd::uint64_t order) {
+    OnEngine(m_impl->rt, [&]() -> void {
     if (script.m_impl->rt != m_impl.get() || script.m_impl->init_done) return;
     script.m_impl->initialization_order = order;
+});
 }
 
 void JsRuntime::RegisterInitialLayerConfig(owe::SceneNode* node, Json config) {
@@ -4362,6 +4412,7 @@ void JsRuntime::SetAuthoredLayerNames(HashSet<String> names) {
 }
 
 void JsRuntime::SetSceneRoot(owe::SceneNode* root) {
+    OnEngine(m_impl->rt, [&]() -> void {
     if (! m_impl->ctx) return;
     if (m_impl->scene_root && m_impl->scene_root != root) {
         auto invalidate_removed = [&](Vec<Box<FieldScript>>& scripts) {
@@ -4396,6 +4447,7 @@ void JsRuntime::SetSceneRoot(owe::SceneNode* root) {
         return a < b || (a == b && left.registration < right.registration);
     });
     for (const auto& entry : pending) RunFieldScriptInit(m_impl->ctx, m_impl.get(), entry.script);
+});
 }
 
 // Wallpaper Engine hands a property script its own copy of the value in each
@@ -4432,6 +4484,7 @@ JSValue CopyFieldValue(JSContext* ctx, JSValueConst value) {
 }
 
 void JsRuntime::TickAll(slice<owe::SceneAnimationEventDispatch> animation_events) {
+    OnEngine(m_impl->rt, [&]() -> void {
     JSContext* ctx = m_impl->ctx;
     SweepDeferred(ctx, &m_impl->host);
     CallEndedCallbacks(ctx, &m_impl->host);
@@ -4623,6 +4676,7 @@ void JsRuntime::TickAll(slice<owe::SceneAnimationEventDispatch> animation_events
         JS_FreeValue(ctx, ret);
     }
     m_impl->host.active_field_script = nullptr;
+});
 }
 
 bool JsRuntime::Empty() const noexcept {
@@ -4891,6 +4945,7 @@ FieldScript* JsRuntime::MakeFieldScript(ref<str> source, ref<str> script_sha,
                                         FieldKind field_kind_in, const Json& properties_config,
                                         const Json& initial_value, ScriptBindingContext context,
                                         FieldScriptInitialization initialization) {
+    return OnEngine(m_impl->rt, [&]() -> FieldScript* {
     JSContext* ctx = m_impl->ctx;
     if (! ctx) return nullptr;
     EngineBindingGuard binding_guard(ctx, m_impl->host);
@@ -4981,9 +5036,11 @@ FieldScript* JsRuntime::MakeFieldScript(ref<str> source, ref<str> script_sha,
         if (m_impl->scene_root) RunFieldScriptInit(ctx, m_impl.get(), raw);
     }
     return raw;
+});
 }
 
 bool JsRuntime::InitializeFieldScript(FieldScript& script) {
+    return OnEngine(m_impl->rt, [&]() -> bool {
     if (! m_impl->ctx || ! m_impl->scene_root || script.m_impl->rt != m_impl.get() ||
         ! script.m_impl->alive || ! script.m_impl->init_deferred ||
         script.m_impl->init_in_progress || JS_IsUndefined(script.m_impl->deferred_module))
@@ -5016,6 +5073,7 @@ bool JsRuntime::InitializeFieldScript(FieldScript& script) {
         return true;
     }
     return false;
+});
 }
 
 bool JsRuntime::OwnsDeferredFieldScript(const FieldScript& script) const noexcept {
@@ -5024,6 +5082,7 @@ bool JsRuntime::OwnsDeferredFieldScript(const FieldScript& script) const noexcep
 }
 
 bool JsRuntime::DiscardDeferredFieldScript(FieldScript& script) {
+    return OnEngine(m_impl->rt, [&]() -> bool {
     for (usize index {}; index < m_impl->deferred_scripts.len(); ++index) {
         if (m_impl->deferred_scripts[index].get() != &script) continue;
         for (auto& timer : m_impl->host.deferred) {
@@ -5036,9 +5095,11 @@ bool JsRuntime::DiscardDeferredFieldScript(FieldScript& script) {
         return true;
     }
     return false;
+});
 }
 
 void JsRuntime::PruneInactiveFieldScripts() {
+    OnEngine(m_impl->rt, [&]() -> void {
     usize index {};
     while (index < m_impl->scripts.len()) {
         if (m_impl->scripts[index]->alive()) {
@@ -5048,6 +5109,7 @@ void JsRuntime::PruneInactiveFieldScripts() {
         auto script = m_impl->scripts.remove(index);
         ReleaseFieldScriptValues(m_impl->ctx, *script);
     }
+});
 }
 
 } // namespace owe::script

@@ -68,6 +68,9 @@ module = "wayland-egl"
 [workspace.external-dependencies.pkg-config.lz4]
 module = "liblz4"
 
+[workspace.external-dependencies.pkg-config.mozjs]
+module = "mozjs-140"
+
 [workspace.external-dependencies.pkg-config.waywallen-bridge]
 module = "waywallen-bridge"
 
@@ -125,3 +128,6 @@ adapter = "src/Web/cmake/CEF.cmake"
 package = "CEF"
 source = "cef-macos"
 adapter = "src/Web/cmake/CEF.cmake"
+
+[profile.release-sm]
+inherits = "release"
