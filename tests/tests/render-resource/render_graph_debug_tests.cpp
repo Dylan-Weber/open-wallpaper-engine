@@ -570,6 +570,85 @@ TEST(SceneRenderGraph, ASilentCasterKeepsTheAtlasWritten) {
     EXPECT_TRUE(graph->graph.compile().is_ok());
 }
 
+// The shadow maps of lights that do not light now are not drawn (Ocarina of Time's torches sit in
+// a layer a script hides: two six-face maps, half of all its draws); showing the light brings them
+// back, and the atlas always keeps a writer.
+TEST(SceneRenderGraph, OnlyLightsThatLightNowDrawShadowCasters) {
+    owe::Scene scene;
+    scene.RegisterRenderTarget(String::make("_rt_default"_str),
+                               owe::SceneRenderTarget { .width = i32(1280), .height = i32(720) });
+    scene.RegisterRenderTarget(String::make("_rt_shadowAtlas"_str),
+                               owe::SceneRenderTarget {
+                                   .width  = i32(256),
+                                   .height = i32(256),
+                                   .kind   = owe::SceneRenderTargetKind::DepthSampled,
+                               });
+    auto light_nodes = Vec<Arc<owe::SceneNode>>::make();
+    for (int light = 0; light < 2; ++light) {
+        auto viewports = Vec<owe::SceneShadowViewport>::make();
+        viewports.push(owe::SceneShadowViewport {
+            .width  = rstd::f32(256.0f),
+            .height = rstd::f32(256.0f),
+        });
+        scene.RegisterShadowDefinition(owe::SceneShadowDefinition {
+            .target      = String::make("_rt_shadowAtlas"_str),
+            .viewports   = rstd::move(viewports),
+            .light_id    = i32(light),
+            .view_offset = u32(light),
+        });
+        light_nodes.push(Arc<owe::SceneNode>::make());
+        scene.AttachRuntimeNode(*scene.RootMut(), light_nodes[usize(light)].clone());
+        auto registered = Box<owe::SceneLight>::make(owe::SceneLight::Desc {
+            .type = owe::SceneLightType::Point, .cast_shadow = true, .shadow_view = i32(light) });
+        registered->setNode(light_nodes[usize(light)].as_ptr());
+        (void)scene.RegisterLight(rstd::move(registered));
+    }
+
+    auto caster         = Arc<owe::SceneNode>::make();
+    caster->shadow.cast = true;
+    auto caster_mesh    = Arc<owe::SceneMesh>::make();
+    auto caster_material = GraphMaterial();
+    caster_material.name = "caster-main"_Str;
+    for (int light = 0; light < 2; ++light) {
+        auto variant  = Arc<owe::SceneMaterial>::make(GraphMaterial());
+        variant->name = "caster-shadow"_Str;
+        caster_material.shadow_variants.push(rstd::move(variant));
+    }
+    caster_mesh->AddMaterial(rstd::move(caster_material));
+    caster_mesh->Submeshes().push(owe::SceneMesh::Submesh {});
+    caster->AddMesh(rstd::move(caster_mesh));
+    scene.RootMut()->AppendChild(caster.clone());
+
+    // both light: a caster for each light
+    EXPECT_EQ(scene.ShadowLightMask(), rstd::uint64_t(3));
+    (void)scene.ConsumeRenderGraphDirty();
+    EXPECT_FALSE(scene.ConsumeRenderGraphDirty());
+    EXPECT_EQ(owe::ExtractRenderSceneSnapshot(scene).ShadowCasters().len(), usize(2));
+
+    // the second light's layer hidden: its caster is gone, and the change dirties the graph
+    (void)scene.SetNodeVisible(*light_nodes[usize(1)], false);
+    EXPECT_EQ(scene.ShadowLightMask(), rstd::uint64_t(1));
+    EXPECT_TRUE(scene.ConsumeRenderGraphDirty());
+    auto hidden = owe::ExtractRenderSceneSnapshot(scene);
+    ASSERT_EQ(hidden.ShadowCasters().len(), usize(1));
+    EXPECT_EQ(hidden.ShadowCasters()[usize()].definition, usize(0));
+    auto graph = owe::BuildSceneRenderState(scene, hidden);
+    ASSERT_TRUE(graph.is_ok());
+    EXPECT_TRUE(graph->graph.compile().is_ok());
+    EXPECT_FALSE(scene.ConsumeRenderGraphDirty());
+
+    // shown again: both are back
+    (void)scene.SetNodeVisible(*light_nodes[usize(1)], true);
+    EXPECT_TRUE(scene.ConsumeRenderGraphDirty());
+    EXPECT_EQ(owe::ExtractRenderSceneSnapshot(scene).ShadowCasters().len(), usize(2));
+
+    // every light hidden: one definition stays, so the atlas has a writer
+    (void)scene.SetNodeVisible(*light_nodes[usize(0)], false);
+    (void)scene.SetNodeVisible(*light_nodes[usize(1)], false);
+    EXPECT_EQ(scene.ShadowLightMask(), rstd::uint64_t(1));
+    EXPECT_EQ(owe::ExtractRenderSceneSnapshot(scene).ShadowCasters().len(), usize(1));
+}
+
 // Silence belongs to a model's material, not the model: Ocarina of Time's courtyard is one model of
 // 25 materials whose last is a translucent window, and its walls still cast.
 TEST(SceneRenderGraph, OnlyTheTranslucentPartsOfAModelAreSilent) {
