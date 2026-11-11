@@ -46,7 +46,7 @@ licrypto = { version = "0.1.1" }
 liffto = { version = "0.1.0" }
 vvk = { version = "0.1.1" }
 spirvto = { version = "0.1.0" }
-wavsen = { git = "https://github.com/Dylan-Weber/wavsen.git", rev = "38323c241987ea9d6c1bcac53c86d261df7ac7a2" }
+wavsen = { git = "https://github.com/Dylan-Weber/wavsen.git", rev = "fecea4404ab7f25bc6f8ed1605b86e1e4df8f45c" }
 vrento = { git = "https://github.com/Dylan-Weber/vrento.git", rev = "01ab90390531d034508078825386a3f467822727" }
 vectext = { git = "https://github.com/vecren/vectext.git" }
 

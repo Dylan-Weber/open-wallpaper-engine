@@ -452,7 +452,7 @@ dependencies = [
 [[packages]]
 name = "wavsen"
 version = "0.1.0"
-source = "git+https://github.com/Dylan-Weber/wavsen.git#38323c241987ea9d6c1bcac53c86d261df7ac7a2"
+source = "git+https://github.com/Dylan-Weber/wavsen.git#fecea4404ab7f25bc6f8ed1605b86e1e4df8f45c"
 dependencies = [
   "rstd-core",
   "rstd-dlopn",

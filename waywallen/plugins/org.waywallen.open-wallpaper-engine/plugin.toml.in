@@ -36,7 +36,7 @@ extras = ["assets", "workshop_id"]
 enable_audio = { type = "bool", default = true, identity = false, label = { msgid = "Enable audio" }, group = "audio", group_label = { msgid = "Audio" }, order = 5 }
 volume = { type = "u32", default = 100, min = 0, max = 100, step = 1, identity = false, label = { msgid = "Volume" }, group = "audio", group_label = { msgid = "Audio" }, order = 10 }
 fps    = { type = "u32", default = 30,  min = 1, max = 240, step = 1, identity = false, label = { msgid = "Frame rate" }, group = "render", group_label = { msgid = "Rendering" }, order = 20 }
-hwdec = { type = "string", default = "auto", choices = ["auto", "vaapi", "vulkan", "none"], identity = true, label = { msgid = "Hardware decoding" }, group = "decode", group_label = { msgid = "Decoding" }, order = 20 }
+hwdec = { type = "string", default = "auto", choices = ["auto", "vaapi", "vulkan", "cuda", "none"], identity = true, label = { msgid = "Hardware decoding" }, group = "decode", group_label = { msgid = "Decoding" }, order = 20 }
 render_node = { type = "string", default = "", identity = true, label = { msgid = "Render node" }, group = "render", group_label = { msgid = "Rendering" }, order = 30 }
 msaa   = { type = "u32", default = 1, min = 1, max = 16, step = 1, identity = true, label = { msgid = "MSAA" }, group = "render", group_label = { msgid = "Rendering" }, order = 25 }
 # -2 = auto, -1 = custom, 0 = authored canvas, 1–4 = 720/1080/1440/2160p.
