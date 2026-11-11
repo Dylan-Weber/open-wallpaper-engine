@@ -124,6 +124,12 @@ public:
     auto frameData(const DrawBindingContext&) const -> Option<Arc<ShaderDrawInput>>;
     void clearResources();
     auto parameters() const -> const Desc& { return m_desc; }
+    // The node this draw renders and the material it draws with in place of the mesh's (a shadow
+    // caster's), for diagnostics and culling decisions.
+    auto sourceNode() const -> SceneNode* { return updates_.node.is_some() ? updates_.node->as_raw_ptr() : nullptr; }
+    auto sourceMaterial() const -> const SceneMaterial* {
+        return updates_.material_override.is_some() ? updates_.material_override->as_ptr().as_raw_ptr() : nullptr;
+    }
     void refreshSnapshot() { captureGeometry(); }
 
 private:
