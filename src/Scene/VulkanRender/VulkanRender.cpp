@@ -1187,8 +1187,10 @@ void VulkanRender::Impl::drawFrameSwapchain(Scene& scene) {
         if (! synchronization) return;
         auto           owner = synchronization.take().unwrap();
         rstd::uint32_t image_index {};
+        const auto     perf_acquire = perf::Now();
         auto           acquired = m_device->handle().AcquireNextImageKHR(
             *m_device->swapchain().handle(), vk_wait_time, **owner->acquire, {}, &image_index);
+        perf::Add(perf::Stage::Acquire, perf_acquire);
         if (acquired != VK_SUCCESS && acquired != VK_SUBOPTIMAL_KHR) return;
         owner->signal     = m_sem_swap_finish_per_image[usize(image_index)].clone();
         const auto serial = m_next_surface_acquire_serial++;
@@ -1221,7 +1223,9 @@ void VulkanRender::Impl::drawFrameSwapchain(Scene& scene) {
     info.swapchainCount     = 1;
     info.pSwapchains        = m_device->swapchain().handle().address();
     info.pImageIndices      = &index;
+    const auto       perf_present = perf::Now();
     auto result             = m_device->present_queue().handle.Present(info);
+    perf::Add(perf::Stage::Present, perf_present);
     if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
         m_output->blocked = true;
         rstd_error("window presentation failed: {}", static_cast<int>(result));
@@ -1244,7 +1248,9 @@ void VulkanRender::Impl::drawFrameOffscreen(Scene& scene) {
         if (waitForPreparedUploads(rr, m_inflight.empty()).is_err()) return;
         auto synchronization = createFrameSynchronization(true);
         if (! synchronization) return;
+        const auto perf_acquire = perf::Now();
         auto acquired = (*m_ex_swapchain)->AsSwapchain().acquireRenderTarget();
+        perf::Add(perf::Stage::Acquire, perf_acquire);
         if (! acquired.acquired()) {
             if (acquired.error) rstd_error("output acquire failed: {}", *acquired.error);
             return;
@@ -1258,6 +1264,7 @@ void VulkanRender::Impl::drawFrameOffscreen(Scene& scene) {
     }
     if (! prepareOutputFrame(scene)) return;
     if (! executeFrame()) return;
+    const auto perf_present = perf::Now();
     int sync_fd = -1;
     if (m_device->handle().Dispatch().vkGetSemaphoreFdKHR) {
         VkSemaphoreGetFdInfoKHR info { VK_STRUCTURE_TYPE_SEMAPHORE_GET_FD_INFO_KHR };
@@ -1271,6 +1278,7 @@ void VulkanRender::Impl::drawFrameOffscreen(Scene& scene) {
         }
     }
     auto completed = m_output->completion->Submit(sync_fd);
+    perf::Add(perf::Stage::Present, perf_present);
     if (completed.error) rstd_error("output completion failed: {}", *completed.error);
     if (completed.status != FrameSurfaceCompletionStatus::Submitted &&
         completed.status != FrameSurfaceCompletionStatus::SessionLost) {

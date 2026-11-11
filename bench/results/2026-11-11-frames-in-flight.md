@@ -114,3 +114,19 @@ path that the capture runs exercise (acquire, export fd, complete) but not a rea
   depth-1 sample at 7.5 ms was disturbed by other jobs). **Paced at 60 fps (night-city, reze, street-japan-audio, `--capture-realtime`): queued = 0 at every depth**,
   GPU wait 2.6-4.7 ms -> 0, CPU the same: no added input or audio latency in the normal case. (Short runs read 55.5 fps because the first frames load.)
 - Re-check with this binary: captures byte-identical at depth 1/2/3 for 35 of 35 deterministic wallpapers (5 clock-dependent skipped).
+
+## 120 fps blockers in the presented path (2026-11-11 16:00-17:00Z)
+
+New instruments: `OWE_PERF_RAW=FILE` (per-frame CSV: timestamp, frame interval, every stage), stages `acquire` and `present` (window: AcquireNextImageKHR and vkQueuePresent;
+offscreen/Waywallen path: slot acquire and sync-fd export + completion hand-over), `--timeout` in `bench/stages.py` (a hung viewer can no longer hold the bench locks).
+
+- **The ~50 ms hitches of reze and bleach in a 60 Hz window are image-acquire stalls, not render work.** Per-frame traces (windowed, depth 1 and 2): of a 50 ms frame (reze) 43-46 ms are
+  inside `AcquireNextImageKHR`; of a 33 ms frame (bleach) 32 ms; CPU work is 2-4 ms, GPU wait 0 (depth 2) or 3-6 ms (depth 1, hidden inside the frame). Same at both depths. They come and go: the same
+  windowed reze/night-city runs at 14:30Z had p95 17 ms (59.5-59.9 fps) and at 16:00Z a quarter of the frames take 2-3 vsyncs. During these tests the user's live Waywallen renderer and the
+  compositor share the 4070 (and other threads' GPU jobs). `OWE_PRESENT_MODE=mailbox` is worse (200 ms GPU-fence waits), `immediate` behaves like fifo (the compositor gates presentation).
+  Conclusion: a shared-desktop contention effect on the swapchain path of the test viewer; the Waywallen path (dma-buf slots, no swapchain) cannot show it. Not fixed in the renderer because nothing in the
+  renderer causes it; to isolate it needs a run with the live wallpaper stopped (not done: it is the user's desktop).
+- **Sync-fd export is not a blocker:** `present` (get sync fd + completion hand-over) p50 2-7 microseconds per frame (night-city 0.002 ms, reze 0.007 ms; p99 4-12 us).
+- **Pacing at 120 fps** (offscreen, `--capture-realtime`, 960 frames, target 120): night-city 112.4 / 112.5 fps (depth 1 / 2), reze 112.4 / 112.4, bleach 112.7 / 112.9; the shortfall to 120 is the loading
+  frames at the start (the 60 fps runs lose the same 7 %). CPU of one core at 120 fps: night-city 38 %, reze 58 %, bleach 26 %; GPU wait 3.2-3.6 ms mean (depth 1) -> 0.00 (depth 2). With the old timer a 120 fps target
+  would have run at about 1000/(8.33 + frame time).

@@ -25,6 +25,7 @@ def main():
     ap.add_argument('--size')
     ap.add_argument('--json', help='also write the raw stage and GPU pass data to FILE')
     ap.add_argument('--top', type=int, default=25, help='GPU passes to list')
+    ap.add_argument('--timeout', type=int, default=180, help='seconds before the viewer is killed (it holds the bench locks)')
     ap.add_argument('--viewer', default=run.DEFAULT_VIEWER)
     ap.add_argument('--gpu', default='nvidia', choices=['nvidia', 'intel', 'any'])
     args = ap.parse_args()
@@ -33,6 +34,7 @@ def main():
     entry = entries.get(args.name) or {'name': args.name, 'id': args.name}
     if args.size:
         entry = dict(entry, size=args.size)
+    entry = dict(entry, timeout=args.timeout)
     if args.gpu != 'any':
         run.GPU_ENV['VK_DRIVER_FILES'] = run.ICDS[args.gpu]
     log = '/tmp/owe-stages-%d.json' % os.getpid()

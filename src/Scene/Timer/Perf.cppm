@@ -32,11 +32,13 @@ enum class Stage : int {
     GBegin,  // beginFrame: GraphFrame::begin
     Gpu,     // GPU time of the frame's passes (OWE_GPU_TIMING; the sum of the pass timestamps)
     Wait,    // waiting for the frame's completion fence (GPU time not overlapped with CPU work)
+    Acquire, // window path: AcquireNextImageKHR (blocks for the display with FIFO) / offscreen path: acquiring the output slot
+    Present, // window path: vkQueuePresent / offscreen path: exporting the sync fd and handing the frame to the consumer
     Queued,  // frames still executing on the GPU when a frame is submitted (a count, shown as "ms"): the display latency a deeper queue adds, in frames of GPU time
     Count
 };
 
-inline const char* const kStageNames[] = { "frame", "prepare", "scripts", "anim", "draw", "update", "begin", "advance", "record", "submit", "capture", "gbegin", "gpu", "wait", "queued" };
+inline const char* const kStageNames[] = { "frame", "prepare", "scripts", "anim", "draw", "update", "begin", "advance", "record", "submit", "capture", "gbegin", "gpu", "wait", "acquire", "present", "queued" };
 
 namespace detail
 {
@@ -47,6 +49,7 @@ inline std::map<std::string, double>              g_gpu_pending;
 inline std::map<std::string, std::vector<double>> g_gpu_samples;
 inline uint64_t                 g_pending[int(Stage::Count)];
 inline bool                     g_registered = false;
+inline std::vector<uint64_t>    g_frame_times_ns;
 inline uint64_t                 g_first_frame_ns = 0, g_last_frame_ns = 0; // CLOCK_MONOTONIC of the first and last closed frame
 
 inline void Write() {
@@ -70,6 +73,22 @@ inline void Write() {
                 at(0.95),
                 at(0.99),
                 at(1.0));
+    }
+    if (const char* raw = getenv("OWE_PERF_RAW")) {
+        // one line per frame: its timestamp (ms since the first), the time since the previous frame, then each stage
+        if (FILE* t = fopen(raw, "w")) {
+            fprintf(t, "frame,t_ms,dt_ms");
+            for (int s = 0; s < int(Stage::Count); ++s) fprintf(t, ",%s", kStageNames[s]);
+            fprintf(t, "\n");
+            for (size_t i = 0; i < g_frame_times_ns.size(); ++i) {
+                const double at = double(g_frame_times_ns[i] - g_frame_times_ns[0]) / 1e6;
+                const double dt = i ? double(g_frame_times_ns[i] - g_frame_times_ns[i - 1]) / 1e6 : 0.0;
+                fprintf(t, "%zu,%.3f,%.3f", i, at, dt);
+                for (int s = 0; s < int(Stage::Count); ++s) fprintf(t, ",%.3f", g_samples[s][i]);
+                fprintf(t, "\n");
+            }
+            fclose(t);
+        }
     }
     fprintf(f, "}, \"gpu_passes\": [");
     const double frames = double(g_samples[0].size() > 10 ? g_samples[0].size() - 10 : 1);
@@ -132,6 +151,7 @@ inline void FrameDone() {
         const uint64_t now = uint64_t(ts.tv_sec) * 1000000000ull + uint64_t(ts.tv_nsec);
         if (! detail::g_first_frame_ns) detail::g_first_frame_ns = now;
         detail::g_last_frame_ns = now;
+        detail::g_frame_times_ns.push_back(now);
     }
     for (int s = 0; s < int(Stage::Count); ++s) {
         detail::g_samples[s].push_back(double(detail::g_pending[s]) / 1e6);
