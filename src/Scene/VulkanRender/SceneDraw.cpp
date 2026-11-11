@@ -76,6 +76,7 @@ void SceneDraw::captureGeometry() {
 }
 
 PassInvalidationFlags SceneDraw::finalizeResourceRequests(Scene& scene) {
+    m_uses_cache = None();
     PassInvalidationFlags flags = PassInvalidationNone;
     for (auto& binding : m_desc.texture_bindings) {
         auto name = binding.name.as_str();
@@ -161,6 +162,7 @@ PassInvalidationFlags SceneDraw::finalizeResourceRequests(Scene& scene) {
 
 auto SceneDraw::declareResources(ResourceDeclarationContext& context)
     -> Option<vrento::vulkan::GraphicsDrawDesc> {
+    m_uses_cache              = None();
     m_desc.shader_use         = None();
     m_desc.buffer_uses        = {};
     m_desc.uniform_block_uses = {};
@@ -284,7 +286,10 @@ auto SceneDraw::textureAccesses() const -> Vec<PassTextureAccess> {
     return uses;
 }
 
-PassResourceUses SceneDraw::resourceUses() const {
+const PassResourceUses& SceneDraw::resourceUses() const {
+    // Built once: it was rebuilt, a dozen vectors, three times per draw per frame. Whatever changes
+    // the description's uses resets it.
+    if (m_uses_cache) return *m_uses_cache;
     PassResourceUses uses;
     // Texture metadata can supply uniforms even when the sampler is inactive.
     for (const auto& binding : m_desc.texture_bindings) {
@@ -320,7 +325,8 @@ PassResourceUses SceneDraw::resourceUses() const {
     }
     for (const auto& descriptor : m_desc.descriptor_bindings)
         uses.descriptors.push(resource::DescriptorBindingHandle(descriptor.binding));
-    return uses;
+    m_uses_cache = Some(rstd::move(uses));
+    return *m_uses_cache;
 }
 
 auto SceneDraw::pipelineLayoutRequirement(const resource::ShaderArtifact& artifact) const
@@ -836,6 +842,7 @@ auto SceneDraw::describeGraphics(const resource::ShaderArtifact& artifact)
 
 auto SceneDraw::resolveResources(const Device& device, DrawResourceContext& context)
     -> Result<empty, DrawPrepareError> {
+    m_uses_cache = None();
     auto missing = [&](DrawResourceKind kind) {
         return Err(DrawPrepareError::Missing(kind, m_desc.render_item));
     };
@@ -1102,12 +1109,14 @@ auto SceneDraw::frameData(const DrawBindingContext& context) const -> Option<Arc
 }
 
 void SceneDraw::clearResources() {
+    m_uses_cache    = None();
     bindings_ready_ = false;
     m_desc.descriptor_bindings.clear();
     m_desc.draw_buffers = {};
 }
 
 bool SceneDraw::setTextureBinding(u32 index, TextureBindingRequest binding) {
+    m_uses_cache = None();
     const rstd::size_t native_index = index.to_primitive();
     if (native_index >= m_desc.texture_bindings.len().to_primitive()) return false;
     m_desc.texture_bindings[usize(native_index)] = rstd::move(binding);

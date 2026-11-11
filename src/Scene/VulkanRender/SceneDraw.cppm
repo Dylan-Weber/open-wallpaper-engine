@@ -102,7 +102,7 @@ public:
     PassInvalidationFlags finalizeResourceRequests(Scene&);
     auto declareResources(ResourceDeclarationContext&) -> Option<vrento::vulkan::GraphicsDrawDesc>;
     auto textureAccesses() const -> Vec<PassTextureAccess>;
-    PassResourceUses resourceUses() const;
+    const PassResourceUses& resourceUses() const;
     auto             pipelineLayoutRequirement(const resource::ShaderArtifact&) const
         -> Result<Option<PipelineLayoutRequirement>, resource::ResourceError>;
     auto globalDescriptorBufferUses(const PreparedPassResources&) const
@@ -148,6 +148,7 @@ private:
     Option<bool>    output_alpha_;
     array<float, 3> clear_color_ {};
     Desc            m_desc;
+    mutable Option<PassResourceUses> m_uses_cache;
     UpdateSource    updates_;
 };
 

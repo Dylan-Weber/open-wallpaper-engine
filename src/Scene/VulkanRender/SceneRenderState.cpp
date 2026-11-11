@@ -31,7 +31,7 @@ auto SceneRenderState::captureFrame(
     for (const auto& draw : draws) {
         auto desc = compiled.description(draw.id);
         if (! desc || ! (*desc)->get<vk::GraphicsDrawDesc>()) return failure();
-        auto                  uses = draw.source->resourceUses();
+        const auto&                  uses = draw.source->resourceUses();
         PreparedPassResources selected(prepared, uses);
         DrawBindingContext    context {
             .resources         = ref<PreparedPassResources>::from_raw_parts(&selected),
