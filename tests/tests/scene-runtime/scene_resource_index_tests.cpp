@@ -2720,3 +2720,34 @@ TEST(SceneCameras, ALookAtCameraRefitsItsFovToTheHeightAtItsCenter) {
     authored.FitFovToHeightAtCenter(288.0);
     EXPECT_DOUBLE_EQ(authored.Fov(), 30.0);
 }
+
+// A frame that ends exactly on an update moves the animation on in that update. The updates'
+// lengths (1/30 s as a double) add up a hair short of the frame's (0.1f is a hair over 0.1), so the
+// first frame lasted one update more and every later frame ended that update late: a picture taken
+// at 7.0 s (the Sun, ws2672187332, frame 210) showed the frame before the one Wallpaper Engine
+// shows.
+TEST(SpriteAnimation, AFrameEndingOnAnUpdateEndsInThatUpdate) {
+    auto make = [] {
+        owe::SpriteAnimation animation;
+        for (int i = 0; i < 300; ++i) {
+            owe::SpriteFrame frame;
+            frame.frametime = 0.1f;
+            animation.AppendFrame(frame);
+        }
+        return animation;
+    };
+    // exactly two seconds of updates: 20 frames have gone by
+    for (int updates_per_second : { 15, 24, 30, 60, 90, 120, 144 }) {
+        auto animation = make();
+        for (int i = 0; i < updates_per_second * 2; ++i)
+            (void)animation.GetAnimateFrame(1.0 / updates_per_second);
+        EXPECT_EQ(animation.CurrentFrameIndex(), usize(20))
+            << "after 2 s at " << updates_per_second << " updates a second";
+    }
+    // at 30 updates a second the first frame ends in the third update, the next in the sixth
+    auto animation = make();
+    for (int update = 1; update <= 6; ++update) {
+        (void)animation.GetAnimateFrame(1.0 / 30.0);
+        EXPECT_EQ(animation.CurrentFrameIndex(), usize(update / 3)) << "update " << update;
+    }
+}
