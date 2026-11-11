@@ -8,6 +8,7 @@ import wescene.core;
 import wescene.types;
 import rstd;
 import rstd.cppstd;
+import eigen;
 import rstd.log;
 import wescene.load_bench;
 import wescene.resource_registry;
@@ -507,6 +508,111 @@ public:
                        frames > u64(0) ? identical / frames : u64(),
                        count.key);
         }
+    }
+
+    // Diagnostics (OWE_GRAPH_DUMP): for each point light, how many of its shadow casters are rigid
+    // meshes (no skinning or morphing in their shadow material, so a bound from their vertex positions
+    // holds) and how many of those lie wholly beyond the light's radius, where the light's falloff is
+    // exactly zero and the caster cannot shadow anything it lights.
+    void logShadowBounds(const Scene& scene) {
+        struct Count {
+            u64 draws {}, rigid {}, skinned {}, morphing {}, no_bound {}, beyond {};
+        };
+        auto definitions = scene.ShadowDefinitions();
+        auto lights      = scene.Lights();
+        Vec<Count> counts;
+        for (usize d {}; d < definitions.len(); ++d) counts.push(Count {});
+        for (const auto& entry : draws) {
+            const auto& desc = entry.source->parameters();
+            if (! desc.depth_only || desc.viewports.len() != usize(6)) continue;
+            // which definition: the one whose first viewport is this draw's
+            usize found = definitions.len();
+            for (usize d {}; d < definitions.len(); ++d) {
+                const auto& view = definitions[d].viewports[usize()];
+                if (definitions[d].viewports.len() == usize(6) && view.x == f32(desc.viewports[usize()].x) &&
+                    view.width == f32(desc.viewports[usize()].width) &&
+                    view.y == f32(desc.viewports[usize()].y)) {
+                    found = d;
+                    break;
+                }
+            }
+            if (found == definitions.len()) continue;
+            auto& count = counts[found];
+            ++count.draws;
+            const auto* material = entry.source->sourceMaterial();
+            auto*       node     = entry.source->sourceNode();
+            if (material == nullptr || node == nullptr || node->Mesh() == nullptr) {
+                ++count.no_bound;
+                continue;
+            }
+            bool skinned {}, morphing {};
+            if (material->customShader.variant.is_some()) {
+                const auto& combos = material->customShader.variant->Description().resolved_combos;
+                auto        on     = [&](ref<str> key) {
+                    auto value = combos.get(key);
+                    return value.is_some() && (**value).as_str() != "0"_str;
+                };
+                skinned  = on("SKINNING"_str);
+                morphing = on("MORPHING"_str);
+            }
+            if (skinned) {
+                ++count.skinned;
+                continue;
+            }
+            if (morphing) {
+                ++count.morphing;
+                continue;
+            }
+            // a bound of the submesh's vertex positions
+            const auto& submeshes = node->Mesh()->Submeshes();
+            const auto  index     = usize(desc.submesh_index.to_primitive());
+            if (index >= submeshes.len()) {
+                ++count.no_bound;
+                continue;
+            }
+            Eigen::Vector3d lo = Eigen::Vector3d::Constant(1e300), hi = Eigen::Vector3d::Constant(-1e300);
+            bool            any {};
+            for (const auto& vertices : submeshes[index].vertex_arrays) {
+                auto offset = vertices.AttributeOffset("a_Position"_str);
+                if (offset.is_none()) continue;
+                const float* data   = vertices.Data();
+                const usize  stride = vertices.OneSize();
+                for (usize v {}; v < vertices.VertexCount(); ++v) {
+                    const float* p = data + (v * stride + *offset).to_primitive();
+                    for (int a = 0; a < 3; ++a) {
+                        lo[a] = std::min<double>(lo[a], p[a]);
+                        hi[a] = std::max<double>(hi[a], p[a]);
+                    }
+                    any = true;
+                }
+            }
+            if (! any) {
+                ++count.no_bound;
+                continue;
+            }
+            ++count.rigid;
+            const Eigen::Vector3d center_local = (lo + hi) * 0.5;
+            const double          radius_local = ((hi - lo) * 0.5).norm();
+            Eigen::Matrix4d       model        = node->ModelTrans() * node->GeometryTransform() * node->Mesh()->GeometryTransform();
+            const Eigen::Vector3d center       = (model * center_local.homogeneous()).head<3>();
+            const double          scale        = model.block<3, 3>(0, 0).norm(); // Frobenius: at least the largest stretch
+            const double          radius       = radius_local * scale;
+            // this definition's light
+            const SceneLight* light {};
+            for (const auto& candidate : lights)
+                if (candidate->desc().shadow_view >= i32() &&
+                    u32(rstd::as_cast<rstd::uint32_t>(candidate->desc().shadow_view)) == definitions[found].view_offset)
+                    light = candidate.as_ptr().as_raw_ptr();
+            if (light == nullptr || light->node() == nullptr) continue;
+            const Eigen::Vector3d position = light->node()->ModelTrans().block<3, 1>(0, 3);
+            if ((center - position).norm() - radius > static_cast<double>(light->radius()) * (1.0 + 1e-6) + 1e-9)
+                ++count.beyond;
+        }
+        for (usize d {}; d < definitions.len(); ++d)
+            if (counts[d].draws > u64(0))
+                rstd_error("point light shadow definition {}: {} casters; rigid {} (of them wholly beyond the light's radius {}); skinned {}; morphing {}; no bound {}",
+                           d, counts[d].draws, counts[d].rigid, counts[d].beyond, counts[d].skinned,
+                           counts[d].morphing, counts[d].no_bound);
     }
 
     bool update(const SceneFrame& frame, VkExtent2D extent,

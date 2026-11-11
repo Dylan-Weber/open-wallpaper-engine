@@ -2750,8 +2750,11 @@ struct RenderShadowCasterRecord {
     u32                instance_count { 1 };
     // drawn through an empty scissor: it only keeps the atlas written
     bool silent { false };
-    // the shadow definition it is drawn into
+    // the shadow definition it is drawn into, and how many consecutive ones this one draw covers:
+    // the caster draws one instance a view, so one draw serves every lit light whose views follow
+    // each other in the scene's list of shadow views (instance_count is their number of views)
     usize definition {};
+    usize definition_count { 1 };
 };
 
 struct SceneMeshDirtyEvent {

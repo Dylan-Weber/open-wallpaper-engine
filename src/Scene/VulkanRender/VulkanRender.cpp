@@ -272,6 +272,7 @@ struct VulkanRender::Impl {
     bool beginFrame(vrento::texture::Submission);
     // OWE_GRAPH_STATS=N logs how often the frame graph's binding validation was reused every N frames
     rstd::uint64_t m_frames_begun {};
+    const Scene*   m_diag_scene { nullptr };
     bool prepareOutputFrame(Scene&);
     bool executeFrame();
     void reportFrameError(vrento::vulkan::GraphExecutionErrorSnapshot);
@@ -523,8 +524,10 @@ bool VulkanRender::Impl::beginFrame(vrento::texture::Submission work) {
         return value ? std::atol(value) : 0L;
     }();
     ++m_frames_begun;
-    if (dump_at > 0 && static_cast<long>(m_frames_begun) == dump_at)
+    if (dump_at > 0 && static_cast<long>(m_frames_begun) == dump_at) {
         m_scene_render_state.logDrawClasses(u64(m_frames_begun));
+        if (m_diag_scene != nullptr) m_scene_render_state.logShadowBounds(*m_diag_scene);
+    }
     if (stats_every > 0 && m_frames_begun % static_cast<rstd::uint64_t>(stats_every) == 0) {
         auto stats = m_renderer->compiled().unwrap().description().binding_check_stats();
         rstd_error("frame graph bindings: {} frames, validation reused {}, rerun {} (last word that differed: {})",
@@ -563,6 +566,7 @@ void VulkanRender::Impl::failOutput(bool uncertain) {
     m_renderer->clear();
 }
 bool VulkanRender::Impl::prepareOutputFrame(Scene& scene) {
+    m_diag_scene = &scene;
     if (m_output->blocked) return false;
     if (m_frame) return true;
     auto& rr = m_rendering_resources;

@@ -1,6 +1,7 @@
 module;
 
 #include <rstd/macro.hpp>
+#include <cstdlib>
 
 module wescene.scene;
 import eigen;
@@ -883,20 +884,46 @@ void RenderSceneSnapshot::Rebuild(Scene& scene, RenderSceneVersion version) {
             continue;
         }
         const auto& variants = view->material->shadow_variants;
-        for (usize definition {};
-             definition < rstd::cmp::min(variants.len(), m_shadow_definitions.len());
-             ++definition) {
+        // One draw per run of lit definitions whose views follow each other (at most 16 viewports,
+        // the least a device has): the caster shader draws one instance for each view.
+        // OWE_SHADOW_MERGE=0 draws every light's casters separately (to compare the two ways)
+        static const bool merge = [] {
+            const char* value = std::getenv("OWE_SHADOW_MERGE");
+            return value == nullptr || value[0] != '0';
+        }();
+        const usize available = rstd::cmp::min(variants.len(), m_shadow_definitions.len());
+        usize       definition {};
+        while (definition < available) {
             if (definition.to_primitive() < 64 &&
-                ((shadow_mask >> definition.to_primitive()) & rstd::uint64_t(1)) == 0)
+                ((shadow_mask >> definition.to_primitive()) & rstd::uint64_t(1)) == 0) {
+                ++definition;
                 continue;
+            }
+            usize count { 1 };
+            u32   views = rstd::as_cast<u32>(m_shadow_definitions[definition].viewports.len());
+            while (definition + count < available) {
+                const auto next = definition + count;
+                const auto& previous = m_shadow_definitions[next - usize(1)];
+                const auto& current  = m_shadow_definitions[next];
+                const bool  lit =
+                    next.to_primitive() >= 64 ||
+                    ((shadow_mask >> next.to_primitive()) & rstd::uint64_t(1)) != 0;
+                const u32 more = rstd::as_cast<u32>(current.viewports.len());
+                if (! merge || ! lit || current.view_offset != previous.view_offset + rstd::as_cast<u32>(previous.viewports.len()) ||
+                    current.target != previous.target || views + more > u32(16))
+                    break;
+                views += more;
+                ++count;
+            }
             m_shadow_casters.push(RenderShadowCasterRecord {
-                .render_item = id,
-                .material    = variants[definition].clone(),
-                .instance_count =
-                    rstd::as_cast<u32>(m_shadow_definitions[definition].viewports.len()),
-                .silent     = view->material->shadow_silent,
-                .definition = definition,
+                .render_item      = id,
+                .material         = variants[definition].clone(),
+                .instance_count   = views,
+                .silent           = view->material->shadow_silent,
+                .definition       = definition,
+                .definition_count = count,
             });
+            definition += count;
         }
     }
 

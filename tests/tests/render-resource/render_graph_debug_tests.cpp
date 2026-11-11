@@ -583,8 +583,9 @@ TEST(SceneRenderGraph, OnlyLightsThatLightNowDrawShadowCasters) {
                                    .height = i32(256),
                                    .kind   = owe::SceneRenderTargetKind::DepthSampled,
                                });
+    // three lights of one view each, in views 0, 1 and 2
     auto light_nodes = Vec<Arc<owe::SceneNode>>::make();
-    for (int light = 0; light < 2; ++light) {
+    for (int light = 0; light < 3; ++light) {
         auto viewports = Vec<owe::SceneShadowViewport>::make();
         viewports.push(owe::SceneShadowViewport {
             .width  = rstd::f32(256.0f),
@@ -604,12 +605,12 @@ TEST(SceneRenderGraph, OnlyLightsThatLightNowDrawShadowCasters) {
         (void)scene.RegisterLight(rstd::move(registered));
     }
 
-    auto caster         = Arc<owe::SceneNode>::make();
-    caster->shadow.cast = true;
-    auto caster_mesh    = Arc<owe::SceneMesh>::make();
+    auto caster          = Arc<owe::SceneNode>::make();
+    caster->shadow.cast  = true;
+    auto caster_mesh     = Arc<owe::SceneMesh>::make();
     auto caster_material = GraphMaterial();
     caster_material.name = "caster-main"_Str;
-    for (int light = 0; light < 2; ++light) {
+    for (int light = 0; light < 3; ++light) {
         auto variant  = Arc<owe::SceneMaterial>::make(GraphMaterial());
         variant->name = "caster-shadow"_Str;
         caster_material.shadow_variants.push(rstd::move(variant));
@@ -619,34 +620,52 @@ TEST(SceneRenderGraph, OnlyLightsThatLightNowDrawShadowCasters) {
     caster->AddMesh(rstd::move(caster_mesh));
     scene.RootMut()->AppendChild(caster.clone());
 
-    // both light: a caster for each light
-    EXPECT_EQ(scene.ShadowLightMask(), rstd::uint64_t(3));
+    // all three light: ONE draw for the caster covers their three views (one instance a view)
+    EXPECT_EQ(scene.ShadowLightMask(), rstd::uint64_t(7));
     (void)scene.ConsumeRenderGraphDirty();
     EXPECT_FALSE(scene.ConsumeRenderGraphDirty());
-    EXPECT_EQ(owe::ExtractRenderSceneSnapshot(scene).ShadowCasters().len(), usize(2));
+    auto all = owe::ExtractRenderSceneSnapshot(scene);
+    ASSERT_EQ(all.ShadowCasters().len(), usize(1));
+    EXPECT_EQ(all.ShadowCasters()[usize()].definition, usize(0));
+    EXPECT_EQ(all.ShadowCasters()[usize()].definition_count, usize(3));
+    EXPECT_EQ(all.ShadowCasters()[usize()].instance_count, u32(3));
 
-    // the second light's layer hidden: its caster is gone, and the change dirties the graph
-    (void)scene.SetNodeVisible(*light_nodes[usize(1)], false);
-    EXPECT_EQ(scene.ShadowLightMask(), rstd::uint64_t(1));
+    // the last light's layer hidden: its view is not drawn, and the change dirties the graph
+    (void)scene.SetNodeVisible(*light_nodes[usize(2)], false);
+    EXPECT_EQ(scene.ShadowLightMask(), rstd::uint64_t(3));
     EXPECT_TRUE(scene.ConsumeRenderGraphDirty());
     auto hidden = owe::ExtractRenderSceneSnapshot(scene);
     ASSERT_EQ(hidden.ShadowCasters().len(), usize(1));
-    EXPECT_EQ(hidden.ShadowCasters()[usize()].definition, usize(0));
+    EXPECT_EQ(hidden.ShadowCasters()[usize()].definition_count, usize(2));
     auto graph = owe::BuildSceneRenderState(scene, hidden);
     ASSERT_TRUE(graph.is_ok());
     EXPECT_TRUE(graph->graph.compile().is_ok());
     EXPECT_FALSE(scene.ConsumeRenderGraphDirty());
 
-    // shown again: both are back
+    // the middle one hidden too, the first back: views 0 and 2 do not follow each other, so two draws
+    (void)scene.SetNodeVisible(*light_nodes[usize(2)], true);
+    (void)scene.SetNodeVisible(*light_nodes[usize(1)], false);
+    EXPECT_EQ(scene.ShadowLightMask(), rstd::uint64_t(5));
+    EXPECT_TRUE(scene.ConsumeRenderGraphDirty());
+    auto gap = owe::ExtractRenderSceneSnapshot(scene);
+    ASSERT_EQ(gap.ShadowCasters().len(), usize(2));
+    EXPECT_EQ(gap.ShadowCasters()[usize()].definition, usize(0));
+    EXPECT_EQ(gap.ShadowCasters()[usize()].definition_count, usize(1));
+    EXPECT_EQ(gap.ShadowCasters()[usize(1)].definition, usize(2));
+    EXPECT_EQ(gap.ShadowCasters()[usize(1)].definition_count, usize(1));
+
+    // shown again: one draw for all three
     (void)scene.SetNodeVisible(*light_nodes[usize(1)], true);
     EXPECT_TRUE(scene.ConsumeRenderGraphDirty());
-    EXPECT_EQ(owe::ExtractRenderSceneSnapshot(scene).ShadowCasters().len(), usize(2));
+    EXPECT_EQ(owe::ExtractRenderSceneSnapshot(scene).ShadowCasters().len(), usize(1));
 
     // every light hidden: one definition stays, so the atlas has a writer
-    (void)scene.SetNodeVisible(*light_nodes[usize(0)], false);
-    (void)scene.SetNodeVisible(*light_nodes[usize(1)], false);
+    for (int light = 0; light < 3; ++light)
+        (void)scene.SetNodeVisible(*light_nodes[usize(light)], false);
     EXPECT_EQ(scene.ShadowLightMask(), rstd::uint64_t(1));
-    EXPECT_EQ(owe::ExtractRenderSceneSnapshot(scene).ShadowCasters().len(), usize(1));
+    auto none = owe::ExtractRenderSceneSnapshot(scene);
+    ASSERT_EQ(none.ShadowCasters().len(), usize(1));
+    EXPECT_EQ(none.ShadowCasters()[usize()].definition_count, usize(1));
 }
 
 // Silence belongs to a model's material, not the model: Ocarina of Time's courtyard is one model of
@@ -754,14 +773,13 @@ TEST(SceneRenderGraph, OrdersShadowAtlasWriterBeforeReceiver) {
     scene.RootMut()->AppendChild(receiver.clone());
 
     auto snapshot = owe::ExtractRenderSceneSnapshot(scene);
-    // one caster draw for each light, with that light's views
-    ASSERT_EQ(snapshot.ShadowCasters().len(), usize(2));
+    // one caster draw for both lights (their views follow each other: view 0, then views 1 and 2),
+    // one instance a view, drawn with the first light's material (the first view's offset)
+    ASSERT_EQ(snapshot.ShadowCasters().len(), usize(1));
     EXPECT_EQ(snapshot.ShadowCasters()[usize()].definition, usize());
-    EXPECT_EQ(snapshot.ShadowCasters()[usize()].instance_count, u32(1));
-    EXPECT_EQ(snapshot.ShadowCasters()[usize(1)].definition, usize(1));
-    EXPECT_EQ(snapshot.ShadowCasters()[usize(1)].instance_count, u32(2));
-    EXPECT_EQ(snapshot.ShadowCasters()[usize(1)].material->name.as_str(),
-              "caster-shadow-second"_str);
+    EXPECT_EQ(snapshot.ShadowCasters()[usize()].definition_count, usize(2));
+    EXPECT_EQ(snapshot.ShadowCasters()[usize()].instance_count, u32(3));
+    EXPECT_EQ(snapshot.ShadowCasters()[usize()].material->name.as_str(), "caster-shadow"_str);
     auto graph = owe::BuildSceneRenderState(scene, snapshot);
     ASSERT_TRUE(graph.is_ok());
     auto ordered = graph->graph.compile();
