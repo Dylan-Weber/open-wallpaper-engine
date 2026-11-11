@@ -261,7 +261,7 @@ public:
         -> Result<Vec<vrento::vulkan::SharedDescriptorBufferUse>, resource::ResourceError> {
         Vec<vrento::vulkan::SharedDescriptorBufferUse> result;
         for (const auto& entry : draws) {
-            auto                  uses = entry.source->resourceUses();
+            const auto&                  uses = entry.source->resourceUses();
             PreparedPassResources resources(prepared, uses);
             auto                  collected = entry.source->globalDescriptorBufferUses(resources);
             if (collected.is_err()) return Err(collected.unwrap_err());
@@ -286,7 +286,7 @@ public:
             .pipeline_layouts = ref<PipelineLayoutAssignments>::from_raw_parts(&prepared.layouts())
         };
         for (auto& entry : draws) {
-            auto uses = entry.source->resourceUses();
+            const auto& uses = entry.source->resourceUses();
             for (auto descriptor : uses.descriptors)
                 rr.resources.RemovePreparedDescriptor(descriptor);
             entry.source->clearResources();
@@ -302,7 +302,7 @@ public:
         auto uniform_prepare = dyn<UniformBindingPrepareContext>::from_ref(uniform_prepare_impl);
         Vec<resource::BufferUseHandle> prepared_uniform_buffers;
         for (auto& entry : draws) {
-            auto                  uses = entry.source->resourceUses();
+            const auto&                  uses = entry.source->resourceUses();
             PreparedPassResources resources(rr.resources.Prepared(), uses);
             auto                  created =
                 entry.source->createUniformBufferUpdates(uniform_prepare.as_ref(), resources);
@@ -450,7 +450,7 @@ public:
         auto graphics = dyn<resource_registry::GraphicsResourcePreparer>::from_ref(rr.resources);
         for (; progress.draws < draws.len(); ++progress.draws) {
             auto&                 entry = draws[progress.draws];
-            auto                  uses  = entry.source->resourceUses();
+            const auto&                  uses  = entry.source->resourceUses();
             PreparedPassResources resources(rr.resources.Prepared(), uses);
             DrawUpdateContext     update_context {
                 .buffers   = buffer_writer.as_mut_ref(),

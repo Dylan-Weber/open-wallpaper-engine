@@ -889,7 +889,7 @@ TEST(SceneRenderGraph, LinkedSurfaceReadsFollowSceneOrder) {
         EXPECT_EQ(source_emitted, state->name == "after"_str);
         auto pass = graph->draw(state->id);
         ASSERT_TRUE(pass.is_some());
-        auto uses = (*pass)->resourceUses();
+        const auto& uses = (*pass)->resourceUses();
         for (auto use : uses.textures) {
             for (const auto& entry : plan.textures) {
                 if (entry.handle != use || entry.request().name != "_rt_link_7"_str) continue;
