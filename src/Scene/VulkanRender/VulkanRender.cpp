@@ -4,6 +4,7 @@ module;
 #include "vvk/macros.hpp"
 
 #include <cerrno>
+#include <cstdlib>
 #include <unistd.h>
 
 module wescene.vulkan_render;
@@ -199,6 +200,176 @@ void AppendVideoDeviceExtensions(Vec<Extension>& device_exts) {
         { false, CStr::from_ptr(VK_EXT_SHADER_OBJECT_EXTENSION_NAME).to_str().unwrap() });
 #endif
 }
+
+// ---------------------------------------------------------------------------
+// Default GPU choice when the caller did not pin a device UUID.
+//
+// vrento takes the first loader device that passes validation. On hybrid
+// machines Mesa's device-select layer puts the GPU driving the display
+// first, so with the monitor on an Intel iGPU every live wallpaper rendered
+// on the iGPU (15 ms/frame vs 0.8 ms on the RTX 4070 in the 2026-11-11
+// baseline). Prefer a discrete GPU unless the user said otherwise:
+//
+//   OWE_VK_DEVICE=loader|default  keep the loader's order (old behaviour)
+//   OWE_VK_DEVICE=discrete        first discrete GPU (the default)
+//   OWE_VK_DEVICE=integrated      first integrated GPU
+//   OWE_VK_DEVICE=<text>          first GPU whose name contains <text>
+//                                 (case-insensitive, e.g. "4070", "intel")
+//
+// If OWE_VK_DEVICE is unset and MESA_VK_DEVICE_SELECT or DRI_PRIME is set,
+// the loader order is kept so existing Mesa overrides still work. An
+// explicit --render-node / RenderInitInfo::uuid always wins over all of this.
+// ---------------------------------------------------------------------------
+namespace
+{
+bool EnvSet(const char* name) {
+    const char* v = ::getenv(name);
+    return v && *v;
+}
+
+char AsciiLower(char c) { return (c >= 'A' && c <= 'Z') ? char(c - 'A' + 'a') : c; }
+
+bool EqualsIgnoreCase(const char* a, const char* b) {
+    for (; *a && *b; ++a, ++b)
+        if (AsciiLower(*a) != AsciiLower(*b)) return false;
+    return *a == *b;
+}
+
+bool ContainsIgnoreCase(const char* hay, const char* needle) {
+    if (! *needle) return true;
+    for (; *hay; ++hay) {
+        const char* h = hay;
+        const char* n = needle;
+        while (*h && *n && AsciiLower(*h) == AsciiLower(*n)) {
+            ++h;
+            ++n;
+        }
+        if (! *n) return true;
+    }
+    return false;
+}
+
+const char* DeviceTypeName(VkPhysicalDeviceType type) {
+    switch (type) {
+    case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU: return "discrete";
+    case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU: return "integrated";
+    case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU: return "virtual";
+    case VK_PHYSICAL_DEVICE_TYPE_CPU: return "cpu";
+    default: return "other";
+    }
+}
+
+using DeviceUuid = rstd::array<rstd::uint8_t, VK_UUID_SIZE>;
+
+// `implicit_default` is false for windowed (surface) sessions: there the
+// probe cannot check present support, so only an explicit OWE_VK_DEVICE
+// changes the choice.
+auto PreferredPhysicalDeviceUuid(slice<Extension> device_exts, bool implicit_default)
+    -> Option<DeviceUuid> {
+    const char* owe_env = ::getenv("OWE_VK_DEVICE");
+    const bool  has_owe = owe_env && *owe_env;
+    if (has_owe && (EqualsIgnoreCase(owe_env, "loader") || EqualsIgnoreCase(owe_env, "default")))
+        return None();
+    if (! has_owe) {
+        if (! implicit_default) return None();
+        if (EnvSet("MESA_VK_DEVICE_SELECT") || EnvSet("DRI_PRIME")) {
+            rstd_info("vulkan device: MESA_VK_DEVICE_SELECT/DRI_PRIME set, keeping loader order");
+            return None();
+        }
+    }
+    const char* want = has_owe ? owe_env : "discrete";
+    const bool  want_discrete   = EqualsIgnoreCase(want, "discrete");
+    const bool  want_integrated = EqualsIgnoreCase(want, "integrated");
+
+    VkApplicationInfo app {};
+    app.sType            = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    app.pApplicationName = "owe-device-probe";
+    app.apiVersion       = VK_API_VERSION_1_1;
+    const char* probe_exts[] { VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME };
+    VkInstanceCreateInfo ici {};
+    ici.sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    ici.pApplicationInfo        = &app;
+    ici.enabledExtensionCount   = 1;
+    ici.ppEnabledExtensionNames = probe_exts;
+    auto loaded                 = vvk::VulkanLoader::Open();
+    if (loaded.is_err()) return None();
+    auto                  loader = loaded.unwrap_unchecked();
+    vvk::InstanceDispatch dispatch {};
+    vvk::Instance         instance;
+    if (vvk::Instance::Create(instance, loader.global(), ici, dispatch).is_err()) {
+        rstd_warn("vulkan device probe: instance creation failed, keeping loader order");
+        return None();
+    }
+
+    rstd::uint32_t count {};
+    if (instance.Dispatch().vkEnumeratePhysicalDevices(*instance, &count, nullptr) != VK_SUCCESS ||
+        count == 0)
+        return None();
+    Vec<VkPhysicalDevice> handles;
+    handles.resize(usize(count), VK_NULL_HANDLE);
+    if (instance.Dispatch().vkEnumeratePhysicalDevices(*instance, &count, handles.data()) < 0)
+        return None();
+
+    Option<DeviceUuid> chosen;
+    for (rstd::uint32_t i {}; i < count; ++i) {
+        vvk::PhysicalDevice gpu(handles[usize(i)], instance.Dispatch());
+        VkPhysicalDeviceIDProperties id { .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES,
+                                          .pNext = nullptr };
+        VkPhysicalDeviceProperties2  props2 { .sType =
+                                                 VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+                                             .pNext = &id };
+        gpu.GetProperties2KHR(props2);
+        const auto& props = props2.properties;
+
+        bool has_graphics = false;
+        for (auto& q : gpu.GetQueueFamilyProperties())
+            if (q.queueFlags & VK_QUEUE_GRAPHICS_BIT) has_graphics = true;
+
+        Vec<VkExtensionProperties> available;
+        bool                       has_exts = gpu.EnumerateDeviceExtensionProperties(available) ==
+                        VK_SUCCESS;
+        for (const auto& ext : device_exts) {
+            if (! has_exts) break;
+            if (! ext.required) continue;
+            bool found = false;
+            for (const auto& a : available)
+                if (CStr::from_ptr(a.extensionName).to_bytes() == ext.name.as_bytes()) {
+                    found = true;
+                    break;
+                }
+            if (! found) has_exts = false;
+        }
+
+        bool matches = false;
+        if (want_discrete)
+            matches = props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU;
+        else if (want_integrated)
+            matches = props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
+        else
+            matches = ContainsIgnoreCase(props.deviceName, want);
+
+        const bool usable = has_graphics && has_exts;
+        rstd_info("vulkan device probe: [{}] {} ({}){}",
+                  i,
+                  props.deviceName,
+                  DeviceTypeName(props.deviceType),
+                  usable ? "" : " unusable: missing graphics queue or required extensions");
+        if (usable && matches && chosen.is_none()) {
+            DeviceUuid uuid {};
+            memcpy(uuid.data(), id.deviceUUID, usize(VK_UUID_SIZE));
+            chosen = Some(uuid);
+            rstd_info("vulkan device probe: preferring {} (OWE_VK_DEVICE={})",
+                      props.deviceName,
+                      want);
+        }
+    }
+    if (chosen.is_none())
+        rstd_info("vulkan device probe: no usable device matches OWE_VK_DEVICE={}, "
+                  "keeping loader order",
+                  want);
+    return chosen;
+}
+} // namespace
 
 void ReleaseCompletedRetiredResources(const Device& device, RenderingResources& rr) {
     auto memory = rstd::dyn<owe::vulkan::MemoryBudgetSource>::from_ref(device);
@@ -839,16 +1010,32 @@ bool VulkanRender::Impl::init(RenderInitInfo info, SceneLoadBenchRecorderView lo
         if (surface_factory.is_some())
             factory = Some(dyn<vrento::vulkan::SessionSurfaceFactory>::from_ref(*surface_factory)
                                .as_mut_ref());
-        auto created = vrento::vulkan::DeviceSession::create(
-            {
-                .instance_extensions  = inst_exts.as_slice(),
-                .device_extensions    = device_exts.as_slice(),
-                .physical_device_uuid = info.uuid ? info.uuid->as_slice() : slice<rstd::uint8_t> {},
-                .api_version          = instance_api_version,
-                .extent               = extent,
-                .validation           = info.enable_valid_layer,
-            },
-            factory);
+        // An explicit pin (--render-node, Init kv) wins; otherwise prefer the
+        // discrete GPU (see PreferredPhysicalDeviceUuid).
+        Option<DeviceUuid> preferred;
+        if (! info.uuid)
+            preferred = PreferredPhysicalDeviceUuid(device_exts.as_slice(), info.offscreen);
+        auto create_session = [&](slice<rstd::uint8_t> uuid) {
+            return vrento::vulkan::DeviceSession::create(
+                {
+                    .instance_extensions  = inst_exts.as_slice(),
+                    .device_extensions    = device_exts.as_slice(),
+                    .physical_device_uuid = uuid,
+                    .api_version          = instance_api_version,
+                    .extent               = extent,
+                    .validation           = info.enable_valid_layer,
+                },
+                factory);
+        };
+        auto created = create_session(info.uuid        ? info.uuid->as_slice()
+                                      : preferred ? preferred->as_slice()
+                                                  : slice<rstd::uint8_t> {});
+        if (created.is_err() && preferred && factory.is_none()) {
+            rstd_warn("init vulkan session on preferred device failed: {}; retrying with loader "
+                      "order",
+                      DescribeNativeFailure(created.unwrap_err()));
+            created = create_session(slice<rstd::uint8_t> {});
+        }
         if (created.is_err()) {
             const auto error = created.unwrap_err();
             rstd_error("init vulkan session failed: {}", DescribeNativeFailure(error));
