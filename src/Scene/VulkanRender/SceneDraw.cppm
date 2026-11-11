@@ -49,6 +49,8 @@ public:
         Vec<VkViewport>     viewports;
         Vec<VkRect2D>       scissors;
         usize               graph_pass_index { 0 };
+        // The gates of the copies of a framebuffer snapshot only this draw samples.
+        Vec<rstd::uint64_t> snapshot_copy_gates;
         // Which submesh of node->Mesh() this pass renders. SceneToRenderGraph
         // emits one pass per (node, submesh).
         u32                                    submesh_index { 0 };
@@ -140,6 +142,7 @@ private:
     Vec<vrento::vulkan::GraphicsDrawRange>         draws_;
     bool                                           visible_ { true };
     void                                           captureGeometry();
+    void                                           updateSnapshotCopies();
     Option<MaterialSnapshot>                       material_;
     Option<vrento::GeometrySnapshot>               geometry_;
     Vec<rstd::collections::HashMap<String, usize>> vertex_offsets_;
