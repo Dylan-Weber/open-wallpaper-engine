@@ -1330,6 +1330,20 @@ private:
 
     vrento::CameraState<Eigen::Matrix4d> m_camera;
     vrento::CameraState<Eigen::Matrix4d> m_reflection_camera;
+    // What m_camera was computed from. The view and projection were recomputed, an inverse and a
+    // look-at, on every call (once per transform source per draw per frame); they are now only
+    // when one of these changes.
+    struct ViewKey {
+        double          width {}, height {}, aspect {}, near_clip {}, far_clip {}, fov {};
+        Eigen::Vector3d eye, center, up, offset;
+        const SceneNode* node {};
+        u64              revision {};
+        bool             perspective {}, lookat {};
+    };
+    auto MakeViewKey() const -> ViewKey;
+    static bool SameViewKey(const ViewKey& a, const ViewKey& b);
+    ViewKey     m_view_key;
+    bool        m_view_key_valid { false };
 
     SceneNode*             m_node { nullptr };
     Option<Arc<SceneNode>> m_owned_node;
@@ -1973,6 +1987,8 @@ public:
 
     void            UpdateTrans();
     Eigen::Matrix4d ModelTrans() const { return m_node.WorldMatrix(); };
+    // Counts the times the world matrix was recomputed: equal after UpdateTrans, equal matrix.
+    u64 TransRevision() const { return u64(m_node.WorldRevision()); }
 
     SceneMesh* Mesh() const { return m_mesh.is_some() ? m_mesh->as_ptr().as_raw_ptr() : nullptr; }
     const Option<Arc<SceneMesh>>& MeshShared() const { return m_mesh; }

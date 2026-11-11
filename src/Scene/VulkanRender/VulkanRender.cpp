@@ -525,6 +525,12 @@ bool VulkanRender::Impl::beginFrame(vrento::texture::Submission work) {
                   stats.hits,
                   stats.misses,
                   stats.last_difference);
+        auto uniforms = vrento::uniform_update_stats();
+        rstd_error("uniform blocks: {} updates, {} evaluated, {} uploaded, {} identical to the last upload",
+                   uniforms.updates,
+                   uniforms.evaluated,
+                   uniforms.uploaded,
+                   uniforms.identical);
     }
     return true;
 }

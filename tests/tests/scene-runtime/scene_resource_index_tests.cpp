@@ -2099,6 +2099,52 @@ TEST(SceneCameras, ActiveTransformsUpdateLinkedCamera) {
     EXPECT_TRUE((**copy).Transforms().center.isApprox(transforms.center));
 }
 
+// The view and projection are recomputed only when an input changes: whatever changes, the cached
+// answer must be the one a camera made from scratch with the same inputs gives.
+TEST(SceneCameras, ViewProjectionFollowsEveryInputAfterCaching) {
+    auto make = [](double fov, double aspect, const Eigen::Vector3d& eye, const Eigen::Vector3d& offset) {
+        auto camera = owe::SceneCamera::MakePerspective(aspect, 0.01, 1000.0, fov);
+        camera.SetLookAt(eye, Eigen::Vector3d::Zero(), Eigen::Vector3d::UnitY());
+        camera.SetViewOffset(offset);
+        return camera;
+    };
+    const Eigen::Vector3d zero = Eigen::Vector3d::Zero();
+    auto                  camera = make(53.0, 1.0, { 0.0, 0.0, 10.0 }, zero);
+    const Eigen::Matrix4d first  = camera.GetViewProjectionMatrix();
+    EXPECT_EQ(camera.GetViewProjectionMatrix(), first);
+    EXPECT_EQ(first, make(53.0, 1.0, { 0.0, 0.0, 10.0 }, zero).GetViewProjectionMatrix());
+
+    camera.SetLookAt({ 3.0, 4.0, 5.0 }, zero, Eigen::Vector3d::UnitY());
+    EXPECT_NE(camera.GetViewProjectionMatrix(), first);
+    EXPECT_EQ(camera.GetViewProjectionMatrix(),
+              make(53.0, 1.0, { 3.0, 4.0, 5.0 }, zero).GetViewProjectionMatrix());
+    camera.SetFov(70.0);
+    EXPECT_EQ(camera.GetViewProjectionMatrix(),
+              make(70.0, 1.0, { 3.0, 4.0, 5.0 }, zero).GetViewProjectionMatrix());
+    camera.SetAspect(1.5);
+    EXPECT_EQ(camera.GetViewProjectionMatrix(),
+              make(70.0, 1.5, { 3.0, 4.0, 5.0 }, zero).GetViewProjectionMatrix());
+    camera.SetViewOffset({ 1.0, 2.0, 0.0 });
+    EXPECT_EQ(camera.GetViewProjectionMatrix(),
+              make(70.0, 1.5, { 3.0, 4.0, 5.0 }, { 1.0, 2.0, 0.0 }).GetViewProjectionMatrix());
+
+    // a camera on a node follows the node, also after its parent moves
+    owe::SceneNode parent, child;
+    ASSERT_TRUE(child.SetParent(&parent, false));
+    auto attached = owe::SceneCamera::MakeOrthographic(100.0, 100.0, -1000.0, 1000.0);
+    attached.AttatchNode(&child);
+    const Eigen::Matrix4d at_rest = attached.GetViewProjectionMatrix();
+    EXPECT_EQ(attached.GetViewProjectionMatrix(), at_rest);
+    parent.SetTranslate({ 5.0f, 0.0f, 0.0f });
+    const Eigen::Matrix4d moved = attached.GetViewProjectionMatrix();
+    EXPECT_NE(moved, at_rest);
+    child.SetTranslate({ 0.0f, 7.0f, 0.0f });
+    EXPECT_NE(attached.GetViewProjectionMatrix(), moved);
+    auto fresh = owe::SceneCamera::MakeOrthographic(100.0, 100.0, -1000.0, 1000.0);
+    fresh.AttatchNode(&child);
+    EXPECT_EQ(attached.GetViewProjectionMatrix(), fresh.GetViewProjectionMatrix());
+}
+
 TEST(SceneGeometryDataGeneration, IncrementsWhenGeometryDataChanges) {
     rstd::initializer_list<owe::SceneVertexArray::SceneVertexAttribute> attrs {
         { .name = "a_Position"_Str, .type = owe::VertexType::FLOAT3 },
