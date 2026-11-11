@@ -4,6 +4,7 @@ module;
 #include "vvk/macros.hpp"
 
 #include <cerrno>
+#include <string>
 #include <unistd.h>
 
 module wescene.vulkan_render;
@@ -11,12 +12,14 @@ import vvk;
 import wescene.core;
 import wescene.types;
 import rstd.log;
+import rstd.cppstd;
 import wescene.load_bench;
 import wescene.resource_registry;
 import wescene.vulkan;
 import wescene.utils;
 import wescene.scene;
 import wescene.text;
+import wescene.timer;
 import wescene.video;
 
 using rstd::mem::memcpy;
@@ -271,6 +274,8 @@ struct VulkanRender::Impl {
     bool beginFrame(vrento::texture::Submission);
     bool prepareOutputFrame(Scene&);
     bool executeFrame();
+    void collectPassTimes();
+    double m_timestamp_period {};
     void reportFrameError(vrento::vulkan::GraphExecutionErrorSnapshot);
     void failOutput(bool uncertain = false);
     auto createFrameSynchronization(bool external) -> Option<Arc<FrameSynchronizationOwner>>;
@@ -483,11 +488,13 @@ bool VulkanRender::Impl::beginFrame(vrento::texture::Submission work) {
         reportFrameError(vrento::vulkan::GraphExecutionErrorSnapshot::capture(error));
         return false;
     }
-    auto request = m_scene_render_state.captureFrame(m_rendering_resources,
+    const auto perf_capture = perf::Now();
+    auto       request      = m_scene_render_state.captureFrame(m_rendering_resources,
                                                      m_renderer->compiled().unwrap(),
                                                      m_texture_output,
                                                      m_output->target,
                                                      (*m_graphics)->shared_descriptor());
+    perf::Add(perf::Stage::Capture, perf_capture);
     if (request.is_err()) {
         reportFrameError(
             vrento::vulkan::GraphExecutionErrorSnapshot::capture(request.unwrap_err()));
@@ -500,6 +507,7 @@ bool VulkanRender::Impl::beginFrame(vrento::texture::Submission work) {
                                                     .semaphore = **sync.signal,
                                                     .owner     = m_output->target.owner() }))
         return false;
+    perf::Scope gbegin_timer(perf::Stage::GBegin);
     auto frame = vrento::vulkan::GraphFrame::begin(m_rendering_resources.resource_owner.clone(),
                                                    m_renderer->compiled().unwrap(),
                                                    request.unwrap(),
@@ -544,9 +552,12 @@ bool VulkanRender::Impl::prepareOutputFrame(Scene& scene) {
         m_output->work = Some(started.unwrap());
     }
     auto textures = dyn<SceneTextureAnimationView>::from_ref(scene);
+    const auto perf_update = perf::Now();
     if (! m_scene_render_state.update(
             scene.Runtime().Frame(), m_extent, textures.as_ref(), rr, m_output->updates))
         return false;
+    perf::Add(perf::Stage::Update, perf_update);
+    perf::Scope begin_timer(perf::Stage::Begin);
     if (! beginFrame(m_output->work.take().unwrap())) {
         failOutput();
         return false;
@@ -554,22 +565,52 @@ bool VulkanRender::Impl::prepareOutputFrame(Scene& scene) {
     return true;
 }
 
+// OWE_GPU_TIMING: the completed frame's per-pass GPU times, named after the render graph's passes, into the perf log
+void VulkanRender::Impl::collectPassTimes() {
+    if (m_timestamp_period == 0.0) {
+        VkPhysicalDeviceProperties2KHR props {};
+        props.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR;
+        m_device->gpu().GetProperties2KHR(props);
+        m_timestamp_period = double(props.properties.limits.timestampPeriod);
+    }
+    for (const auto& time : vrento::vulkan::pass_timing_take(m_timestamp_period)) {
+        std::string name = "pass " + std::to_string(time.pass);
+        if (m_scene_render_state.installed())
+            if (auto* node = m_scene_render_state.inputGraph().find_pass(vrento::fg::PassId { time.pass })) {
+                name = rstd::cppstd::to_string(node->name.as_str());
+                // a pass is told apart by the resources it touches (the first two): "copy [_rt_A, _rt_B]"
+                std::string uses;
+                for (usize i {}; i < node->uses.len() && i < usize(2); ++i)
+                    if (auto* resource = m_scene_render_state.inputGraph().find_resource(
+                            node->uses[i].version.resource))
+                        uses += (uses.empty() ? "" : ", ") + rstd::cppstd::to_string(resource->name.as_str());
+                if (! uses.empty()) name += " [" + uses + "]";
+            }
+        perf::GpuPass(name, time.ms);
+    }
+}
 bool VulkanRender::Impl::executeFrame() {
     if (! m_frame || ! m_output || m_output->blocked) return false;
     if (m_frame->state() == FrameState::Pending) {
-        auto prepared = m_frame->advance();
+        const auto perf_advance = perf::Now();
+        auto       prepared     = m_frame->advance();
+        perf::Add(perf::Stage::Advance, perf_advance);
         if (prepared.is_err()) {
             failOutput();
             return false;
         }
         if (*prepared == vrento::vulkan::FrameProgress::Pending) return false;
     }
+    const auto perf_record = perf::Now();
     if (m_frame->state() == FrameState::Ready && m_frame->record().is_err()) {
         failOutput();
         return false;
     }
+    perf::Add(perf::Stage::Record, perf_record);
     if (m_frame->state() == FrameState::Recorded) {
-        auto submitted = m_frame->submit();
+        const auto perf_submit = perf::Now();
+        auto       submitted   = m_frame->submit();
+        perf::Add(perf::Stage::Submit, perf_submit);
         if (submitted.is_err()) {
             failOutput(m_frame->receipt().uncertain() || m_frame->receipt().submitted());
             return false;
@@ -578,7 +619,10 @@ bool VulkanRender::Impl::executeFrame() {
         ackFontUploads();
     }
     if (m_frame->state() == FrameState::Submitted) {
-        auto waited = m_frame->wait(vk_wait_time);
+        const auto perf_wait = perf::Now();
+        auto       waited    = m_frame->wait(vk_wait_time);
+        perf::Add(perf::Stage::Wait, perf_wait);
+        if (waited.is_ok() && perf::Enabled() && vrento::vulkan::pass_timing_enabled()) collectPassTimes();
         if (waited.is_err()) {
             if (waited.unwrap_err().kind != vrento::texture::ErrorKind::Timeout) {
                 m_output->blocked = true;

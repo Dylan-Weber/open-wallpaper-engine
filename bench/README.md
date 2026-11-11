@@ -50,3 +50,10 @@ profile again.
     # JavaScript: results/ has the cannon-es node vs QuickJS comparison method (baseline-*.md).
 
 `perf` needs `kernel.perf_event_paranoid=1` (`sudo sysctl kernel.perf_event_paranoid=1`, until reboot).
+
+## GPU timestamps need a vrento patch
+
+`OWE_GPU_TIMING` uses `bench/vrento-pass-timing.patch` (timestamps around each recorded pass in `graph.cppm`, read back
+by `pass_timing_take`). `lito.toml` here points at a local checkout, `vrento = { path = "../vrento-perf" }`: make it with
+`git worktree add --detach ../vrento-perf 01ab903 && git -C ../vrento-perf apply ../owe-perf/bench/vrento-pass-timing.patch`
+(rev 01ab903 is vrento's pinned revision). To upstream it, the patch goes to vrento and `lito.toml` back to a git rev.
