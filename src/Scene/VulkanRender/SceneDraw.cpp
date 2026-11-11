@@ -1039,10 +1039,7 @@ void SceneDraw::updateSnapshotCopies() {
     bool empty = ! draws_.is_empty();
     for (auto draw : draws_) empty &= draw.count == 0;
     for (auto gate : m_desc.snapshot_copy_gates) {
-        if (empty || draws_.is_empty())
-            vrento::vulkan::copy_gate_set(gate, { .skip = true });
-        else
-            vrento::vulkan::copy_gate_clear(gate);
+        vrento::vulkan::copy_gate_skip(gate, empty || draws_.is_empty());
     }
 }
 

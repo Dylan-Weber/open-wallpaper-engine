@@ -559,6 +559,93 @@ auto TransformUniformSource::Version(ref<dyn<UniformUpdateContext>> context) con
     return context->Frame()->revision;
 }
 
+
+namespace
+{
+// A particle draw that refracts samples the framebuffer snapshot at its own screen position, moved by at most the
+// refraction offset. Tells the snapshot copies of the node's draw which part of the screen that is, so they copy no
+// more. Anything not understood leaves the copies whole: a shader other than genericparticle's point form, trails,
+// sprite sheets, lighting, a perspective projection, an unknown texture size or refraction amount.
+void UpdateSnapshotFootprint(SceneNode& node, const Matrix4d& mvp) {
+    auto& gates = node.SnapshotGates();
+    if (gates.is_empty()) return;
+    auto whole = [&] {
+        for (auto gate : gates) vrento::vulkan::copy_gate_whole(gate);
+    };
+    auto* mesh = node.Mesh();
+    if (mesh == nullptr || mesh->Primitive() != MeshPrimitive::POINT ||
+        mesh->Submeshes().len() != usize(1) || mesh->MaterialSlots().is_empty())
+        return whole();
+    const auto& submesh = mesh->Submeshes()[usize(0)];
+    if (submesh.vertex_arrays.len() != usize(1) ||
+        submesh.material_slot.to_primitive() >= mesh->MaterialSlots().len().to_primitive())
+        return whole();
+    const auto& vertices = submesh.vertex_arrays[usize(0)];
+    if (! vertices.GetOption(WE_CB_GS_ENABLED) || vertices.GetOption(WE_CB_THICK_FORMAT))
+        return whole();
+    auto& material = *mesh->MaterialSlots()[usize(submesh.material_slot.to_primitive())];
+    if (! material.customShader.shader || ! material.customShader.variant ||
+        (**material.customShader.shader).name.as_str() != "genericparticle"_str)
+        return whole();
+    const auto& combos = material.customShader.variant->Description().resolved_combos;
+    auto        combo  = [&](ref<str> name) {
+        auto found = combos.get(name);
+        return found.is_some() && (**found).as_str() != "0"_str;
+    };
+    if (! combo("REFRACT"_str) || combo(WE_CB_SPRITESHEET) || combo(WE_CB_TRAILRENDERER) ||
+        combo(WE_CB_LIGHTING) || combo(WE_CB_THICK_FORMAT))
+        return whole();
+    auto amount = material.customShader.constValues.get("g_RefractAmount"_str);
+    if (amount.is_none() || (**amount).size() < usize(1)) return whole();
+    if (material.texture_metadata.is_empty() || ! material.texture_metadata[usize(0)].has_extent)
+        return whole();
+    const auto extent = material.texture_metadata[usize(0)].source_extent;
+    if (! (extent[usize(0)] > 0.0f) || ! (extent[usize(1)] > 0.0f)) return whole();
+    // an orthographic projection: the clip w is 1 for every vertex
+    const double eps = 1e-9;
+    if (std::abs(mvp(3, 0)) > eps || std::abs(mvp(3, 1)) > eps || std::abs(mvp(3, 2)) > eps ||
+        std::abs(mvp(3, 3) - 1.0) > eps)
+        return whole();
+    const auto position = vertices.AttributeOffset(WE_IN_POSITION);
+    const auto texcoord = vertices.AttributeOffset(WE_IN_TEXCOORDVEC4);
+    const auto stride   = vertices.OneSize().to_primitive();
+    if (position.is_none() || texcoord.is_none() || stride == 0) return whole();
+    const auto   count = vertices.VertexCount().to_primitive();
+    const float* data  = vertices.Data();
+    if (count == 0) return whole();
+    const auto position_at = (*position).to_primitive() / sizeof(float);
+    const auto texcoord_at = (*texcoord).to_primitive() / sizeof(float);
+    // a quad's corners lie within half its diagonal of its centre (right and up are unit and perpendicular); a margin
+    // covers a texture size that is not the sprite's own (padding)
+    const double ratio  = double(extent[usize(1)]) / double(extent[usize(0)]);
+    const double radius = 0.5 * std::sqrt(1.0 + ratio * ratio) * 1.5;
+    const double scale_x = mvp.block<1, 3>(0, 0).norm(), scale_y = mvp.block<1, 3>(1, 0).norm();
+    double       min_x = 1e30, max_x = -1e30, min_y = 1e30, max_y = -1e30;
+    for (rstd::uint64_t i = 0; i < count; ++i) {
+        const float* vertex = data + i * stride;
+        const double size   = std::abs(double(vertex[texcoord_at + 3]));
+        const Eigen::Vector4d clip =
+            mvp * Eigen::Vector4d(vertex[position_at], vertex[position_at + 1], vertex[position_at + 2], 1.0);
+        if (! std::isfinite(clip.x()) || ! std::isfinite(clip.y()) || ! std::isfinite(size))
+            return whole();
+        min_x = std::min(min_x, clip.x() - size * radius * scale_x);
+        max_x = std::max(max_x, clip.x() + size * radius * scale_x);
+        min_y = std::min(min_y, clip.y() - size * radius * scale_y);
+        max_y = std::max(max_y, clip.y() + size * radius * scale_y);
+    }
+    // the refraction offset moves the sample by at most the amount per axis of each of the two normal components,
+    // in units of the screen (0..1): in clip units twice that; three times the amount covers a normal beyond 1
+    const double margin = 6.0 * std::abs(double((**amount)[usize(0)]));
+    min_x -= margin, max_x += margin, min_y -= margin, max_y += margin;
+    // clip to screen fractions; vertically the row may run either way, so both are covered
+    auto fraction = [](double ndc) { return std::clamp(ndc * 0.5 + 0.5, 0.0, 1.0); };
+    const double u0 = fraction(min_x), u1 = fraction(max_x);
+    const double va = fraction(min_y), vb = fraction(max_y);
+    const double v0 = std::min(va, 1.0 - vb), v1 = std::max(vb, 1.0 - va);
+    for (auto gate : gates) vrento::vulkan::copy_gate_rect(gate, float(u0), float(v0), float(u1), float(v1));
+}
+} // namespace
+
 auto TransformUniformSource::Evaluate(ref<dyn<UniformUpdateContext>> context,
                                       mut_ref<dyn<UniformValueSink>> sink) const
     -> Result<empty, UniformError> {
@@ -689,6 +776,8 @@ auto TransformUniformSource::Evaluate(ref<dyn<UniformUpdateContext>> context,
         if (req_mvp || req_mvpi) {
             const Matrix4d mvp = view_projection * model;
             if (req_mvp) writer.Write(Output::ModelViewProjection, ShaderValue::fromMatrix(mvp));
+            if (req_mvp && render_view == SceneRenderViewKind::Primary)
+                UpdateSnapshotFootprint(node, mvp);
             if (req_mvpi)
                 writer.Write(Output::ModelViewProjectionInverse,
                              ShaderValue::fromMatrix(mvp.inverse()));

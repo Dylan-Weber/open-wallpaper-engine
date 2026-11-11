@@ -1722,6 +1722,9 @@ public:
     // A model layer: with the scene's transparent sorting, models are ordered by depth.
     bool            DrawsAsModel() const { return m_draws_as_model; }
     void            SetDrawsAsModel(bool value) { m_draws_as_model = value; }
+    // The gates of the framebuffer snapshot copies this node's draw samples (set when the render graph is built).
+    auto&           SnapshotGates() { return m_snapshot_gates; }
+    const auto&     SnapshotGates() const { return m_snapshot_gates; }
     void            AddMesh(Arc<SceneMesh> mesh) { m_mesh = Some(rstd::move(mesh)); }
     bool            AppendChild(Arc<SceneNode> sub) { return m_node.AppendChild(rstd::move(sub)); }
     bool            RemoveChild(SceneNode& child) { return m_node.RemoveChild(child); }
@@ -2054,6 +2057,7 @@ private:
     bool   m_perspective { false };
     bool   m_reflected { false };
     bool   m_draws_as_model { false };
+    Vec<rstd::uint64_t> m_snapshot_gates;
 
     Option<Arc<SceneNodeLayer>> m_layer;
 };
