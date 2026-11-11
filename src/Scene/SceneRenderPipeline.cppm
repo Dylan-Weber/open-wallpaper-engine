@@ -51,6 +51,12 @@ public:
                  bool evict_meshes = false, SceneLoadBenchRecorderView = {})
         -> Result<PrepareOutcome, ScenePrepareError>;
     // Updates scene state and GPU preparation; the host owns drawing and time advancement.
+    // Starts the next frame's field animations and scripts now, while the previous frame is still being finished, if the
+    // scene has scripts to run. prepare() with the same inputs then collects them.
+    bool beginFrameScripts(const script::FrameInputs&);
+    // After the frame is submitted: does the animation tick of the next frame that the early scripts were promised, and lets
+    // go of the scene gate beginFrameScripts took.
+    void endFrameForScripts();
     auto prepare(const script::FrameInputs&, SceneLoadBenchRecorderView = {})
         -> Result<PrepareOutcome, ScenePrepareError>;
     auto retryPreparation(SceneLoadBenchRecorderView = {})
@@ -102,6 +108,8 @@ private:
     };
     FrameWork m_frame_work { FrameWork::Idle };
     double    m_frame_time {};
+    bool      m_scripts_started_early {};
+    bool      m_animations_ticked_early {};
     bool      m_ready {}, m_graph_dirty {}, m_textures_dirty {}, m_evict_meshes {};
     vulkan::RenderGraphResourceRetention m_retention {
         vulkan::RenderGraphResourceRetention::KeepSceneTextures
