@@ -47,9 +47,11 @@
 #include <js/experimental/TypedData.h>
 
 #include <js/Date.h>
+#include <dlfcn.h>
 #include <pthread.h>
 #include <sys/stat.h>
 
+#include <algorithm>
 #include <atomic>
 #include <condition_variable>
 #include <functional>
@@ -211,6 +213,16 @@ inline void cpuRelax() {
 #endif
 }
 std::atomic<uint64_t> g_hops { 0 }, g_hopSleeps { 0 }, g_engineSleeps { 0 };
+// OWE_JS_DEBUG=2: count cross-thread calls by the address of the host code that made them (see JS_FreeContext).
+const bool                       g_traceHops = [] { const char* v = getenv("OWE_JS_DEBUG"); return v && v[0] == '2'; }();
+std::mutex                       g_traceMu;
+std::unordered_map<void*, uint64_t> g_hopCallers;
+inline void noteCaller(void* addr, const Fac* f) {
+    if (__builtin_expect(g_traceHops, 0) && ! onEngine(f)) {
+        std::lock_guard<std::mutex> lock(g_traceMu);
+        ++g_hopCallers[addr];
+    }
+}
 constexpr int kSpin = 4000;  // about 100-200 us of waiting before a thread goes to sleep
 
 void engineMain(Fac* f) {
@@ -321,7 +333,12 @@ void tuneEngine(JSContext* cx) {
     // ten shortens the slow start slightly (first 60 frames 14.4 -> 13.8 ms) and the other thresholds do nothing useful;
     // off-thread Ion compilation matters a lot (turning it off costs 45 %), so that stays on.
     JS_SetGlobalJitCompilerOption(cx, JSJITCOMPILER_BASELINE_WARMUP_TRIGGER, 0);
+    // Measured on More Physics (shim, 600 frames, 3 runs): Ion inlines callees up to this many bytecode bytes; the default
+    // 130 leaves the small vector and matrix helpers of cannon-es as calls. 200 to 500 take the mean frame from about
+    // 11.5 to 10 ms; 2000 is no better.
+    JS_SetGlobalJitCompilerOption(cx, JSJITCOMPILER_INLINING_BYTECODE_MAX_LENGTH, 300);
     long v;
+    if (env("OWE_SM_INLINE", v)) JS_SetGlobalJitCompilerOption(cx, JSJITCOMPILER_INLINING_BYTECODE_MAX_LENGTH, uint32_t(v));
     if (env("OWE_SM_BLINTERP_WARMUP", v)) JS_SetGlobalJitCompilerOption(cx, JSJITCOMPILER_BASELINE_INTERPRETER_WARMUP_TRIGGER, uint32_t(v));
     if (env("OWE_SM_BASELINE_WARMUP", v)) JS_SetGlobalJitCompilerOption(cx, JSJITCOMPILER_BASELINE_WARMUP_TRIGGER, uint32_t(v));
     if (env("OWE_SM_ION_WARMUP", v)) JS_SetGlobalJitCompilerOption(cx, JSJITCOMPILER_ION_NORMAL_WARMUP_TRIGGER, uint32_t(v));
@@ -715,6 +732,33 @@ static void teardownOnEngine(Fac* f, JSContext* ctx) {
 void JS_FreeContext(JSContext* ctx) {
     Fac* f = lookupCx(ctx);
     if (! f) return;
+    if (g_traceHops) {
+        std::vector<std::pair<uint64_t, void*>> top;
+        {
+            std::lock_guard<std::mutex> lock(g_traceMu);
+            for (auto& kv : g_hopCallers) top.emplace_back(kv.second, kv.first);
+        }
+        std::sort(top.rbegin(), top.rend());
+        for (size_t i = 0; i < top.size() && i < 25; ++i) {
+            // file offset of the caller in its mapping: resolve with `addr2line -e <binary> -f 0x<offset>`
+            unsigned long addr = (unsigned long)top[i].second, off = 0;
+            char          path[256] = "?";
+            if (FILE* maps = fopen("/proc/self/maps", "r")) {
+                char line[512];
+                while (fgets(line, sizeof line, maps)) {
+                    unsigned long lo, hi, fo;
+                    if (sscanf(line, "%lx-%lx %*s %lx", &lo, &hi, &fo) == 3 && addr >= lo && addr < hi) {
+                        off = addr - lo + fo;
+                        const char* slash = strchr(line, '/');
+                        if (slash) { snprintf(path, sizeof path, "%s", slash); path[strcspn(path, "\n")] = 0; }
+                        break;
+                    }
+                }
+                fclose(maps);
+            }
+            fprintf(stderr, "[js] hop caller %8lu  %s 0x%lx\n", (unsigned long)top[i].first, path, off);
+        }
+    }
     if (getenv("OWE_JS_DEBUG")) fprintf(stderr, "[js] hops %lu, caller sleeps %lu, engine sleeps %lu\n", (unsigned long)g_hops.load(), (unsigned long)g_hopSleeps.load(), (unsigned long)g_engineSleeps.load());
     hop<void>(f, [&] { teardownOnEngine(f, ctx); });
     stopEngineThread(f);
@@ -1375,166 +1419,207 @@ JSContext* JS_NewContext(JSRuntime* rt) {
 }
 void JS_SetMaxStackSize(JSRuntime* rt, size_t size) {
     Fac* f = lookupCx(reinterpret_cast<JSContext*>(rt));
+    noteCaller(__builtin_return_address(0), f);
     return hop<void>(f, [&]() -> void { return impl_JS_SetMaxStackSize(rt, size); });
 }
 JSValue JS_NewObject(JSContext* ctx) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<JSValue>(f, [&]() -> JSValue { return impl_JS_NewObject(ctx); });
 }
 JSValue JS_NewArray(JSContext* ctx) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<JSValue>(f, [&]() -> JSValue { return impl_JS_NewArray(ctx); });
 }
 bool JS_IsFunction(JSContext* ctx, JSValueConst v) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<bool>(f, [&]() -> bool { return impl_JS_IsFunction(ctx, v); });
 }
 JSValue JS_NewStringLen(JSContext* ctx, const char* s, size_t len) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<JSValue>(f, [&]() -> JSValue { return impl_JS_NewStringLen(ctx, s, len); });
 }
 const char* JS_ToCStringLen2(JSContext* ctx, size_t* plen, JSValueConst val, bool arg3) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<const char*>(f, [&]() -> const char* { return impl_JS_ToCStringLen2(ctx, plen, val, arg3); });
 }
 int JS_ToBool(JSContext* ctx, JSValueConst v) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<int>(f, [&]() -> int { return impl_JS_ToBool(ctx, v); });
 }
 int JS_ToFloat64(JSContext* ctx, double* pres, JSValueConst v) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<int>(f, [&]() -> int { return impl_JS_ToFloat64(ctx, pres, v); });
 }
 int JS_ToInt32(JSContext* ctx, int32_t* pres, JSValueConst v) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<int>(f, [&]() -> int { return impl_JS_ToInt32(ctx, pres, v); });
 }
 int JS_ToInt64(JSContext* ctx, int64_t* pres, JSValueConst v) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<int>(f, [&]() -> int { return impl_JS_ToInt64(ctx, pres, v); });
 }
 JSValue JS_GetPropertyStr(JSContext* ctx, JSValueConst obj, const char* prop) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<JSValue>(f, [&]() -> JSValue { return impl_JS_GetPropertyStr(ctx, obj, prop); });
 }
 JSValue JS_GetPropertyUint32(JSContext* ctx, JSValueConst obj, uint32_t idx) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<JSValue>(f, [&]() -> JSValue { return impl_JS_GetPropertyUint32(ctx, obj, idx); });
 }
 int JS_SetPropertyStr(JSContext* ctx, JSValueConst obj, const char* prop, JSValue val) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<int>(f, [&]() -> int { return impl_JS_SetPropertyStr(ctx, obj, prop, val); });
 }
 int JS_SetPropertyUint32(JSContext* ctx, JSValueConst obj, uint32_t idx, JSValue val) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<int>(f, [&]() -> int { return impl_JS_SetPropertyUint32(ctx, obj, idx, val); });
 }
 int JS_DefinePropertyValueStr(JSContext* ctx, JSValueConst obj, const char* prop, JSValue val, int flags) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<int>(f, [&]() -> int { return impl_JS_DefinePropertyValueStr(ctx, obj, prop, val, flags); });
 }
 int JS_DefinePropertyValueUint32(JSContext* ctx, JSValueConst obj, uint32_t idx, JSValue val, int flags) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<int>(f, [&]() -> int { return impl_JS_DefinePropertyValueUint32(ctx, obj, idx, val, flags); });
 }
 OweAtom JS_NewAtom(JSContext* ctx, const char* str) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<OweAtom>(f, [&]() -> OweAtom { return impl_JS_NewAtom(ctx, str); });
 }
 void JS_FreeAtom(JSContext* ctx, OweAtom a) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<void>(f, [&]() -> void { return impl_JS_FreeAtom(ctx, a); });
 }
 const char* JS_AtomToCStringLen(JSContext* ctx, size_t* plen, OweAtom atom) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<const char*>(f, [&]() -> const char* { return impl_JS_AtomToCStringLen(ctx, plen, atom); });
 }
 int JS_DefinePropertyGetSet(JSContext* ctx, JSValueConst obj, OweAtom prop, JSValue getter, JSValue setter, int flags) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<int>(f, [&]() -> int { return impl_JS_DefinePropertyGetSet(ctx, obj, prop, getter, setter, flags); });
 }
 JSValue JS_NewCFunction2(JSContext* ctx, JSCFunction* func, const char* name, int length, JSCFunctionEnum arg4, int magic) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<JSValue>(f, [&]() -> JSValue { return impl_JS_NewCFunction2(ctx, func, name, length, arg4, magic); });
 }
 JSValue JS_NewCFunctionData(JSContext* ctx, JSCFunctionData* func, int length, int magic, int data_len, JSValueConst* data) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<JSValue>(f, [&]() -> JSValue { return impl_JS_NewCFunctionData(ctx, func, length, magic, data_len, data); });
 }
 JSValue JS_Call(JSContext* ctx, JSValueConst func, JSValueConst thisv, int argc, JSValueConst* argv) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<JSValue>(f, [&]() -> JSValue { return impl_JS_Call(ctx, func, thisv, argc, argv); });
 }
 JSValue JS_CallConstructor(JSContext* ctx, JSValueConst func, int argc, JSValueConst* argv) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<JSValue>(f, [&]() -> JSValue { return impl_JS_CallConstructor(ctx, func, argc, argv); });
 }
 int JS_SetPropertyFunctionList(JSContext* ctx, JSValueConst obj, const JSCFunctionListEntry* tab, int len) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<int>(f, [&]() -> int { return impl_JS_SetPropertyFunctionList(ctx, obj, tab, len); });
 }
 int JS_NewClass(JSRuntime* rt, JSClassID id, const JSClassDef* def) {
     Fac* f = lookupCx(reinterpret_cast<JSContext*>(rt));
+    noteCaller(__builtin_return_address(0), f);
     return hop<int>(f, [&]() -> int { return impl_JS_NewClass(rt, id, def); });
 }
 void JS_SetClassProto(JSContext* ctx, JSClassID id, JSValue obj) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<void>(f, [&]() -> void { return impl_JS_SetClassProto(ctx, id, obj); });
 }
 JSValue JS_NewObjectClass(JSContext* ctx, JSClassID id) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<JSValue>(f, [&]() -> JSValue { return impl_JS_NewObjectClass(ctx, id); });
 }
 JSValue JS_Throw(JSContext* ctx, JSValue obj) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<JSValue>(f, [&]() -> JSValue { return impl_JS_Throw(ctx, obj); });
 }
 JSValue JS_GetException(JSContext* ctx) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<JSValue>(f, [&]() -> JSValue { return impl_JS_GetException(ctx); });
 }
 JSValue JS_ParseJSON(JSContext* ctx, const char* buf, size_t len, const char* arg3) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<JSValue>(f, [&]() -> JSValue { return impl_JS_ParseJSON(ctx, buf, len, arg3); });
 }
 JSValue JS_JSONStringify(JSContext* ctx, JSValueConst obj, JSValueConst replacer, JSValueConst space) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<JSValue>(f, [&]() -> JSValue { return impl_JS_JSONStringify(ctx, obj, replacer, space); });
 }
 JSValue JS_GetTypedArrayBuffer(JSContext* ctx, JSValueConst obj, size_t* poff, size_t* plen, size_t* pbpe) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<JSValue>(f, [&]() -> JSValue { return impl_JS_GetTypedArrayBuffer(ctx, obj, poff, plen, pbpe); });
 }
 uint8_t* JS_GetArrayBuffer(JSContext* ctx, size_t* psize, JSValueConst obj) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<uint8_t*>(f, [&]() -> uint8_t* { return impl_JS_GetArrayBuffer(ctx, psize, obj); });
 }
 JSPromiseStateEnum JS_PromiseState(JSContext* ctx, JSValueConst promise) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<JSPromiseStateEnum>(f, [&]() -> JSPromiseStateEnum { return impl_JS_PromiseState(ctx, promise); });
 }
 JSValue JS_PromiseResult(JSContext* ctx, JSValueConst promise) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<JSValue>(f, [&]() -> JSValue { return impl_JS_PromiseResult(ctx, promise); });
 }
 int JS_ExecutePendingJob(JSRuntime* rt, JSContext** pctx) {
     Fac* f = lookupCx(reinterpret_cast<JSContext*>(rt));
+    noteCaller(__builtin_return_address(0), f);
     return hop<int>(f, [&]() -> int { return impl_JS_ExecutePendingJob(rt, pctx); });
 }
 void JS_SetModuleLoaderFunc(JSRuntime* rt, JSModuleNormalizeFunc* arg1, JSModuleLoaderFunc* loader, void* opaque) {
     Fac* f = lookupCx(reinterpret_cast<JSContext*>(rt));
+    noteCaller(__builtin_return_address(0), f);
     return hop<void>(f, [&]() -> void { return impl_JS_SetModuleLoaderFunc(rt, arg1, loader, opaque); });
 }
 JSValue JS_Eval(JSContext* ctx, const char* input, size_t len, const char* filename, int flags) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<JSValue>(f, [&]() -> JSValue { return impl_JS_Eval(ctx, input, len, filename, flags); });
 }
 JSValue JS_EvalFunction(JSContext* ctx, JSValue fun) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<JSValue>(f, [&]() -> JSValue { return impl_JS_EvalFunction(ctx, fun); });
 }
 JSValue JS_GetModuleNamespace(JSContext* ctx, JSModuleDef* m) {
     Fac* f = F(ctx);
+    noteCaller(__builtin_return_address(0), f);
     return hop<JSValue>(f, [&]() -> JSValue { return impl_JS_GetModuleNamespace(ctx, m); });
 }
 }  // extern "C"

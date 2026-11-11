@@ -4011,6 +4011,8 @@ JsRuntime::JsRuntime(): m_impl(Box<Impl>::make()) {
         rstd_error("script: JS_NewRuntime/JS_NewContext failed");
         return;
     }
+    // Everything below is hundreds of engine calls (classes, globals, the bootstrap script): run it on the engine thread.
+    OnEngine(m_impl->rt, [&]() -> void {
     // QuickJS's default stack-overflow check is conservative (relative to
     // the OS thread stack at runtime init). When the wallpaper renderer
     // runs scripts from a deep call site (Vulkan render thread, post-
@@ -4039,6 +4041,7 @@ JsRuntime::JsRuntime(): m_impl(Box<Impl>::make()) {
     // Capture them now so per-script binding can fall back to the stub
     // when no SceneNode is provided.
     CaptureDefaultBindings(m_impl->ctx);
+    });
 }
 
 void ReleaseFieldScriptValues(JSContext* ctx, FieldScript& script) {
@@ -4086,9 +4089,11 @@ JsRuntime::~JsRuntime() {
 }
 
 void JsRuntime::SetFrameInputs(const FrameInputs& fi) {
+    OnEngine(m_impl->rt, [&]() -> void {
     m_impl->host.inputs = fi;
     UpdateInputObject(m_impl->ctx);
     RefreshAudioBuffers(m_impl->ctx, m_impl->host);
+});
 }
 
 void JsRuntime::SetAudioResponseDemand(Option<Arc<AudioResponseDemand>> demand) {
