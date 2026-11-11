@@ -2,8 +2,12 @@ module;
 
 #include <rstd/macro.hpp>
 
+#include <cstdlib>
+#include <cstring>
+
 module wescene.pkg.scene_obj;
 import rstd.log;
+import rstd.cppstd;
 import wescene.json;
 import wescene.pkg_fs;
 
@@ -215,6 +219,34 @@ SceneObjectMetadata parse_object_metadata(const owe::Json& obj, rstd::size_t raw
     return metadata;
 }
 
+// Debug switch for bisecting a rendering difference: OWE_DEBUG_SKIP_OBJECTS="id|name,id|name,..."
+// drops every scene object whose id or exact name is listed. Unset (or empty) changes nothing.
+bool debug_skip_object(const SceneObjectMetadata& metadata) {
+    const char* list = ::getenv("OWE_DEBUG_SKIP_OBJECTS");
+    if (! list || ! *list) return false;
+    const auto        name_view = rstd::cppstd::as_string_view(metadata.name.as_str());
+    const char*       name      = name_view.data();
+    const std::size_t name_len  = name_view.size();
+    while (*list) {
+        while (*list == ',' || *list == ' ') ++list;
+        const char* end = list;
+        while (*end && *end != ',') ++end;
+        const char* stop = end;
+        while (stop > list && stop[-1] == ' ') --stop;
+        const std::size_t len = std::size_t(stop - list);
+        if (len > 0) {
+            if (len == name_len && std::memcmp(list, name, len) == 0) return true;
+            if (metadata.has_id) {
+                char* parsed = nullptr;
+                long  value  = ::strtol(list, &parsed, 10);
+                if (parsed == stop && value == long(metadata.id.to_primitive())) return true;
+            }
+        }
+        list = end;
+    }
+    return false;
+}
+
 Vec<SceneObjectRecord> parse_object_records(const owe::Json& root, bool& objects_are_array) {
     Vec<SceneObjectRecord> objects;
     auto                   raw_objects = root.get("objects"_str);
@@ -229,8 +261,10 @@ Vec<SceneObjectRecord> parse_object_records(const owe::Json& root, bool& objects
     objects.reserve(rstd::usize(count));
     for (rstd::size_t i = 0; i < count; ++i) {
         const auto& authored = (**array)[rstd::usize(i)];
+        auto metadata = parse_object_metadata(authored, i);
+        if (debug_skip_object(metadata)) continue;
         objects.push(SceneObjectRecord {
-            .metadata = parse_object_metadata(authored, i),
+            .metadata = rstd::move(metadata),
             .authored = authored.clone(),
         });
     }
