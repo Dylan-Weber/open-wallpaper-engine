@@ -333,15 +333,18 @@ public:
                     resource::ResourceErrorKind::MissingDefinition,
                     rstd::format("stale texture source {}", request.name) });
             return Ok(resource::ImportedTextureContentIdentity {
-                .key = request.name.clone(),
+                .key             = request.name.clone(),
+                .estimated_bytes = EstimateDecodedBytes(request.name.as_str()),
             });
         }
         auto key = record->desc.url.is_empty() ? record->key.clone()
                                                : String::make(record->desc.url.as_str());
+        const auto estimate = EstimateDecodedBytes(key.as_str());
         return Ok(resource::ImportedTextureContentIdentity {
-            .key      = rstd::move(key),
-            .revision = record->content_revision,
-            .scope    = rstd::as_cast<u64>(record->scene_texture.generation),
+            .key             = rstd::move(key),
+            .revision        = record->content_revision,
+            .scope           = rstd::as_cast<u64>(record->scene_texture.generation),
+            .estimated_bytes = estimate,
         });
     }
 
@@ -361,6 +364,16 @@ public:
     }
 
 private:
+    // decoded size from the image header (all slots, 4 bytes a pixel, mips counted), 0 when it cannot be read
+    auto EstimateDecodedBytes(ref<str> key) const -> u64 {
+        auto described = m_source->Describe(key);
+        if (described.is_err()) return u64();
+        u64 bytes {};
+        for (const auto& slot : described->slots)
+            bytes += vrento::resource_registry::DecodeBudget::Estimate(
+                slot.width, slot.height, 4, rstd::as_cast<rstd::uint32_t>(slot.mip_count));
+        return bytes;
+    }
     const RenderTextureDescRecord* ResolveRecord(const TextureRequest& request) const {
         if (request.source.is_some()) {
             auto record = m_render_scene.textureDesc(RenderTextureDescId {
