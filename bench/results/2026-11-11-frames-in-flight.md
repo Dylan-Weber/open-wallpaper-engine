@@ -99,3 +99,18 @@ path that the capture runs exercise (acquire, export fd, complete) but not a rea
   pool is `directive.count` slots (3 in its tests), enough for depth 2 while the consumer holds one. Untested because a real run needs the daemon,
   a display client speaking the bridge protocol and a scene package; the existing `waywallen/tests/display.rs` harness drives the Rust test renderer,
   not `waywallen-wescene-renderer`. To try on the desktop: `OWE_FRAMES_IN_FLIGHT=1` vs `2` in the plugin's environment and watch for stutter.
+
+## Follow-up measurements (2026-11-11 14:00-15:30Z; build with the pacing fix; locks bench, bench-gpu, perf-bench)
+
+- **5120x1440, 14 wallpapers, depth 2 vs 1, interleaved, 2 rounds** (`2026-11-11-frames-in-flight-ab-5120.json`): all 14 faster, median **-33 %**, range -8 % (more-physics,
+  CPU-bound) to -49 % (lofi-cafe); rain 7.23 -> 4.31 ms, reze 7.53 -> 3.90, night-city 5.37 -> 3.64, ocarina 41.9 -> 32.2. RSS unchanged (+-1 %).
+- **Windowed, 60 Hz FIFO, 12 s, 3 repeats, nebula / rain / reze / night-city, depth 1 and 2** (`2026-11-11-frames-in-flight-windowed-60-r{1,2,3}.json`;
+  repeat 1 is not usable for fps: it divided by the exit timer, which includes loading, 46 "fps"; repeats 2 and 3 count the first-to-last frame span):
+  **59.4-59.9 fps at both depths** with frame p50 16.65 ms, p95 16.9-17.4 ms (one slow start in r2: nebula depth 1 53 fps / p95 33 ms). The render thread's GPU
+  wait is 2.7-5.3 ms mean at depth 1 and 0.01 at depth 2; process CPU unchanged within +-1 point (night-city 22-23 %, reze 31-33 %, rain 24-25 %, nebula 8-9 %).
+  So at 60 Hz the gain is not frame rate (vsync-bound) but a thread that no longer blocks on the GPU; the headroom shows in the offscreen numbers above.
+- **Latency (queued-frames counter).** Unpaced offscreen, GPU-saturated (night-city): at submit, 0 / 1 / 2 earlier frames are still on the GPU at depth 1 / 2 / 3, i.e. the
+  display of a frame is delayed by about 1 / 2 GPU frame times (about 3 ms each here) in the worst case; frame p50 4.4 / 2.9 / 2.8 ms (three interleaved repeats; one
+  depth-1 sample at 7.5 ms was disturbed by other jobs). **Paced at 60 fps (night-city, reze, street-japan-audio, `--capture-realtime`): queued = 0 at every depth**,
+  GPU wait 2.6-4.7 ms -> 0, CPU the same: no added input or audio latency in the normal case. (Short runs read 55.5 fps because the first frames load.)
+- Re-check with this binary: captures byte-identical at depth 1/2/3 for 35 of 35 deterministic wallpapers (5 clock-dependent skipped).

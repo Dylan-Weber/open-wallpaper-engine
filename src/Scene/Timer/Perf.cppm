@@ -47,12 +47,13 @@ inline std::map<std::string, double>              g_gpu_pending;
 inline std::map<std::string, std::vector<double>> g_gpu_samples;
 inline uint64_t                 g_pending[int(Stage::Count)];
 inline bool                     g_registered = false;
+inline uint64_t                 g_first_frame_ns = 0, g_last_frame_ns = 0; // CLOCK_MONOTONIC of the first and last closed frame
 
 inline void Write() {
     const char* path = getenv("OWE_PERF_LOG");
     FILE*       f    = path ? fopen(path, "w") : nullptr;
     if (! f) return;
-    fprintf(f, "{\"frames\": %zu, \"stages\": {", g_samples[0].size());
+    fprintf(f, "{\"frames\": %zu, \"span_s\": %.4f, \"stages\": {", g_samples[0].size(), double(g_last_frame_ns - g_first_frame_ns) / 1e9);
     for (int s = 0; s < int(Stage::Count); ++s) {
         auto v = g_samples[s];
         if (v.size() > 10) v.erase(v.begin(), v.begin() + 10);
@@ -124,6 +125,13 @@ inline void FrameDone() {
     if (! detail::g_registered) {
         detail::g_registered = true;
         atexit(detail::Write);
+    }
+    {
+        timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        const uint64_t now = uint64_t(ts.tv_sec) * 1000000000ull + uint64_t(ts.tv_nsec);
+        if (! detail::g_first_frame_ns) detail::g_first_frame_ns = now;
+        detail::g_last_frame_ns = now;
     }
     for (int s = 0; s < int(Stage::Count); ++s) {
         detail::g_samples[s].push_back(double(detail::g_pending[s]) / 1e6);

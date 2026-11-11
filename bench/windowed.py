@@ -79,7 +79,8 @@ def main():
             stages = r['stages']
             frames = r['frames']
             # the viewer starts counting at the first presented frame; the run is `seconds` long after loading
-            fps_out = frames / args.seconds if frames else 0
+            # frames over the span between the first and the last presented frame (the exit timer also counts loading)
+            fps_out = (frames - 1) / r['span_s'] if frames > 1 and r.get('span_s') else 0
             util = sorted(r['gpu_util'])[len(r['gpu_util']) // 2:] if r['gpu_util'] else []
             res = dict(name=e['name'], in_flight=depth, fps_target=args.fps, frames=frames, fps=round(fps_out, 1),
                        frame_ms=stages['frame'], wait_ms=stages['wait'], draw_ms=stages['draw'],
