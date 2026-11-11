@@ -18,6 +18,7 @@ import run  # noqa: E402
 
 
 def main():
+    run.hold_locks()
     ap = argparse.ArgumentParser()
     ap.add_argument('--config', action='append', required=True, help='NAME=VIEWER[:VAR=VALUE...]')
     ap.add_argument('--rounds', type=int, default=3)

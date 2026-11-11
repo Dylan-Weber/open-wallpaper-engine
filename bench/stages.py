@@ -18,6 +18,7 @@ import run  # noqa: E402
 
 
 def main():
+    run.hold_locks()
     ap = argparse.ArgumentParser()
     ap.add_argument('name')
     ap.add_argument('--frames', type=int, default=300)

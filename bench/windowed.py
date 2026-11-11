@@ -54,6 +54,7 @@ def once(viewer, entry, seconds, fps, depth, gpu_env):
 
 
 def main():
+    run.hold_locks()
     ap = argparse.ArgumentParser()
     ap.add_argument('--viewer', default=run.DEFAULT_VIEWER)
     ap.add_argument('--seconds', type=int, default=20)

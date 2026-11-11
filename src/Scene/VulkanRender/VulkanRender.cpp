@@ -85,6 +85,19 @@ static usize FramesInFlightFromEnvironment() {
     return depth;
 }
 
+// OWE_PRESENT_MODE=fifo|mailbox|immediate|relaxed picks the window swapchain's present mode (default fifo, the vsync-paced
+// mode). Mailbox and immediate show how fast a window could be drawn without waiting for the display.
+static vrento::vulkan::SwapchainOptions PresentationFromEnvironment() {
+    vrento::vulkan::SwapchainOptions options;
+    if (const char* text = std::getenv("OWE_PRESENT_MODE")) {
+        const std::string mode = text;
+        if (mode == "mailbox") options.presentation = vrento::vulkan::PresentationMode::Mailbox;
+        else if (mode == "immediate") options.presentation = vrento::vulkan::PresentationMode::Immediate;
+        else if (mode == "relaxed") options.presentation = vrento::vulkan::PresentationMode::FifoRelaxed;
+    }
+    return options;
+}
+
 struct ViewerSurfaceFactory {
     owe::CreateSurfaceCallback create;
     auto                       createSurface(VkInstance instance)
@@ -719,6 +732,16 @@ void VulkanRender::Impl::reapInFlight(usize keep) {
 }
 
 void VulkanRender::Impl::finishFrame() {
+    if (perf::Enabled()) {
+        // frames submitted earlier that the GPU has not finished: what this frame waits behind before it is shown
+        uint64_t queued = 0;
+        for (auto& older : m_inflight)
+            if (auto token = older.frame.completion()) {
+                auto done = (*token).poll();
+                if (done.is_ok() && ! done.unwrap()) ++queued;
+            }
+        perf::AddCount(perf::Stage::Queued, queued);
+    }
     if (depth() > usize(1) && m_frame && m_output && m_frame->state() == FrameState::Submitted) {
         m_inflight.push_back(InFlightFrame { m_frame.take().unwrap(), m_output.take().unwrap() });
         return;
@@ -955,6 +978,7 @@ bool VulkanRender::Impl::init(RenderInitInfo info, SceneLoadBenchRecorderView lo
                 .physical_device_uuid = info.uuid ? info.uuid->as_slice() : slice<rstd::uint8_t> {},
                 .api_version          = instance_api_version,
                 .extent               = extent,
+                .swapchain            = PresentationFromEnvironment(),
                 .validation           = info.enable_valid_layer,
             },
             factory);

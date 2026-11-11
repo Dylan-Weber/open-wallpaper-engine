@@ -32,10 +32,11 @@ enum class Stage : int {
     GBegin,  // beginFrame: GraphFrame::begin
     Gpu,     // GPU time of the frame's passes (OWE_GPU_TIMING; the sum of the pass timestamps)
     Wait,    // waiting for the frame's completion fence (GPU time not overlapped with CPU work)
+    Queued,  // frames still executing on the GPU when a frame is submitted (a count, shown as "ms"): the display latency a deeper queue adds, in frames of GPU time
     Count
 };
 
-inline const char* const kStageNames[] = { "frame", "prepare", "scripts", "anim", "draw", "update", "begin", "advance", "record", "submit", "capture", "gbegin", "gpu", "wait" };
+inline const char* const kStageNames[] = { "frame", "prepare", "scripts", "anim", "draw", "update", "begin", "advance", "record", "submit", "capture", "gbegin", "gpu", "wait", "queued" };
 
 namespace detail
 {
@@ -100,6 +101,11 @@ inline uint64_t Now() {
     timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return uint64_t(ts.tv_sec) * 1000000000ull + uint64_t(ts.tv_nsec);
+}
+// adds a count to the frame's value in `stage` (stored like a time in ms)
+inline void AddCount(Stage stage, uint64_t count) {
+    if (! detail::g_enabled) return;
+    detail::g_pending[int(stage)] += count * 1000000ull;
 }
 // adds `Now() - start` to the frame's time in `stage` (a stage may run several times a frame)
 inline void Add(Stage stage, uint64_t start) {

@@ -41,6 +41,24 @@ GPU_ENV = {}
 MEMORY = os.environ.get('WPE_BENCH_MEMORY', '4G')
 
 
+LOCK_DIR = os.path.expanduser('~/.cache/wpe-locks')
+# every measurement-style job on this machine takes one of these (the threads named theirs differently); a benchmark holds
+# all of them, always in this order, so none of the others runs a GPU or CPU heavy job meanwhile
+LOCK_NAMES = ('bench.lock', 'bench-gpu.lock', 'perf-bench.lock')
+_held = []
+
+
+def hold_locks(names=LOCK_NAMES, wait=True):
+    """Take every shared benchmark lock, blocking, always in the order of LOCK_NAMES (the order the other jobs chain their
+    `flock` calls in, so waiters queue behind each other and nobody deadlocks); held for the life of the process."""
+    import fcntl
+    os.makedirs(LOCK_DIR, exist_ok=True)
+    for name in names:
+        f = open(os.path.join(LOCK_DIR, name), 'a')
+        fcntl.flock(f, fcntl.LOCK_EX if wait else fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _held.append(f)
+
+
 def package(entry):
     folder = entry.get('path') or os.path.join(WORKSHOP, str(entry['id']))
     folder = os.path.expanduser(folder)
@@ -161,6 +179,7 @@ def compare(results, baseline, tolerance):
 
 
 def main():
+    hold_locks()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--viewer', default=DEFAULT_VIEWER)
     ap.add_argument('--label', default=time.strftime('%Y-%m-%d'))

@@ -75,3 +75,27 @@ path that the capture runs exercise (acquire, export fd, complete) but not a rea
 - The unmeasured Waywallen consumer needs a buffer pool of at least `depth + 1` buffers to keep two frames in flight; with fewer
   the acquire fails and the tick is skipped (no error, just no overlap).
 - Overlap with the frame-graph rebuild thread: none in vrento; this touches only `VulkanRender.cpp`, `SceneViewer.cpp` (OWE_EXIT_AFTER) and `bench/`.
+
+## Follow-up (same day): pacing, present mode, locks, Waywallen analysis
+
+- **Frame timer pacing defect (found, fixed, unit-tested):** `ThreadTimer` waited a full interval *after* each callback returned, so the period
+  was interval + frame time (a 4 ms frame at 60 fps = 20.7 ms = 48 fps; the windowed runs above show 45-50 fps at a 60 target, depth 1
+  included, which is this and not frames in flight). A 120 fps target (8.3 ms) with a 3 ms frame would run at ~88 fps. Callbacks now start one
+  interval apart (an overrun of more than an interval restarts the schedule); test `ThreadTimer.StartsCallbacksOneIntervalApartNotOneIntervalAfterTheLastEnds`
+  (12 ms callback on a 20 ms interval: 44-52 calls/s, the old code gave 31). Unpaced captures are unaffected (1 us interval); only paced
+  runs (`--capture-realtime`, windows, Waywallen's timer) change. Effect on the real frame rate: not yet measured (bench-lock queue).
+- **`OWE_PRESENT_MODE=fifo|mailbox|immediate|relaxed`** picks the window swapchain's present mode (default fifo, unchanged), to measure
+  how fast a window can be drawn without waiting for the display. Not yet measured.
+- **Queued-frames counter** (`queued` stage of `OWE_PERF_LOG`, in frames): how many earlier frames the GPU has not finished when a frame is submitted,
+  i.e. the display latency a deeper queue adds, in frames of GPU time. Not yet measured.
+- **Bench locks:** `bench/run.py hold_locks()` takes `bench.lock`, `bench-gpu.lock`, `perf-bench.lock` (blocking, in that order, the order other
+  jobs chain their `flock`s in) and is called by run.py, ab.py, windowed.py, stages.py. A first version that took them one by one in another
+  order deadlocked with another thread's A/B.
+- **Waywallen path, by code reading (not run end to end):** `BridgeProducerCore` allows one pending slot at a time (`m_have_pending`): a slot is
+  acquired when a frame starts and handed to the consumer with the render-done sync fd right after the GPU submit (`submitSlot`), then the next
+  frame acquires another slot. With frames in flight the slot is therefore released to the consumer at submit, exactly as before, and the sync fd
+  (exported from the frame's signal semaphore, valid with its signal pending) is what the consumer waits on. Overlap needs a free slot for
+  each frame in flight: `acquireSlot` returns Busy when the consumer holds all of them and the tick is skipped (no error, no overlap). The daemon's
+  pool is `directive.count` slots (3 in its tests), enough for depth 2 while the consumer holds one. Untested because a real run needs the daemon,
+  a display client speaking the bridge protocol and a scene package; the existing `waywallen/tests/display.rs` harness drives the Rust test renderer,
+  not `waywallen-wescene-renderer`. To try on the desktop: `OWE_FRAMES_IN_FLIGHT=1` vs `2` in the plugin's environment and watch for stutter.
