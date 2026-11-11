@@ -893,14 +893,8 @@ auto ColorUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
 namespace
 {
 
-// Whether a light lights now: shown by its user property, and shown with every layer it is in.
-bool LightsNow(const SceneLight& light) {
-    if (light.node() == nullptr || ! light.runtimeVisible()) return false;
-    for (const SceneNode* node = light.node(); node != nullptr; node = node->Parent()) {
-        if (! node->Visible()) return false;
-    }
-    return true;
-}
+// Whether a light lights now (the render scene's shadow maps follow the same rule).
+bool LightsNow(const SceneLight& light) { return SceneLightLightsNow(light); }
 
 // The lights that take the shaders' light slots, by index in `lights`: those that light now, in
 // order, up to `slots`.

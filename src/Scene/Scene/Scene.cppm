@@ -2741,6 +2741,9 @@ struct SceneShadowDefinition {
     }
 };
 
+// Whether a light lights now: shown by its user property, and shown with every layer it is in.
+bool SceneLightLightsNow(const SceneLight& light);
+
 struct RenderShadowCasterRecord {
     RenderItemId       render_item;
     Arc<SceneMaterial> material;
@@ -3300,6 +3303,14 @@ public:
     bool TransparentSorting() const { return m_transparent_sorting; }
     void SetTransparentSorting(bool value) { m_transparent_sorting = value; }
     bool ConsumeRenderGraphDirty();
+    // Bit d: the shadow definition d's light lights now (a light that does not is never sampled, so
+    // its shadow map is not drawn). Always at least one bit when there are definitions, so the
+    // atlas keeps a writer. The graph is dirty when it changes.
+    auto ShadowLightMask() const -> rstd::uint64_t;
+    void RecordRenderGraphShadowLightMask(rstd::uint64_t mask) {
+        m_render_graph_shadow_light_mask          = mask;
+        m_render_graph_shadow_light_mask_recorded = true;
+    }
     bool ApplyUserNodeVisibilityBindings(ref<str> key, const Json& property);
     bool ApplyUserImageEffectVisibilityBindings(ref<str> key, const Json& property);
     bool ApplyUserLightVisibilityBindings(ref<str> key, const Json& property);
@@ -3648,6 +3659,8 @@ private:
     HashSet<i32>            m_visibility_elidable_layer_ids;
     HashSet<rstd::uint64_t> m_hidden_scene_node_ids;
     HashSet<rstd::uint64_t> m_render_graph_hidden_scene_node_ids;
+    rstd::uint64_t          m_render_graph_shadow_light_mask {};
+    bool                    m_render_graph_shadow_light_mask_recorded { false };
 };
 
 // SceneViewer --camera-eye-log: the scene's clock and its active camera's eye (t, x, y, z), None

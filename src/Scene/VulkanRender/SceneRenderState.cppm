@@ -1,6 +1,7 @@
 module;
 #include <rstd/macro.hpp>
 #include "vvk/macros.hpp"
+#include <cstdlib>
 
 export module wescene.vulkan_render:scene_render_state;
 import wescene.core;
@@ -154,10 +155,20 @@ class SceneRenderState {
     ResourceDeclarationData            resource_data;
     Option<Arc<SceneImageSource>>      image_source;
     Vec<Box<dyn<UniformBufferUpdate>>> uniform_update_owners;
+    // Diagnostics (OWE_GRAPH_DUMP): the draw each uniform binding belongs to, and per class of draw
+    // how often its uniform block changed or equalled the last upload.
+    struct DrawClassCount {
+        String key;
+        u64    draws {}, changed {}, identical {};
+    };
+    Vec<usize>          uniform_draw;
+    Vec<DrawClassCount> class_counts;
+    u64                 class_frames {};
 
 public:
     void clear() {
         uniform_update_owners.clear();
+        uniform_draw.clear();
         draws.clear();
         input_        = None();
         textures      = None();
@@ -272,6 +283,7 @@ public:
     }
     void clearBindings() {
         uniform_update_owners.clear();
+        uniform_draw.clear();
         for (auto& entry : draws) entry.source->clearResources();
     }
     auto bindResources(Scene& scene, RenderingResources& rr,
@@ -298,10 +310,16 @@ public:
                                                     rstd::move(resolved).unwrap_err()));
         }
         uniform_update_owners.clear();
+        uniform_draw.clear();
         SceneUniformBindingPrepareContext uniform_prepare_impl(scene);
         auto uniform_prepare = dyn<UniformBindingPrepareContext>::from_ref(uniform_prepare_impl);
         Vec<resource::BufferUseHandle> prepared_uniform_buffers;
+        usize                          draw_index {};
         for (auto& entry : draws) {
+            struct Advance {
+                usize& value;
+                ~Advance() { ++value; }
+            } advance { draw_index };
             const auto&                  uses = entry.source->resourceUses();
             PreparedPassResources resources(rr.resources.Prepared(), uses);
             auto                  created =
@@ -324,6 +342,7 @@ public:
                 if (exists) continue;
                 prepared_uniform_buffers.push(binding->Buffer());
                 uniform_update_owners.push(rstd::move(binding));
+                uniform_draw.push(usize(draw_index));
             }
         }
         for (auto& entry : draws) entry.invalidation = PassInvalidationNone;
@@ -429,6 +448,67 @@ public:
         return result;
     }
 
+    // Diagnostics: the class a draw belongs to, for the OWE_GRAPH_DUMP breakdown.
+    static auto classOf(const SceneDraw::Desc& desc) -> String {
+        const auto output = desc.output.as_str();
+        auto       has    = [&](ref<str> part) { return output.contains(part); };
+        const char* view = desc.render_view == SceneRenderViewKind::Reflection ? "reflection" : "primary";
+        if (desc.depth_only) {
+            bool silent = ! desc.scissors.is_empty();
+            for (const auto& rect : desc.scissors)
+                if (rect.extent.width != 0 || rect.extent.height != 0) silent = false;
+            return rstd::format("depth-only (shadow map) {} views={} instances={}",
+                                silent ? "SILENT (empty scissor)" : "active",
+                                desc.viewports.len(),
+                                desc.instance_count);
+        }
+        if (output == "_rt_default"_str) return rstd::format("scene colour view={}", view);
+        if (has("Composite"_str)) return rstd::format("layer composite view={}", view);
+        if (has("copy"_str)) return rstd::format("snapshot copy view={}", view);
+        return rstd::format("effect/intermediate pass view={}", view);
+    }
+    void countBlock(usize draw, bool identical) {
+        if (draw >= draws.len()) return;
+        auto key = classOf(draws[draw].source->parameters());
+        for (auto& entry : class_counts)
+            if (entry.key == key) {
+                (identical ? entry.identical : entry.changed) += u64(1);
+                return;
+            }
+        DrawClassCount entry { .key = rstd::move(key) };
+        (identical ? entry.identical : entry.changed) += u64(1);
+        class_counts.push(rstd::move(entry));
+    }
+    // Per class: draws per frame, and the blocks (per frame) that changed or equalled the last upload.
+    void logDrawClasses(u64 frames) {
+        Vec<DrawClassCount> draws_by_class;
+        for (const auto& entry : draws) {
+            auto key = classOf(entry.source->parameters());
+            bool found {};
+            for (auto& count : draws_by_class)
+                if (count.key == key) {
+                    count.draws += u64(1);
+                    found = true;
+                    break;
+                }
+            if (! found) draws_by_class.push(DrawClassCount { .key = rstd::move(key), .draws = u64(1) });
+        }
+        rstd_error("draw classes: {} draws, {} uniform blocks, over {} frames", draws.len(), uniform_update_owners.len(), frames);
+        for (const auto& count : draws_by_class) {
+            u64 changed {}, identical {};
+            for (const auto& block : class_counts)
+                if (block.key == count.key) {
+                    changed   = block.changed;
+                    identical = block.identical;
+                }
+            rstd_error("  {} draws, blocks/frame changed {} identical {} : {}",
+                       count.draws,
+                       frames > u64(0) ? changed / frames : u64(),
+                       frames > u64(0) ? identical / frames : u64(),
+                       count.key);
+        }
+    }
+
     bool update(const SceneFrame& frame, VkExtent2D extent,
                 ref<dyn<SceneTextureAnimationView>> textures, RenderingResources& rr,
                 SceneRenderUpdateProgress& progress) {
@@ -438,9 +518,16 @@ public:
             { static_cast<float>(extent.width), static_cast<float>(extent.height) },
             textures);
         auto context = dyn<UniformBufferFrameContext>::from_ref(frame_context);
+        static const bool diagnostics = std::getenv("OWE_GRAPH_DUMP") != nullptr;
         for (; progress.uniforms < uniform_update_owners.len(); ++progress.uniforms) {
             auto& binding = uniform_update_owners[progress.uniforms];
+            const auto before = diagnostics ? vrento::uniform_update_stats() : vrento::UniformUpdateStats {};
             auto  result  = binding->Update(context.as_ref(), buffer_writer.as_mut_ref());
+            if (diagnostics && result.is_ok() && progress.uniforms < uniform_draw.len()) {
+                const auto after = vrento::uniform_update_stats();
+                countBlock(uniform_draw[progress.uniforms],
+                           after.identical > before.identical);
+            }
             if (result.is_err()) {
                 auto error = rstd::move(result).unwrap_err_unchecked();
                 rstd_error("update uniform buffer failed: {}", error.message.as_str());

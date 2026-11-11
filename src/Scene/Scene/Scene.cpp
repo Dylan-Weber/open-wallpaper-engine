@@ -780,6 +780,10 @@ void RenderSceneSnapshot::Rebuild(Scene& scene, RenderSceneVersion version) {
     for (const auto& definition : scene.ShadowDefinitions()) {
         m_shadow_definitions.push(definition.Clone());
     }
+    // The shadow maps of lights that do not light now are not drawn; ConsumeRenderGraphDirty
+    // rebuilds the graph when that changes.
+    const auto shadow_mask = scene.ShadowLightMask();
+    scene.RecordRenderGraphShadowLightMask(shadow_mask);
 
     Vec<String> texture_keys;
     auto        texture_names = scene.TextureNames();
@@ -882,6 +886,9 @@ void RenderSceneSnapshot::Rebuild(Scene& scene, RenderSceneVersion version) {
         for (usize definition {};
              definition < rstd::cmp::min(variants.len(), m_shadow_definitions.len());
              ++definition) {
+            if (definition.to_primitive() < 64 &&
+                ((shadow_mask >> definition.to_primitive()) & rstd::uint64_t(1)) == 0)
+                continue;
             m_shadow_casters.push(RenderShadowCasterRecord {
                 .render_item = id,
                 .material    = variants[definition].clone(),
@@ -2871,12 +2878,48 @@ void Scene::MarkLayerVisibilityElidable(WallpaperLayerId id) {
     (void)m_elidable_layer_ids.insert(id.value);
 }
 
+bool SceneLightLightsNow(const SceneLight& light) {
+    if (light.node() == nullptr || ! light.runtimeVisible()) return false;
+    for (const SceneNode* node = light.node(); node != nullptr; node = node->Parent()) {
+        if (! node->Visible()) return false;
+    }
+    return true;
+}
+
+auto Scene::ShadowLightMask() const -> rstd::uint64_t {
+    rstd::uint64_t mask {};
+    const auto     definitions = m_shadow_definitions.as_slice();
+    const auto     lights      = Lights();
+    for (usize d {}; d < definitions.len() && d.to_primitive() < 64; ++d) {
+        bool lit = true; // no light to ask: draw it
+        for (const auto& light : lights) {
+            const auto view = light->desc().shadow_view;
+            if (view < i32() || u32(rstd::as_cast<rstd::uint32_t>(view)) != definitions[d].view_offset) continue;
+            lit = SceneLightLightsNow(*light);
+            break;
+        }
+        if (lit) mask |= rstd::uint64_t(1) << d.to_primitive();
+    }
+    if (mask == 0 && ! definitions.is_empty()) mask = 1;
+    return mask;
+}
+
 bool Scene::ConsumeRenderGraphDirty() {
     const bool elision_changed =
         ! same_ids(m_elidable_layer_ids, m_render_graph_elidable_layer_ids);
     const bool scene_node_visibility_changed =
         ! same_ids(m_hidden_scene_node_ids, m_render_graph_hidden_scene_node_ids);
-    const bool dirty     = m_render_graph_dirty || elision_changed || scene_node_visibility_changed;
+    // Before any graph was built there is nothing to differ from: adopt the current mask.
+    const auto shadow_mask = ShadowLightMask();
+    const bool shadow_changed =
+        m_render_graph_shadow_light_mask_recorded && shadow_mask != m_render_graph_shadow_light_mask;
+    if (! m_render_graph_shadow_light_mask_recorded) {
+        m_render_graph_shadow_light_mask          = shadow_mask;
+        m_render_graph_shadow_light_mask_recorded = true;
+    }
+    const bool dirty =
+        m_render_graph_dirty || elision_changed || scene_node_visibility_changed || shadow_changed;
+    if (shadow_changed) m_render_graph_shadow_light_mask = shadow_mask;
     m_render_graph_dirty = false;
     if (elision_changed) m_render_graph_elidable_layer_ids = m_elidable_layer_ids.clone();
     if (scene_node_visibility_changed)

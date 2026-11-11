@@ -518,7 +518,14 @@ bool VulkanRender::Impl::beginFrame(vrento::texture::Submission work) {
         const char* value = std::getenv("OWE_GRAPH_STATS");
         return value ? std::atol(value) : 0L;
     }();
-    if (stats_every > 0 && ++m_frames_begun % static_cast<rstd::uint64_t>(stats_every) == 0) {
+    static const long dump_at = [] {
+        const char* value = std::getenv("OWE_GRAPH_DUMP");
+        return value ? std::atol(value) : 0L;
+    }();
+    ++m_frames_begun;
+    if (dump_at > 0 && static_cast<long>(m_frames_begun) == dump_at)
+        m_scene_render_state.logDrawClasses(u64(m_frames_begun));
+    if (stats_every > 0 && m_frames_begun % static_cast<rstd::uint64_t>(stats_every) == 0) {
         auto stats = m_renderer->compiled().unwrap().description().binding_check_stats();
         rstd_error("frame graph bindings: {} frames, validation reused {}, rerun {} (last word that differed: {})",
                   m_frames_begun,
