@@ -73,6 +73,10 @@ struct PreprocessorInfo {
     BTreeMap<String, String> uniforms; // name -> "TYPE"
 
     BTreeSet<u32> active_tex_slots;
+
+    // The OWE_A2C_DISCARD combo: the material is alpha-to-coverage on a one-sample target, where
+    // drivers resolve coverage differently, so the fragment wrapper decides it (alpha > 0.5 stays).
+    bool a2c_discard { false };
 };
 
 struct ShaderTexInfo {

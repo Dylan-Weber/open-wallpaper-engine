@@ -96,7 +96,8 @@ auto owe::SceneParser::Parse(ref<str> scene_id, ref<wpscene::SceneDocument> docu
                      options.shadow_quality,
                      options.capabilities.geometry_shader_supported,
                      rstd::move(options.image_ready),
-                     rstd::move(options.texture_memory));
+                     rstd::move(options.texture_memory),
+                     options.capabilities.msaa_samples.to_primitive() <= 1u);
     context.load_bench                     = options.load_bench;
     context.general_settings               = options.general_settings;
     context.layer_resources->sound_unmount = rstd::move(options.sound_unmount);

@@ -42,6 +42,8 @@ struct SceneParseCapabilities {
     bool geometry_shader_supported { true };
     u32  max_geometry_output_vertices { 256 };
     u32  max_geometry_total_output_components { 1024 };
+    // The render target's sample count: alpha-to-coverage is decided in the shader at one sample.
+    u32  msaa_samples { 1 };
 };
 
 struct SceneParseOptions {

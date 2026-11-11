@@ -806,7 +806,7 @@ BuildContext(Scene& scene, fs::VFS& vfs, ref<str> scene_id, const wpscene::Scene
              Option<rstd::path::PathBuf> shader_cache_dir, GeometryShaderLimits geometry_limits,
              slice<SceneShadowLight> shadow_lights, ShadowQuality shadow_quality,
              bool geometry_shader_supported, Option<ImageReadyCallback> image_ready,
-             TextureMemoryOptions texture_memory) {
+             TextureMemoryOptions texture_memory, bool alpha_to_coverage_discard) {
     SceneParseContext context(scene, vfs);
     PrepareAnimationBindings(context, sc.general.field_bindings);
     InitContext(
@@ -820,6 +820,7 @@ BuildContext(Scene& scene, fs::VFS& vfs, ref<str> scene_id, const wpscene::Scene
     context.layer_resources->geometry_shader_supported         = geometry_shader_supported;
     context.layer_resources->shader_environment.shadow_mapping = ! shadow_lights.is_empty();
     context.layer_resources->shader_environment.shadow_quality = shadow_quality;
+    context.layer_resources->shader_environment.alpha_to_coverage_discard = alpha_to_coverage_discard;
     context.layer_resources->shader_environment.point_lights   = sc.general.lightconfig.point;
     context.layer_resources->shader_environment.spot_lights    = sc.general.lightconfig.spot;
     context.layer_resources->shader_environment.directional_lights =

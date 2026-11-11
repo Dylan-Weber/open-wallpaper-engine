@@ -14,6 +14,7 @@
 #include <rstd/test/gtest.hpp>
 
 #include <cmath>
+#include <cstdlib>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -402,6 +403,31 @@ TEST(SceneObjectExpansion, UserVisibilityRestoresImageDescendants) {
         EXPECT_FALSE(scene.IsLayerVisibilityElidable({ .value = rstd::i32(2) }));
         EXPECT_TRUE(scene.IsLayerVisibilityElidable({ .value = rstd::i32(3) }));
     }
+}
+
+TEST(SceneDocumentDebugSkip, SkipsObjectsListedByIdOrName) {
+    const auto json = R"JSON({
+        "camera": {},
+        "general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+        "objects": [
+            {"id": 1, "name": "Keep", "image": "models/util/solidlayer.json", "size": "256 256"},
+            {"id": 2, "name": "ById", "image": "models/util/solidlayer.json", "size": "256 256"},
+            {"id": 3, "name": "ByName", "image": "models/util/solidlayer.json", "size": "256 256"},
+            {"id": 4, "name": "ByName", "image": "models/util/solidlayer.json", "size": "256 256"}
+        ]
+    })JSON"_str;
+    // unset: nothing changes
+    ::unsetenv("OWE_DEBUG_SKIP_OBJECTS");
+    auto all = owe::wpscene::ParseSceneDocumentJson(json, owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(all.is_some());
+    EXPECT_EQ(all->objects.len().to_primitive(), 4u);
+    // ids and names, comma separated, whitespace tolerated
+    ::setenv("OWE_DEBUG_SKIP_OBJECTS", "2, ByName", 1);
+    auto skipped = owe::wpscene::ParseSceneDocumentJson(json, owe::wpscene::kSceneVersionUnknown);
+    ::unsetenv("OWE_DEBUG_SKIP_OBJECTS");
+    ASSERT_TRUE(skipped.is_some());
+    ASSERT_EQ(skipped->objects.len().to_primitive(), 1u);
+    EXPECT_EQ(skipped->objects[rstd::usize(0)].metadata.id.to_primitive(), 1);
 }
 
 TEST(SceneGeneralScript, FovUpdatesPerspectiveCameraAndSharedState) {

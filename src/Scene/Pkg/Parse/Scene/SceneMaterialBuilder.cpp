@@ -353,6 +353,8 @@ auto BuildMaterial(fs::VFS& vfs, ShaderCache& shader_cache,
     }
     if (blend_mode == BlendMode::AlphaToCoverage) {
         (void)shader_info_ref.combos.insert("ALPHATOCOVERAGE"_Str, "1"_Str);
+        if (environment.alpha_to_coverage_discard)
+            (void)shader_info_ref.combos.insert("OWE_A2C_DISCARD"_Str, "1"_Str);
     }
     ApplySceneFogCombos(environment, shader_info_ref);
     ApplyLegacyAtmosphereLightCombo(wpmat, shader_info_ref);
