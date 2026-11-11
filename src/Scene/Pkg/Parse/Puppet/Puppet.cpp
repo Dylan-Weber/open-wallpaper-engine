@@ -206,6 +206,42 @@ slice<Eigen::Affine3f> PuppetLayer::genFrame(double time) noexcept {
         if (layer.anim != nullptr && layer.anim_layer.visible) any_visible_layer = true;
     }
 
+    // the same animation inputs as the last pose, and nothing else moving a bone: it is that pose
+    Vec<PoseKeyLayer> key;
+    key.reserve(m_layers.len());
+    for (const auto& layer : m_layers)
+        key.push(PoseKeyLayer { layer.anim,
+                                layer.Visible(),
+                                layer.anim_layer.visible,
+                                layer.Blend(),
+                                layer.interp_info.frame_a,
+                                layer.interp_info.frame_b,
+                                layer.interp_info.t });
+    bool reusable = m_pose_valid && ! m_has_bone_physics && m_local_overrides.is_empty() &&
+                    m_pose_override_generation == m_override_generation &&
+                    m_pose_key.len() == key.len();
+    for (usize i {}; reusable && i < key.len(); ++i) reusable = m_pose_key[i] == key[i];
+    if (reusable) return m_final_affines.as_slice();
+    m_pose_key                 = rstd::move(key);
+    m_pose_valid               = ! m_has_bone_physics && m_local_overrides.is_empty();
+    m_pose_override_generation = m_override_generation;
+    ++m_pose_revision;
+    if (m_bone_static.len() != bones.len()) {
+        m_bone_static.clear();
+        for (const auto& bone : bones) {
+            const auto& animation_reference =
+                bone.animation_reference.is_some() ? *bone.animation_reference : bone.local_bind;
+            const auto  bind      = DecomposeBindLinear(bone.local_bind.linear());
+            const auto  animation = DecomposeBindLinear(animation_reference.linear());
+            const auto& initial   = additive_uses_first_frame ? bone.local_bind : animation_reference;
+            m_bone_static.push(BoneStatic { bind.rotation,
+                                            bind.scale,
+                                            animation.rotation,
+                                            animation.scale,
+                                            WeRebuiltRotation(initial.linear()) });
+        }
+    }
+
     // Compose local TRS along the animation hierarchy before applying inverse binds.
     for (usize i {}; i < m_final_affines.len(); ++i) {
         const auto& bone   = bones[i];
@@ -239,12 +275,13 @@ slice<Eigen::Affine3f> PuppetLayer::genFrame(double time) noexcept {
         // Bind state. vco is a fixed render-time pivot offset for root sprite
         // bones (matches world_bind's pretranslate in prepared()) and is added
         // after layer deltas so the replacement anchor stays in puppet space.
-        const BindLinear bind_linear = DecomposeBindLinear(bone.local_bind.linear());
+        const auto& fixed = m_bone_static[i];
+        const BindLinear bind_linear { fixed.bind_rotation, fixed.bind_scale };
         // Older MDLS stores a separate animation rest pose; the mesh bind pose
         // may still describe the unpacked pieces, not the assembled puppet.
         const auto& animation_reference =
             bone.animation_reference.is_some() ? *bone.animation_reference : bone.local_bind;
-        const auto animation_linear = DecomposeBindLinear(animation_reference.linear());
+        const BindLinear animation_linear { fixed.animation_rotation, fixed.animation_scale };
 
         const auto& initial_reference =
             additive_uses_first_frame ? bone.local_bind : animation_reference;
@@ -256,7 +293,7 @@ slice<Eigen::Affine3f> PuppetLayer::genFrame(double time) noexcept {
         Quaterniond quat { replace_base_frame != nullptr ? replace_base_frame->quaternion
                                                          : initial_linear.rotation };
         if (any_visible_layer && replace_base_frame == nullptr) {
-            quat = WeRebuiltRotation(initial_reference.linear());
+            quat = fixed.rebuilt_rotation;
         }
         const Quaterniond ident { Quaterniond::Identity() };
 
@@ -476,6 +513,7 @@ static ref<str> PuppetAnimationMode(Puppet::PlayMode mode) {
 }
 
 void PuppetLayer::prepared(slice<AnimationLayer> alayers) {
+    m_pose_valid = false;
     m_layers.clear();
     m_layers.reserve(alayers.len());
     for (usize i {}; i < alayers.len(); ++i) m_layers.emplace_back();
@@ -891,6 +929,7 @@ PuppetLayer::PuppetLayer(Arc<Puppet> pup): m_puppet(rstd::move(pup)) {
         m_script_bone_overrides.emplace_back(None());
     }
     m_physics.Resize(m_puppet->bones.len());
+    for (const auto& bone : m_puppet->bones) m_has_bone_physics = m_has_bone_physics || bone.simulation.is_some();
 }
 PuppetLayer::~PuppetLayer() = default;
 
@@ -904,4 +943,5 @@ void PuppetLayer::setBoneTransform(rstd::uint32_t         index,
     const usize zero_based(index - 1);
     if (zero_based >= m_script_bone_overrides.len()) return;
     m_script_bone_overrides[zero_based] = Some(Eigen::Affine3f(transform));
+    ++m_override_generation;
 }

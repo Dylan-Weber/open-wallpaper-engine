@@ -327,6 +327,9 @@ public:
     bool HasDrawOrderAnimation() const;
 
     void updateInterpolation(double time) noexcept;
+    // Counts the pose rebuilds: a frame whose animation inputs match the last one's hands back the
+    // pose it has (genFrame), so a still puppet costs nothing after its first frame.
+    auto PoseRevision() const noexcept -> rstd::uint64_t { return m_pose_revision; }
 
 private:
     void applyLocalOverrides(double time) noexcept;
@@ -345,6 +348,36 @@ private:
 
         operator bool() const noexcept { return anim != nullptr; };
     };
+
+    // What a pose is built from besides the puppet: each layer's clip, visibility, blend and sampled
+    // frames. A match with the last pose's key (and no physics, script or local overrides) means the
+    // same pose.
+    struct PoseKeyLayer {
+        const Puppet::Animation* anim;
+        bool                     visible;
+        bool                     authored_visible;
+        double                   blend;
+        usize                    frame_a;
+        usize                    frame_b;
+        double                   t;
+        bool operator==(const PoseKeyLayer&) const = default;
+    };
+    // per bone, fixed by the puppet: the bind and animation reference decomposed, and the rest
+    // rotation Wallpaper Engine rebuilds
+    struct BoneStatic {
+        Eigen::Quaterniond bind_rotation;
+        Eigen::Vector3f    bind_scale;
+        Eigen::Quaterniond animation_rotation;
+        Eigen::Vector3f    animation_scale;
+        Eigen::Quaterniond rebuilt_rotation;
+    };
+    Vec<PoseKeyLayer>  m_pose_key;
+    Vec<BoneStatic>    m_bone_static;
+    rstd::uint64_t     m_pose_revision { 0 };
+    rstd::uint64_t     m_override_generation { 0 };
+    rstd::uint64_t     m_pose_override_generation { 0 };
+    bool               m_pose_valid { false };
+    bool               m_has_bone_physics { false };
 
     Vec<Layer>                       m_layers;
     Vec<Arc<SceneAnimationPlayback>> m_playbacks;

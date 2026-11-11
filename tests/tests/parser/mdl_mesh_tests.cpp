@@ -133,6 +133,41 @@ TEST(Puppet, BoneTransformsSetInThePuppetsSpace) {
     EXPECT_FALSE(layer.setBoneTransform(3, target, time));
 }
 
+TEST(Puppet, PoseIsRebuiltOnlyWhenItsInputsChange) {
+    auto                             puppet = MakeReplacementPuppet();
+    owe::PuppetLayer                 layer(puppet.clone());
+    owe::PuppetLayer::AnimationLayer authored { .id = 1, .visible = true, .layer_id = 42 };
+    layer.prepared(slice<owe::PuppetLayer::AnimationLayer>::from_raw_parts(&authored, usize(1)));
+    auto found = layer.AnimationPlayback(i32(42));
+    ASSERT_TRUE(found.is_some());
+    auto& playback = *found;
+    playback->Pause();
+    playback->SetFrame(0.5f);
+    const auto first         = layer.genFrame(0.0)[usize()];
+    const auto revision      = layer.PoseRevision();
+    // frames with nothing changed hand back the same pose without rebuilding it
+    EXPECT_TRUE(layer.genFrame(1.0 / 60.0)[usize()].matrix().isApprox(first.matrix()));
+    EXPECT_TRUE(layer.genFrame(2.0 / 60.0)[usize()].matrix().isApprox(first.matrix()));
+    EXPECT_EQ(layer.PoseRevision(), revision);
+    // a moved playback, a visibility or blend change, and a script's bone pose each rebuild it
+    playback->SetFrame(1.0f);
+    const auto moved = layer.genFrame(3.0 / 60.0)[usize()];
+    EXPECT_GT(layer.PoseRevision(), revision);
+    EXPECT_FALSE(moved.matrix().isApprox(first.matrix()));
+    const auto revision2 = layer.PoseRevision();
+    layer.SetAnimationVisible(i32(42), false);
+    (void)layer.genFrame(4.0 / 60.0);
+    EXPECT_GT(layer.PoseRevision(), revision2);
+    const auto revision3 = layer.PoseRevision();
+    (void)layer.genFrame(5.0 / 60.0);
+    EXPECT_EQ(layer.PoseRevision(), revision3);
+    Eigen::Affine3f script = Eigen::Affine3f::Identity();
+    script.translate(Eigen::Vector3f(7.0f, 8.0f, 0.0f));
+    layer.setBoneTransform(1, script);
+    (void)layer.genFrame(6.0 / 60.0);
+    EXPECT_GT(layer.PoseRevision(), revision3);
+}
+
 TEST(Puppet, VisibilityChangesKeepTheSamePlayback) {
     auto                             puppet = MakeReplacementPuppet();
     owe::PuppetLayer                 layer(puppet.clone());
