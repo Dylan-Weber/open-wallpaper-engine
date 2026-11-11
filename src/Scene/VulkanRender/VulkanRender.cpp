@@ -519,6 +519,10 @@ DeviceCapabilities VulkanRender::deviceCapabilities() const {
     return pImpl->m_device->capabilities();
 }
 
+rstd::uint32_t VulkanRender::msaaSamples() const {
+    return pImpl->m_inited ? static_cast<rstd::uint32_t>(pImpl->m_msaa_samples) : 1u;
+}
+
 VkInstance VulkanRender::vkInstance() const {
     if (! pImpl->m_inited) return VK_NULL_HANDLE;
     return pImpl->m_session->instance();

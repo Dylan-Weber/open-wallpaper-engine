@@ -870,6 +870,7 @@ inline String BalanceConditionals(String src) {
 inline String Preprocessor(ref<str> in_src, ShaderType type, const ShaderInfo& info,
                            PreprocessorInfo& process_info) {
     String with_prologue = owe::ShaderParser::PreShaderHeader(in_src, info.combos, type);
+    process_info.a2c_discard = info.combos.get("OWE_A2C_DISCARD"_str).is_some();
 
     // `#require` is a WE-specific marker, not a real preprocessor directive.
     // Prefix `//` to neutralize it. Allowed leading horizontal whitespace.
@@ -1450,7 +1451,7 @@ inline String EmitVSFSStruct(ref<str> name, Vec<IODecl> decls, bool include_sv_p
 // vert/frag stages agree without explicit coordination — both are called
 // with the same cross-stage varying union.
 inline SynthOutput SynthesizeHLSLEntry(ShaderType stage, Vec<IODecl> attrs, Vec<IODecl> varyings,
-                                       bool pack_varying_arrays) {
+                                       bool pack_varying_arrays, bool a2c_threshold = false) {
     SynthOutput so;
     if (stage == ShaderType::GEOMETRY) return so;
 
@@ -1519,6 +1520,13 @@ inline SynthOutput SynthesizeHLSLEntry(ShaderType stage, Vec<IODecl> attrs, Vec<
             }
         }
         out.push_str("    shader_main();\n"_str);
+        if (a2c_threshold) {
+            // An alpha-to-coverage target of one sample is resolved per driver (NVIDIA dithers, Mesa
+            // thresholds): decide here, the same everywhere. Wallpaper Engine's reference draws
+            // nothing at alpha 0.5, so only alpha > 0.5 stays.
+            out.push_str("    if (glOutColor.a <= 0.5) discard;\n"_str);
+            out.push_str("    glOutColor.a = 1.0;\n"_str);
+        }
         out.push_str("    return glOutColor;\n"_str);
         out.push_str("}\n"_str);
     }
@@ -1968,8 +1976,12 @@ inline String Finalprocessor(const ShaderUnit& unit, const PreprocessorInfo* pre
     // Synthesize the HLSL entry point: static globals for every attr /
     // varying, WW_VSIn/WW_VSOut/WW_PSIn structs, and a main_vs / main_ps
     // wrapper that copies between the struct and the statics.
-    SynthOutput synth = SynthesizeHLSLEntry(
-        unit.stage, rstd::move(attrs), rstd::move(varyings), pack_varying_arrays);
+    SynthOutput synth = SynthesizeHLSLEntry(unit.stage,
+                                            rstd::move(attrs),
+                                            rstd::move(varyings),
+                                            pack_varying_arrays,
+                                            unit.stage == ShaderType::FRAGMENT &&
+                                                unit.preprocess_info.a2c_discard);
 
     // Legacy callers still synthesize one cross-stage uniform block.
     BTreeMap<String, String> uniforms_union_local;
@@ -2039,7 +2051,7 @@ constexpr array<rstd::uint8_t, 8> kShaderCacheMagic { rstd::uint8_t('O'), rstd::
                                                       rstd::uint8_t('P'), rstd::uint8_t('V'),
                                                       rstd::uint8_t('3'), rstd::uint8_t(0) };
 constexpr rstd::uint32_t          kShaderCacheFormatVersion = 3;
-constexpr rstd::uint32_t          kShaderCacheAbiVersion    = 26;
+constexpr rstd::uint32_t          kShaderCacheAbiVersion    = 27;
 // 8-byte magic, six u32 fields, and four SHA-1 digests total 112 bytes.
 constexpr rstd::uint32_t kShaderCacheHeaderSize = static_cast<rstd::uint32_t>(
     kShaderCacheMagic.len().to_primitive() + 6 * sizeof(rstd::uint32_t) +
@@ -3608,6 +3620,7 @@ CompileMaterialShaderResult ShaderParser::CompileMaterialShader(const Json& mate
 
 namespace owe
 {
+
 void ChooseDefaultsByUniformType(ShaderValueMap& svs, const BTreeMap<String, String>& uniforms) {
     ChooseDefaultsImpl(svs, uniforms);
 }

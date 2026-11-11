@@ -67,7 +67,7 @@ class RenderMsg final {
 };
 
 class MainMsg final {
-    RSTD_ENUM(MainMsg, (LoadScene, (vulkan::DeviceCapabilities capabilities;)),
+    RSTD_ENUM(MainMsg, (LoadScene, (vulkan::DeviceCapabilities capabilities; u32 msaa_samples { 1 };)),
               (Configure, (SceneWallpaperConfig config;)), (SetFps, (u32 fps;)),
               (SetVolume, (f32 volume;)), (SetVolumeScale, (f32 scale; u32 fade_ms { 0 };)),
               (SetMuted, (bool muted;)),
@@ -231,6 +231,7 @@ private:
     SceneWallpaperConfig               m_config;
     rstd::json::Map                    m_user_properties;
     Option<vulkan::DeviceCapabilities> m_render_capabilities;
+    u32                                m_render_msaa_samples { 1 };
 
     Box<wavsen::audio::SoundManager> m_sound_manager;
     FirstFrameCallback               m_first_frame_callback;
@@ -859,7 +860,7 @@ void SceneRenderController::on(RenderMsg::Init_payload&& m) {
 
     // inited, callback to load scene
     if (m_main_tx) {
-        (void)m_main_tx->send(MainMsg::LoadScene(m_render->deviceCapabilities()));
+        (void)m_main_tx->send(MainMsg::LoadScene(m_render->deviceCapabilities(), u32(m_render->msaaSamples())));
     }
 }
 
@@ -1108,6 +1109,7 @@ void SceneRuntimeController::onLoadScene() {
 
 void SceneRuntimeController::on(MainMsg::LoadScene_payload&& m) {
     m_render_capabilities = Some(m.capabilities);
+    m_render_msaa_samples = m.msaa_samples;
     onLoadScene();
 }
 
@@ -1329,6 +1331,7 @@ void SceneRuntimeController::loadScene() {
         .general_settings = m_config.general_settings.clone(),
         .capabilities = {
             .directional_shadow = m_render_capabilities->directional_shadow(),
+            .msaa_samples = m_render_msaa_samples,
             .geometry_shader_supported = m_render_capabilities->geometry_shader,
             .max_geometry_output_vertices = u32(m_render_capabilities->max_geometry_output_vertices),
             .max_geometry_total_output_components = u32(m_render_capabilities->max_geometry_total_output_components),
