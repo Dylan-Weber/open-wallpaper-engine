@@ -130,3 +130,14 @@ offscreen/Waywallen path: slot acquire and sync-fd export + completion hand-over
 - **Pacing at 120 fps** (offscreen, `--capture-realtime`, 960 frames, target 120): night-city 112.4 / 112.5 fps (depth 1 / 2), reze 112.4 / 112.4, bleach 112.7 / 112.9; the shortfall to 120 is the loading
   frames at the start (the 60 fps runs lose the same 7 %). CPU of one core at 120 fps: night-city 38 %, reze 58 %, bleach 26 %; GPU wait 3.2-3.6 ms mean (depth 1) -> 0.00 (depth 2). With the old timer a 120 fps target
   would have run at about 1000/(8.33 + frame time).
+
+### Per-frame CPU, the outlier, startup, and the acquire stalls (paced 120 fps, offscreen, depth 2; traces in `OWE_PERF_RAW`)
+
+- Steady state holds the 120 fps cadence: frame interval p50 8.33 ms, p99 9.65 ms (reze), 9.29 ms (night-city); 5 of 941 frames over 10 ms (reze), 1 (night-city).
+- **Render-thread CPU per frame** (p50): reze 4.2 ms of an 8.3 ms budget (begin 2.0 = capture 0.7 + `GraphFrame::begin` 1.3, update 0.55, record 0.55, prepare 0.48 of which scripts 0.35, advance 0.26, submit 0.08);
+  night-city 1.7 ms (begin 0.76, record 0.30, update 0.17, prepare 0.10). `wait` is 0 at depth 2. The remaining CPU is the frame-graph/uniform work (`begin`, `update`, `record`): the frame-graph PRs (#214/#216/#218) own it.
+- **The 620-650 ms "first-frame outlier" is not a first frame**: it is the frame that `--capture` writes (frame 631 / 650 of the trace), inside the `present` stage: the capture surface's `vkQueueWaitIdle` + readback. It does not exist in a real run.
+- **Startup**: the first ~11 frames come at 3-4 ms intervals instead of 8.3 (the timer catches up after the slow first frames); harmless (scene steps are 1/fps per frame), and it costs the 112 vs 120 fps in short runs.
+- **Acquire stalls, isolation attempt**: ran the windowed trace inside the headless nested GNOME Shell of `owe-r2/bench/headless-shell.sh` (virtual monitor 1920x1080 at 60 and 120 Hz; the user's compositor and live wallpaper not involved). Inconclusive: the nested shell
+  itself stalled for seconds (dbus `org.freedesktop.secrets` activation timeouts, "Disabling unresponsive app"), giving 8-37 s gaps and only 100-260 frames; between them frames ran p50 16.65 ms at 60 Hz and 8.3-8.8 ms at 120 Hz with no 2-3 vsync pattern, which is consistent with, but does not prove, the
+  hitches being a property of the real desktop compositor under GPU contention. Needs a cleaner nested session (no portal/secrets services) to settle.
