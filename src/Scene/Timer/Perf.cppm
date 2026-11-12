@@ -34,11 +34,17 @@ enum class Stage : int {
     Wait,    // waiting for the frame's completion fence (GPU time not overlapped with CPU work)
     Acquire, // window path: AcquireNextImageKHR (blocks for the display with FIFO) / offscreen path: acquiring the output slot
     Present, // window path: vkQueuePresent / offscreen path: exporting the sync fd and handing the frame to the consumer
+    Flush,   // retryPreparation: flushChanges (scene mutations -> render state / resource plans)
+    Runtime, // retryPreparation: Scene::Runtime().BeforeRender()
+    Video,   // retryPreparation: video texture pump
+    Fonts,   // retryPreparation: font atlas pump (glyph rasterisation and atlas uploads)
+    Rebuild, // flushChanges: the render graph rebuilt (snapshot, graph build, install)
+    PrepRes, // flushChanges: tryPrepareResources (changed meshes, materials, textures)
     Queued,  // frames still executing on the GPU when a frame is submitted (a count, shown as "ms"): the display latency a deeper queue adds, in frames of GPU time
     Count
 };
 
-inline const char* const kStageNames[] = { "frame", "prepare", "scripts", "anim", "draw", "update", "begin", "advance", "record", "submit", "capture", "gbegin", "gpu", "wait", "acquire", "present", "queued" };
+inline const char* const kStageNames[] = { "frame", "prepare", "scripts", "anim", "draw", "update", "begin", "advance", "record", "submit", "capture", "gbegin", "gpu", "wait", "acquire", "present", "flush", "runtime", "video", "fonts", "rebuild", "prepres", "queued" };
 
 namespace detail
 {

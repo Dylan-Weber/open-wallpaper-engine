@@ -152,6 +152,7 @@ auto SceneRenderPipeline::flushChanges(SceneLoadBenchRecorderView bench)
         finishGpuPreparation(m_gpu_preparation.take().unwrap());
     }
     if (m_graph_dirty) {
+        perf::Scope rebuild_timer(perf::Stage::Rebuild);
         [[maybe_unused]] auto reconciliation = m_scene.AudioDemandMut()->BeginReconciliation();
         auto cleared = ScenePreparation(m_render.tryClearLastRenderGraph(m_retention));
         if (cleared.is_err() || *cleared != PrepareOutcome::Ready) return cleared;
@@ -209,6 +210,7 @@ auto SceneRenderPipeline::flushChanges(SceneLoadBenchRecorderView bench)
             if (flags != vulkan::PassInvalidationNone)
                 invalidate(m_snapshot.renderItemsFor(event.material), flags);
         }
+        perf::Scope prepres_timer(perf::Stage::PrepRes);
         auto prepared = ScenePreparation(
             m_render.tryPrepareResources(m_scene,
                                          m_snapshot,
@@ -313,25 +315,30 @@ auto SceneRenderPipeline::retryPreparation(SceneLoadBenchRecorderView bench)
     captureChanges();
     if (m_frame_work == FrameWork::BeforeRuntime) {
         if (m_graph_dirty || m_gpu_preparation) {
+            perf::Scope timer(perf::Stage::Flush);
             auto rebuilt = flushChanges(bench);
             if (rebuilt.is_err() || *rebuilt != PrepareOutcome::Ready)
                 return finishAttempt(rstd::move(rebuilt));
         }
         {
             auto span = SceneLoadSpan(bench, &SceneLoadProbeIds::render_frame_runtime);
+            perf::Scope timer(perf::Stage::Runtime);
             m_scene.Runtime().BeforeRender();
         }
         m_frame_work = FrameWork::Resources;
         captureChanges();
     }
     // New mutations during a failed frame are merged without repeating scripts or runtime work.
-    auto flushed = flushChanges(bench);
+    const auto perf_flush = perf::Now();
+    auto       flushed    = flushChanges(bench);
+    perf::Add(perf::Stage::Flush, perf_flush);
     if (flushed.is_err() || *flushed != PrepareOutcome::Ready)
         return finishAttempt(rstd::move(flushed));
     if (m_frame_work == FrameWork::Resources) m_frame_work = FrameWork::Video;
     if (m_frame_work == FrameWork::Video) {
         auto video = [&] {
             auto span = SceneLoadSpan(bench, &SceneLoadProbeIds::render_frame_video);
+            perf::Scope timer(perf::Stage::Video);
             return ScenePreparation(m_render.tryPumpVideoTextures(m_frame_time));
         }();
         if (video.is_err() || *video != PrepareOutcome::Ready)
@@ -340,6 +347,7 @@ auto SceneRenderPipeline::retryPreparation(SceneLoadBenchRecorderView bench)
     }
     auto fonts = [&] {
         auto span = SceneLoadSpan(bench, &SceneLoadProbeIds::render_frame_fonts);
+        perf::Scope timer(perf::Stage::Fonts);
         return ScenePreparation(m_render.tryPumpFontAtlases(m_scene));
     }();
     if (fonts.is_err() || *fonts != PrepareOutcome::Ready) return finishAttempt(rstd::move(fonts));
