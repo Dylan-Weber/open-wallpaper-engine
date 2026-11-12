@@ -933,6 +933,67 @@ auto TransformUniformSource::Evaluate(ref<dyn<UniformUpdateContext>> context,
     return writer.Finish();
 }
 
+// The model matrix of a node as TransformUniformSource writes it (parallax and geometry transforms
+// included), None for a node that is hidden or has no camera (its draw is not seen).
+auto BatchedModelMatrix(const UniformSceneState& state, SceneNode& node, SceneRenderViewKind render_view)
+    -> Option<Matrix4d> {
+    bool shown = true;
+    for (auto* up = &node; up != nullptr; up = up->Parent()) shown &= up->Visible();
+    const auto* node_state = state.FindNodeState(&node);
+    if (! shown || node_state == nullptr) return None();
+    auto camera_ref = node_state->camera_resolver->Resolve(node);
+    if (camera_ref.is_none()) return None();
+    auto& camera = **camera_ref;
+    node.UpdateTrans();
+    Matrix4d model = node_state->vertices_in_world_space ? Matrix4d::Identity() : node.ModelTrans();
+    const auto& parallax     = state.CameraParallax();
+    auto        attached     = camera.GetAttachedNode();
+    const bool  layer_camera = attached.is_some() && (*attached)->HasLayer();
+    if (layer_camera) model = RestoreCollapsedAxes(model);
+    if (node.Camera() != "effect"_str && parallax.enable && ! layer_camera) {
+        const auto shift = state.ComputeParallaxOffset(*node_state, camera, render_view);
+        if (shift[usize(0)] != 0.0f || shift[usize(1)] != 0.0f)
+            model = Affine3d(Translation3d(Vector3d(shift[usize(0)], shift[usize(1)], 0.0))).matrix() *
+                    model;
+    }
+    model *= node.GeometryTransform();
+    if (auto* mesh = node.Mesh(); mesh != nullptr) model *= mesh->GeometryTransform();
+    return Some(rstd::move(model));
+}
+
+bool ObjectBatchable(const SceneShader& shader) {
+    if (! shader.reflection) return false;
+    // every uniform that depends on the object, but the model and normal matrices (the batch's arrays)
+    const array<ref<str>, 19> per_object { G_MI,
+                                           G_AM,
+                                           G_MVP,
+                                           G_MVPI,
+                                           G_EFFECTMODELMATRIX,
+                                           G_EFFECTMODELVIEWPROJECTIONMATRIXINVERSE,
+                                           G_EMVP,
+                                           G_ETVP,
+                                           G_ETVPI,
+                                           G_LAYERMODELMATRIX,
+                                           G_ORIENTATIONFORWARD,
+                                           G_ORIENTATIONRIGHT,
+                                           G_ORIENTATIONUP,
+                                           G_VIEWFORWARD,
+                                           G_VIEWRIGHT,
+                                           G_VIEWUP,
+                                           G_COLOR4,
+                                           G_COLOR,
+                                           G_ALPHA };
+    bool                    has_model = false;
+    for (const auto& block : (*shader.reflection)->Reflected().blocks)
+        for (const auto& [name, member] : block.member_map.iter()) {
+            if (name->as_str() == G_M) has_model = true;
+            if (name->as_str() == G_BONES || name->as_str() == G_BONESALPHA) return false;
+            for (const auto& forbidden : per_object)
+                if (name->as_str() == forbidden) return false;
+        }
+    return has_model;
+}
+
 auto BatchedModelUniformSource::Describe(mut_ref<dyn<UniformBindingSink>> sink) const
     -> Result<empty, UniformError> {
     using Output = BatchedModelUniformOutput;
@@ -959,31 +1020,9 @@ auto BatchedModelUniformSource::Evaluate(ref<dyn<UniformUpdateContext>> context,
     // the whole array, as the shader declares it: the objects past the batch's are not read
     values.resize(usize(kShadowBatchObjects) * usize(16), 0.0f);
     for (usize index {}; index < m_nodes.len(); ++index) {
-        auto& node = *m_nodes[index];
-        bool  shown = true;
-        for (auto* up = &node; up != nullptr; up = up->Parent()) shown &= up->Visible();
-        const auto* state = m_state->FindNodeState(&node);
-        if (! shown || state == nullptr) continue;
-        auto camera_ref = state->camera_resolver->Resolve(node);
-        if (camera_ref.is_none()) continue;
-        auto& camera = **camera_ref;
-        node.UpdateTrans();
-        // the model matrix as TransformUniformSource writes it
-        Matrix4d model = state->vertices_in_world_space ? Matrix4d::Identity() : node.ModelTrans();
-        const auto& parallax = m_state->CameraParallax();
-        auto        attached = camera.GetAttachedNode();
-        const bool  layer_camera = attached.is_some() && (*attached)->HasLayer();
-        if (layer_camera) model = RestoreCollapsedAxes(model);
-        if (node.Camera() != "effect"_str && parallax.enable && ! layer_camera) {
-            const auto shift = m_state->ComputeParallaxOffset(*state, camera, render_view);
-            if (shift[usize(0)] != 0.0f || shift[usize(1)] != 0.0f)
-                model = Affine3d(Translation3d(Vector3d(shift[usize(0)], shift[usize(1)], 0.0)))
-                            .matrix() *
-                        model;
-        }
-        model *= node.GeometryTransform();
-        if (auto* mesh = node.Mesh(); mesh != nullptr) model *= mesh->GeometryTransform();
-        const Eigen::Matrix4f matrix = model.cast<float>();
+        auto model = BatchedModelMatrix(*m_state, *m_nodes[index], render_view);
+        if (model.is_none()) continue;
+        const Eigen::Matrix4f matrix = model->cast<float>();
         for (int value = 0; value < 16; ++value)
             values[index * usize(16) + usize(value)] = matrix.data()[value];
     }
@@ -994,6 +1033,72 @@ auto BatchedModelUniformSource::Evaluate(ref<dyn<UniformUpdateContext>> context,
                                                usize(kShadowBatchObjects),
                                                UniformMatrixStorage::ColumnMajor));
     writer.Write(Output::Views, static_cast<float>(m_views.to_primitive()));
+    return writer.Finish();
+}
+
+// The model and normal matrices of the objects of one batched scene draw (g_OweInstanceModel and
+// g_OweInstanceNormal, see BatchObjectMatrices). An object that is not shown gets a collapsed matrix.
+auto BatchedObjectUniformSource::Describe(mut_ref<dyn<UniformBindingSink>> sink) const
+    -> Result<empty, UniformError> {
+    using Output = BatchedObjectUniformOutput;
+    auto models = Bind(sink,
+                       Output::Models,
+                       "g_OweInstanceModel"_str,
+                       UniformValueShape::MatrixArray(u32(4),
+                                                      u32(4),
+                                                      usize(kShadowBatchObjects),
+                                                      usize(kShadowBatchObjects)));
+    if (models.is_err()) return models;
+    return Bind(sink,
+                Output::Normals,
+                "g_OweInstanceNormal"_str,
+                UniformValueShape::MatrixArray(
+                    u32(3), u32(3), usize(kShadowBatchObjects), usize(kShadowBatchObjects)));
+}
+
+auto BatchedObjectUniformSource::Version(ref<dyn<UniformUpdateContext>> context) const -> u64 {
+    return context->Frame()->revision;
+}
+
+auto BatchedObjectUniformSource::Evaluate(ref<dyn<UniformUpdateContext>> context,
+                                          mut_ref<dyn<UniformValueSink>> sink) const
+    -> Result<empty, UniformError> {
+    using Output = BatchedObjectUniformOutput;
+    UniformWriter writer(sink);
+    const auto    render_view = context->RenderView();
+    Vec<float>    models, normals;
+    models.resize(usize(kShadowBatchObjects) * usize(16), 0.0f);
+    normals.resize(usize(kShadowBatchObjects) * usize(9), 0.0f);
+    for (usize index {}; index < m_nodes.len(); ++index) {
+        auto model = BatchedModelMatrix(*m_state, *m_nodes[index], render_view);
+        if (model.is_none()) continue;
+        const Eigen::Matrix4f matrix = model->cast<float>();
+        for (int value = 0; value < 16; ++value)
+            models[index * usize(16) + usize(value)] = matrix.data()[value];
+        // as TransformUniformSource writes NormalModel
+        Matrix3d normal = model->block<3, 3>(0, 0);
+        if (f64(normal.determinant()).abs().to_primitive() > 1e-12) {
+            normal = normal.inverse().transpose();
+            for (Eigen::Index row {}; row < normal.rows(); ++row) normal.row(row).normalize();
+        } else {
+            normal.setIdentity();
+        }
+        const Eigen::Matrix3f normal_f = normal.cast<float>();
+        for (int value = 0; value < 9; ++value)
+            normals[index * usize(9) + usize(value)] = normal_f.data()[value];
+    }
+    writer.Write(Output::Models,
+                 UniformValue::fromMatrixArray(models.as_slice().as_raw_ptr(),
+                                               u32(4),
+                                               u32(4),
+                                               usize(kShadowBatchObjects),
+                                               UniformMatrixStorage::ColumnMajor));
+    writer.Write(Output::Normals,
+                 UniformValue::fromMatrixArray(normals.as_slice().as_raw_ptr(),
+                                               u32(3),
+                                               u32(3),
+                                               usize(kShadowBatchObjects),
+                                               UniformMatrixStorage::ColumnMajor));
     return writer.Finish();
 }
 

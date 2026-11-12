@@ -46,6 +46,11 @@ Box<dyn<UniformSource>> MakeShadowBatchSource(const void* context, Vec<SceneNode
     return Box<dyn<UniformSource>>::make(
         BatchedModelUniformSource { state.clone(), rstd::move(nodes), views });
 }
+Box<dyn<UniformSource>> MakeObjectBatchSource(const void* context, Vec<SceneNode*> nodes) {
+    const auto& state = *static_cast<const Arc<UniformSceneState>*>(context);
+    return Box<dyn<UniformSource>>::make(
+        BatchedObjectUniformSource { state.clone(), rstd::move(nodes) });
+}
 void ReleaseShadowBatchState(const void* context) {
     delete static_cast<const Arc<UniformSceneState>*>(context);
 }
@@ -72,6 +77,7 @@ bool RegisterUniformNodeSources(Scene& scene, const Arc<UniformSceneState>& unif
         scene.SetShadowBatchSourceFactory(&MakeShadowBatchSource,
                                           new Arc<UniformSceneState>(uniform_state.clone()),
                                           &ReleaseShadowBatchState);
+    scene.SetObjectBatchSourceFactory(&MakeObjectBatchSource);
 
     auto       registrar = dyn<UniformSourceRegistrar>::from_ref(scene);
     auto       writer    = dyn<UniformAttachmentWriter>::from_ref(scene);

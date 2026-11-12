@@ -678,6 +678,49 @@ inline String StartCasterViewsAtTheirLight(ref<str> src) {
     return out;
 }
 
+// A batch of OWE_SCENE_BATCH objects of one mesh is one draw of that many instances: instance i reads
+// its model matrix (and normal matrix) from element i of an array. Only the vertex stage declares them
+// for the shaders this serves; without the combo the shader is as before.
+inline String BatchObjectMatrices(ref<str> src) {
+    constexpr ref<str> model  = "uniform mat4 g_ModelMatrix;"_str;
+    constexpr ref<str> normal = "uniform mat3 g_NormalModelMatrix;"_str;
+    auto               at     = src.find(model);
+    if (at.is_none()) return String::make(src);
+    auto normal_at = src.find(normal);
+    auto out       = String::make();
+    // the normal matrix's declaration moves into the block; it may sit before or after the model's
+    auto copy_without = [&](usize from, usize to) {
+        auto part = *src.get(from, to);
+        if (normal_at.is_some() && *normal_at >= from && *normal_at < to) {
+            out.push_str(*src.get(from, *normal_at));
+            out.push_str(*src.get(*normal_at + normal.len(), to));
+        } else {
+            out.push_str(part);
+        }
+    };
+    copy_without(usize(), *at);
+    out.push_str("#ifndef OWE_SCENE_BATCH\n"
+                 "#define OWE_SCENE_BATCH 1\n"
+                 "#endif\n"
+                 "#if OWE_SCENE_BATCH > 1\n"
+                 "in uint gl_InstanceID;\n"
+                 "uniform mat4 g_OweInstanceModel[OWE_SCENE_BATCH];\n"
+                 "#define g_ModelMatrix g_OweInstanceModel[gl_InstanceID]\n"_str);
+    if (normal_at.is_some())
+        out.push_str("uniform mat3 g_OweInstanceNormal[OWE_SCENE_BATCH];\n"
+                     "#define g_NormalModelMatrix g_OweInstanceNormal[gl_InstanceID]\n"_str);
+    out.push_str("#else\n"_str);
+    out.push_str(model);
+    out.push_str("\n"_str);
+    if (normal_at.is_some()) {
+        out.push_str(normal);
+        out.push_str("\n"_str);
+    }
+    out.push_str("#endif"_str);
+    copy_without(*at + model.len(), src.len());
+    return out;
+}
+
 // glslang cannot resolve HLSL mul overloads when the leading scalar is an
 // untyped integer literal. WE shaders use these literals as float scalars.
 inline String NormalizeLeadingIntegerMulLiteral(ref<str> src) {
@@ -2793,7 +2836,9 @@ String ShaderParser::PreShaderHeader(ref<str> src, const Combos& combos, ShaderT
     auto normalized_audio = NormalizePackedAudioSpectrumAccess(undefined.as_str());
     auto normalized_mul   = NormalizeLeadingIntegerMulLiteral(normalized_audio.as_str());
     auto shadow_views     = StartCasterViewsAtTheirLight(normalized_mul.as_str());
-    auto user_src         = shadow_views.as_str();
+    auto object_batch     = type == ShaderType::VERTEX ? BatchObjectMatrices(shadow_views.as_str())
+                                                       : String::make(shadow_views.as_str());
+    auto user_src         = object_batch.as_str();
 
     // All stages route through glslang's HLSL frontend.
     String pre;

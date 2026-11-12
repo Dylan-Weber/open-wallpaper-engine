@@ -1,4 +1,5 @@
 module;
+#include <stdlib.h>
 
 #include <rstd/enum.hpp>
 
@@ -502,6 +503,40 @@ void ParseModelObjImpl(SceneLayerBuildContext& context, wpscene::ModelObject& mo
             (void)scene_mat.SetDepthWrite(true);
         shader_info = rstd::move(material_build.shader_info);
         LoadConstvalue(context, scene_mat, *wpmat, shader_info);
+
+        // A run of objects of one mesh with this material can be drawn as one instanced draw
+        // (OWE_SCENE_BATCH, see BatchObjectMatrices) when the shader's only per-object uniforms are the
+        // model and normal matrices; the variant reads them from arrays.
+        static const bool batch_objects = [] {
+            const char* value = getenv("OWE_SCENE_BATCH");
+            return value == nullptr || value[0] != '0';
+        }();
+        if (batch_objects && ! model_puppet_layer.is_some() && scene_mat.customShader.shader.is_some() &&
+            ObjectBatchable(**scene_mat.customShader.shader)) {
+            auto batch = wpmat->clone();
+            (void)batch.combos.insert("OWE_SCENE_BATCH"_Str,
+                                      rstd::as_cast<i32>(owe::kShadowBatchObjects));
+            ShaderInfo batch_info;
+            batch_info.baseConstSvs = context.layer_resources->global_base_uniforms.clone();
+            auto batch_result = BuildMaterial(vfs,
+                                              *context.layer_resources->shader_cache,
+                                              context.layer_resources->shader_environment,
+                                              batch,
+                                              *context.scene,
+                                              rstd::move(batch_info),
+                                              GeometryStageRequirement::None,
+                                              context.load_bench);
+            if (batch_result.is_ok()) {
+                auto built = rstd::move(batch_result).unwrap_unchecked();
+                if (context.scene->TransparentSorting() && wpmat->blending == "translucent"_str &&
+                    wpmat->depthwrite == "enabled"_str)
+                    (void)built.material.SetDepthWrite(true);
+                LoadConstvalue(context, built.material, batch, built.shader_info);
+                context.scene->ResolveMaterialTextureSources(built.material);
+                scene_mat.object_batch_variant =
+                    Some(Arc<SceneMaterial>::make(rstd::move(built.material)));
+            }
+        }
 
         if (node->shadow.cast) {
             scene_mat.shadow_silent = ! BlendingCastsShadow(wpmat->blending.as_str());

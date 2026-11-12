@@ -885,6 +885,9 @@ public:
     // the same drawn for up to kShadowBatchObjects objects at once (one of each definition, or none
     // when the material cannot be batched)
     Vec<Arc<SceneMaterial>> shadow_batch_variants;
+    // the material with its shader reading the model and normal matrices from arrays, to draw a run of
+    // objects of one mesh at once (OWE_SCENE_BATCH); none when the material cannot be batched
+    Option<Arc<SceneMaterial>> object_batch_variant;
     // a translucent or additive material: its casters draw no pixels (Wallpaper Engine casts no
     // shadow from it)
     bool shadow_silent { false };
@@ -925,6 +928,7 @@ private:
         (void)SetPipeline(other.Pipeline());
         shadow_variants = other.shadow_variants.clone();
         shadow_batch_variants = other.shadow_batch_variants.clone();
+        object_batch_variant  = other.object_batch_variant.clone();
         shadow_silent   = other.shadow_silent;
         m_dirty_flags.fetch_or(other.m_dirty_flags.load());
     }
@@ -939,6 +943,7 @@ private:
         (void)SetPipeline(other.Pipeline());
         shadow_variants = rstd::move(other.shadow_variants);
         shadow_batch_variants = rstd::move(other.shadow_batch_variants);
+        object_batch_variant  = rstd::move(other.object_batch_variant);
         shadow_silent   = other.shadow_silent;
         m_dirty_flags.fetch_or(other.m_dirty_flags.load());
     }
@@ -3454,6 +3459,16 @@ public:
         m_shadow_batch_context = context;
         m_shadow_batch_release = release;
     }
+    // The same for the matrices of a batched scene draw; uses the shadow batch's context.
+    using ObjectBatchSourceFactory = Box<dyn<UniformSource>> (*)(const void* context,
+                                                                  Vec<SceneNode*> nodes);
+    void SetObjectBatchSourceFactory(ObjectBatchSourceFactory factory) {
+        m_object_batch_factory = factory;
+    }
+    auto MakeObjectBatchSource(Vec<SceneNode*> nodes) const -> Option<Box<dyn<UniformSource>>> {
+        if (m_object_batch_factory == nullptr || m_shadow_batch_context == nullptr) return None();
+        return Some(m_object_batch_factory(m_shadow_batch_context, rstd::move(nodes)));
+    }
     bool HasShadowBatchSource() const { return m_shadow_batch_factory != nullptr; }
     auto MakeShadowBatchSource(Vec<SceneNode*> nodes, u32 views) const
         -> Option<Box<dyn<UniformSource>>> {
@@ -3598,6 +3613,7 @@ private:
 
     SceneUniformRegistry          m_uniforms;
     ShadowBatchSourceFactory      m_shadow_batch_factory { nullptr };
+    ObjectBatchSourceFactory      m_object_batch_factory { nullptr };
     const void*                   m_shadow_batch_context { nullptr };
     void (*m_shadow_batch_release)(const void*) { nullptr };
     SceneTextureAnimationRegistry m_texture_animations;
