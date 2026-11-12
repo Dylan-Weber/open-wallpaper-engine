@@ -246,6 +246,14 @@ int main(int argc, char** argv) {
     config.assets_dir      = rstd::move(args.assets_dir);
     config.source_pkg_path = rstd::move(args.scene_path);
     config.graphviz        = args.graphviz;
+    {
+        // "extend" is the ASPECTFIT camera: on an output wider than the scene it keeps the authored
+        // height and widens the view; the other modes are the camera's own
+        const auto mode  = args.fill_mode.as_str();
+        config.fill_mode = mode == "fit"_str || mode == "extend"_str ? owe::FillMode::ASPECTFIT
+                           : mode == "stretch"_str                   ? owe::FillMode::STRETCH
+                                                                     : owe::FillMode::ASPECTCROP;
+    }
     config.load_bench      = load_bench.clone();
     config.fps             = static_cast<uint32_t>(args.fps.to_primitive());
     // a capture's clock is frame-exact: no need to wait 1 / fps between frames (--capture-realtime
@@ -452,7 +460,13 @@ int main(int argc, char** argv) {
         rstd::thread::sleep(Duration::from_secs(u64(seconds.to_primitive())));
 #endif
     } else {
+        // OWE_EXIT_AFTER=SECONDS closes the window after that long (benchmarks of the presented path, which must exit
+        // normally to write OWE_PERF_LOG)
+        double exit_after = 0;
+        if (const char* text = std::getenv("OWE_EXIT_AFTER")) exit_after = std::atof(text);
+        const auto exit_deadline = Instant::now() + Duration::from_millis(u64((exit_after * 1000.0)));
         while (! glfwWindowShouldClose(window)) {
+            if (exit_after > 0 && Instant::now() >= exit_deadline) break;
 #if __is_target_os(macos)
             // Keep the Cocoa run loop responsive while MoltenVK drives the
             // CAMetalLayer. A 30 Hz event wait can leave display-link/layer

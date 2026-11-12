@@ -54,6 +54,32 @@ int main() {
     const auto procedural_limit = procedural.resolve(WW_RESOLUTION_CUSTOM, 8192);
     rstd_assert(procedural_limit.width == 8192 && procedural_limit.height == 8192);
 
+    // Extend widens the canvas to the output aspect and keeps its height; a canvas already that wide
+    // stays as authored.
+    const ww_wescene::RenderExtent hd { 1920, 1080 };
+    const auto                     wide = RenderResolution::extend(hd, 32, 9);
+    rstd_assert(wide.width == 3840 && wide.height == 1080);
+    const auto wide_qhd = RenderResolution::extend({ 2560, 1440 }, 32, 9);
+    rstd_assert(wide_qhd.width == 5120 && wide_qhd.height == 1440);
+    const auto rounded = RenderResolution::extend({ 1000, 563 }, 32, 9);
+    rstd_assert(rounded.width == 2002 && rounded.height == 563);
+    const auto nearly = RenderResolution::extend({ 4608, 1440 }, 32, 9);
+    rstd_assert(nearly.width == 5120 && nearly.height == 1440);
+    const auto already = RenderResolution::extend({ 5120, 1440 }, 32, 9);
+    rstd_assert(already.width == 5120 && already.height == 1440);
+    const auto narrower = RenderResolution::extend({ 3440, 1440 }, 16, 9);
+    rstd_assert(narrower.width == 3440 && narrower.height == 1440);
+    const auto portrait_scene = RenderResolution::extend({ 1080, 1920 }, 32, 9);
+    rstd_assert(portrait_scene.width == 6827 && portrait_scene.height == 1920);
+    const auto no_aspect = RenderResolution::extend(hd, 0, 9);
+    rstd_assert(no_aspect.width == 1920 && no_aspect.height == 1080);
+    const auto no_canvas = RenderResolution::extend({ 0, 0 }, 32, 9);
+    rstd_assert(no_canvas.width == 0 && no_canvas.height == 0);
+    // The widened canvas keeps the scene's own pixel density: resolution settings still work on it.
+    const auto wide_scene = RenderResolution::describe(wide.width, wide.height, true);
+    const auto wide_1440  = wide_scene.resolve(WW_RESOLUTION_1440P, 1080);
+    rstd_assert(wide_1440.width == 5120 && wide_1440.height == 1440);
+
     for (auto extent :
          rstd::array<ww_wescene::RenderExtent, 3> { ww_wescene::RenderExtent { 8192, 2576 },
                                                     ww_wescene::RenderExtent { 2048, 644 },
@@ -64,8 +90,11 @@ int main() {
         rstd_assert(extent.normalizePointer(0, 0).is_some());
         rstd_assert(extent.normalizePointer(float(extent.width), float(extent.height)).is_some());
         rstd_assert(extent.normalizePointer(-1, -1).is_none());
-        rstd_assert(extent.normalizePointer(float(extent.width) + 1, 0).is_none());
-        rstd_assert(extent.normalizePointer(0, float(extent.height) + 1).is_none());
+        // A drag reports positions beyond the extent; only (-1, -1) means the pointer left.
+        auto beyond = extent.normalizePointer(float(extent.width) * 2, -float(extent.height));
+        rstd_assert(beyond && (*beyond)[rstd::usize()] == 2.0 && (*beyond)[rstd::usize(1)] == -1.0);
+        rstd_assert(extent.normalizePointer(-1, 0).is_some());
+        rstd_assert(extent.normalizePointer(0, -1).is_some());
     }
     rstd_assert((ww_wescene::RenderExtent { 0, 644 }).normalizePointer(0, 0).is_none());
     rstd_assert((ww_wescene::RenderExtent { 2048, 0 }).normalizePointer(0, 0).is_none());

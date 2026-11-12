@@ -53,6 +53,10 @@ struct Options {
     uint32_t                     width { 1920 };
     uint32_t                     height { 1080 };
     bool                         automatic_resolution { false };
+    // fill_mode "extend": draw a perspective scene at the output aspect (extend_aspect_width : extend_aspect_height)
+    // with the authored height, so a wider output shows more than the authored canvas.
+    bool                         extend_view { false };
+    owe::FillMode                fill_mode { owe::FillMode::ASPECTCROP };
     ww_wescene::RenderResolution render_resolution {};
     PathBuf                      initial_scene;
     PathBuf                      initial_assets;
@@ -896,6 +900,31 @@ int run(int argc, char** argv) {
                 opts.height = 1080;
                 rstd_info("waywallen-wescene-renderer: scene canvas unknown, using 16:9 fallback");
             }
+            // Only a scene with no authored canvas (a perspective scene) is widened: its camera keeps the
+            // vertical fov, so the wider texture shows more world. A 2D scene's canvas is its layout.
+            if (const char* v = kv_get(init.settings, "fill_mode"); v && ! has_origin) {
+                auto mode = as_str(v);
+                if (mode.is_ok() && *mode == "extend"_str) {
+                    const auto canvas = ww_wescene::RenderExtent { opts.width, opts.height };
+                    // the daemon tells the renderer the size of the output it is shown on; unknown: no widening
+                    const auto widened =
+                        ww_wescene::RenderResolution::extend(
+                            canvas,
+                            parse_u32(kv_get(init.settings, "output_width"), 0u),
+                            parse_u32(kv_get(init.settings, "output_height"), 0u));
+                    if (widened.width != canvas.width) {
+                        opts.extend_view = true;
+                        opts.fill_mode   = owe::FillMode::ASPECTFIT;
+                        opts.width       = widened.width;
+                        opts.height      = widened.height;
+                        rstd_info("waywallen-wescene-renderer: extend view {}x{} -> {}x{}",
+                                  canvas.width,
+                                  canvas.height,
+                                  opts.width,
+                                  opts.height);
+                    }
+                }
+            }
             opts.render_resolution =
                 ww_wescene::RenderResolution::describe(opts.width, opts.height, has_origin);
             const auto extent = opts.render_resolution.resolve(resolution, custom_extent);
@@ -1059,6 +1088,7 @@ int run(int argc, char** argv) {
     wp_config.fps             = opts.initial_fps;
     wp_config.speed           = opts.initial_playback_rate;
     wp_config.mouse_parallax  = opts.initial_mouse_parallax;
+    wp_config.fill_mode       = opts.fill_mode;
     wp_config.volume          = effective_volume(host);
     wp_config.volume_scale    = 0.0f;
     wp_config.muted           = ! effective_audio_enabled(host);

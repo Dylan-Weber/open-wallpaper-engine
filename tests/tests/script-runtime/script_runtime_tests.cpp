@@ -1,3 +1,4 @@
+#include <cmath>
 #include <rstd/test/gtest.hpp>
 
 import rstd.cppstd;
@@ -1477,6 +1478,26 @@ TEST(ScriptNodeSoftMutation, RuntimeLayersKeepIndependentPendingParallaxDepth) {
     EXPECT_FLOAT_EQ(first_state->parallax.depth[rstd::usize(1)], 0.0f);
 }
 
+// A user property bound to a layer's parallax depth can be a slider: its number, or a string of one number, is both
+// components (pack 3462491575 logged "Wrong size of the array" for it; a number gave the pair (n, 0)).
+TEST(ScriptNodeSoftMutation, ParallaxDepthPropertyTakesAPairOrASlider) {
+    auto state = Arc<owe::UniformSceneState>::make(Arc<owe::AudioResponseDemand>::make());
+    auto node  = Arc<owe::SceneNode>::make();
+    const owe::wpscene::ParallaxDepthBinding binding { { 1.0f, 1.0f }, true };
+    state->RegisterNodeParallaxContract(*node, i32(7), binding);
+    auto depth_after = [&](const char* json) {
+        EXPECT_TRUE(state->ApplyObjectParallaxDepth(i32(7), rstd::json::from_str(rstd::cppstd::as_str(json).unwrap()).unwrap()));
+        auto depth = state->NodeParallaxDepth(*node);
+        EXPECT_TRUE(depth.is_some());
+        return depth.is_some() ? std::pair<float, float> { (*depth)[usize()], (*depth)[usize(1)] }
+                               : std::pair<float, float> { -1.0f, -1.0f };
+    };
+    EXPECT_EQ(depth_after("2"), (std::pair<float, float> { 2.0f, 2.0f }));
+    EXPECT_EQ(depth_after("\"1.5\""), (std::pair<float, float> { 1.5f, 1.5f }));
+    EXPECT_EQ(depth_after("\"0.25 0.75\""), (std::pair<float, float> { 0.25f, 0.75f }));
+    EXPECT_EQ(depth_after("{\"user\": \"p\", \"value\": \"3.5\"}"), (std::pair<float, float> { 3.5f, 3.5f }));
+}
+
 TEST(ScriptNodeSoftMutation, RemovingUniformStatePreservesOtherLayerOwners) {
     auto state  = Arc<owe::UniformSceneState>::make(Arc<owe::AudioResponseDemand>::make());
     auto first  = Arc<owe::SceneNode>::make();
@@ -1843,10 +1864,10 @@ TEST(ScriptCursor, ClickAndDownUpInside) {
     fi.mouse_buttons_down    = 1u << 0;
     rt.SetFrameInputs(fi);
     rt.TickAll();
-    // 1 down, 1 click, last_btn = 0 → 1*1000000 + 1*10000 + 0*100 + 1 = 1010001
-    EXPECT_EQ(fs->last_value().as_Scalar().value.v, 1'010'001);
+    // 1 down, no click yet (it comes with the release), last_btn = 0 → 1*1000000 + 1*10000 = 1010000
+    EXPECT_EQ(fs->last_value().as_Scalar().value.v, 1'010'000);
 
-    // Release this frame (no press): 1 up, last_btn=0.
+    // Release this frame (no press): 1 up, then the click, last_btn=0.
     fi.mouse_buttons_pressed  = 0;
     fi.mouse_buttons_released = 1u << 0;
     fi.mouse_buttons_down     = 0;
@@ -1944,7 +1965,9 @@ TEST(ScriptCursor, ClickRestartsNamedAnimationLayer) {
     fi.cursor_in_window      = true;
     fi.cursor_x              = 500.0f / 1920.0f;
     fi.cursor_y              = 500.0f / 1080.0f;
-    fi.mouse_buttons_pressed = 1u << 0;
+    // press and release within the frame: the click comes after the release
+    fi.mouse_buttons_pressed  = 1u << 0;
+    fi.mouse_buttons_released = 1u << 0;
     rt.SetFrameInputs(fi);
     rt.TickAll();
 
@@ -1954,11 +1977,9 @@ TEST(ScriptCursor, ClickRestartsNamedAnimationLayer) {
 }
 
 TEST(ScriptAnimationLayer, GetAnimationGivesNothing) {
-    // In Wallpaper Engine an animation layer has a getAnimation that returns undefined, whatever it
-    // is asked (puppet-layer-getanimation), and a layer's getAnimation(name) is undefined for a
-    // name no property animation has. Ocarina of Time's
-    // getAnimationLayer("Surprise").getAnimation("surprise").isPlaying() therefore throws, and Link
-    // keeps his angle.
+    // An animation layer has a getAnimation, but it finds property animations only: a layer with
+    // none (the skeletal animation of puppet-layer-getanimation) gives undefined, whatever it is
+    // asked, as does a layer's getAnimation(name) for a name no property animation has.
     owe::SceneNode node;
     auto           clip     = Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {
         .name = String::make("Arona Drool"_str),
@@ -2091,6 +2112,97 @@ TEST(ScriptCursor, GlobalInputRefreshesFrameFields) {
     EXPECT_EQ(fs->last_value().as_Scalar().value.v, 300'400.0);
 }
 
+TEST(ScriptCursor, SavedCursorPositionIsASnapshot) {
+    // Scripts keep `input.cursorScreenPosition` and edit it (a drag-to-rotate camera flips its y); the
+    // engine's next frame must not move the saved copy, nor may the edit reach the live position.
+    JsRuntime rt;
+    rt.SetFrameInputs(MakeFi());
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            let saved = null;
+            export function update() {
+                if (! saved) {
+                    saved = input.cursorScreenPosition;
+                    saved.y = 1000 - saved.y;
+                }
+                return (input.cursorScreenPosition.x - saved.x) +
+                       (input.cursorScreenPosition.y - 100) * 1000;
+            }
+        )JS"_str,
+        "test/cursor_snapshot"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0));
+    ASSERT_NE(fs, nullptr);
+
+    auto fi             = MakeFi();
+    fi.screen_w         = 800.0f;
+    fi.screen_h         = 600.0f;
+    fi.cursor_x         = 0.25f; // 200
+    fi.cursor_y         = 100.0f / 600.0f;
+    fi.cursor_in_window = true;
+    rt.SetFrameInputs(fi);
+    rt.TickAll();
+    EXPECT_EQ(fs->last_value().as_Scalar().value.v, 0.0);
+
+    fi.cursor_x = 0.5f; // 400: moved 200 right of the saved 200
+    rt.SetFrameInputs(fi);
+    rt.TickAll();
+    EXPECT_EQ(fs->last_value().as_Scalar().value.v, 200.0);
+}
+
+TEST(ScriptCursor, ClicksHitLayersWhereTheyAppearUnderAPerspectiveCamera) {
+    // A layer placed in depth (Ocarina of Time's interface panel) is clicked where it is drawn, not where
+    // the cursor's ray crosses the z=0 plane.
+    owe::Scene scene;
+    scene.SetOrtho({ rstd::i32(1000), rstd::i32(1000) });
+    auto camera = Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 100.0, 50.0));
+    camera->SetLookAt({ 0.0, 0.0, 10.0 }, { 0.0, 0.0, 0.0 }, { 0.0, 1.0, 0.0 });
+    scene.RegisterCamera("default"_Str, camera.clone());
+    ASSERT_TRUE(scene.SetActiveCamera("default"_str));
+
+    auto button = Arc<owe::SceneNode>::make();
+    button->SetTranslate({ 3.0f, 0.0f, -10.0f });
+    button->SetSize({ 2.0f, 2.0f });
+    scene.RootMut()->AppendChild(button.clone());
+    JsRuntime rt;
+    rt.SetScene(&scene);
+    rt.SetSceneRoot(scene.RootMut().as_raw_ptr());
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            let clicks = 0;
+            export function cursorClick(event) { clicks++; }
+            export function update() { return clicks; }
+        )JS"_str,
+        "test/perspective_click"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        button.as_ptr());
+    ASSERT_NE(fs, nullptr);
+
+    // The button's centre is 20 units from the camera: x = 3 / (20 tan 25 deg) in clip space.
+    const double ndc_x = 3.0 / (20.0 * std::tan(25.0 * 3.14159265358979323846 / 180.0));
+    auto         fi    = MakeFi(1000, 1000);
+    fi.cursor_in_window      = true;
+    fi.cursor_y              = 0.5f;
+    fi.cursor_x              = static_cast<float>((ndc_x + 1.0) / 2.0);
+    fi.mouse_buttons_pressed  = 1;
+    fi.mouse_buttons_released = 1;
+    rt.SetFrameInputs(fi);
+    rt.TickAll();
+    EXPECT_EQ(fs->last_value().as_Scalar().value.v, 1.0);
+
+    // Where the cursor's ray meets the z=0 plane inside the button's x range is not on the button.
+    const double plane_x_ndc = 3.0 / (10.0 * std::tan(25.0 * 3.14159265358979323846 / 180.0));
+    fi.cursor_x              = static_cast<float>((plane_x_ndc + 1.0) / 2.0);
+    fi.mouse_buttons_pressed  = 1;
+    fi.mouse_buttons_released = 1;
+    rt.SetFrameInputs(fi);
+    rt.TickAll();
+    EXPECT_EQ(fs->last_value().as_Scalar().value.v, 1.0);
+}
+
 TEST(ScriptCursor, WorldPositionFlipsTopDownInputY) {
     JsRuntime rt;
     rt.SetFrameInputs(MakeFi());
@@ -2162,7 +2274,8 @@ TEST(ScriptCursor, CroppedViewportUsesCameraForInputAndClicks) {
     fi.cursor_x              = 1235.0f / 1280.0f;
     fi.cursor_y              = 30.0f / 720.0f;
     fi.cursor_in_window      = true;
-    fi.mouse_buttons_pressed = 1;
+    fi.mouse_buttons_pressed  = 1;
+    fi.mouse_buttons_released = 1;
     rt.SetFrameInputs(fi);
     rt.TickAll();
     ASSERT_TRUE(fs->last_value().is_Vec3());
@@ -2962,6 +3075,66 @@ TEST(ScriptLayerLookup, InvalidatedEffectAndMaterialsDoNotModifyTheirLayer) {
     ASSERT_TRUE(color.is_some());
     EXPECT_FLOAT_EQ((**color)[usize()], 1.0f);
     EXPECT_FLOAT_EQ((**color)[usize(1)], 0.0f);
+}
+
+TEST(ScriptLayerLookup, AnotherLayersScriptPlaysAnEffectMaterialAnimationByName) {
+    // Ocarina of Time's song text starts the interface's "accept" animation with
+    // thisScene.getLayer(...).getEffect(0).getMaterial(0).getAnimation("accept").play(); its end
+    // events hand the ocarina back.
+    owe::Scene scene;
+    auto       layer = Arc<owe::SceneNode>::make(
+        Eigen::Vector3f::Zero(), Eigen::Vector3f::Ones(), Eigen::Vector3f::Zero(), "target"_str);
+    scene.RootMut()->AppendChild(layer.clone());
+    auto layer_effect =
+        Arc<owe::SceneNodeLayer>::make(layer.as_ptr(), 64.0f, 64.0f, "_rt_test"_str);
+    auto effect                             = Arc<owe::SceneImageEffect>::make();
+    effect->name                            = "color"_Str;
+    auto                        effect_node = Arc<owe::SceneNode>::make();
+    auto                        mesh        = Arc<owe::SceneMesh>::make();
+    owe::SceneMaterial          material;
+    owe::SceneShaderVariantDesc variant;
+    (void)variant.uniform_aliases.insert("alpha"_Str, "g_Alpha"_Str);
+    material.customShader.variant = Some(owe::SceneShaderVariant::from(rstd::move(variant)));
+    (void)material.customShader.constValues.insert("g_Alpha"_Str, owe::ShaderValue(1.0f));
+    auto clip     = Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {
+        .name = String::make("accept"_str),
+        .mode = String::make("single"_str),
+        .fps  = 30.0f,
+        .end  = i32(30),
+    });
+    auto playback = Arc<owe::SceneAnimationPlayback>::make(rstd::move(clip), true);
+    auto curve    = Arc<owe::SceneAnimationCurve>::make();
+    curve->c0.push({ .frame = i32(), .value = 0.0f });
+    curve->c0.push({ .frame = i32(30), .value = 1.0f });
+    (void)material.customShader.valueAnimations.insert(
+        "g_Alpha"_Str,
+        owe::SceneShaderValueAnimation {
+            .base  = owe::ShaderValue(1.0f),
+            .track = Some(Arc<owe::SceneAnimationTrack>::make(
+                owe::SceneAnimationTrack { .curve = curve.clone(), .playback = playback.clone() })) });
+    mesh->AddMaterial(rstd::move(material));
+    effect_node->AddMesh(rstd::move(mesh));
+    effect->AddNode(owe::SceneImageEffectNode { .output    = owe::SceneEffectTarget::LayerNext(),
+                                                .sceneNode = effect_node.clone() });
+    layer_effect->AddEffect(effect);
+    layer->AttachLayer(layer_effect.clone());
+
+    JsRuntime runtime;
+    runtime.SetScene(&scene);
+    runtime.SetSceneRoot(scene.RootMut().as_raw_ptr());
+    auto* other = MakeProbe(runtime, "test/other_layer_plays_accept", R"JS(
+        export function update() {
+            const animation = thisScene.getLayer('target').getEffect(0).getMaterial(0).getAnimation('accept');
+            if (animation === undefined || typeof animation.play !== 'function') return -1;
+            animation.play();
+            return 2;
+        }
+    )JS");
+    ASSERT_NE(other, nullptr);
+    EXPECT_FALSE(playback->IsPlaying());
+    runtime.TickAll();
+    EXPECT_TRUE(playback->IsPlaying());
+    EXPECT_DOUBLE_EQ(LastScalar(other), 2.0);
 }
 
 TEST(ScriptLayerLookup, MissingLayerKeepsDefaultTransformShape) {
@@ -4666,9 +4839,15 @@ TEST(ScriptAnimation, NamedPuppetLayerUsesFieldPlaybackAndSample) {
     auto*     script = rt.MakeFieldScript(
         R"JS(
             export function update(value) {
-                // an animation layer's getAnimation is undefined, as in Wallpaper Engine
-                const animation = thisLayer.getAnimationLayer('Surprise').getAnimation('surprise');
-                return value + (animation === undefined ? 1 : 0);
+                // an animation layer's getAnimation finds the property animations it has
+                // (Ocarina of Time: getAnimationLayer("Surprise").getAnimation("surprise").play()
+                // hands the ocarina back after a song), and the layer's own getAnimation finds
+                // those of its animation layers
+                const layer     = thisLayer.getAnimationLayer('Surprise');
+                const animation = layer.getAnimation('surprise');
+                return value + (animation !== undefined && typeof animation.play === 'function' ? 1 : 0) +
+                       (layer.getAnimation('nothing') === undefined ? 10 : 0) +
+                       (thisLayer.getAnimation('surprise') !== undefined ? 100 : 0);
             }
         )JS"_str,
         "test/puppet_animation_layer"_str,
@@ -4683,7 +4862,7 @@ TEST(ScriptAnimation, NamedPuppetLayerUsesFieldPlaybackAndSample) {
     layer->SampleFields();
     rt.TickAll();
     EXPECT_FLOAT_EQ(layer->Blend(), 0.5f);
-    EXPECT_DOUBLE_EQ(LastScalar(script), 1.5);
+    EXPECT_DOUBLE_EQ(LastScalar(script), 111.5);
 }
 
 TEST(ScriptAnimation, TimerKeepsCurrentPropertyAnimation) {
@@ -5353,7 +5532,7 @@ TEST(ScriptVector, MethodsFollowTheSceneScriptReference) {
                 ["Vec2.isFinite", () => { return (new Vec2(1, 2).isFinite() === true && new Vec2(1, Infinity).isFinite() === false); }],
                 ["Vec2.negate", () => { return (nearV(new Vec2(1, -2).negate(), -1, 2)); }],
                 ["Vec2.reflect", () => { return (nearV(new Vec2(1, -1).reflect(new Vec2(0, 1)), 1, 1)); }],
-                ["Vec2.perpendicular", () => { return (nearV(new Vec2(1, 0).perpendicular(), 0, 1)); }],
+                ["Vec2.perpendicular", () => { return (nearV(new Vec2(1, 0).perpendicular(), 0, -1) && nearV(new Vec2(1, 2).perpendicular(), 2, -1)); }],
                 ["Vec2.project", () => { return (nearV(new Vec2(2, 2).project(new Vec2(1, 0)), 2, 0)); }],
                 ["Vec2.angle", () => { return (near(new Vec2(0, 1).angle(), 90)); }],
                 ["Vec2.angleBetween", () => { return (near(new Vec2(1, 0).angleBetween(new Vec2(0, 1)), 90) && near(new Vec2(0, 1).angleBetween(new Vec2(1, 0)), -90)); }],
@@ -5468,7 +5647,7 @@ TEST(ScriptMatrices, Mat3AndMat4FollowTheSceneScriptReference) {
                 ["Mat3.identity", () => { return (nearM(new Mat3(), 1,0,0, 0,1,0, 0,0,1) && nearM(Mat3.identity(), 1,0,0, 0,1,0, 0,0,1)); }],
                 ["Mat3.fromTranslation", () => { return (nearV(Mat3.fromTranslation(new Vec2(1, 2)).transformPoint(new Vec2(1, 1)), 2, 3) && nearV(Mat3.fromTranslation(new Vec2(1, 2)).transformDirection(new Vec2(1, 1)), 1, 1)); }],
                 ["Mat3.fromScale", () => { return (nearV(Mat3.fromScale(2).transformPoint(new Vec2(1, 2)), 2, 4) && nearV(Mat3.fromScale(new Vec2(2, 3)).transformPoint(new Vec2(1, 1)), 2, 3)); }],
-                ["Mat3.fromRotation", () => { return (nearV(Mat3.fromRotation(90).transformDirection(new Vec2(1, 0)), 0, 1) && near(Mat3.fromRotation(90).angle(), 90)); }],
+                ["Mat3.fromRotation", () => { return (nearV(Mat3.fromRotation(90).transformDirection(new Vec2(1, 0)), 0, 1) && near(Mat3.fromRotation(90).angle(), 180)); }],
                 ["Mat3.fromBasis", () => { return (nearV(Mat3.fromBasis(new Vec2(0, 1), new Vec2(-1, 0)).transformDirection(new Vec2(1, 0)), 0, 1)); }],
                 ["Mat3.fromMat4", () => { return (nearV(Mat3.fromMat4(Mat4.fromEuler(0, 0, 90)).transformDirection(new Vec2(1, 0)), 0, 1)); }],
                 ["Mat3.compose", () => { return (nearV(Mat3.compose(new Vec2(10, 0), 90, new Vec2(2, 2)).transformPoint(new Vec2(1, 0)), 10, 2)); }],
@@ -5486,6 +5665,45 @@ TEST(ScriptMatrices, Mat3AndMat4FollowTheSceneScriptReference) {
             export function update() { return failed.join(' '); }
         )JS"_str,
         "test/matrices"_str,
+        FieldKind::String,
+        owe::MakeObject(),
+        owe::IntoJson(""));
+    ASSERT_NE(script, nullptr);
+
+    rt.TickAll();
+
+    ASSERT_TRUE(script->last_value().is_String());
+    const auto failed = script->last_value().as_String().value.s.as_str();
+    EXPECT_EQ(failed, ""_str) << "failed: " << rstd::cppstd::as_string_view(failed);
+}
+
+// Where Wallpaper Engine's scripts (measured in the VM with the script-math-probe wallpaper) differ from the documentation: a zero vector normalizes to NaN, equals() with nothing
+// or a vector of another size is false, a Vec2's perpendicular is (y, -x), Mat3's angle is atan2(m0, -m1), its right,
+// up and forward are the first three rows of m, and every vector and matrix has toConfigString.
+TEST(ScriptVector, ZeroNormalizeEqualsAndConfigStringAsWallpaperEngine) {
+    JsRuntime rt;
+    auto*     script = rt.MakeFieldScript(
+        R"JS(
+            const f = (v) => '(' + [v.x, v.y, v.z, v.w].filter((c) => c !== undefined).map((c) => Number.isNaN(c) ? 'NaN' : c).join(',') + ')';
+            const checks = [
+                ["Vec2.normalize.zero", () => f(new Vec2(0, 0).normalize()) === '(NaN,NaN)'],
+                ["Vec3.normalize.zero", () => f(new Vec3(0, 0, 0).normalize()) === '(NaN,NaN,NaN)'],
+                ["Vec4.normalize.zero", () => f(new Vec4(0, 0, 0, 0).normalize()) === '(NaN,NaN,NaN,NaN)'],
+                ["Vec2.perpendicular", () => f(new Vec2(1, 2).perpendicular()) === '(2,-1)'],
+                ["equals.noArgument", () => new Vec2(1, 2).equals() === false && new Vec3(1, 2, 3).equals() === false && new Vec4(1, 2, 3, 4).equals() === false],
+                ["equals.otherSize", () => new Vec2(1, 2).equals(new Vec3(1, 2, 3)) === false && new Vec3(1, 1, 1).equals(1) === false],
+                ["equals.same", () => new Vec2(1, 2).equals(new Vec2(1, 2)) && new Vec4(1, 2, 3, 4).equals(new Vec4(1, 2, 3, 4))],
+                ["Vec.toConfigString", () => new Vec2(1, 2).toConfigString() === '1 2' && new Vec3(1, 2, 3).toConfigString() === '1 2 3' && new Vec4(1, 2, 3, 4).toConfigString() === '1 2 3 4'],
+                ["Mat3.axes", () => { const m = new Mat3([1, 2, 3, 4, 5, 6, 7, 8, 9]); return f(m.right()) === '(1,2,3)' && f(m.up()) === '(4,5,6)' && f(m.forward()) === '(7,8,9)'; }],
+                ["Mat3.angle", () => new Mat3().angle() === 90 && Math.abs(Mat3.fromRotation(30).angle() - 120) < 1e-4],
+                ["Mat.toConfigString", () => new Mat3().toConfigString() === '1 0 0 0 1 0 0 0 1' && Mat4.fromTranslation(new Vec3(1, 2, 3)).toConfigString() === '1 0 0 0 0 1 0 0 0 0 1 0 1 2 3 1'],
+            ];
+            const failed = checks.filter(([name, check]) => {
+                try { return check() !== true; } catch (e) { return true; }
+            }).map(([name]) => name);
+            export function update() { return failed.join(' '); }
+        )JS"_str,
+        "test/vector_we_edges"_str,
         FieldKind::String,
         owe::MakeObject(),
         owe::IntoJson(""));
@@ -5684,4 +5902,400 @@ TEST(ScriptAnimationLayer, CreateDestroyAndPlaySingle) {
     rt.TickAll();
     EXPECT_EQ(LastScalar(fs), 101.0);
     EXPECT_EQ(destroyed, usize(3));
+}
+
+// --- engine behaviour that must not depend on which JavaScript engine runs the scripts (QuickJS or SpiderMonkey) ----
+
+TEST(ScriptEngine, RegExpLegacyStaticsFollowAMatch) {
+    JsRuntime   rt;
+    FrameInputs fi {};
+    rt.SetFrameInputs(fi);
+    auto* fs = MakeProbe(rt,
+                         "test/engine_regexp_statics",
+                         R"JS(
+        export function update() {
+            /(\d+)-(\d+)/.exec('range 12-34 end');
+            return Number(RegExp.$1) * 100 + Number(RegExp.$2) + (RegExp.leftContext === 'range ' ? 10000 : 0);
+        }
+    )JS");
+    ASSERT_NE(fs, nullptr);
+    Tick(rt, 0.1);
+    EXPECT_EQ(LastScalar(fs), 10000.0 + 1200.0 + 34.0);
+}
+
+// The QuickJS backend runs with an unlimited stack (its limit is relative to the creating thread), so runaway
+// recursion there overflows the native stack. The SpiderMonkey backend bounds it.
+#ifdef OWE_JS_SPIDERMONKEY
+TEST(ScriptEngine, RunawayRecursionIsARangeErrorAndRecovers) {
+    JsRuntime   rt;
+    FrameInputs fi {};
+    rt.SetFrameInputs(fi);
+    auto* fs = MakeProbe(rt,
+                         "test/engine_recursion",
+                         R"JS(
+        let state = 0;
+        function runaway() { return runaway() + 1; }
+        export function update() {
+            try { runaway(); state = 1; }
+            catch (e) { state = (e instanceof RangeError) ? 2 : 3; }
+            return state;
+        }
+    )JS");
+    ASSERT_NE(fs, nullptr);
+    Tick(rt, 0.1);
+    EXPECT_EQ(LastScalar(fs), 2.0);
+    Tick(rt, 0.2);  // the engine is still usable after the overflow
+    EXPECT_EQ(LastScalar(fs), 2.0);
+}
+#endif
+
+TEST(ScriptEngine, ModerateRecursionDepthIsAllowed) {
+    JsRuntime   rt;
+    FrameInputs fi {};
+    rt.SetFrameInputs(fi);
+    auto* fs = MakeProbe(rt,
+                         "test/engine_depth",
+                         R"JS(
+        function depth(n) { return n === 0 ? 0 : 1 + depth(n - 1); }
+        export function update() { return depth(3000); }
+    )JS");
+    ASSERT_NE(fs, nullptr);
+    Tick(rt, 0.1);
+    EXPECT_EQ(LastScalar(fs), 3000.0);
+}
+
+TEST(ScriptEngine, ThrownErrorInOneFrameDoesNotBreakTheNext) {
+    JsRuntime   rt;
+    FrameInputs fi {};
+    rt.SetFrameInputs(fi);
+    auto* fs = MakeProbe(rt,
+                         "test/engine_throw_recovers",
+                         R"JS(
+        let calls = 0;
+        export function update() {
+            calls++;
+            if (calls === 1) throw new TypeError('first frame fails');
+            return calls;
+        }
+    )JS");
+    ASSERT_NE(fs, nullptr);
+    Tick(rt, 0.1);
+    Tick(rt, 0.2);
+    EXPECT_EQ(LastScalar(fs), 2.0);
+}
+
+TEST(ScriptEngine, TopLevelAwaitSettlesBeforeTheFirstUpdate) {
+    JsRuntime   rt;
+    FrameInputs fi {};
+    rt.SetFrameInputs(fi);
+    auto* fs = MakeProbe(rt,
+                         "test/engine_top_level_await",
+                         R"JS(
+        let steps = 0;
+        await Promise.resolve();
+        steps++;
+        await new Promise((resolve) => resolve());
+        steps++;
+        export function update() { return steps; }
+    )JS");
+    ASSERT_NE(fs, nullptr);
+    Tick(rt, 0.1);
+    EXPECT_EQ(LastScalar(fs), 2.0);
+}
+
+TEST(ScriptEngine, ManyShortLivedObjectsDoNotExhaustTheHeap) {
+    JsRuntime   rt;
+    FrameInputs fi {};
+    rt.SetFrameInputs(fi);
+    auto* fs = MakeProbe(rt,
+                         "test/engine_garbage",
+                         R"JS(
+        export function update() {
+            let sum = 0;
+            for (let i = 0; i < 20000; i++) { const o = { i, a: [i, i + 1], s: 'x' + i }; sum += o.a[1] - o.i; }
+            return sum;
+        }
+    )JS");
+    ASSERT_NE(fs, nullptr);
+    for (int frame = 1; frame <= 40; ++frame) Tick(rt, 0.05 * frame);
+    EXPECT_EQ(LastScalar(fs), 20000.0);
+}
+
+// cursorClick comes after cursorUp, and only when the button was pressed and released on the same layer (Wallpaper
+// Engine's documentation of the cursor events).
+namespace
+{
+// A script on a layer at (500, 500) that logs its cursor callbacks, and the frame that moves the cursor and presses or
+// releases the left button
+struct CursorLog {
+    owe::SceneNode node;
+    JsRuntime      rt;
+    FieldScript*   fs { nullptr };
+    FrameInputs    fi;
+
+    CursorLog(const char* sha, const char* source) {
+        node.SetTranslate({ 500.0f, 500.0f, 0.0f });
+        node.SetSize({ 200.0f, 200.0f });
+        rt.SetFrameInputs(MakeFi());
+        fs = rt.MakeFieldScript(rstd::cppstd::as_str(source).unwrap(),
+                                rstd::cppstd::as_str(sha).unwrap(),
+                                FieldKind::String,
+                                owe::MakeObject(),
+                                owe::IntoJson(""),
+                                &node);
+    }
+
+    void frame(float x, float y, bool pressed, bool released) {
+        fi.cursor_in_window       = true;
+        fi.cursor_x               = x / 1920.0f;
+        fi.cursor_y               = y / 1080.0f;
+        fi.mouse_buttons_pressed  = pressed ? 1u : 0u;
+        fi.mouse_buttons_released = released ? 1u : 0u;
+        fi.mouse_buttons_down     = pressed ? 1u : 0u;
+        rt.SetFrameInputs(fi);
+        rt.TickAll();
+    }
+
+    std::string log() {
+        if (fs == nullptr || ! fs->last_value().is_String()) return "<none>";
+        return std::string(rstd::cppstd::as_string_view(fs->last_value().as_String().value.s.as_str()));
+    }
+};
+
+const char* kCursorLogScript = R"JS(
+    let log = '';
+    export function cursorDown() { log += 'D'; }
+    export function cursorUp() { log += 'U'; }
+    export function cursorClick() { log += 'C'; }
+    export function update() { return log; }
+)JS";
+} // namespace
+
+TEST(ScriptCursor, ClickFollowsUpWhenPressedAndReleasedOnTheLayer) {
+    CursorLog c("test/cursor_click_order", kCursorLogScript);
+    ASSERT_NE(c.fs, nullptr);
+    c.frame(500, 500, true, false);
+    c.frame(500, 500, false, true);
+    EXPECT_EQ(c.log(), "DUC");
+    // a press and release within one frame are in the same order
+    c.frame(500, 500, true, true);
+    EXPECT_EQ(c.log(), "DUCDUC");
+}
+
+TEST(ScriptCursor, NoClickWhenReleasedOrPressedElsewhere) {
+    CursorLog c("test/cursor_click_elsewhere", kCursorLogScript);
+    ASSERT_NE(c.fs, nullptr);
+    // pressed on the layer, released off it: a down, nothing else
+    c.frame(500, 500, true, false);
+    c.frame(100, 100, false, true);
+    EXPECT_EQ(c.log(), "D");
+    // pressed off the layer, released on it: an up, no click
+    c.frame(100, 100, true, false);
+    c.frame(500, 500, false, true);
+    EXPECT_EQ(c.log(), "DU");
+    // the earlier press is forgotten: a bare release is an up only
+    c.frame(500, 500, false, true);
+    EXPECT_EQ(c.log(), "DUU");
+}
+
+// A script that exports cursorHitTest decides itself where its layer is hit
+TEST(ScriptCursor, HitTestCallbackDecidesTheHit) {
+    CursorLog c("test/cursor_hit_test", R"JS(
+        let log = '';
+        export function cursorHitTest(event) { return event.x > 0 || true; }
+        export function cursorEnter() { log += 'E'; }
+        export function cursorLeave() { log += 'L'; }
+        export function update() { return log; }
+    )JS");
+    ASSERT_NE(c.fs, nullptr);
+    c.frame(100, 100, false, false); // far from the layer, but the script says it is hit
+    EXPECT_EQ(c.log(), "E");
+}
+
+TEST(ScriptMedia, StatusAtStartTimelineAndTheUsersToggle) {
+    JsRuntime   rt;
+    FrameInputs fi {};
+    rt.SetFrameInputs(fi);
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            let log = [];
+            export function mediaStatusChanged(e) { log.push('S' + e.enabled); }
+            export function mediaTimelineChanged(e) { log.push('T' + e.position + '/' + e.duration); }
+            export function update() { return log.join(' '); }
+        )JS"_str,
+        "test/media_status_timeline"_str,
+        FieldKind::String,
+        owe::MakeObject(),
+        owe::IntoJson(""));
+    ASSERT_NE(fs, nullptr);
+    owe::SceneNode root;
+    rt.SetSceneRoot(&root);
+    rt.TickAll();
+    // Wallpaper Engine tells a script at the start that media integration is on
+    EXPECT_EQ(fs->last_value().as_String().value.s.as_str(), "Strue"_str)
+        << rstd::cppstd::as_string_view(fs->last_value().as_String().value.s.as_str());
+
+    MediaStatus status;
+    status.position = 12.5;
+    status.duration = 200;
+    rt.SetMediaStatus(status);
+    status.position = 13.5;
+    rt.SetMediaStatus(status);
+    status.enabled = false;
+    rt.SetMediaStatus(status);
+    rt.TickAll();
+    EXPECT_EQ(fs->last_value().as_String().value.s.as_str(), "Strue T12.5/200 T13.5/200 Sfalse"_str)
+        << rstd::cppstd::as_string_view(fs->last_value().as_String().value.s.as_str());
+}
+
+TEST(ScriptEvents, ResizeScreenGetsTheNewSizeNotTheFirstOne) {
+    JsRuntime   rt;
+    FrameInputs fi {};
+    rt.SetFrameInputs(fi);
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            let log = [];
+            export function resizeScreen(size) { log.push(size.x + 'x' + size.y); }
+            export function update() { return log.join(' '); }
+        )JS"_str,
+        "test/resize_screen"_str,
+        FieldKind::String,
+        owe::MakeObject(),
+        owe::IntoJson(""));
+    ASSERT_NE(fs, nullptr);
+    rt.TickAll();
+    rt.TickAll();
+    EXPECT_EQ(fs->last_value().as_String().value.s.as_str(), ""_str);
+    fi.screen_w = 2560;
+    fi.screen_h = 1440;
+    rt.SetFrameInputs(fi);
+    rt.TickAll();
+    rt.TickAll();
+    EXPECT_EQ(fs->last_value().as_String().value.s.as_str(), "2560x1440"_str);
+}
+
+TEST(ScriptEvents, DestroyRunsWhenTheRuntimeEnds) {
+    const std::string path = MakeTmpLsPath("destroy");
+    {
+        JsRuntime rt;
+        rt.SetPersistence(rstd::path::PathBuf::from(rstd::cppstd::as_str(path).unwrap()));
+        FrameInputs fi {};
+        rt.SetFrameInputs(fi);
+        auto* fs = rt.MakeFieldScript(
+            R"JS(
+                export function destroy() { localStorage.set('destroyed', 1); }
+                export function update() { return 0; }
+            )JS"_str,
+            "test/destroy"_str,
+            FieldKind::Scalar,
+            owe::MakeObject(),
+            owe::IntoJson(0));
+        ASSERT_NE(fs, nullptr);
+        owe::SceneNode root;
+        rt.SetSceneRoot(&root);
+        rt.TickAll();
+    }
+    JsRuntime rt;
+    rt.SetPersistence(rstd::path::PathBuf::from(rstd::cppstd::as_str(path).unwrap()));
+    FrameInputs fi {};
+    rt.SetFrameInputs(fi);
+    auto* fs = rt.MakeFieldScript(
+        "export function update() { return localStorage.get('destroyed') ?? -1; }"_str,
+        "test/destroy_reader"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0));
+    ASSERT_NE(fs, nullptr);
+    rt.TickAll();
+    EXPECT_EQ(fs->last_value().as_Scalar().value.v, 1.0);
+}
+
+TEST(ScriptEngine, DeviceQueriesAndFeatureRequest) {
+    JsRuntime   rt;
+    FrameInputs fi {};
+    rt.SetFrameInputs(fi);
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            engine.requestFeatures(['audio']);
+            let late = 'none';
+            export function update() {
+                try { engine.requestFeatures(['audio']); } catch (e) { late = e.message; }
+                return [engine.isPortrait(), engine.isLandscape(), engine.isMobileDevice(), engine.isDesktopDevice(),
+                        engine.isWallpaper(), engine.isScreensaver(), engine.isObjectValid(thisLayer),
+                        engine.isObjectValid(null), engine.openUserShortcut('x'), late].join(' ');
+            }
+        )JS"_str,
+        "test/engine_queries"_str,
+        FieldKind::String,
+        owe::MakeObject(),
+        owe::IntoJson(""));
+    ASSERT_NE(fs, nullptr);
+    rt.TickAll();
+    EXPECT_EQ(fs->last_value().as_String().value.s.as_str(),
+              "false true false true true false true false false requestFeatures can only be called from global scope."_str)
+        << rstd::cppstd::as_string_view(fs->last_value().as_String().value.s.as_str());
+}
+
+TEST(ScriptEngine, PortraitScreen) {
+    JsRuntime   rt;
+    FrameInputs fi {};
+    fi.screen_w = 1080;
+    fi.screen_h = 1920;
+    rt.SetFrameInputs(fi);
+    auto* fs = rt.MakeFieldScript(
+        "export function update() { return engine.isPortrait() + ' ' + engine.isLandscape(); }"_str,
+        "test/engine_portrait"_str,
+        FieldKind::String,
+        owe::MakeObject(),
+        owe::IntoJson(""));
+    ASSERT_NE(fs, nullptr);
+    rt.TickAll();
+    EXPECT_EQ(fs->last_value().as_String().value.s.as_str(), "true false"_str);
+}
+
+TEST(ScriptLocalStorage, LocationsDeleteAndClear) {
+    JsRuntime   rt;
+    FrameInputs fi {};
+    rt.SetFrameInputs(fi);
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            const S = localStorage.LOCATION_SCREEN, G = localStorage.LOCATION_GLOBAL;
+            export function update() {
+                const out = [S, G];
+                localStorage.set('k', 1);
+                localStorage.set('k', 2, G);
+                out.push(localStorage.get('k'), localStorage.get('k', S), localStorage.get('k', G));
+                out.push(localStorage.delete('k', G), localStorage.delete('k', G), localStorage.get('k', G), localStorage.get('k'));
+                localStorage.set('a', 1); localStorage.set('b', 2, G);
+                localStorage.clear(G);
+                out.push(localStorage.get('a'), localStorage.get('b', G));
+                localStorage.clear();
+                out.push(localStorage.get('a'));
+                return out.join(' ');
+            }
+        )JS"_str,
+        "test/ls_locations"_str,
+        FieldKind::String,
+        owe::MakeObject(),
+        owe::IntoJson(""));
+    ASSERT_NE(fs, nullptr);
+    rt.TickAll();
+    EXPECT_EQ(fs->last_value().as_String().value.s.as_str(),
+              "screen global 1 1 2 true false  1 1  "_str);
+}
+
+// A script that throws is logged and skipped; it does not end the process (the test binary had no logger, and the
+// log call aborted it).
+TEST(ScriptEngine, UncaughtErrorInUpdateIsLoggedNotFatal) {
+    JsRuntime   rt;
+    FrameInputs fi {};
+    rt.SetFrameInputs(fi);
+    auto* fs = rt.MakeFieldScript("export function update() { throw new Error('on purpose'); }"_str,
+                                  "test/update_throws"_str,
+                                  FieldKind::Scalar,
+                                  owe::MakeObject(),
+                                  owe::IntoJson(0));
+    ASSERT_NE(fs, nullptr);
+    rt.TickAll();
+    rt.TickAll();
 }

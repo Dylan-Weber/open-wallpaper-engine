@@ -184,7 +184,8 @@ auto MakeUniformBufferBinding(
     SceneRenderViewKind        render_view       = SceneRenderViewKind::Primary,
     ShaderMatrixConvention     matrix_convention = ShaderMatrixConvention::ColumnVector,
     ShaderMatrixAbi            matrix_abi        = ShaderMatrixAbi::NativeSpirv,
-    Option<ref<SceneMaterial>> material_override = None<ref<SceneMaterial>>())
+    Option<ref<SceneMaterial>> material_override = None<ref<SceneMaterial>>(),
+    Option<vrento::UniformSourceOwner> extra_source = None<vrento::UniformSourceOwner>())
     -> Result<Box<dyn<UniformBufferUpdate>>, UniformBufferUpdateError>;
 
 auto MakeSharedUniformBufferBinding(ref<dyn<UniformBindingPrepareContext>>,

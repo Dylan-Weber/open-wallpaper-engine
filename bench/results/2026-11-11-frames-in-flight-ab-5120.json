@@ -1,0 +1,387 @@
+{
+ "configs": [
+  "d1",
+  "d2"
+ ],
+ "rounds": 2,
+ "results": [
+  {
+   "name": "rain",
+   "category": "particles",
+   "size": "5120x1440",
+   "d1": {
+    "ms_per_frame": 7.226,
+    "cpu_ms_per_frame": 3.314,
+    "rss_mb": 436.5,
+    "gpu_mem_mb": 1945.0,
+    "gpu_util_pct": 62.0,
+    "all_ms": [
+     7.153,
+     7.299
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 4.306,
+    "cpu_ms_per_frame": 3.412,
+    "rss_mb": 438.0,
+    "gpu_mem_mb": 1905.0,
+    "gpu_util_pct": 99.5,
+    "all_ms": [
+     4.265,
+     4.346
+    ]
+   }
+  },
+  {
+   "name": "winter",
+   "category": "particles",
+   "size": "5120x1440",
+   "d1": {
+    "ms_per_frame": 5.294,
+    "cpu_ms_per_frame": 2.508,
+    "rss_mb": 478.5,
+    "gpu_mem_mb": 1669.0,
+    "gpu_util_pct": 61.0,
+    "all_ms": [
+     5.136,
+     5.452
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 3.171,
+    "cpu_ms_per_frame": 2.41,
+    "rss_mb": 477.0,
+    "gpu_mem_mb": 1669.0,
+    "gpu_util_pct": 100.0,
+    "all_ms": [
+     3.205,
+     3.136
+    ]
+   }
+  },
+  {
+   "name": "sculpture-forest",
+   "category": "particles",
+   "size": "5120x1440",
+   "d1": {
+    "ms_per_frame": 7.043,
+    "cpu_ms_per_frame": 3.077,
+    "rss_mb": 1429.0,
+    "gpu_mem_mb": 1725.0,
+    "gpu_util_pct": 62.5,
+    "all_ms": [
+     7.067,
+     7.019
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 4.341,
+    "cpu_ms_per_frame": 2.946,
+    "rss_mb": 1400.5,
+    "gpu_mem_mb": 1685.0,
+    "gpu_util_pct": 100.0,
+    "all_ms": [
+     4.224,
+     4.457
+    ]
+   }
+  },
+  {
+   "name": "ocarina-of-time",
+   "category": "3d-shadow",
+   "size": "5120x1440",
+   "d1": {
+    "ms_per_frame": 41.879,
+    "cpu_ms_per_frame": 34.163,
+    "rss_mb": 590.5,
+    "gpu_mem_mb": 453.0,
+    "gpu_util_pct": 37.0,
+    "all_ms": [
+     42.906,
+     40.852
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 32.159,
+    "cpu_ms_per_frame": 33.809,
+    "rss_mb": 586.0,
+    "gpu_mem_mb": 413.0,
+    "gpu_util_pct": 36.0,
+    "all_ms": [
+     33.412,
+     30.905
+    ]
+   }
+  },
+  {
+   "name": "elden-ring",
+   "category": "3d-shadow",
+   "size": "5120x1440",
+   "d1": {
+    "ms_per_frame": 2.269,
+    "cpu_ms_per_frame": 0.908,
+    "rss_mb": 463.5,
+    "gpu_mem_mb": 292.0,
+    "gpu_util_pct": 61.0,
+    "all_ms": [
+     2.277,
+     2.262
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 1.497,
+    "cpu_ms_per_frame": 0.758,
+    "rss_mb": 463.5,
+    "gpu_mem_mb": 329.0,
+    "gpu_util_pct": 69.0,
+    "all_ms": [
+     1.55,
+     1.443
+    ]
+   }
+  },
+  {
+   "name": "hollow-knight",
+   "category": "3d-shadow",
+   "size": "5120x1440",
+   "d1": {
+    "ms_per_frame": 2.163,
+    "cpu_ms_per_frame": 0.702,
+    "rss_mb": 529.5,
+    "gpu_mem_mb": 421.0,
+    "gpu_util_pct": 72.0,
+    "all_ms": [
+     2.133,
+     2.193
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 1.581,
+    "cpu_ms_per_frame": 0.679,
+    "rss_mb": 526.0,
+    "gpu_mem_mb": 421.0,
+    "gpu_util_pct": 73.5,
+    "all_ms": [
+     1.545,
+     1.616
+    ]
+   }
+  },
+  {
+   "name": "china-town",
+   "category": "effects",
+   "size": "5120x1440",
+   "d1": {
+    "ms_per_frame": 4.035,
+    "cpu_ms_per_frame": 1.697,
+    "rss_mb": 509.0,
+    "gpu_mem_mb": 457.0,
+    "gpu_util_pct": 63.0,
+    "all_ms": [
+     4.0,
+     4.071
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 2.532,
+    "cpu_ms_per_frame": 1.618,
+    "rss_mb": 509.0,
+    "gpu_mem_mb": 497.0,
+    "gpu_util_pct": 93.5,
+    "all_ms": [
+     2.547,
+     2.517
+    ]
+   }
+  },
+  {
+   "name": "reze",
+   "category": "effects",
+   "size": "5120x1440",
+   "d1": {
+    "ms_per_frame": 7.531,
+    "cpu_ms_per_frame": 4.546,
+    "rss_mb": 514.5,
+    "gpu_mem_mb": 643.0,
+    "gpu_util_pct": 47.5,
+    "all_ms": [
+     7.244,
+     7.819
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 3.904,
+    "cpu_ms_per_frame": 4.072,
+    "rss_mb": 509.0,
+    "gpu_mem_mb": 683.0,
+    "gpu_util_pct": 64.0,
+    "all_ms": [
+     3.802,
+     4.007
+    ]
+   }
+  },
+  {
+   "name": "bleach",
+   "category": "effects",
+   "size": "5120x1440",
+   "d1": {
+    "ms_per_frame": 5.539,
+    "cpu_ms_per_frame": 1.564,
+    "rss_mb": 520.5,
+    "gpu_mem_mb": 677.0,
+    "gpu_util_pct": 77.5,
+    "all_ms": [
+     5.513,
+     5.565
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 4.438,
+    "cpu_ms_per_frame": 1.768,
+    "rss_mb": 525.5,
+    "gpu_mem_mb": 677.0,
+    "gpu_util_pct": 100.0,
+    "all_ms": [
+     4.349,
+     4.528
+    ]
+   }
+  },
+  {
+   "name": "night-city",
+   "category": "effects",
+   "size": "5120x1440",
+   "d1": {
+    "ms_per_frame": 5.367,
+    "cpu_ms_per_frame": 1.993,
+    "rss_mb": 1255.0,
+    "gpu_mem_mb": 1711.0,
+    "gpu_util_pct": 68.5,
+    "all_ms": [
+     5.31,
+     5.424
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 3.642,
+    "cpu_ms_per_frame": 1.782,
+    "rss_mb": 1243.5,
+    "gpu_mem_mb": 1711.0,
+    "gpu_util_pct": 100.0,
+    "all_ms": [
+     3.7,
+     3.584
+    ]
+   }
+  },
+  {
+   "name": "lofi-cafe",
+   "category": "text",
+   "size": "5120x1440",
+   "d1": {
+    "ms_per_frame": 6.066,
+    "cpu_ms_per_frame": 3.654,
+    "rss_mb": 447.5,
+    "gpu_mem_mb": 807.0,
+    "gpu_util_pct": 49.0,
+    "all_ms": [
+     6.059,
+     6.074
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 3.066,
+    "cpu_ms_per_frame": 3.205,
+    "rss_mb": 449.5,
+    "gpu_mem_mb": 767.0,
+    "gpu_util_pct": 89.5,
+    "all_ms": [
+     2.864,
+     3.267
+    ]
+   }
+  },
+  {
+   "name": "arknights",
+   "category": "scripts",
+   "size": "5120x1440",
+   "d1": {
+    "ms_per_frame": 7.44,
+    "cpu_ms_per_frame": 5.877,
+    "rss_mb": 574.5,
+    "gpu_mem_mb": 604.0,
+    "gpu_util_pct": 32.0,
+    "all_ms": [
+     7.492,
+     7.388
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 5.312,
+    "cpu_ms_per_frame": 5.641,
+    "rss_mb": 584.0,
+    "gpu_mem_mb": 475.0,
+    "gpu_util_pct": 34.0,
+    "all_ms": [
+     5.332,
+     5.291
+    ]
+   }
+  },
+  {
+   "name": "mermaid-audio",
+   "category": "audio",
+   "size": "5120x1440",
+   "d1": {
+    "ms_per_frame": 1.745,
+    "cpu_ms_per_frame": 0.404,
+    "rss_mb": 640.0,
+    "gpu_mem_mb": 399.0,
+    "gpu_util_pct": 65.5,
+    "all_ms": [
+     1.659,
+     1.831
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 1.484,
+    "cpu_ms_per_frame": 0.446,
+    "rss_mb": 630.5,
+    "gpu_mem_mb": 439.0,
+    "gpu_util_pct": 72.0,
+    "all_ms": [
+     1.501,
+     1.468
+    ]
+   }
+  },
+  {
+   "name": "more-physics",
+   "category": "physics",
+   "size": "5120x1440",
+   "d1": {
+    "ms_per_frame": 236.16,
+    "cpu_ms_per_frame": 228.831,
+    "rss_mb": 549.0,
+    "gpu_mem_mb": 374.0,
+    "gpu_util_pct": 27.0,
+    "all_ms": [
+     233.989,
+     238.331
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 217.597,
+    "cpu_ms_per_frame": 227.978,
+    "rss_mb": 549.5,
+    "gpu_mem_mb": 374.0,
+    "gpu_util_pct": 30.0,
+    "all_ms": [
+     214.715,
+     220.48
+    ]
+   }
+  }
+ ]
+}

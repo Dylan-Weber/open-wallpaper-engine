@@ -1,4 +1,5 @@
 module;
+#include <stdlib.h>
 
 #include <rstd/enum.hpp>
 
@@ -503,6 +504,40 @@ void ParseModelObjImpl(SceneLayerBuildContext& context, wpscene::ModelObject& mo
         shader_info = rstd::move(material_build.shader_info);
         LoadConstvalue(context, scene_mat, *wpmat, shader_info);
 
+        // A run of objects of one mesh with this material can be drawn as one instanced draw
+        // (OWE_SCENE_BATCH, see BatchObjectMatrices) when the shader's only per-object uniforms are the
+        // model and normal matrices; the variant reads them from arrays.
+        static const bool batch_objects = [] {
+            const char* value = getenv("OWE_SCENE_BATCH");
+            return value == nullptr || value[0] != '0';
+        }();
+        if (batch_objects && ! model_puppet_layer.is_some() && scene_mat.customShader.shader.is_some() &&
+            ObjectBatchable(**scene_mat.customShader.shader)) {
+            auto batch = wpmat->clone();
+            (void)batch.combos.insert("OWE_SCENE_BATCH"_Str,
+                                      rstd::as_cast<i32>(owe::kShadowBatchObjects));
+            ShaderInfo batch_info;
+            batch_info.baseConstSvs = context.layer_resources->global_base_uniforms.clone();
+            auto batch_result = BuildMaterial(vfs,
+                                              *context.layer_resources->shader_cache,
+                                              context.layer_resources->shader_environment,
+                                              batch,
+                                              *context.scene,
+                                              rstd::move(batch_info),
+                                              GeometryStageRequirement::None,
+                                              context.load_bench);
+            if (batch_result.is_ok()) {
+                auto built = rstd::move(batch_result).unwrap_unchecked();
+                if (context.scene->TransparentSorting() && wpmat->blending == "translucent"_str &&
+                    wpmat->depthwrite == "enabled"_str)
+                    (void)built.material.SetDepthWrite(true);
+                LoadConstvalue(context, built.material, batch, built.shader_info);
+                context.scene->ResolveMaterialTextureSources(built.material);
+                scene_mat.object_batch_variant =
+                    Some(Arc<SceneMaterial>::make(rstd::move(built.material)));
+            }
+        }
+
         if (node->shadow.cast) {
             scene_mat.shadow_silent = ! BlendingCastsShadow(wpmat->blending.as_str());
             wpscene::Material shadow_material;
@@ -528,35 +563,59 @@ void ParseModelObjImpl(SceneLayerBuildContext& context, wpscene::ModelObject& mo
                     (void)shadow_material.combos.insert(rstd::into(combo), **value);
             }
 
+            // The casters of one mesh can be drawn together, one instance for each object and
+            // view (OWE_SHADOW_BATCH, see StartCasterViewsAtTheirLight): those that sample no
+            // texture and are neither skinned nor morphed, and cast a shadow.
+            bool inherited_enabled {};
+            for (auto combo : inherited_combos) {
+                auto value = wpmat->combos.get(combo);
+                inherited_enabled = inherited_enabled || (value.is_some() && **value != i32(0));
+            }
+            const bool batchable = wpmat->blending != "alphatocoverage"_str &&
+                                   ! scene_mat.shadow_silent && ! inherited_enabled;
+
             // one caster for each shadowed light, drawn with that light's views
             for (const auto& definition : context.scene->ShadowDefinitions()) {
-                auto light_material = shadow_material.clone();
-                (void)light_material.combos.insert("OWE_SHADOW_VIEW_OFFSET"_Str,
-                                                   rstd::as_cast<i32>(definition.view_offset));
-                ShaderInfo shadow_info;
-                shadow_info.baseConstSvs = context.layer_resources->global_base_uniforms.clone();
-                auto shadow_result = BuildMaterial(vfs,
-                                                   *context.layer_resources->shader_cache,
-                                                   context.layer_resources->shader_environment,
-                                                   light_material,
-                                                   *context.scene,
-                                                   rstd::move(shadow_info),
-                                                   GeometryStageRequirement::None,
-                                                   context.load_bench);
-                if (shadow_result.is_err()) {
-                    rstd_warn("load shadow material '{}' failed for '{}'",
-                              light_material.shader,
-                              model_obj.name);
-                    break;
+                auto build_variant = [&](wpscene::Material light_material)
+                    -> Option<Arc<SceneMaterial>> {
+                    (void)light_material.combos.insert("OWE_SHADOW_VIEW_OFFSET"_Str,
+                                                       rstd::as_cast<i32>(definition.view_offset));
+                    ShaderInfo shadow_info;
+                    shadow_info.baseConstSvs = context.layer_resources->global_base_uniforms.clone();
+                    auto shadow_result = BuildMaterial(vfs,
+                                                       *context.layer_resources->shader_cache,
+                                                       context.layer_resources->shader_environment,
+                                                       light_material,
+                                                       *context.scene,
+                                                       rstd::move(shadow_info),
+                                                       GeometryStageRequirement::None,
+                                                       context.load_bench);
+                    if (shadow_result.is_err()) {
+                        rstd_warn("load shadow material '{}' failed for '{}'",
+                                  light_material.shader,
+                                  model_obj.name);
+                        return None();
+                    }
+                    auto shadow_build = rstd::move(shadow_result).unwrap_unchecked();
+                    shadow_build.material.SetPipeline(
+                        ShadowCasterPipeline(shadow_build.material.Pipeline()));
+                    LoadConstvalue(
+                        context, shadow_build.material, light_material, shadow_build.shader_info);
+                    context.scene->ResolveMaterialTextureSources(shadow_build.material);
+                    return Some(Arc<SceneMaterial>::make(rstd::move(shadow_build.material)));
+                };
+                auto variant = build_variant(shadow_material.clone());
+                if (variant.is_none()) break;
+                scene_mat.shadow_variants.push(rstd::move(*variant));
+                if (batchable && scene_mat.shadow_batch_variants.len() + usize(1) ==
+                                     scene_mat.shadow_variants.len()) {
+                    auto batch = shadow_material.clone();
+                    batch.textures.clear();
+                    (void)batch.combos.insert("OWE_SHADOW_BATCH"_Str,
+                                              rstd::as_cast<i32>(owe::kShadowBatchObjects));
+                    auto built = build_variant(rstd::move(batch));
+                    if (built.is_some()) scene_mat.shadow_batch_variants.push(rstd::move(*built));
                 }
-                auto shadow_build = rstd::move(shadow_result).unwrap_unchecked();
-                shadow_build.material.SetPipeline(
-                    ShadowCasterPipeline(shadow_build.material.Pipeline()));
-                LoadConstvalue(
-                    context, shadow_build.material, light_material, shadow_build.shader_info);
-                context.scene->ResolveMaterialTextureSources(shadow_build.material);
-                scene_mat.shadow_variants.push(
-                    Arc<SceneMaterial>::make(rstd::move(shadow_build.material)));
             }
         }
 

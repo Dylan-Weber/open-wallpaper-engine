@@ -148,14 +148,22 @@ struct MediaStatus {
     String   album_artist;
     String   art_url;
     String   previous_art_url;
-    auto     clone() const -> MediaStatus {
+    // mediaStatusChanged: whether the user has media integration on
+    bool enabled { true };
+    // mediaTimelineChanged: the track's position and length in seconds, for players that report them
+    double position { 0 };
+    double duration { 0 };
+    auto   clone() const -> MediaStatus {
         return { state,
                  title.clone(),
                  artist.clone(),
                  album.clone(),
                  album_artist.clone(),
                  art_url.clone(),
-                 previous_art_url.clone() };
+                 previous_art_url.clone(),
+                 enabled,
+                 position,
+                 duration };
     }
 };
 
@@ -376,6 +384,12 @@ public:
     // export and stores the coerced return into FieldScript::last_value().
     // Exceptions are caught and logged once per script_sha.
     void TickAll(slice<owe::SceneAnimationEventDispatch> animation_events = {});
+    // Start a tick on the engine thread and return at once; WaitTick collects it. The events must outlive the tick.
+    void TickAllAsync(slice<owe::SceneAnimationEventDispatch> animation_events = {});
+    void WaitTick();
+    bool AsyncTickAllowed();
+    // The camera as scripts started early are to see it (see BeginSceneScripts).
+    void SetCameraSnapshot(bool has, const owe::SceneCameraTransforms& transforms, double scene_fov);
 
     // Walk every live FieldScript created by this runtime. Caller-provided
     // function gets a non-owning pointer; the renderer uses this to push
@@ -499,6 +513,42 @@ ScriptApply MakeNodeVolumeApply(Arc<owe::SceneNode> node);
 // Build the closure that drives a SceneNode color field.
 ScriptApply MakeNodeColorApply(Arc<owe::SceneNode> node);
 
+// The scene gate. While the scripts of the next frame run on the engine thread alongside the render thread, only one of
+// the two may touch the scene at a time. The render thread holds the gate whenever it does (it takes it at the start of
+// every message it handles and when it starts the scripts); the engine thread takes it for every native callback and for
+// the parts of a tick that read the scene, so pure script computation runs concurrently and any host call waits. A thread
+// that calls into the engine gives up its gate first (otherwise it would wait for the engine while the engine waits for it).
+// Holds nest per thread. Inactive (a plain mutex nobody takes) unless scripts are running asynchronously.
+class SceneGate {
+public:
+    // The gate proper: everything but layer transforms.
+    static void Acquire();
+    static void Release();
+    // The transform gate: the layers' origin, angles and scale. The render thread lets go of it while it records a frame
+    // (recording does not read them), so the scripts can read and write transforms then and only then.
+    static void AcquireTransforms();
+    static void ReleaseTransforms();
+    // The render thread's side: both gates.
+    static void AcquireRender();
+    static void ReleaseRender();
+    // Lets go of the transform gate for the recording of a frame, and takes it back at the same depth.
+    static int  SuspendTransforms();
+    static void ResumeTransforms(int depth);
+    static void ReleaseAll();
+    static bool Active() noexcept;
+    // Takes both gates for the life of the object when scripts are running asynchronously.
+    class Hold {
+    public:
+        Hold();
+        ~Hold();
+        Hold(const Hold&)            = delete;
+        Hold& operator=(const Hold&) = delete;
+
+    private:
+        bool m_took { false };
+    };
+};
+
 // Owns one JsRuntime + the actuator list for one Scene. Constructed and
 // populated by the parser, then installed as a Scene extension.
 class ScriptScene : NoCopy, NoMove {
@@ -515,6 +565,14 @@ public:
     // results into actuators. Call once per frame, before the renderer
     // begins drawing.
     void Tick(const FrameInputs& fi, slice<owe::SceneAnimationEventDispatch> animation_events = {});
+    void ApplyActuators();
+
+    // Tick(), split in two so the scripts can run while the render thread waits for the GPU: BeginTick pushes the inputs
+    // and starts the scripts on the engine thread; FinishTick waits for them and applies their results. The events are
+    // kept alive until then.
+    void BeginTick(const FrameInputs& fi, Vec<owe::SceneAnimationEventDispatch> animation_events);
+    void FinishTick();
+    bool TickPending() const noexcept;
 
     struct Impl;
     Box<Impl> m_impl;
@@ -527,6 +585,12 @@ void InstallScriptScene(owe::Scene& scene, Box<ScriptScene> script_scene);
 // drives one frame. No-op when no ScriptScene is installed (image-only
 // pkgs, scenes without script bindings).
 void TickSceneScripts(owe::Scene& scene, const FrameInputs& fi);
+
+// Start the scripts of the next frame early, so that they run on the engine thread while the render thread finishes the
+// previous frame (the state they read is the same: nothing changes the scene between a frame's submission and the next
+// prepare). The next TickSceneScripts then collects the results instead of running the scripts. Returns whether the
+// scripts were started (and the frame's node field animations ticked, which prepare() then skips).
+bool BeginSceneScripts(owe::Scene& scene, const FrameInputs& fi);
 
 // Patch `engine.userProperties` on the ScriptScene attached to `scene`.
 // No-op when the scene has no script runtime.
