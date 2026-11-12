@@ -1,6 +1,7 @@
 module;
 
 #include <rstd/macro.hpp>
+#include <cstdlib>
 
 module wescene.scene;
 import eigen;
@@ -780,6 +781,10 @@ void RenderSceneSnapshot::Rebuild(Scene& scene, RenderSceneVersion version) {
     for (const auto& definition : scene.ShadowDefinitions()) {
         m_shadow_definitions.push(definition.Clone());
     }
+    // The shadow maps of lights that do not light now are not drawn; ConsumeRenderGraphDirty
+    // rebuilds the graph when that changes.
+    const auto shadow_mask = scene.ShadowLightMask();
+    scene.RecordRenderGraphShadowLightMask(shadow_mask);
 
     Vec<String> texture_keys;
     auto        texture_names = scene.TextureNames();
@@ -879,17 +884,49 @@ void RenderSceneSnapshot::Rebuild(Scene& scene, RenderSceneVersion version) {
             continue;
         }
         const auto& variants = view->material->shadow_variants;
-        for (usize definition {};
-             definition < rstd::cmp::min(variants.len(), m_shadow_definitions.len());
-             ++definition) {
+        // One draw per run of lit definitions whose views follow each other (at most 16 viewports,
+        // the least a device has): the caster shader draws one instance for each view.
+        // OWE_SHADOW_MERGE=0 draws every light's casters separately (to compare the two ways)
+        static const bool merge = [] {
+            const char* value = std::getenv("OWE_SHADOW_MERGE");
+            return value == nullptr || value[0] != '0';
+        }();
+        const usize available = rstd::cmp::min(variants.len(), m_shadow_definitions.len());
+        usize       definition {};
+        while (definition < available) {
+            if (definition.to_primitive() < 64 &&
+                ((shadow_mask >> definition.to_primitive()) & rstd::uint64_t(1)) == 0) {
+                ++definition;
+                continue;
+            }
+            usize count { 1 };
+            u32   views = rstd::as_cast<u32>(m_shadow_definitions[definition].viewports.len());
+            while (definition + count < available) {
+                const auto next = definition + count;
+                const auto& previous = m_shadow_definitions[next - usize(1)];
+                const auto& current  = m_shadow_definitions[next];
+                const bool  lit =
+                    next.to_primitive() >= 64 ||
+                    ((shadow_mask >> next.to_primitive()) & rstd::uint64_t(1)) != 0;
+                const u32 more = rstd::as_cast<u32>(current.viewports.len());
+                if (! merge || ! lit || current.view_offset != previous.view_offset + rstd::as_cast<u32>(previous.viewports.len()) ||
+                    current.target != previous.target || views + more > u32(16))
+                    break;
+                views += more;
+                ++count;
+            }
             m_shadow_casters.push(RenderShadowCasterRecord {
-                .render_item = id,
-                .material    = variants[definition].clone(),
-                .instance_count =
-                    rstd::as_cast<u32>(m_shadow_definitions[definition].viewports.len()),
-                .silent     = view->material->shadow_silent,
-                .definition = definition,
+                .render_item      = id,
+                .material         = variants[definition].clone(),
+                .batch_material   = definition < view->material->shadow_batch_variants.len()
+                                        ? Some(view->material->shadow_batch_variants[definition].clone())
+                                        : None<Arc<SceneMaterial>>(),
+                .instance_count   = views,
+                .silent           = view->material->shadow_silent,
+                .definition       = definition,
+                .definition_count = count,
             });
+            definition += count;
         }
     }
 
@@ -1550,7 +1587,10 @@ Scene::Scene()
     RegisterNode(*m_scene_graph);
     m_runtime.RegisterSystem(SceneTextureAnimationRuntime { m_texture_animations });
 }
-Scene::~Scene() = default;
+Scene::~Scene() {
+    if (m_shadow_batch_release != nullptr && m_shadow_batch_context != nullptr)
+        m_shadow_batch_release(m_shadow_batch_context);
+}
 
 SceneNodeId Scene::RegisterNode(SceneNode& node, Option<WallpaperLayerId> wallpaper) {
     if (! node.m_identity.Valid() || node.m_identity.generation != m_resource_generation) {
@@ -2871,12 +2911,48 @@ void Scene::MarkLayerVisibilityElidable(WallpaperLayerId id) {
     (void)m_elidable_layer_ids.insert(id.value);
 }
 
+bool SceneLightLightsNow(const SceneLight& light) {
+    if (light.node() == nullptr || ! light.runtimeVisible()) return false;
+    for (const SceneNode* node = light.node(); node != nullptr; node = node->Parent()) {
+        if (! node->Visible()) return false;
+    }
+    return true;
+}
+
+auto Scene::ShadowLightMask() const -> rstd::uint64_t {
+    rstd::uint64_t mask {};
+    const auto     definitions = m_shadow_definitions.as_slice();
+    const auto     lights      = Lights();
+    for (usize d {}; d < definitions.len() && d.to_primitive() < 64; ++d) {
+        bool lit = true; // no light to ask: draw it
+        for (const auto& light : lights) {
+            const auto view = light->desc().shadow_view;
+            if (view < i32() || u32(rstd::as_cast<rstd::uint32_t>(view)) != definitions[d].view_offset) continue;
+            lit = SceneLightLightsNow(*light);
+            break;
+        }
+        if (lit) mask |= rstd::uint64_t(1) << d.to_primitive();
+    }
+    if (mask == 0 && ! definitions.is_empty()) mask = 1;
+    return mask;
+}
+
 bool Scene::ConsumeRenderGraphDirty() {
     const bool elision_changed =
         ! same_ids(m_elidable_layer_ids, m_render_graph_elidable_layer_ids);
     const bool scene_node_visibility_changed =
         ! same_ids(m_hidden_scene_node_ids, m_render_graph_hidden_scene_node_ids);
-    const bool dirty     = m_render_graph_dirty || elision_changed || scene_node_visibility_changed;
+    // Before any graph was built there is nothing to differ from: adopt the current mask.
+    const auto shadow_mask = ShadowLightMask();
+    const bool shadow_changed =
+        m_render_graph_shadow_light_mask_recorded && shadow_mask != m_render_graph_shadow_light_mask;
+    if (! m_render_graph_shadow_light_mask_recorded) {
+        m_render_graph_shadow_light_mask          = shadow_mask;
+        m_render_graph_shadow_light_mask_recorded = true;
+    }
+    const bool dirty =
+        m_render_graph_dirty || elision_changed || scene_node_visibility_changed || shadow_changed;
+    if (shadow_changed) m_render_graph_shadow_light_mask = shadow_mask;
     m_render_graph_dirty = false;
     if (elision_changed) m_render_graph_elidable_layer_ids = m_elidable_layer_ids.clone();
     if (scene_node_visibility_changed)

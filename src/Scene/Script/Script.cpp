@@ -2,7 +2,15 @@ module;
 
 #include <rstd/macro.hpp>
 #include <rstd/enum.hpp>
+#include <atomic>
+#include <cstdio>
+#include <cstdlib>
+#include <chrono>
 #include <cmath>
+#include <mutex>
+#include <functional>
+#include <optional>
+#include <type_traits>
 #include "quickjs.h"
 
 module wescene.script;
@@ -29,6 +37,158 @@ using rstd::sync::Arc;
 
 namespace owe::script
 {
+
+// Runs f on the thread that owns the JavaScript engine. The SpiderMonkey backend gives each runtime a thread of its own
+// and forwards every engine call made from elsewhere to it; one hop per call is too slow for the many small calls a
+// frame makes, so the public entry points run whole on the engine thread and their inner calls stay direct.
+// With QuickJS this just calls f.
+#ifdef OWE_JS_SPIDERMONKEY
+extern "C" void owe_js_run_on_engine(JSRuntime*, void (*)(void*), void*);
+extern "C" void owe_js_post_on_engine(JSRuntime*, void (*)(void*), void*);
+extern "C" void owe_js_sync_engine(JSRuntime*);
+template<class F>
+auto OnEngine(JSRuntime* rt, F&& f) -> decltype(f()) {
+    using R = decltype(f());
+    if constexpr (std::is_void_v<R>) {
+        owe_js_run_on_engine(
+            rt, [](void* p) { (*static_cast<std::remove_reference_t<F>*>(p))(); }, &f);
+    } else {
+        std::optional<R> result;
+        auto             run = [&] { result.emplace(f()); };
+        owe_js_run_on_engine(
+            rt, [](void* p) { (*static_cast<decltype(run)*>(p))(); }, &run);
+        return std::move(*result);
+    }
+}
+#else
+template<class F>
+auto OnEngine(JSRuntime*, F&& f) -> decltype(f()) {
+    return f();
+}
+#endif
+
+namespace
+{
+std::mutex       g_scene_gate, g_transform_gate;
+std::atomic<int> g_gate_active { 0 };
+std::atomic<unsigned long long> g_gate_waits { 0 }, g_gate_wait_ns { 0 };
+thread_local int t_gate_depth = 0, t_xform_depth = 0;
+
+void LockCounting(std::mutex& m) {
+    if (m.try_lock()) return;
+    // contended: count it (OWE_JS_DEBUG prints the totals when a runtime is destroyed)
+    const auto t0 = std::chrono::steady_clock::now();
+    m.lock();
+    const auto ns = (unsigned long long)std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count();
+    g_gate_waits.fetch_add(1, std::memory_order_relaxed);
+    g_gate_wait_ns.fetch_add(ns, std::memory_order_relaxed);
+}
+} // namespace
+
+void SceneGate::Acquire() {
+    if (t_gate_depth++ == 0) LockCounting(g_scene_gate);
+}
+void SceneGate::Release() {
+    if (t_gate_depth > 0 && --t_gate_depth == 0) g_scene_gate.unlock();
+}
+void SceneGate::AcquireTransforms() {
+    if (t_xform_depth++ == 0) LockCounting(g_transform_gate);
+}
+void SceneGate::ReleaseTransforms() {
+    if (t_xform_depth > 0 && --t_xform_depth == 0) g_transform_gate.unlock();
+}
+void SceneGate::AcquireRender() {
+    Acquire();
+    AcquireTransforms();
+}
+void SceneGate::ReleaseRender() {
+    ReleaseTransforms();
+    Release();
+}
+int SceneGate::SuspendTransforms() {
+    const int depth = t_xform_depth;
+    if (depth > 0) {
+        t_xform_depth = 0;
+        g_transform_gate.unlock();
+    }
+    return depth;
+}
+void SceneGate::ResumeTransforms(int depth) {
+    if (depth > 0) {
+        LockCounting(g_transform_gate);
+        t_xform_depth = depth;
+    }
+}
+void SceneGate::ReleaseAll() {
+    if (t_xform_depth > 0) {
+        t_xform_depth = 0;
+        g_transform_gate.unlock();
+    }
+    if (t_gate_depth > 0) {
+        t_gate_depth = 0;
+        g_scene_gate.unlock();
+    }
+}
+bool SceneGate::Active() noexcept { return g_gate_active.load(std::memory_order_acquire) > 0; }
+SceneGate::Hold::Hold() {
+    if (Active()) {
+        AcquireRender();
+        m_took = true;
+    }
+}
+SceneGate::Hold::~Hold() {
+    if (m_took) ReleaseRender();
+}
+
+// Holds the gate for a scope, for natives that the engine runs without it and that sometimes need the scene.
+struct GateScope {
+    GateScope() {
+        if (SceneGate::Active()) {
+            SceneGate::Acquire();
+            m_took = true;
+        }
+    }
+    ~GateScope() {
+        if (m_took) SceneGate::Release();
+    }
+    GateScope(const GateScope&)            = delete;
+    GateScope& operator=(const GateScope&) = delete;
+
+private:
+    bool m_took { false };
+};
+// The same for the transform gate.
+struct TransformGateScope {
+    TransformGateScope() {
+        if (SceneGate::Active()) {
+            SceneGate::AcquireTransforms();
+            m_took = true;
+        }
+    }
+    ~TransformGateScope() {
+        if (m_took) SceneGate::ReleaseTransforms();
+    }
+    TransformGateScope(const TransformGateScope&)            = delete;
+    TransformGateScope& operator=(const TransformGateScope&) = delete;
+
+private:
+    bool m_took { false };
+};
+
+#ifdef OWE_JS_SPIDERMONKEY
+extern "C" void owe_js_set_gate(JSRuntime*, void (*)(void*), void (*)(void*), void (*)(void*), void (*)(void*, bool), void*);
+extern "C" void owe_js_gate_exempt(JSRuntime*, void*);
+namespace
+{
+void GateLockFn(void*) { SceneGate::Acquire(); }
+void GateUnlockFn(void*) { SceneGate::Release(); }
+void GateReleaseAllFn(void*) { SceneGate::ReleaseAll(); }
+void GateNotifyFn(void*, bool on) {
+    if (on) g_gate_active.fetch_add(1, std::memory_order_acq_rel);
+    else g_gate_active.fetch_sub(1, std::memory_order_acq_rel);
+}
+} // namespace
+#endif
 
 using conversion::CoerceInitialValue;
 using conversion::CoerceReturn;
@@ -65,6 +225,12 @@ struct ScriptLayerState {
 };
 
 struct EngineHostState {
+    // The camera as it was when the scripts of this frame were started early (see BeginSceneScripts): reads of it during
+    // that tick do not touch the scene. Cleared as soon as a script writes the camera, and at the end of the tick.
+    bool                     camera_snapshot_valid { false };
+    bool                     camera_snapshot_has { false };
+    owe::SceneCameraTransforms camera_snapshot {};
+    double                   scene_fov_snapshot { 0 };
     // A field script's init is running: Wallpaper Engine leaves the camera alone for what it sets
     // then.
     bool                            in_field_init { false };
@@ -346,6 +512,11 @@ Option<ref<str>> FieldScript::WorkshopId() const noexcept {
 // ---------------------------------------------------------------------------
 
 struct JsRuntime::Impl {
+    std::function<void()> async_fn;
+    // whether any script follows an animated property (read from the scene), for the scripts' tick; cached per script count
+    bool  animated_scripts { false };
+    bool  animated_known { false };
+    usize animated_scripts_count {};
     JSRuntime*      rt { nullptr };
     JSContext*      ctx { nullptr };
     EngineHostState host;
@@ -1394,6 +1565,7 @@ int MaterialSetProperty(JSContext* ctx, JSValueConst obj, JSAtom atom, JSValueCo
 // --- property accessors -----------------------------------------------------
 
 JSValue NodeGetOrigin(JSContext* ctx, JSValueConst this_val) {
+    TransformGateScope transform_gate;  // run by the engine without the scene gate
     auto* n = GetLayerNode(this_val);
     if (! n) return MakeVec3(ctx, 0, 0, 0);
     auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
@@ -1408,6 +1580,7 @@ JSValue NodeGetOrigin(JSContext* ctx, JSValueConst this_val) {
     return MakeVec3(ctx, v.x(), v.y(), v.z());
 }
 JSValue NodeSetOrigin(JSContext* ctx, JSValueConst this_val, JSValueConst val) {
+    TransformGateScope transform_gate;  // run by the engine without the scene gate
     auto* n = GetLayerNode(this_val);
     if (! n) return JS_UNDEFINED;
     double x = 0, y = 0, z = 0;
@@ -1424,12 +1597,14 @@ JSValue NodeSetOrigin(JSContext* ctx, JSValueConst this_val, JSValueConst val) {
     return JS_UNDEFINED;
 }
 JSValue NodeGetScale(JSContext* ctx, JSValueConst this_val) {
+    TransformGateScope transform_gate;  // run by the engine without the scene gate
     auto* n = GetLayerNode(this_val);
     if (! n) return MakeVec3(ctx, 1, 1, 1);
     auto v = n->Scale();
     return MakeVec3(ctx, v.x(), v.y(), v.z());
 }
 JSValue NodeSetScale(JSContext* ctx, JSValueConst this_val, JSValueConst val) {
+    TransformGateScope transform_gate;  // run by the engine without the scene gate
     auto* n = GetLayerNode(this_val);
     if (! n) return JS_UNDEFINED;
     double x = 0, y = 0, z = 0;
@@ -1441,12 +1616,14 @@ JSValue NodeSetScale(JSContext* ctx, JSValueConst this_val, JSValueConst val) {
 constexpr double kRadToDeg = 180.0 / f64::consts::PI.to_primitive();
 constexpr double kDegToRad = f64::consts::PI.to_primitive() / 180.0;
 JSValue          NodeGetAngles(JSContext* ctx, JSValueConst this_val) {
+    TransformGateScope transform_gate;  // run by the engine without the scene gate
     auto* n = GetLayerNode(this_val);
     if (! n) return MakeVec3(ctx, 0, 0, 0);
     auto v = n->Rotation();
     return MakeVec3(ctx, v.x() * kRadToDeg, v.y() * kRadToDeg, v.z() * kRadToDeg);
 }
 JSValue NodeSetAngles(JSContext* ctx, JSValueConst this_val, JSValueConst val) {
+    TransformGateScope transform_gate;  // run by the engine without the scene gate
     auto* n = GetLayerNode(this_val);
     if (! n) return JS_UNDEFINED;
     double x = 0, y = 0, z = 0;
@@ -1714,6 +1891,10 @@ JSValue NodeSetIgnore(JSContext*, JSValueConst, JSValueConst) { return JS_UNDEFI
 JSValue NodeGetFov(JSContext* ctx, JSValueConst this_val) {
     auto* node = GetLayerNode(this_val);
     auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    // (run without the scene gate by the engine: the scene's own field comes from the snapshot when scripts started early)
+    if (host != nullptr && host->camera_snapshot_valid && host->scene != nullptr && node == host->scene_root)
+        return JS_NewFloat64(ctx, host->scene_fov_snapshot);
+    GateScope gate;
     if (node == nullptr || host == nullptr || host->scene == nullptr) return JS_UNDEFINED;
     if (node == host->scene_root) return JS_NewFloat64(ctx, host->scene->SceneFov());
     auto path = host->scene->CameraPathOfNode(node);
@@ -1724,6 +1905,7 @@ JSValue NodeGetFov(JSContext* ctx, JSValueConst this_val) {
 JSValue NodeSetFov(JSContext* ctx, JSValueConst this_val, JSValueConst value) {
     auto* node = GetLayerNode(this_val);
     auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    if (host) host->camera_snapshot_valid = false;
     if (node == nullptr || host == nullptr || host->scene == nullptr) return JS_UNDEFINED;
     auto   path = host->scene->CameraPathOfNode(node);
     double fov {};
@@ -2524,7 +2706,14 @@ JSValue NodeSceneGetInitialLayerConfig(JSContext* ctx, JSValueConst, int argc, J
 JSValue NodeSceneGetCameraTransforms(JSContext* ctx, JSValueConst, int, JSValueConst*) {
     auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
     if (! host || ! host->scene) return JS_ThrowTypeError(ctx, "scene camera is not available");
-    auto transforms = host->scene->ScriptCameraTransforms();
+    // (run without the scene gate: from the snapshot when scripts started early, else under the gate)
+    Option<owe::SceneCameraTransforms> transforms;
+    if (host->camera_snapshot_valid) {
+        if (host->camera_snapshot_has) transforms = Some(host->camera_snapshot);
+    } else {
+        GateScope gate;
+        transforms = host->scene->ScriptCameraTransforms();
+    }
     if (transforms.is_none()) return JS_ThrowTypeError(ctx, "active scene camera is not available");
 
     JSValue out = JS_NewObject(ctx);
@@ -2566,6 +2755,8 @@ bool ReadOptionalCameraVector(JSContext* ctx, JSValueConst object, const char* n
 
 JSValue NodeSceneSetCameraTransforms(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
     auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    GateScope gate;  // a write: the engine runs this native without the gate
+    if (host) host->camera_snapshot_valid = false;
     if (! host || ! host->scene) return JS_ThrowTypeError(ctx, "scene camera is not available");
     if (argc < 1 || ! JS_IsObject(argv[0]))
         return JS_ThrowTypeError(ctx, "camera transforms must be an object");
@@ -3982,13 +4173,29 @@ JsRuntime::JsRuntime(): m_impl(Box<Impl>::make()) {
         rstd_error("script: JS_NewRuntime/JS_NewContext failed");
         return;
     }
+    // Everything below is hundreds of engine calls (classes, globals, the bootstrap script): run it on the engine thread.
+#ifdef OWE_JS_SPIDERMONKEY
+    owe_js_set_gate(m_impl->rt, GateLockFn, GateUnlockFn, GateReleaseAllFn, GateNotifyFn, nullptr);
+    // natives that read only the engine's own state (the frame inputs), or take the gate themselves when they need the scene
+    for (void* fn : { reinterpret_cast<void*>(&EngineGetterFrametime), reinterpret_cast<void*>(&EngineGetterRuntime),
+                      reinterpret_cast<void*>(&EngineGetterTimeOfDay), reinterpret_cast<void*>(&EngineGetterScreenRes),
+                      reinterpret_cast<void*>(&NodeSceneGetCameraTransforms), reinterpret_cast<void*>(&NodeGetFov),
+                      reinterpret_cast<void*>(&NodeSceneSetCameraTransforms), reinterpret_cast<void*>(&NodeSetFov) })
+        owe_js_gate_exempt(m_impl->rt, fn);
+    for (void* fn : { reinterpret_cast<void*>(&NodeGetOrigin), reinterpret_cast<void*>(&NodeSetOrigin),
+                      reinterpret_cast<void*>(&NodeGetAngles), reinterpret_cast<void*>(&NodeSetAngles),
+                      reinterpret_cast<void*>(&NodeGetScale), reinterpret_cast<void*>(&NodeSetScale) })
+        owe_js_gate_exempt(m_impl->rt, fn);
+#endif
+    OnEngine(m_impl->rt, [&]() -> void {
     // QuickJS's default stack-overflow check is conservative (relative to
     // the OS thread stack at runtime init). When the wallpaper renderer
     // runs scripts from a deep call site (Vulkan render thread, post-
     // particle emission), `new Date()` and similar built-ins hit the
     // stack-frame guard and throw "Maximum call stack size exceeded".
     // Disable the soft check; the OS stack is plenty for clock/audio-
-    // response style scripts in the corpus.
+    // response style scripts in the corpus. (The SpiderMonkey backend reads 0 as "the engine thread's own, large,
+    // limit": recursion there throws a RangeError instead of overflowing the stack.)
     JS_SetMaxStackSize(m_impl->rt, 0);
     JS_SetContextOpaque(m_impl->ctx, &m_impl->host);
     // Built-in ES modules (WEMath, …). Resolves bare `import 'WEMath'`
@@ -4009,6 +4216,7 @@ JsRuntime::JsRuntime(): m_impl(Box<Impl>::make()) {
     // Capture them now so per-script binding can fall back to the stub
     // when no SceneNode is provided.
     CaptureDefaultBindings(m_impl->ctx);
+    });
 }
 
 void ReleaseFieldScriptValues(JSContext* ctx, FieldScript& script) {
@@ -4024,6 +4232,9 @@ void ReleaseFieldScriptValues(JSContext* ctx, FieldScript& script) {
 }
 
 JsRuntime::~JsRuntime() {
+    if (getenv("OWE_JS_DEBUG"))
+        fprintf(stderr, "[js] scene gate: %llu contended acquires, %.1f ms waiting in total (both threads)\n", g_gate_waits.load(), g_gate_wait_ns.load() / 1e6);
+    OnEngine(m_impl->rt, [&]() -> void {
     for (auto& fs : m_impl->scripts) ReleaseFieldScriptValues(m_impl->ctx, *fs);
     for (auto& fs : m_impl->deferred_scripts) ReleaseFieldScriptValues(m_impl->ctx, *fs);
     m_impl->scripts.clear();
@@ -4049,14 +4260,17 @@ JsRuntime::~JsRuntime() {
     for (auto& callback : m_impl->host.ended_callbacks) JS_FreeValue(m_impl->ctx, callback.fn);
     m_impl->host.ended_callbacks.clear();
     PruneSceneLayerBindings(m_impl->ctx, m_impl->host, nullptr);
+    });
     if (m_impl->ctx) JS_FreeContext(m_impl->ctx);
     if (m_impl->rt) JS_FreeRuntime(m_impl->rt);
 }
 
 void JsRuntime::SetFrameInputs(const FrameInputs& fi) {
+    OnEngine(m_impl->rt, [&]() -> void {
     m_impl->host.inputs = fi;
     UpdateInputObject(m_impl->ctx);
     RefreshAudioBuffers(m_impl->ctx, m_impl->host);
+});
 }
 
 void JsRuntime::SetAudioResponseDemand(Option<Arc<AudioResponseDemand>> demand) {
@@ -4091,6 +4305,7 @@ void DispatchGeneralSettings(JSContext* ctx, JsRuntime::Impl* rt, FieldScript* s
 } // namespace
 
 void JsRuntime::SetGeneralSettings(const Json& changes) {
+    OnEngine(m_impl->rt, [&]() -> void {
     auto object = changes.as_object();
     if (object.is_none()) return;
     for (const auto& [key, value] : (**object).iter())
@@ -4102,9 +4317,11 @@ void JsRuntime::SetGeneralSettings(const Json& changes) {
         if (script->m_impl->init_done)
             DispatchGeneralSettings(m_impl->ctx, m_impl.get(), script, changes);
     }
+});
 }
 
 void JsRuntime::SetUserProperty(ref<str> key, const Json& property) {
+    OnEngine(m_impl->rt, [&]() -> void {
     if (! m_impl->ctx) return;
     auto key_bytes = Vec<u8>::from(key.as_bytes());
     key_bytes.push(u8());
@@ -4150,9 +4367,11 @@ void JsRuntime::SetUserProperty(ref<str> key, const Json& property) {
     JS_FreeValue(ctx, props);
     JS_FreeValue(ctx, engine);
     JS_FreeValue(ctx, global);
+});
 }
 
 void JsRuntime::SetUserProperties(const rstd::json::Map& properties) {
+    OnEngine(m_impl->rt, [&]() -> void {
     if (! m_impl->ctx) return;
     JSContext* ctx    = m_impl->ctx;
     JSValue    global = JS_GetGlobalObject(ctx);
@@ -4203,9 +4422,11 @@ void JsRuntime::SetUserProperties(const rstd::json::Map& properties) {
     JS_FreeValue(ctx, props);
     JS_FreeValue(ctx, engine);
     JS_FreeValue(ctx, global);
+});
 }
 
 void JsRuntime::SetMediaStatus(const MediaStatus& status) {
+    OnEngine(m_impl->rt, [&]() -> void {
     if (! m_impl->ctx) return;
     JSContext* ctx         = m_impl->ctx;
     auto&      host        = m_impl->host;
@@ -4249,6 +4470,7 @@ void JsRuntime::SetMediaStatus(const MediaStatus& status) {
         }
     }
     m_impl->host.active_field_script = nullptr;
+});
 }
 
 void JsRuntime::SetAnimationLayerResolvers(AnimationLayerCreator   creator,
@@ -4294,10 +4516,12 @@ void JsRuntime::SetBonePhysicsHandler(BonePhysicsHandler handler) {
 }
 
 void JsRuntime::SetPersistence(PathBuf path) {
+    OnEngine(m_impl->rt, [&]() -> void {
     m_impl->host.ls_path = rstd::move(path);
     m_impl->host.ls_data.clear();
     m_impl->host.ls_pending.clear();
     (void)LoadLocalStorage(&m_impl->host, m_impl->host.ls_path);
+});
 }
 
 namespace
@@ -4306,15 +4530,20 @@ void RunFieldScriptInit(JSContext* ctx, JsRuntime::Impl* rt, FieldScript* fs);
 }
 
 void JsRuntime::SetScene(owe::Scene* scene) {
+    OnEngine(m_impl->rt, [&]() -> void {
     m_impl->host.scene = scene;
     if (scene) m_impl->host.registered_layer_queries = true;
+});
 }
 
 void JsRuntime::InvalidateLayer(owe::SceneNode& node) {
+    OnEngine(m_impl->rt, [&]() -> void {
     InvalidateLayerPointer(rstd::addressof(node));
+});
 }
 
 void JsRuntime::InvalidateLayerPointer(owe::SceneNode* pointer) {
+    OnEngine(m_impl->rt, [&]() -> void {
     auto& host = m_impl->host;
     for (auto& timer : host.deferred) {
         if (timer.dead || ! timer.owner || timer.owner->m_impl->node != pointer) continue;
@@ -4343,11 +4572,14 @@ void JsRuntime::InvalidateLayerPointer(owe::SceneNode* pointer) {
     (void)host.node_origin_hooks.remove(pointer);
     (void)host.image_alignment_hooks.remove(pointer);
     (void)host.initial_layer_configs.remove(pointer);
+});
 }
 
 void JsRuntime::SetInitializationOrder(FieldScript& script, rstd::uint64_t order) {
+    OnEngine(m_impl->rt, [&]() -> void {
     if (script.m_impl->rt != m_impl.get() || script.m_impl->init_done) return;
     script.m_impl->initialization_order = order;
+});
 }
 
 void JsRuntime::RegisterInitialLayerConfig(owe::SceneNode* node, Json config) {
@@ -4362,6 +4594,7 @@ void JsRuntime::SetAuthoredLayerNames(HashSet<String> names) {
 }
 
 void JsRuntime::SetSceneRoot(owe::SceneNode* root) {
+    OnEngine(m_impl->rt, [&]() -> void {
     if (! m_impl->ctx) return;
     if (m_impl->scene_root && m_impl->scene_root != root) {
         auto invalidate_removed = [&](Vec<Box<FieldScript>>& scripts) {
@@ -4396,6 +4629,7 @@ void JsRuntime::SetSceneRoot(owe::SceneNode* root) {
         return a < b || (a == b && left.registration < right.registration);
     });
     for (const auto& entry : pending) RunFieldScriptInit(m_impl->ctx, m_impl.get(), entry.script);
+});
 }
 
 // Wallpaper Engine hands a property script its own copy of the value in each
@@ -4431,12 +4665,79 @@ JSValue CopyFieldValue(JSContext* ctx, JSValueConst value) {
     return copy;
 }
 
+void JsRuntime::TickAllAsync(slice<owe::SceneAnimationEventDispatch> animation_events) {
+#ifdef OWE_JS_SPIDERMONKEY
+    m_impl->async_fn = [this, animation_events] { this->TickAll(animation_events); };
+    owe_js_post_on_engine(
+        m_impl->rt, [](void* p) { (*static_cast<std::function<void()>*>(p))(); }, &m_impl->async_fn);
+#else
+    TickAll(animation_events);
+#endif
+}
+void JsRuntime::SetCameraSnapshot(bool has, const owe::SceneCameraTransforms& transforms, double scene_fov) {
+    OnEngine(m_impl->rt, [&]() -> void {
+        m_impl->host.camera_snapshot_valid = true;
+        m_impl->host.camera_snapshot_has   = has;
+        m_impl->host.camera_snapshot       = transforms;
+        m_impl->host.scene_fov_snapshot    = scene_fov;
+    });
+}
+
+bool JsRuntime::AsyncTickAllowed() {
+    // Animation events are produced by the frame's animation tick, which comes after the early start: a script that
+    // listens to them needs the sequential order.
+    return OnEngine(m_impl->rt, [&]() -> bool {
+        for (usize i {}; i < m_impl->scripts.len(); ++i) {
+            auto* I = m_impl->scripts[i]->m_impl.get();
+            if (I->alive && ! JS_IsUndefined(I->animation_event_fn)) return false;
+        }
+        return true;
+    });
+}
+
+void JsRuntime::WaitTick() {
+#ifdef OWE_JS_SPIDERMONKEY
+    owe_js_sync_engine(m_impl->rt);
+#endif
+}
+
 void JsRuntime::TickAll(slice<owe::SceneAnimationEventDispatch> animation_events) {
+    OnEngine(m_impl->rt, [&]() -> void {
     JSContext* ctx = m_impl->ctx;
     SweepDeferred(ctx, &m_impl->host);
     CallEndedCallbacks(ctx, &m_impl->host);
     RemoveFinishedSinglePlays(&m_impl->host);
     const auto script_count = usize(m_impl->scripts.len().to_primitive());
+    // Run asynchronously, the parts of this tick that read the scene itself (not through a native callback, which the
+    // engine takes the gate for) hold the gate. Most scenes need none of it: no animated properties, no cursor, no events.
+    bool prelude_gate = false;
+    if (SceneGate::Active()) {
+        if (! m_impl->animated_known || m_impl->animated_scripts_count != script_count) {
+            SceneGate::Acquire();
+            bool any = false;
+            for (usize index {}; index < script_count && ! any; ++index) {
+                auto* script = m_impl->scripts[index]->m_impl.get();
+                if (! script->alive || script->init_deferred) continue;
+                any = (script->object_kind == ScriptPropertyObjectKind::AnimationLayer &&
+                       script->animation_layer.is_some() &&
+                       (*script->animation_layer)->FieldAnimation(script->property.as_str()).is_some()) ||
+                      (script->node != nullptr && script->object_kind == ScriptPropertyObjectKind::Layer &&
+                       script->node->HasFieldAnimationTrack(script->property.as_str()));
+            }
+            m_impl->animated_scripts       = any;
+            m_impl->animated_scripts_count = script_count;
+            m_impl->animated_known         = true;
+            SceneGate::Release();
+        }
+        prelude_gate = m_impl->animated_scripts || m_impl->host.inputs.cursor_in_window || ! animation_events.is_empty();
+        if (getenv("OWE_JS_DEBUG")) {
+            static int printed = 0;
+            if (printed++ < 3)
+                fprintf(stderr, "[js] async tick prelude: gate %d (animated scripts %d, cursor in window %d, events %d)\n", (int)prelude_gate,
+                        (int)m_impl->animated_scripts, (int)m_impl->host.inputs.cursor_in_window, (int)(! animation_events.is_empty()));
+        }
+        if (prelude_gate) SceneGate::Acquire();
+    }
 
     // Node animations run before scripts; cached script returns must not erase their values.
     for (usize index {}; index < script_count; ++index) {
@@ -4484,8 +4785,9 @@ void JsRuntime::TickAll(slice<owe::SceneAnimationEventDispatch> animation_events
     // cursorEnter/Leave/Move/Down/Up/Click that the script's module
     // exports. Runs before update() so update can react to state writes
     // the callbacks made this frame.
-    const CursorWorld cursor    = CursorToWorld(m_impl->host.inputs, m_impl->host.scene);
     const bool        in_window = m_impl->host.inputs.cursor_in_window;
+    // (reads the camera: only when there is a cursor to place)
+    const CursorWorld cursor    = in_window ? CursorToWorld(m_impl->host.inputs, m_impl->host.scene) : CursorWorld {};
     const bool        cursor_moved =
         in_window && (! m_impl->cursor_was_in_window ||
                       m_impl->host.inputs.cursor_x != m_impl->previous_cursor_x ||
@@ -4583,6 +4885,7 @@ void JsRuntime::TickAll(slice<owe::SceneAnimationEventDispatch> animation_events
         }
     }
     m_impl->host.active_field_script = nullptr;
+    if (prelude_gate) SceneGate::Release();
 
     for (usize script_index {}; script_index < script_count; ++script_index) {
         auto* fs = m_impl->scripts[script_index].get();
@@ -4623,6 +4926,8 @@ void JsRuntime::TickAll(slice<owe::SceneAnimationEventDispatch> animation_events
         JS_FreeValue(ctx, ret);
     }
     m_impl->host.active_field_script = nullptr;
+    m_impl->host.camera_snapshot_valid = false;
+});
 }
 
 bool JsRuntime::Empty() const noexcept {
@@ -4891,6 +5196,7 @@ FieldScript* JsRuntime::MakeFieldScript(ref<str> source, ref<str> script_sha,
                                         FieldKind field_kind_in, const Json& properties_config,
                                         const Json& initial_value, ScriptBindingContext context,
                                         FieldScriptInitialization initialization) {
+    return OnEngine(m_impl->rt, [&]() -> FieldScript* {
     JSContext* ctx = m_impl->ctx;
     if (! ctx) return nullptr;
     EngineBindingGuard binding_guard(ctx, m_impl->host);
@@ -4981,9 +5287,11 @@ FieldScript* JsRuntime::MakeFieldScript(ref<str> source, ref<str> script_sha,
         if (m_impl->scene_root) RunFieldScriptInit(ctx, m_impl.get(), raw);
     }
     return raw;
+});
 }
 
 bool JsRuntime::InitializeFieldScript(FieldScript& script) {
+    return OnEngine(m_impl->rt, [&]() -> bool {
     if (! m_impl->ctx || ! m_impl->scene_root || script.m_impl->rt != m_impl.get() ||
         ! script.m_impl->alive || ! script.m_impl->init_deferred ||
         script.m_impl->init_in_progress || JS_IsUndefined(script.m_impl->deferred_module))
@@ -5016,6 +5324,7 @@ bool JsRuntime::InitializeFieldScript(FieldScript& script) {
         return true;
     }
     return false;
+});
 }
 
 bool JsRuntime::OwnsDeferredFieldScript(const FieldScript& script) const noexcept {
@@ -5024,6 +5333,7 @@ bool JsRuntime::OwnsDeferredFieldScript(const FieldScript& script) const noexcep
 }
 
 bool JsRuntime::DiscardDeferredFieldScript(FieldScript& script) {
+    return OnEngine(m_impl->rt, [&]() -> bool {
     for (usize index {}; index < m_impl->deferred_scripts.len(); ++index) {
         if (m_impl->deferred_scripts[index].get() != &script) continue;
         for (auto& timer : m_impl->host.deferred) {
@@ -5036,9 +5346,11 @@ bool JsRuntime::DiscardDeferredFieldScript(FieldScript& script) {
         return true;
     }
     return false;
+});
 }
 
 void JsRuntime::PruneInactiveFieldScripts() {
+    OnEngine(m_impl->rt, [&]() -> void {
     usize index {};
     while (index < m_impl->scripts.len()) {
         if (m_impl->scripts[index]->alive()) {
@@ -5048,6 +5360,7 @@ void JsRuntime::PruneInactiveFieldScripts() {
         auto script = m_impl->scripts.remove(index);
         ReleaseFieldScriptValues(m_impl->ctx, *script);
     }
+});
 }
 
 } // namespace owe::script

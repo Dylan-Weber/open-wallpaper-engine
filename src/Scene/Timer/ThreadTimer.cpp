@@ -23,13 +23,29 @@ void ThreadTimer::Start() {
         state->running = true;
     }
     auto thread = rstd::thread::spawn([this] {
+        // Callbacks start one interval apart (start to start), not one interval after the previous one ends: a frame
+        // that takes 4 ms of a 16.7 ms interval otherwise makes a 20.7 ms period, and a 120 fps target tops out below 100.
+        // `anchor` is when the current callback was due; a callback that overran by more than an interval restarts it.
+        auto anchor = rstd::time::Instant::now();
         for (;;) {
             {
                 auto state = m_state.lock().unwrap();
                 if (! state->running) break;
-                m_condition.wait_timeout_while(state, state->interval, [](const State& value) {
-                    return value.running;
-                });
+                for (;;) {
+                    const auto interval_us = rstd::as_cast<u64>(state->interval.as_micros());
+                    const auto elapsed_us  = rstd::as_cast<u64>(anchor.elapsed().as_micros());
+                    if (elapsed_us >= interval_us) {
+                        anchor = elapsed_us >= interval_us * u64(2)
+                                     ? rstd::time::Instant::now()
+                                     : anchor + state->interval;
+                        break;
+                    }
+                    m_condition.wait_timeout_while(
+                        state,
+                        Duration::from_micros(interval_us - elapsed_us),
+                        [](const State& value) { return value.running; });
+                    if (! state->running) break;
+                }
                 if (! state->running) break;
             }
             m_callback->operator()();

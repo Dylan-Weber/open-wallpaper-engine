@@ -1,5 +1,6 @@
 module;
 #include <rstd/macro.hpp>
+#include <set>
 module wescene.vulkan_render;
 import wescene.spec_names;
 import wescene.core;
@@ -14,6 +15,8 @@ using rstd::collections::BTreeSet;
 using rstd::collections::HashMap;
 using rstd::collections::HashSet;
 using rstd::sync::Arc;
+using rstd::hash::DefaultHasher;
+using rstd::hash::hash_into;
 namespace fg = vrento::fg;
 using vrento::pass::ContentRef;
 namespace
@@ -31,6 +34,7 @@ struct ExtraInfo {
     HashMap<String, ContentRef> selected;
     Option<fg::Error>           error;
     fg::Serial                  next_pass { 1 };
+    rstd::uint64_t              last_copy_gate {};
     Arc<SceneImageSource>       image_source;
     Scene*                      scene;
     const RenderSceneSnapshot*  render_scene;
@@ -102,8 +106,13 @@ auto AddTextureCopy(ExtraInfo& extra, ContentRef source, ContentRef target) -> C
     auto output = Remember(extra, extra.textures.output(extra.graph, id, target));
     if (extra.error) return {};
     fg::ResourceRange range { .aspect = extra.textures.shape(extra.graph, source)->aspects };
-    auto              declared =
-        vrento::vulkan::declare_texture_copy_output(extra.graph, id, source, output, range, range);
+    // the gate lets the draw that samples the copy skip it (or shrink it) in frames it is not wanted whole
+    // a snapshot with mips is generated whole from level 0 afterwards: it is always copied whole
+    extra.last_copy_gate = extra.textures.shape(extra.graph, output)->mip_levels > 1
+                               ? rstd::uint64_t()
+                               : vrento::vulkan::copy_gate_allocate();
+    auto declared        = vrento::vulkan::declare_texture_copy_output(
+        extra.graph, id, source, output, range, range, 1, extra.last_copy_gate);
     if (declared.is_err()) {
         extra.error = Some(declared.unwrap_err());
         return {};
@@ -292,6 +301,7 @@ static void AddMaterialTextureReads(SceneMaterial& material, ref<str> pass_outpu
             } else {
                 ImportHistory(extra, *input);
                 input = Some(AddTextureCopy(extra, *input));
+                if (extra.last_copy_gate) pdesc.snapshot_copy_gates.push(rstd::uint64_t(extra.last_copy_gate));
                 (void)snapshots.insert(String::make(key), input->clone());
             }
         }
@@ -433,6 +443,10 @@ static SceneNodeLayer* ToGraphPass(SceneNode* node, ref<str> output, ExtraInfo& 
                 pdesc.output = rstd::into(pass_output_s);
                 AddMaterialTextureReads(
                     *material, pass_output, extra, pass, pdesc, reuses_previous_output);
+                // the node computes which part of the screen its snapshot is read at (a particle's footprint)
+                node->SnapshotGates().clear();
+                if (pass_output == SpecTex_Default)
+                    for (auto gate : pdesc.snapshot_copy_gates) node->SnapshotGates().push(rstd::uint64_t(gate));
 
                 auto output_node =
                     Remember(extra,
@@ -861,6 +875,52 @@ static void EmitPlanarReflectionNode(SceneNode* node, ExtraInfo& extra,
     }
 }
 
+// What decides whether two shadow casters can share a draw: the geometry the draw reads (so the
+// first one's buffers serve the others), and the shader it runs. Both are cloned for every object a
+// script creates, so they are told apart by content, not by identity.
+u64 ShadowGeometryKey(const SceneMesh& mesh, u32 submesh_index) {
+    DefaultHasher seed;
+    const auto&   submeshes = mesh.Submeshes();
+    if (submesh_index.to_primitive() >= submeshes.len().to_primitive()) return u64();
+    const auto& submesh = submeshes[usize(submesh_index.to_primitive())];
+    hash_into(mesh.Primitive() == MeshPrimitive::TRIANGLE, seed);
+    hash_into(submesh.vertex_arrays.len().to_primitive(), seed);
+    for (const auto& array : submesh.vertex_arrays) {
+        hash_into(array.DataSize().to_primitive(), seed);
+        hash_into(array.OneSize().to_primitive(), seed);
+        for (usize i {}; i < array.DataSize(); ++i) {
+            rstd::uint32_t bits;
+            __builtin_memcpy(&bits, array.Data() + i.to_primitive(), sizeof(bits));
+            hash_into(bits, seed);
+        }
+        for (const auto& attribute : array.Attributes()) {
+            hash_into(attribute.name.as_str(), seed);
+            hash_into(rstd::as_cast<u32>(attribute.type).to_primitive(), seed);
+        }
+    }
+    hash_into(submesh.index_arrays.len().to_primitive(), seed);
+    for (const auto& array : submesh.index_arrays) {
+        hash_into(array.DataCount().to_primitive(), seed);
+        for (usize i {}; i < array.DataCount(); ++i) hash_into(array.Data()[i.to_primitive()], seed);
+    }
+    hash_into(submesh.draw_ranges.len().to_primitive(), seed);
+    for (const auto& range : submesh.draw_ranges) {
+        hash_into(range.index_count.to_primitive(), seed);
+        hash_into(range.first_index.to_primitive(), seed);
+    }
+    hash_into(submesh.draw_range_order.is_some(), seed);
+    return u64(seed.finish());
+}
+
+u64 ShadowShaderKey(const SceneMaterial& material) {
+    DefaultHasher seed;
+    if (! material.customShader.shader) return u64();
+    const auto& shader = **material.customShader.shader;
+    hash_into(shader.name.as_str(), seed);
+    for (const auto& code : shader.codes) hash_into(SceneShaderStageCodeHash(code), seed);
+    return u64(seed.finish());
+}
+
 static void EmitShadowPasses(ExtraInfo& extra) {
     if (extra.render_scene == nullptr) return;
     auto definitions = extra.render_scene->ShadowDefinitions();
@@ -868,15 +928,132 @@ static void EmitShadowPasses(ExtraInfo& extra) {
     // the first draw clears the whole atlas; every light's casters draw into its own squares
     bool first = true;
 
-    for (const auto& caster : extra.render_scene->ShadowCasters()) {
+    // Casters of one mesh and shadow material that cast into the same views are drawn together, one
+    // instance for each object and view (OWE_SHADOW_BATCH=0 draws them one by one): a group is the
+    // casters that can share a draw, in the order of the first of each.
+    static const bool batch_casters = [] {
+        const char* value = std::getenv("OWE_SHADOW_BATCH");
+        return value == nullptr || value[0] != '0';
+    }();
+    const auto casters = extra.render_scene->ShadowCasters();
+    struct CasterGroup {
+        u64         mesh {};
+        u64         shader {};
+        usize       definition {}, count {};
+        u32         instances {};
+        Vec<usize>  members;
+    };
+    Vec<CasterGroup> groups;
+    Vec<usize>       group_of;
+    group_of.resize(casters.len(), usize(~rstd::size_t(0)));
+    for (usize index {}; index < casters.len(); ++index) {
+        const auto& caster = casters[index];
+        if (! batch_casters || ! caster.batch_material || caster.silent) continue;
+        const auto* item = extra.render_scene->renderItem(caster.render_item);
+        if (item == nullptr || caster.definition >= definitions.len()) continue;
+        auto draw = extra.scene->ResourceIndex().resolve(item->scene_draw_item);
+        if (draw.is_none() || draw->node == nullptr || draw->mesh == nullptr) continue;
+        CasterGroup key { .mesh       = ShadowGeometryKey(*draw->mesh, item->submesh_index),
+                          .shader     = ShadowShaderKey(**caster.batch_material),
+                          .definition = caster.definition,
+                          .count      = caster.definition_count,
+                          .instances  = caster.instance_count };
+        usize found = groups.len();
+        for (usize g = groups.len(); g > usize() && found == groups.len(); g = g - usize(1)) {
+            const auto& candidate = groups[g - usize(1)];
+            if (candidate.mesh == key.mesh && candidate.shader == key.shader && candidate.definition == key.definition &&
+                candidate.count == key.count && candidate.instances == key.instances)
+                found = g - usize(1);
+        }
+        if (found == groups.len()) groups.push(rstd::move(key));
+        groups[found].members.push(usize(index));
+        group_of[index] = found;
+    }
+    // the members of a group go in runs of at most kShadowBatchObjects; a run's first is its leader
+    Vec<Vec<usize>> run_members;  // by leader's position in `casters`, empty for the others
+    run_members.resize(casters.len(), Vec<usize> {});
+    Vec<bool> batched;
+    batched.resize(casters.len(), false);
+    for (const auto& group : groups)
+        for (usize start {}; start < group.members.len(); start = start + usize(kShadowBatchObjects)) {
+            const auto stop = rstd::cmp::min(start + usize(kShadowBatchObjects), group.members.len());
+            if (stop - start < usize(2)) continue;
+            auto& run = run_members[group.members[start]];
+            for (usize k = start; k < stop; ++k) {
+                run.push(usize(group.members[k]));
+                batched[group.members[k]] = true;
+            }
+        }
+    if (const char* stats = std::getenv("OWE_SHADOW_BATCH_STATS"); stats != nullptr) {
+        usize runs {}, in_runs {};
+        for (usize index {}; index < casters.len(); ++index)
+            if (! run_members[index].is_empty()) {
+                ++runs;
+                in_runs += run_members[index].len();
+            }
+        {
+            // why casters do not share a draw: how many differ in each part of the key
+            std::set<const void*> meshes, shaders;
+            usize                 with_batch {}, silent {};
+            for (const auto& caster : casters) {
+                with_batch += caster.batch_material ? usize(1) : usize();
+                silent += caster.silent ? usize(1) : usize();
+                const auto* item = extra.render_scene->renderItem(caster.render_item);
+                if (item == nullptr) continue;
+                auto draw = extra.scene->ResourceIndex().resolve(item->scene_draw_item);
+                if (draw.is_some() && draw->mesh != nullptr) meshes.insert(static_cast<const void*>(draw->mesh));
+                if (caster.batch_material && (*caster.batch_material)->customShader.shader.is_some())
+                    shaders.insert(static_cast<const void*>(
+                        (*caster.batch_material)->customShader.shader->as_ptr().as_raw_ptr()));
+            }
+            rstd_error("shadow casters: {} with a batch material, {} silent, {} meshes, {} shaders",
+                       with_batch, silent, meshes.size(), shaders.size());
+        }
+        rstd_error("shadow casters: {} in {} batched draws, {} drawn alone, {} groups",
+                   casters.len(),
+                   runs,
+                   casters.len() - in_runs,
+                   groups.len());
+    }
+
+    for (usize caster_index {}; caster_index < casters.len(); ++caster_index) {
+        const auto& caster = casters[caster_index];
+        // the other members of a batch are drawn with its leader
+        if (batched[caster_index] && run_members[caster_index].is_empty()) continue;
         const auto* item = extra.render_scene->renderItem(caster.render_item);
         if (item == nullptr || ! caster.material || caster.definition >= definitions.len())
             continue;
         const auto& definition = definitions[caster.definition];
+        const auto  covered    = caster.definition_count;
         const auto  target     = definition.target.as_str();
         auto        draw       = extra.scene->ResourceIndex().resolve(item->scene_draw_item);
         if (draw.is_none() || draw->node == nullptr || draw->mesh == nullptr) continue;
         extra.scene->ResolveMaterialTextureSources(*caster.material);
+
+        // a batch: its objects, their model-matrix source, and the material that reads them
+        Arc<SceneMaterial>                 draw_material   = caster.material.clone();
+        u32                                draw_instances  = caster.instance_count;
+        Vec<SceneNode*>                    batch_nodes;
+        Option<vrento::UniformSourceOwner> batch_source;
+        if (! run_members[caster_index].is_empty()) {
+            for (const auto& member_index : run_members[caster_index]) {
+                const auto member = member_index;
+                const auto* member_item =
+                    extra.render_scene->renderItem(casters[member].render_item);
+                auto member_draw =
+                    extra.scene->ResourceIndex().resolve(member_item->scene_draw_item);
+                SceneNode* member_node = member_draw->node;
+                batch_nodes.push(rstd::move(member_node));
+            }
+            auto source = extra.scene->MakeShadowBatchSource(batch_nodes.clone(), caster.instance_count);
+            if (source) {
+                batch_source   = Some(vrento::UniformSourceOwner::make(rstd::move(*source)));
+                draw_material  = (*caster.batch_material).clone();
+                draw_instances = caster.instance_count * u32(batch_nodes.len().to_primitive());
+                extra.scene->ResolveMaterialTextureSources(*draw_material);
+            } else
+                batch_nodes.clear();
+        }
 
         EmitDraw(
             extra,
@@ -884,13 +1061,20 @@ static void EmitShadowPasses(ExtraInfo& extra) {
             [&,
              item,
              draw,
-             material       = caster.material.clone(),
-             instance_count = caster.instance_count,
+             material       = draw_material.clone(),
+             instance_count = draw_instances,
+             batch_nodes    = batch_nodes.clone(),
+             batch_source   = batch_source.clone(),
              silent         = caster.silent,
              clear_depth    = first,
+             covered,
+             definitions,
+             first_definition = caster.definition,
              target](fg::PassId pass, vulkan::SceneDraw::Input& input) {
                 auto& pdesc            = input.description;
                 input.updates.node     = Some(mut_ref<SceneNode>::from_raw_parts(draw->node));
+                input.updates.batch_nodes  = batch_nodes.clone();
+                input.updates.batch_source = batch_source.clone();
                 pdesc.draw_item        = item->scene_draw_item;
                 pdesc.render_item      = item->id;
                 pdesc.submesh_index    = item->submesh_index;
@@ -901,24 +1085,25 @@ static void EmitShadowPasses(ExtraInfo& extra) {
                 pdesc.output                    = rstd::into(target);
                 pdesc.clear_depth               = clear_depth;
 
-                pdesc.viewports.reserve(definition.viewports.len());
-                pdesc.scissors.reserve(definition.viewports.len());
-                for (const auto& viewport : definition.viewports) {
-                    pdesc.viewports.push(VkViewport {
-                        .x        = viewport.x.to_primitive(),
-                        .y        = viewport.y.to_primitive(),
-                        .width    = viewport.width.to_primitive(),
-                        .height   = viewport.height.to_primitive(),
-                        .minDepth = 0.0f,
-                        .maxDepth = 1.0f,
-                    });
-                    pdesc.scissors.push(VkRect2D {
-                        .offset = { viewport.scissor_x.to_primitive(),
-                                    viewport.scissor_y.to_primitive() },
-                        .extent = { silent ? 0u : viewport.scissor_width.to_primitive(),
-                                    silent ? 0u : viewport.scissor_height.to_primitive() },
-                    });
-                }
+                // the views of every definition this draw covers, in the scene's order: instance i
+                // draws view i
+                for (usize covered_index {}; covered_index < covered; ++covered_index)
+                    for (const auto& viewport : definitions[first_definition + covered_index].viewports) {
+                        pdesc.viewports.push(VkViewport {
+                            .x        = viewport.x.to_primitive(),
+                            .y        = viewport.y.to_primitive(),
+                            .width    = viewport.width.to_primitive(),
+                            .height   = viewport.height.to_primitive(),
+                            .minDepth = 0.0f,
+                            .maxDepth = 1.0f,
+                        });
+                        pdesc.scissors.push(VkRect2D {
+                            .offset = { viewport.scissor_x.to_primitive(),
+                                        viewport.scissor_y.to_primitive() },
+                            .extent = { silent ? 0u : viewport.scissor_width.to_primitive(),
+                                        silent ? 0u : viewport.scissor_height.to_primitive() },
+                        });
+                    }
 
                 AddMaterialTextureReads(*material, target, extra, pass, pdesc, true);
                 auto atlas = Remember(
@@ -1071,7 +1256,7 @@ auto owe::BuildSceneRenderState(Scene& scene, const RenderSceneSnapshot& render_
     auto buffers = extra.textures.declare_buffers(extra.graph, resource_plan.buffers.as_slice());
     if (buffers.is_err()) return Err(buffers.unwrap_err());
     for (const auto& draw : extra.draws) {
-        auto uses  = draw.source->resourceUses();
+        const auto& uses  = draw.source->resourceUses();
         auto reads = vrento::vulkan::graphics_buffer_reads(
             extra.graph, extra.textures, resource_plan, uses.buffers.as_slice());
         if (reads.is_err()) return Err(reads.unwrap_err());

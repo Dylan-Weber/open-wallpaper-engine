@@ -20,7 +20,9 @@ SceneDraw::SceneDraw(Desc&& desc, UpdateSource source)
 }
 SceneDraw::SceneDraw(Input&& input)
     : SceneDraw(rstd::move(input.description), rstd::move(input.updates)) {}
-SceneDraw::~SceneDraw() {}
+SceneDraw::~SceneDraw() {
+    for (auto gate : m_desc.snapshot_copy_gates) vrento::vulkan::copy_gate_clear(gate);
+}
 
 namespace
 {
@@ -76,6 +78,7 @@ void SceneDraw::captureGeometry() {
 }
 
 PassInvalidationFlags SceneDraw::finalizeResourceRequests(Scene& scene) {
+    m_uses_cache = None();
     PassInvalidationFlags flags = PassInvalidationNone;
     for (auto& binding : m_desc.texture_bindings) {
         auto name = binding.name.as_str();
@@ -161,6 +164,7 @@ PassInvalidationFlags SceneDraw::finalizeResourceRequests(Scene& scene) {
 
 auto SceneDraw::declareResources(ResourceDeclarationContext& context)
     -> Option<vrento::vulkan::GraphicsDrawDesc> {
+    m_uses_cache              = None();
     m_desc.shader_use         = None();
     m_desc.buffer_uses        = {};
     m_desc.uniform_block_uses = {};
@@ -284,7 +288,10 @@ auto SceneDraw::textureAccesses() const -> Vec<PassTextureAccess> {
     return uses;
 }
 
-PassResourceUses SceneDraw::resourceUses() const {
+const PassResourceUses& SceneDraw::resourceUses() const {
+    // Built once: it was rebuilt, a dozen vectors, three times per draw per frame. Whatever changes
+    // the description's uses resets it.
+    if (m_uses_cache) return *m_uses_cache;
     PassResourceUses uses;
     // Texture metadata can supply uniforms even when the sampler is inactive.
     for (const auto& binding : m_desc.texture_bindings) {
@@ -320,7 +327,8 @@ PassResourceUses SceneDraw::resourceUses() const {
     }
     for (const auto& descriptor : m_desc.descriptor_bindings)
         uses.descriptors.push(resource::DescriptorBindingHandle(descriptor.binding));
-    return uses;
+    m_uses_cache = Some(rstd::move(uses));
+    return *m_uses_cache;
 }
 
 auto SceneDraw::pipelineLayoutRequirement(const resource::ShaderArtifact& artifact) const
@@ -648,7 +656,9 @@ auto SceneDraw::createUniformBufferUpdates(ref<dyn<UniformBindingPrepareContext>
                       updates_.material_override
                           ? Some(ref<SceneMaterial>::from_raw_parts(
                                 updates_.material_override->as_ptr().as_raw_ptr()))
-                          : None<ref<SceneMaterial>>());
+                          : None<ref<SceneMaterial>>(),
+                      updates_.batch_source ? Some((*updates_.batch_source).clone())
+                                            : None<vrento::UniformSourceOwner>());
         if (binding.is_err()) return Err(rstd::move(binding).unwrap_err_unchecked());
         updates.push(rstd::move(binding).unwrap_unchecked());
     }
@@ -836,6 +846,7 @@ auto SceneDraw::describeGraphics(const resource::ShaderArtifact& artifact)
 
 auto SceneDraw::resolveResources(const Device& device, DrawResourceContext& context)
     -> Result<empty, DrawPrepareError> {
+    m_uses_cache = None();
     auto missing = [&](DrawResourceKind kind) {
         return Err(DrawPrepareError::Missing(kind, m_desc.render_item));
     };
@@ -1002,7 +1013,16 @@ bool SceneDraw::update(DrawUpdateContext& context) {
     }
 
     visible_ = true;
-    if (m_desc.depth_only && updates_.node.is_some())
+    if (m_desc.depth_only && updates_.batch_nodes.len() > usize(1)) {
+        // a batch is drawn when any of its objects is shown (the others collapse in their matrix)
+        visible_ = false;
+        for (auto* member : updates_.batch_nodes) {
+            bool shown = true;
+            for (auto* node = member; node != nullptr; node = node->Parent())
+                shown &= node->Visible();
+            visible_ |= shown;
+        }
+    } else if (m_desc.depth_only && updates_.node.is_some())
         for (auto* node = updates_.node->as_raw_ptr(); node != nullptr; node = node->Parent())
             visible_ &= node->Visible();
     draws_.clear();
@@ -1027,7 +1047,18 @@ bool SceneDraw::update(DrawUpdateContext& context) {
     } else
         draws_.push({ m_desc.draw_buffers.draw_count.to_primitive(), 0 });
 
+    updateSnapshotCopies();
     return true;
+}
+
+// A snapshot is copied for the draw that samples it: when the draw issues nothing, the copy has no reader.
+void SceneDraw::updateSnapshotCopies() {
+    if (m_desc.snapshot_copy_gates.is_empty()) return;
+    bool empty = ! draws_.is_empty();
+    for (auto draw : draws_) empty &= draw.count == 0;
+    for (auto gate : m_desc.snapshot_copy_gates) {
+        vrento::vulkan::copy_gate_skip(gate, empty || draws_.is_empty());
+    }
 }
 
 void SceneDraw::acknowledgeGeometry() {
@@ -1102,12 +1133,14 @@ auto SceneDraw::frameData(const DrawBindingContext& context) const -> Option<Arc
 }
 
 void SceneDraw::clearResources() {
+    m_uses_cache    = None();
     bindings_ready_ = false;
     m_desc.descriptor_bindings.clear();
     m_desc.draw_buffers = {};
 }
 
 bool SceneDraw::setTextureBinding(u32 index, TextureBindingRequest binding) {
+    m_uses_cache = None();
     const rstd::size_t native_index = index.to_primitive();
     if (native_index >= m_desc.texture_bindings.len().to_primitive()) return false;
     m_desc.texture_bindings[usize(native_index)] = rstd::move(binding);
