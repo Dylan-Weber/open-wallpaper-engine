@@ -123,6 +123,7 @@ sources = [
   "src/Scene/Timer/FrameTimer.cpp",
   "src/Scene/Timer/ThreadTimer.cppm",
   "src/Scene/Timer/ThreadTimer.cpp",
+  "src/Scene/Timer/Perf.cppm",
   "src/Scene/Timer/Timer.cppm",
   "src/Scene/VulkanRender/BufferResolver.cppm",
   "src/Scene/VulkanRender/BufferResolver.cpp",
