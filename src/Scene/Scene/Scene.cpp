@@ -2065,7 +2065,7 @@ void Scene::RegisterUserTextBinding(String key, Box<dyn<FnMut<void(ref<str>)>>> 
 }
 
 bool Scene::ApplyUserTextBindings(ref<str> key, const Json& property) {
-    auto value = SceneJsonScalarString(SceneUserPropertyPayload(property));
+    auto value = SceneUserTextValue(property);
     if (value.is_none()) return false;
     return m_text_user_index.Apply(key, value->as_str());
 }

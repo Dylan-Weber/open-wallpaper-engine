@@ -2063,6 +2063,41 @@ TEST(SceneUserTextBinding, AppliesEmptyString) {
     EXPECT_TRUE(value.empty());
 }
 
+// Wallpaper Engine's text layers take only a string value; a boolean or a number leaves the layer's
+// own text (the Pixels wallpaper binds a layer to a heading label whose value is false and shows nothing).
+TEST(SceneUserTextBinding, OnlyStringValuesReplaceTheText) {
+    owe::Scene  scene;
+    std::string value = "authored";
+    int         calls = 0;
+    scene.RegisterUserTextBinding(String::make("title"_str),
+                                  Box<dyn<FnMut<void(ref<str>)>>>::make([&](ref<str> next) {
+                                      value = to_string(next);
+                                      ++calls;
+                                  }));
+
+    for (auto json : { R"({"type":"text","value":false})"_str,
+                       R"({"type":"text","value":true})"_str,
+                       R"({"type":"bool","value":true})"_str,
+                       R"({"type":"slider","value":0.5})"_str,
+                       R"({"type":"combo","value":2})"_str,
+                       R"(false)"_str,
+                       R"(3)"_str }) {
+        auto property = owe::ParseJson(json).unwrap();
+        EXPECT_FALSE(scene.ApplyUserTextBindings("title"_str, property));
+    }
+    EXPECT_EQ(calls, 0);
+    EXPECT_EQ(value, "authored");
+
+    for (auto json : { R"({"type":"combo","value":"1"})"_str,
+                       R"({"type":"color","value":"0.2 0.8 0.4"})"_str,
+                       R"({"type":"text","value":"hello"})"_str }) {
+        auto property = owe::ParseJson(json).unwrap();
+        EXPECT_TRUE(scene.ApplyUserTextBindings("title"_str, property));
+    }
+    EXPECT_EQ(calls, 3);
+    EXPECT_EQ(value, "hello");
+}
+
 TEST(SceneUserPropertyBinding, AppliesJsonPayloadToOwnedCallback) {
     owe::Scene scene;
     bool       called = false;
