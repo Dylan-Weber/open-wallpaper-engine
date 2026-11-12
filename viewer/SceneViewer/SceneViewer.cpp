@@ -246,6 +246,14 @@ int main(int argc, char** argv) {
     config.assets_dir      = rstd::move(args.assets_dir);
     config.source_pkg_path = rstd::move(args.scene_path);
     config.graphviz        = args.graphviz;
+    {
+        // "extend" is the ASPECTFIT camera: on an output wider than the scene it keeps the authored
+        // height and widens the view; the other modes are the camera's own
+        const auto mode  = args.fill_mode.as_str();
+        config.fill_mode = mode == "fit"_str || mode == "extend"_str ? owe::FillMode::ASPECTFIT
+                           : mode == "stretch"_str                   ? owe::FillMode::STRETCH
+                                                                     : owe::FillMode::ASPECTCROP;
+    }
     config.load_bench      = load_bench.clone();
     config.fps             = static_cast<uint32_t>(args.fps.to_primitive());
     // a capture's clock is frame-exact: no need to wait 1 / fps between frames (--capture-realtime

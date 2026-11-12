@@ -36,6 +36,7 @@ struct SceneViewerArgs {
     Option<f32> camera_path_delay;
     PathBuf     frame_times_path;
     Resolution  resolution;
+    String      fill_mode;
     i32         fps;
     u32         msaa_samples;
     bool        enable_valid_layer;
@@ -213,6 +214,14 @@ SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
             .help("Set the resolution, eg. 1920x1080"_str)
             .default_value("1280x720"_str));
 
+    auto fill_mode = command.add_arg(
+        Arg<String>::value("fill-mode"_str, string_parser())
+            .long_name("fill-mode"_str)
+            .help("How the scene fills the window: cover (crop to fill), fit (show all of it), stretch, "
+                  "or extend (keep the authored height and widen the view to the window's aspect)"_str)
+            .value_name("MODE"_str)
+            .default_value("cover"_str));
+
     auto texture_system = command.add_arg(
         Arg<bool>::flag("texture-system"_str)
             .long_name("texture-system"_str)
@@ -266,6 +275,7 @@ SceneViewerArgs ParseSceneViewerArgs(int argc, char** argv) {
         .camera_path_delay     = OptionalValue(matches, camera_path_delay),
         .frame_times_path      = PathBuf::from(Value(matches, frame_times).as_str()),
         .resolution            = Value(matches, resolution),
+        .fill_mode             = Value(matches, fill_mode).clone(),
         .fps                   = Value(matches, fps),
         .msaa_samples          = Value(matches, msaa),
         .enable_valid_layer    = Flag(matches, valid_layer),
