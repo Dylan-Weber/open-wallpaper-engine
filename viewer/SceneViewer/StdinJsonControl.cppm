@@ -104,6 +104,10 @@ private:
             setUserProperty(wallpaper, command);
         } else if (name == "set_mpris"_str) {
             setMpris(wallpaper, command);
+        } else if (name == "mouse_position"_str) {
+            setMousePosition(wallpaper, command);
+        } else if (name == "mouse_button"_str) {
+            setMouseButton(wallpaper, command);
         } else {
             eprintln("--stdin-json: unsupported command");
         }
@@ -124,6 +128,31 @@ private:
         }
         wallpaper.setUserPropertyJson(property, (**value).clone());
         println("scene-viewer: queued user property '{}'", property);
+    }
+
+    // {"command":"mouse_position","x":0.5,"y":0.25}: the cursor at a normalized window position (outside 0..1 leaves).
+    static void setMousePosition(owe::SceneWallpaper& wallpaper, const owe::Json& command) {
+        auto x = command.get("x"_str);
+        auto y = command.get("y"_str);
+        if (x.is_none() || y.is_none() || ! (**x).as_f64() || ! (**y).as_f64()) {
+            eprintln("--stdin-json: mouse_position requires numeric x and y");
+            return;
+        }
+        const double px = (*(**x).as_f64()).to_primitive();
+        const double py = (*(**y).as_f64()).to_primitive();
+        wallpaper.mouseEnter(px >= 0.0 && px <= 1.0 && py >= 0.0 && py <= 1.0);
+        wallpaper.mouseInput(px, py);
+    }
+
+    // {"command":"mouse_button","button":0,"down":true}: GLFW numbering, 0 left, 1 right, 2 middle.
+    static void setMouseButton(owe::SceneWallpaper& wallpaper, const owe::Json& command) {
+        auto button = command.get("button"_str);
+        auto down   = command.get("down"_str);
+        if (button.is_none() || down.is_none() || ! (**button).as_u64() || ! (**down).as_bool()) {
+            eprintln("--stdin-json: mouse_button requires a button number and a boolean down");
+            return;
+        }
+        wallpaper.mouseButton(int((*(**button).as_u64()).to_primitive()), *(**down).as_bool());
     }
 
     static bool readString(const owe::Json& command, rstd::ref<rstd::str> key, String& value) {

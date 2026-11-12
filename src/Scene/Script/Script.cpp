@@ -1009,7 +1009,10 @@ void UpdateInputObject(JSContext* ctx) {
     JS_FreeValue(ctx, g);
 }
 
-bool HitTestNode(owe::SceneNode* n, const CursorWorld& c) {
+// Whether the cursor is over the node's quad as drawn: the corners are projected through the active
+// camera, so a layer placed in depth under a perspective camera is hit where it appears. Without a
+// usable camera (or with a corner behind it) the quad's extent on the z=0 plane is tested instead.
+bool HitTestNode(owe::SceneNode* n, const CursorWorld& c, owe::Scene* scene, const FrameInputs& fi) {
     if (! n) return false;
     n->UpdateTrans();
     Eigen::Matrix4d m  = n->ModelTrans() * n->GeometryTransform();
@@ -1022,13 +1025,40 @@ bool HitTestNode(owe::SceneNode* n, const CursorWorld& c) {
         { hx, hy, 0, 1 },
         { -hx, hy, 0, 1 },
     };
+    Eigen::Vector4d world[4];
+    for (int i = 0; i < 4; ++i) world[i] = m * corners[i];
+
+    if (scene != nullptr) {
+        Eigen::Vector2d ndc[4];
+        bool            projected = true;
+        for (int i = 0; i < 4 && projected; ++i) {
+            auto p = scene->WorldToNdc(world[i].head<3>());
+            if (p.is_none()) {
+                projected = false;
+                break;
+            }
+            ndc[i] = Eigen::Vector2d((*p).x(), (*p).y());
+        }
+        if (projected) {
+            const Eigen::Vector2d cursor(double(fi.cursor_x) * 2.0 - 1.0, 1.0 - double(fi.cursor_y) * 2.0);
+            // inside a convex quad: the cursor is on the same side of every edge
+            bool has_positive = false, has_negative = false;
+            for (int i = 0; i < 4; ++i) {
+                const Eigen::Vector2d edge = ndc[(i + 1) % 4] - ndc[i];
+                const Eigen::Vector2d to   = cursor - ndc[i];
+                const double          side = edge.x() * to.y() - edge.y() * to.x();
+                if (side > 0) has_positive = true;
+                if (side < 0) has_negative = true;
+            }
+            return ! (has_positive && has_negative);
+        }
+    }
     double minx = 1e30, miny = 1e30, maxx = -1e30, maxy = -1e30;
-    for (auto& corner : corners) {
-        Eigen::Vector4d w = m * corner;
-        minx              = rstd::cmp::min(w.x(), minx);
-        maxx              = rstd::cmp::max(w.x(), maxx);
-        miny              = rstd::cmp::min(w.y(), miny);
-        maxy              = rstd::cmp::max(w.y(), maxy);
+    for (auto& w : world) {
+        minx = rstd::cmp::min(w.x(), minx);
+        maxx = rstd::cmp::max(w.x(), maxx);
+        miny = rstd::cmp::min(w.y(), miny);
+        maxy = rstd::cmp::max(w.y(), maxy);
     }
     return c.x >= minx && c.x <= maxx && c.y >= miny && c.y <= maxy;
 }
@@ -4807,7 +4837,7 @@ void JsRuntime::TickAll(slice<owe::SceneAnimationEventDispatch> animation_events
         auto* fs = m_impl->scripts[script_index].get();
         auto* I  = fs->m_impl.get();
         if (! I->alive || I->init_deferred || ! I->node) continue;
-        const bool now_inside = in_window && HitTestNode(I->node, cursor);
+        const bool now_inside = in_window && HitTestNode(I->node, cursor, m_impl->host.scene, m_impl->host.inputs);
         BindFieldScriptContext(ctx, *I, m_impl->host.default_layer);
         m_impl->host.active_field_script = fs;
         if (now_inside != I->cursor_inside) {

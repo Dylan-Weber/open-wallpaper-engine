@@ -3524,6 +3524,9 @@ public:
     void SetPointerPosition(array<float, 2> position) { m_pointer_position = rstd::move(position); }
     auto PointerPosition() const -> array<float, 2> { return m_pointer_position; }
     auto ScreenToWorld(array<float, 2> position) -> Eigen::Vector3d;
+    // Where a world point is drawn: normalized device x and y (-1..1, y up) and clip w; none without a usable
+    // active camera or for a point behind it.
+    auto WorldToNdc(const Eigen::Vector3d& world) -> Option<Eigen::Vector3d>;
     void SetPointerInWindow(bool inside) { m_pointer_in_window = inside; }
     bool PointerInWindow() const { return m_pointer_in_window; }
     // The frame rate the wallpaper runs at (0 when not known); particles take two operator passes

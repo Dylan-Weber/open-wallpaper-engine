@@ -1,3 +1,4 @@
+#include <cmath>
 #include <rstd/test/gtest.hpp>
 
 import rstd.cppstd;
@@ -2128,6 +2129,56 @@ TEST(ScriptCursor, SavedCursorPositionIsASnapshot) {
     rt.SetFrameInputs(fi);
     rt.TickAll();
     EXPECT_EQ(fs->last_value().as_Scalar().value.v, 200.0);
+}
+
+TEST(ScriptCursor, ClicksHitLayersWhereTheyAppearUnderAPerspectiveCamera) {
+    // A layer placed in depth (Ocarina of Time's interface panel) is clicked where it is drawn, not where
+    // the cursor's ray crosses the z=0 plane.
+    owe::Scene scene;
+    scene.SetOrtho({ rstd::i32(1000), rstd::i32(1000) });
+    auto camera = Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 100.0, 50.0));
+    camera->SetLookAt({ 0.0, 0.0, 10.0 }, { 0.0, 0.0, 0.0 }, { 0.0, 1.0, 0.0 });
+    scene.RegisterCamera("default"_Str, camera.clone());
+    ASSERT_TRUE(scene.SetActiveCamera("default"_str));
+
+    auto button = Arc<owe::SceneNode>::make();
+    button->SetTranslate({ 3.0f, 0.0f, -10.0f });
+    button->SetSize({ 2.0f, 2.0f });
+    scene.RootMut()->AppendChild(button.clone());
+    JsRuntime rt;
+    rt.SetScene(&scene);
+    rt.SetSceneRoot(scene.RootMut().as_raw_ptr());
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            let clicks = 0;
+            export function cursorClick(event) { clicks++; }
+            export function update() { return clicks; }
+        )JS"_str,
+        "test/perspective_click"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0),
+        button.as_ptr());
+    ASSERT_NE(fs, nullptr);
+
+    // The button's centre is 20 units from the camera: x = 3 / (20 tan 25 deg) in clip space.
+    const double ndc_x = 3.0 / (20.0 * std::tan(25.0 * 3.14159265358979323846 / 180.0));
+    auto         fi    = MakeFi(1000, 1000);
+    fi.cursor_in_window      = true;
+    fi.cursor_y              = 0.5f;
+    fi.cursor_x              = static_cast<float>((ndc_x + 1.0) / 2.0);
+    fi.mouse_buttons_pressed = 1;
+    rt.SetFrameInputs(fi);
+    rt.TickAll();
+    EXPECT_EQ(fs->last_value().as_Scalar().value.v, 1.0);
+
+    // Where the cursor's ray meets the z=0 plane inside the button's x range is not on the button.
+    const double plane_x_ndc = 3.0 / (10.0 * std::tan(25.0 * 3.14159265358979323846 / 180.0));
+    fi.cursor_x              = static_cast<float>((plane_x_ndc + 1.0) / 2.0);
+    fi.mouse_buttons_pressed = 1;
+    rt.SetFrameInputs(fi);
+    rt.TickAll();
+    EXPECT_EQ(fs->last_value().as_Scalar().value.v, 1.0);
 }
 
 TEST(ScriptCursor, WorldPositionFlipsTopDownInputY) {

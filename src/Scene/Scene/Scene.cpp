@@ -2320,6 +2320,17 @@ auto Scene::ScreenToWorld(array<float, 2> position) -> Eigen::Vector3d {
     return world.allFinite() ? world : fallback;
 }
 
+auto Scene::WorldToNdc(const Eigen::Vector3d& world) -> Option<Eigen::Vector3d> {
+    auto name = m_camera_registry->ActiveName();
+    if (name.is_none()) return None();
+    auto camera = CameraMut(*name);
+    if (camera.is_none()) return None();
+    const Eigen::Vector4d clip =
+        (**camera).GetViewProjectionMatrix() * Eigen::Vector4d(world.x(), world.y(), world.z(), 1.0);
+    if (! clip.allFinite() || clip.w() <= 1e-9) return None();
+    return Some(Eigen::Vector3d(clip.x() / clip.w(), clip.y() / clip.w(), clip.w()));
+}
+
 auto CameraEyeLogEntry(const Scene& scene) -> Option<array<double, 4>> {
     auto camera = scene.ActiveCamera();
     if (camera.is_none()) return None();
