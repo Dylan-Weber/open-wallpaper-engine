@@ -1118,17 +1118,36 @@ auto SceneDraw::frameData(const DrawBindingContext& context) const -> Option<Arc
         input->samplers.push(vrento::texture::SamplerRef(sampled->sampler));
         input->texture_stages.push(vrento::texture::Stages(m_desc.texture_stages[index]));
     }
+    // Static for most draws: the same lists go to every frame
     auto extent = m_desc.output_extent;
-    if (m_desc.viewports.is_empty())
-        input->viewports.push(
-            { 0, float(extent.height), float(extent.width), -float(extent.height), 0, 1 });
-    else
-        input->viewports = m_desc.viewports.clone();
-    if (m_desc.scissors.is_empty())
-        input->scissors.push({ { 0, 0 }, extent });
-    else
-        input->scissors = m_desc.scissors.clone();
-    input->draws = draws_.clone();
+    {
+        VkViewport single { 0, float(extent.height), float(extent.width), -float(extent.height), 0, 1 };
+        auto       wanted = m_desc.viewports.is_empty() ? slice<VkViewport>::from_raw_parts(&single, usize(1))
+                                                        : m_desc.viewports.as_slice();
+        if (! viewports_shared_.holds(wanted)) {
+            auto list = Vec<VkViewport>::make();
+            for (const auto& viewport : wanted) list.push(VkViewport(viewport));
+            viewports_shared_ = vrento::vulkan::SharedList<VkViewport>(rstd::move(list));
+        }
+        input->viewports = viewports_shared_;
+    }
+    {
+        VkRect2D single { { 0, 0 }, extent };
+        auto     wanted = m_desc.scissors.is_empty() ? slice<VkRect2D>::from_raw_parts(&single, usize(1))
+                                                     : m_desc.scissors.as_slice();
+        if (! scissors_shared_.holds(wanted)) {
+            auto list = Vec<VkRect2D>::make();
+            for (const auto& scissor : wanted) list.push(VkRect2D(scissor));
+            scissors_shared_ = vrento::vulkan::SharedList<VkRect2D>(rstd::move(list));
+        }
+        input->scissors = scissors_shared_;
+    }
+    if (! draws_shared_.holds(draws_.as_slice())) {
+        auto list = Vec<vrento::vulkan::GraphicsDrawRange>::make();
+        for (const auto& range : draws_) list.push(vrento::vulkan::GraphicsDrawRange(range));
+        draws_shared_ = vrento::vulkan::SharedList<vrento::vulkan::GraphicsDrawRange>(rstd::move(list));
+    }
+    input->draws = draws_shared_;
     return Some(rstd::move(input));
 }
 

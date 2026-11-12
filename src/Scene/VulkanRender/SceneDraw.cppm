@@ -151,6 +151,10 @@ private:
         -> Option<vrento::vulkan::GraphicsDrawDesc>;
     Vec<vrento::vulkan::GraphicsDrawRange>         draws_;
     bool                                           visible_ { true };
+    // the lists frameData() hands every frame while they stay the same
+    mutable vrento::vulkan::SharedList<VkViewport>                     viewports_shared_;
+    mutable vrento::vulkan::SharedList<VkRect2D>                       scissors_shared_;
+    mutable vrento::vulkan::SharedList<vrento::vulkan::GraphicsDrawRange> draws_shared_;
     void                                           captureGeometry();
     void                                           updateSnapshotCopies();
     Option<MaterialSnapshot>                       material_;
