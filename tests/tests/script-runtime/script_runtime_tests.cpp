@@ -6283,3 +6283,19 @@ TEST(ScriptLocalStorage, LocationsDeleteAndClear) {
     EXPECT_EQ(fs->last_value().as_String().value.s.as_str(),
               "screen global 1 1 2 true false  1 1  "_str);
 }
+
+// A script that throws is logged and skipped; it does not end the process (the test binary had no logger, and the
+// log call aborted it).
+TEST(ScriptEngine, UncaughtErrorInUpdateIsLoggedNotFatal) {
+    JsRuntime   rt;
+    FrameInputs fi {};
+    rt.SetFrameInputs(fi);
+    auto* fs = rt.MakeFieldScript("export function update() { throw new Error('on purpose'); }"_str,
+                                  "test/update_throws"_str,
+                                  FieldKind::Scalar,
+                                  owe::MakeObject(),
+                                  owe::IntoJson(0));
+    ASSERT_NE(fs, nullptr);
+    rt.TickAll();
+    rt.TickAll();
+}
