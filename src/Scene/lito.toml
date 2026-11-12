@@ -7,6 +7,9 @@ source-root = "../.."
 # Run scene scripts on SpiderMonkey (a JIT) through the QuickJS-API facade in Script/JsSpiderMonkey.cpp instead of
 # QuickJS. Needs libmozjs-140-dev (pkg-config module mozjs-140).
 spidermonkey = { default = false }
+# Run scene scripts on V8 (the distro's libnode-dev copy, pkg-config module owe-v8) through the facade in Script/JsV8.cpp.
+# It shares Script.cpp's engine-thread paths with SpiderMonkey, so it defines OWE_JS_SPIDERMONKEY as well.
+v8 = { default = false }
 
 [[when]]
 condition = 'feature.spidermonkey || profile.name == "release-sm"'
@@ -14,12 +17,21 @@ condition = 'feature.spidermonkey || profile.name == "release-sm"'
 public-definitions = ["OWE_JS_SPIDERMONKEY=1"]
 private-definitions = ["OWE_JS_SPIDERMONKEY=1"]
 
+[[when]]
+condition = 'feature.v8 || profile.name == "release-v8"'
+[when.usage]
+public-definitions = ["OWE_JS_SPIDERMONKEY=1", "OWE_JS_V8=1"]
+private-definitions = ["OWE_JS_SPIDERMONKEY=1", "OWE_JS_V8=1"]
+
+[source-groups.v8]
+sources = ["Script/JsV8.cpp"]
+
 [source-groups.spidermonkey]
 sources = ["Script/JsSpiderMonkey.cpp"]
 
 [lib]
 name = "owe-scene"
-when = [{ condition = 'feature.spidermonkey || profile.name == "release-sm"', source-groups = ["spidermonkey"] }]
+when = [{ condition = 'feature.spidermonkey || profile.name == "release-sm"', source-groups = ["spidermonkey"] }, { condition = 'feature.v8 || profile.name == "release-v8"', source-groups = ["v8"] }]
 module = "wescene"
 archive = "owe-scene"
 sources = [
@@ -245,6 +257,11 @@ targets = [{ name = "qjs", pub = true }]
 workspace = true
 pub = true
 condition = 'feature.spidermonkey || profile.name == "release-sm"'
+
+[external-dependencies.pkg-config.v8]
+workspace = true
+pub = true
+condition = 'feature.v8 || profile.name == "release-v8"'
 
 [external-dependencies.pkg-config.lz4]
 workspace = true

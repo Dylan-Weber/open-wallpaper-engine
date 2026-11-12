@@ -82,10 +82,11 @@ def main():
     report = []
     for wid, title, pkg in scripted():
         if args.only and wid not in args.only: continue
-        # one lock hold per wallpaper: bench.lock, then bench-gpu.lock; the three viewers run under it
+        # one lock hold per wallpaper: bench.lock, then bench-gpu.lock; the three viewers run under it.
+        # Under bench-queue.sh (BENCH_QUEUED set) the queue already holds them, and a second flock would deadlock.
         lockfd = []
         import fcntl
-        for name in ('bench.lock', 'bench-gpu.lock'):
+        for name in () if os.environ.get('BENCH_QUEUED') else ('bench.lock', 'bench-gpu.lock'):
             f = open(os.path.join(LOCKS, name), 'a'); fcntl.flock(f, fcntl.LOCK_EX); lockfd.append(f)
         try:
             a = run(args.quickjs, pkg, args.frame, 'q1')
