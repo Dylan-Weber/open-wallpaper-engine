@@ -2,7 +2,18 @@ module;
 
 #include <rstd/macro.hpp>
 #include <rstd/enum.hpp>
+#include <string>
+#include <string_view>
+#include <vector>
+#include <atomic>
+#include <cstdio>
+#include <cstdlib>
+#include <chrono>
 #include <cmath>
+#include <mutex>
+#include <functional>
+#include <optional>
+#include <type_traits>
 #include "quickjs.h"
 
 module wescene.script;
@@ -29,6 +40,158 @@ using rstd::sync::Arc;
 
 namespace owe::script
 {
+
+// Runs f on the thread that owns the JavaScript engine. The SpiderMonkey backend gives each runtime a thread of its own
+// and forwards every engine call made from elsewhere to it; one hop per call is too slow for the many small calls a
+// frame makes, so the public entry points run whole on the engine thread and their inner calls stay direct.
+// With QuickJS this just calls f.
+#ifdef OWE_JS_SPIDERMONKEY
+extern "C" void owe_js_run_on_engine(JSRuntime*, void (*)(void*), void*);
+extern "C" void owe_js_post_on_engine(JSRuntime*, void (*)(void*), void*);
+extern "C" void owe_js_sync_engine(JSRuntime*);
+template<class F>
+auto OnEngine(JSRuntime* rt, F&& f) -> decltype(f()) {
+    using R = decltype(f());
+    if constexpr (std::is_void_v<R>) {
+        owe_js_run_on_engine(
+            rt, [](void* p) { (*static_cast<std::remove_reference_t<F>*>(p))(); }, &f);
+    } else {
+        std::optional<R> result;
+        auto             run = [&] { result.emplace(f()); };
+        owe_js_run_on_engine(
+            rt, [](void* p) { (*static_cast<decltype(run)*>(p))(); }, &run);
+        return std::move(*result);
+    }
+}
+#else
+template<class F>
+auto OnEngine(JSRuntime*, F&& f) -> decltype(f()) {
+    return f();
+}
+#endif
+
+namespace
+{
+std::mutex       g_scene_gate, g_transform_gate;
+std::atomic<int> g_gate_active { 0 };
+std::atomic<unsigned long long> g_gate_waits { 0 }, g_gate_wait_ns { 0 };
+thread_local int t_gate_depth = 0, t_xform_depth = 0;
+
+void LockCounting(std::mutex& m) {
+    if (m.try_lock()) return;
+    // contended: count it (OWE_JS_DEBUG prints the totals when a runtime is destroyed)
+    const auto t0 = std::chrono::steady_clock::now();
+    m.lock();
+    const auto ns = (unsigned long long)std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count();
+    g_gate_waits.fetch_add(1, std::memory_order_relaxed);
+    g_gate_wait_ns.fetch_add(ns, std::memory_order_relaxed);
+}
+} // namespace
+
+void SceneGate::Acquire() {
+    if (t_gate_depth++ == 0) LockCounting(g_scene_gate);
+}
+void SceneGate::Release() {
+    if (t_gate_depth > 0 && --t_gate_depth == 0) g_scene_gate.unlock();
+}
+void SceneGate::AcquireTransforms() {
+    if (t_xform_depth++ == 0) LockCounting(g_transform_gate);
+}
+void SceneGate::ReleaseTransforms() {
+    if (t_xform_depth > 0 && --t_xform_depth == 0) g_transform_gate.unlock();
+}
+void SceneGate::AcquireRender() {
+    Acquire();
+    AcquireTransforms();
+}
+void SceneGate::ReleaseRender() {
+    ReleaseTransforms();
+    Release();
+}
+int SceneGate::SuspendTransforms() {
+    const int depth = t_xform_depth;
+    if (depth > 0) {
+        t_xform_depth = 0;
+        g_transform_gate.unlock();
+    }
+    return depth;
+}
+void SceneGate::ResumeTransforms(int depth) {
+    if (depth > 0) {
+        LockCounting(g_transform_gate);
+        t_xform_depth = depth;
+    }
+}
+void SceneGate::ReleaseAll() {
+    if (t_xform_depth > 0) {
+        t_xform_depth = 0;
+        g_transform_gate.unlock();
+    }
+    if (t_gate_depth > 0) {
+        t_gate_depth = 0;
+        g_scene_gate.unlock();
+    }
+}
+bool SceneGate::Active() noexcept { return g_gate_active.load(std::memory_order_acquire) > 0; }
+SceneGate::Hold::Hold() {
+    if (Active()) {
+        AcquireRender();
+        m_took = true;
+    }
+}
+SceneGate::Hold::~Hold() {
+    if (m_took) ReleaseRender();
+}
+
+// Holds the gate for a scope, for natives that the engine runs without it and that sometimes need the scene.
+struct GateScope {
+    GateScope() {
+        if (SceneGate::Active()) {
+            SceneGate::Acquire();
+            m_took = true;
+        }
+    }
+    ~GateScope() {
+        if (m_took) SceneGate::Release();
+    }
+    GateScope(const GateScope&)            = delete;
+    GateScope& operator=(const GateScope&) = delete;
+
+private:
+    bool m_took { false };
+};
+// The same for the transform gate.
+struct TransformGateScope {
+    TransformGateScope() {
+        if (SceneGate::Active()) {
+            SceneGate::AcquireTransforms();
+            m_took = true;
+        }
+    }
+    ~TransformGateScope() {
+        if (m_took) SceneGate::ReleaseTransforms();
+    }
+    TransformGateScope(const TransformGateScope&)            = delete;
+    TransformGateScope& operator=(const TransformGateScope&) = delete;
+
+private:
+    bool m_took { false };
+};
+
+#ifdef OWE_JS_SPIDERMONKEY
+extern "C" void owe_js_set_gate(JSRuntime*, void (*)(void*), void (*)(void*), void (*)(void*), void (*)(void*, bool), void*);
+extern "C" void owe_js_gate_exempt(JSRuntime*, void*);
+namespace
+{
+void GateLockFn(void*) { SceneGate::Acquire(); }
+void GateUnlockFn(void*) { SceneGate::Release(); }
+void GateReleaseAllFn(void*) { SceneGate::ReleaseAll(); }
+void GateNotifyFn(void*, bool on) {
+    if (on) g_gate_active.fetch_add(1, std::memory_order_acq_rel);
+    else g_gate_active.fetch_sub(1, std::memory_order_acq_rel);
+}
+} // namespace
+#endif
 
 using conversion::CoerceInitialValue;
 using conversion::CoerceReturn;
@@ -65,9 +228,17 @@ struct ScriptLayerState {
 };
 
 struct EngineHostState {
+    // The camera as it was when the scripts of this frame were started early (see BeginSceneScripts): reads of it during
+    // that tick do not touch the scene. Cleared as soon as a script writes the camera, and at the end of the tick.
+    bool                     camera_snapshot_valid { false };
+    bool                     camera_snapshot_has { false };
+    owe::SceneCameraTransforms camera_snapshot {};
+    double                   scene_fov_snapshot { 0 };
     // A field script's init is running: Wallpaper Engine leaves the camera alone for what it sets
     // then.
     bool                            in_field_init { false };
+    // a script's module body is running (its global scope)
+    bool                            in_module_scope { false };
     FrameInputs                     inputs;
     MediaStatus                     media;
     bool                            media_initialized { false };
@@ -126,6 +297,7 @@ struct EngineHostState {
     struct ModelBinding {
         ModelData       data;
         owe::SceneNode* node { nullptr };
+        bool            destroyed { false }; // destroyModelData: the script gave it up
     };
     Vec<ModelBinding>                     models;
     Option<JsRuntime::LayerConfigFactory> layer_config_factory;
@@ -273,6 +445,8 @@ struct FieldScript::Impl {
     // Per-script cursor-inside-bbox state used to edge-detect
     // cursorEnter / cursorLeave between frames.
     bool                                     cursor_inside { false };
+    // the buttons pressed on this script's layer and not yet released (a click needs both on the same layer)
+    bool                                     button_pressed_here[3] { false, false, false };
     Option<Arc<owe::SceneAnimationPlayback>> animation;
     Option<Arc<owe::SceneAnimationLayer>>    animation_layer;
     Vec<String>                              registered_assets;
@@ -346,11 +520,18 @@ Option<ref<str>> FieldScript::WorkshopId() const noexcept {
 // ---------------------------------------------------------------------------
 
 struct JsRuntime::Impl {
+    std::function<void()> async_fn;
+    // whether any script follows an animated property (read from the scene), for the scripts' tick; cached per script count
+    bool  animated_scripts { false };
+    bool  animated_known { false };
+    usize animated_scripts_count {};
     JSRuntime*      rt { nullptr };
     JSContext*      ctx { nullptr };
     EngineHostState host;
     // Last pointer sample consumed by TickAll; frame ticks are not motion.
     float previous_cursor_x { 0.0f }, previous_cursor_y { 0.0f };
+    // the screen size the last tick saw (resizeScreen runs when it changes); negative: no tick yet
+    float previous_screen_w { -1.0f }, previous_screen_h { -1.0f };
     bool  cursor_was_in_window { false };
     // Compiled-module dedup: same script source under the same sha is
     // imported once per runtime, exposing one shared namespace. A
@@ -492,6 +673,31 @@ JSValue EngineRegisterAudioBuffers(JSContext* ctx, JSValueConst /*this_val*/, in
         slot.object = MakeAudioBuffer(ctx, host->inputs, slot.resolution);
     }
     return JS_DupValue(ctx, slot.object);
+}
+
+// engine.isPortrait() / isLandscape(): the wallpaper's display is taller than wide, or not
+JSValue EngineIsPortrait(JSContext* ctx, JSValueConst, int, JSValueConst*) {
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    return JS_NewBool(ctx, host->inputs.screen_h > host->inputs.screen_w);
+}
+
+JSValue EngineIsLandscape(JSContext* ctx, JSValueConst, int, JSValueConst*) {
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    return JS_NewBool(ctx, ! (host->inputs.screen_h > host->inputs.screen_w));
+}
+
+JSValue EngineIsObjectValid(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv);
+
+// engine.requestFeatures(features): a list of the engine features the script wants, called from the script's global
+// scope only (Wallpaper Engine's messages: "requestFeatures can only be called from global scope", "requestFeatures
+// invalid arguments"). owe has every feature on, so a valid call changes nothing.
+JSValue EngineRequestFeatures(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    if (! host->in_module_scope)
+        return JS_ThrowReferenceError(ctx, "requestFeatures can only be called from global scope.");
+    if (argc < 1 || ! (JS_IsString(argv[0]) || JS_IsObject(argv[0])))
+        return JS_ThrowTypeError(ctx, "requestFeatures invalid arguments.");
+    return JS_UNDEFINED;
 }
 
 void RefreshAudioBuffers(JSContext* ctx, EngineHostState& host) {
@@ -706,13 +912,35 @@ void UpdateLocalStorage(EngineHostState* host, ref<str> key, Option<ref<str>> va
     if (FlushLocalStorage(host, *path)) host->ls_pending.clear();
 }
 
+// The storage location of a call (its last argument): 'global' is shared by all instances of the wallpaper, 'screen'
+// (the default, and what an unknown name means) is per screen. Global keys are stored under a prefix; screen keys
+// stay as they are, so what earlier versions saved is still found.
+constexpr std::string_view kGlobalPrefix = "\x01global\x01";
+
+bool LocalStorageIsGlobal(JSContext* ctx, int argc, JSValueConst* argv, int location_index) {
+    if (argc <= location_index || ! JS_IsString(argv[location_index])) return false;
+    const char* text = JS_ToCString(ctx, argv[location_index]);
+    if (! text) return false;
+    const bool global = std::string_view(text) == "global";
+    JS_FreeCString(ctx, text);
+    return global;
+}
+
+// The key a script's key and location are stored under; false when the key cannot be read
+bool LocalStorageKey(JSContext* ctx, JSValueConst key, bool global, std::string& out) {
+    const char* text = JS_ToCString(ctx, key);
+    if (! text) return false;
+    out = std::string(global ? kGlobalPrefix : std::string_view {}) + text;
+    JS_FreeCString(ctx, text);
+    return true;
+}
+
 JSValue LocalStorageGet(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
     if (argc < 1) return JS_UNDEFINED;
-    const char* key = JS_ToCString(ctx, argv[0]);
-    if (! key) return JS_UNDEFINED;
+    std::string key;
+    if (! LocalStorageKey(ctx, argv[0], LocalStorageIsGlobal(ctx, argc, argv, 1), key)) return JS_UNDEFINED;
     auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
-    auto  it   = host->ls_data.get(rstd::cppstd::as_str(key).unwrap());
-    JS_FreeCString(ctx, key);
+    auto  it   = host->ls_data.get(rstd::cppstd::as_str(key.c_str()).unwrap());
     if (it.is_none()) return JS_UNDEFINED;
     auto source = CString::make(Vec<u8>::from((*it)->as_str().as_bytes())).unwrap();
     return JS_ParseJSON(ctx, source.as_ptr(), (*it)->len().to_primitive(), "<localStorage>");
@@ -720,33 +948,46 @@ JSValue LocalStorageGet(JSContext* ctx, JSValueConst, int argc, JSValueConst* ar
 
 JSValue LocalStorageSet(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
     if (argc < 2) return JS_UNDEFINED;
-    const char* key = JS_ToCString(ctx, argv[0]);
-    if (! key) return JS_UNDEFINED;
+    std::string key;
+    if (! LocalStorageKey(ctx, argv[0], LocalStorageIsGlobal(ctx, argc, argv, 2), key)) return JS_UNDEFINED;
     JSValue jv = JS_JSONStringify(ctx, argv[1], JS_UNDEFINED, JS_UNDEFINED);
     if (JS_IsException(jv) || JS_IsUndefined(jv)) {
         JS_FreeValue(ctx, jv);
-        JS_FreeCString(ctx, key);
         return JS_UNDEFINED;
     }
     const char* s    = JS_ToCString(ctx, jv);
     auto*       host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
     if (s) {
         UpdateLocalStorage(
-            host, rstd::cppstd::as_str(key).unwrap(), Some(rstd::cppstd::as_str(s).unwrap()));
+            host, rstd::cppstd::as_str(key.c_str()).unwrap(), Some(rstd::cppstd::as_str(s).unwrap()));
     }
     if (s) JS_FreeCString(ctx, s);
     JS_FreeValue(ctx, jv);
-    JS_FreeCString(ctx, key);
     return JS_UNDEFINED;
 }
 
+// delete(key, location): whether there was a value to remove
 JSValue LocalStorageRemove(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
-    if (argc < 1) return JS_UNDEFINED;
-    const char* key = JS_ToCString(ctx, argv[0]);
-    if (! key) return JS_UNDEFINED;
-    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
-    UpdateLocalStorage(host, rstd::cppstd::as_str(key).unwrap(), None());
-    JS_FreeCString(ctx, key);
+    if (argc < 1) return JS_FALSE;
+    std::string key;
+    if (! LocalStorageKey(ctx, argv[0], LocalStorageIsGlobal(ctx, argc, argv, 1), key)) return JS_FALSE;
+    auto*      host   = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    const auto name   = rstd::cppstd::as_str(key.c_str()).unwrap();
+    const bool exists = host->ls_data.get(name).is_some();
+    UpdateLocalStorage(host, name, None());
+    return JS_NewBool(ctx, exists);
+}
+
+// clear(location): every value of the location
+JSValue LocalStorageClear(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
+    auto*      host   = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    const bool global = LocalStorageIsGlobal(ctx, argc, argv, 0);
+    std::vector<std::string> keys;
+    for (auto [k, v] : host->ls_data.iter()) {
+        const std::string name(rstd::cppstd::as_string_view(k->as_str()));
+        if ((name.rfind(kGlobalPrefix, 0) == 0) == global) keys.push_back(name);
+    }
+    for (const auto& name : keys) UpdateLocalStorage(host, rstd::cppstd::as_str(name.c_str()).unwrap(), None());
     return JS_UNDEFINED;
 }
 
@@ -758,7 +999,13 @@ void InstallLocalStorage(JSContext* ctx) {
     JS_DefinePropertyValueStr(
         ctx, ls, "set", JS_NewCFunction(ctx, LocalStorageSet, "set", 2), JS_PROP_C_W_E);
     JS_DefinePropertyValueStr(
-        ctx, ls, "remove", JS_NewCFunction(ctx, LocalStorageRemove, "remove", 1), JS_PROP_C_W_E);
+        ctx, ls, "delete", JS_NewCFunction(ctx, LocalStorageRemove, "delete", 2), JS_PROP_C_W_E);
+    JS_DefinePropertyValueStr(
+        ctx, ls, "remove", JS_NewCFunction(ctx, LocalStorageRemove, "remove", 2), JS_PROP_C_W_E);
+    JS_DefinePropertyValueStr(
+        ctx, ls, "clear", JS_NewCFunction(ctx, LocalStorageClear, "clear", 1), JS_PROP_C_W_E);
+    JS_DefinePropertyValueStr(ctx, ls, "LOCATION_GLOBAL", JS_NewString(ctx, "global"), JS_PROP_C_W_E);
+    JS_DefinePropertyValueStr(ctx, ls, "LOCATION_SCREEN", JS_NewString(ctx, "screen"), JS_PROP_C_W_E);
     JS_DefinePropertyValueStr(ctx, g, "localStorage", ls, JS_PROP_C_W_E);
     JS_FreeValue(ctx, g);
 }
@@ -807,17 +1054,17 @@ void UpdateInputObject(JSContext* ctx) {
         return;
     }
 
-    JSValue screen = JS_GetPropertyStr(ctx, input, "cursorScreenPosition");
+    JSValue screen = JS_GetPropertyStr(ctx, input, "__cursorScreen");
     if (JS_IsObject(screen))
         SetVec2Fields(ctx, screen, fi.cursor_x * fi.screen_w, fi.cursor_y * fi.screen_h);
     JS_FreeValue(ctx, screen);
 
     const CursorWorld world = CursorToWorld(fi, host->scene);
-    JSValue           wp    = JS_GetPropertyStr(ctx, input, "cursorWorldPosition");
+    JSValue           wp    = JS_GetPropertyStr(ctx, input, "__cursorWorld");
     if (JS_IsObject(wp)) SetVec3Fields(ctx, wp, world.x, world.y, 0.0);
     JS_FreeValue(ctx, wp);
 
-    JSValue lp = JS_GetPropertyStr(ctx, input, "cursorLocalPosition");
+    JSValue lp = JS_GetPropertyStr(ctx, input, "__cursorLocal");
     if (JS_IsObject(lp)) SetVec3Fields(ctx, lp, world.x, world.y, 0.0);
     JS_FreeValue(ctx, lp);
 
@@ -838,7 +1085,10 @@ void UpdateInputObject(JSContext* ctx) {
     JS_FreeValue(ctx, g);
 }
 
-bool HitTestNode(owe::SceneNode* n, const CursorWorld& c) {
+// Whether the cursor is over the node's quad as drawn: the corners are projected through the active
+// camera, so a layer placed in depth under a perspective camera is hit where it appears. Without a
+// usable camera (or with a corner behind it) the quad's extent on the z=0 plane is tested instead.
+bool HitTestNode(owe::SceneNode* n, const CursorWorld& c, owe::Scene* scene, const FrameInputs& fi) {
     if (! n) return false;
     n->UpdateTrans();
     Eigen::Matrix4d m  = n->ModelTrans() * n->GeometryTransform();
@@ -851,13 +1101,40 @@ bool HitTestNode(owe::SceneNode* n, const CursorWorld& c) {
         { hx, hy, 0, 1 },
         { -hx, hy, 0, 1 },
     };
+    Eigen::Vector4d world[4];
+    for (int i = 0; i < 4; ++i) world[i] = m * corners[i];
+
+    if (scene != nullptr) {
+        Eigen::Vector2d ndc[4];
+        bool            projected = true;
+        for (int i = 0; i < 4 && projected; ++i) {
+            auto p = scene->WorldToNdc(world[i].head<3>());
+            if (p.is_none()) {
+                projected = false;
+                break;
+            }
+            ndc[i] = Eigen::Vector2d((*p).x(), (*p).y());
+        }
+        if (projected) {
+            const Eigen::Vector2d cursor(double(fi.cursor_x) * 2.0 - 1.0, 1.0 - double(fi.cursor_y) * 2.0);
+            // inside a convex quad: the cursor is on the same side of every edge
+            bool has_positive = false, has_negative = false;
+            for (int i = 0; i < 4; ++i) {
+                const Eigen::Vector2d edge = ndc[(i + 1) % 4] - ndc[i];
+                const Eigen::Vector2d to   = cursor - ndc[i];
+                const double          side = edge.x() * to.y() - edge.y() * to.x();
+                if (side > 0) has_positive = true;
+                if (side < 0) has_negative = true;
+            }
+            return ! (has_positive && has_negative);
+        }
+    }
     double minx = 1e30, miny = 1e30, maxx = -1e30, maxy = -1e30;
-    for (auto& corner : corners) {
-        Eigen::Vector4d w = m * corner;
-        minx              = rstd::cmp::min(w.x(), minx);
-        maxx              = rstd::cmp::max(w.x(), maxx);
-        miny              = rstd::cmp::min(w.y(), miny);
-        maxy              = rstd::cmp::max(w.y(), maxy);
+    for (auto& w : world) {
+        minx = rstd::cmp::min(w.x(), minx);
+        maxx = rstd::cmp::max(w.x(), maxx);
+        miny = rstd::cmp::min(w.y(), miny);
+        maxy = rstd::cmp::max(w.y(), maxy);
     }
     return c.x >= minx && c.x <= maxx && c.y >= miny && c.y <= maxy;
 }
@@ -913,6 +1190,28 @@ void InvokeEventCallback(JSContext* ctx, JSValue ns, const char* name, JSValue e
         }
     }
     JS_FreeValue(ctx, fn);
+}
+
+// Invoke `name` on the script's module namespace, if exported, with the given arguments.
+void InvokeCallback(JSContext* ctx, JSValue ns, const char* name, int argc, JSValue* argv, JsRuntime::Impl* rt,
+                    ref<str> sha) {
+    JSValue fn = JS_GetPropertyStr(ctx, ns, name);
+    if (JS_IsFunction(ctx, fn)) {
+        JSValue r = JS_Call(ctx, fn, JS_UNDEFINED, argc, argv);
+        if (JS_IsException(r)) rt->LogError(ctx, sha, name);
+        JS_FreeValue(ctx, r);
+    }
+    JS_FreeValue(ctx, fn);
+}
+
+// destroy: a script's last call, when its layer is removed or the scene ends
+void CallDestroy(JSContext* ctx, JsRuntime::Impl* rt, FieldScript* fs) {
+    auto* I = fs->m_impl.get();
+    if (! I->alive || I->init_deferred || ! I->init_done) return;
+    BindFieldScriptContext(ctx, *I, rt->host.default_layer);
+    rt->host.active_field_script = fs;
+    InvokeCallback(ctx, I->module_ns, "destroy", 0, nullptr, rt, I->sha.as_str());
+    rt->host.active_field_script = nullptr;
 }
 
 // Fire any deferred callbacks whose fire_at has passed. Called by TickAll
@@ -1042,6 +1341,7 @@ void InstallSceneDate(JSContext* ctx) {
     JS_FreeValue(ctx, r);
 }
 JSValue WwApplyModelData(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv);
+JSValue WwReplaceModelData(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv);
 
 void InstallEngineGlobal(JSContext* ctx) {
     // Run the bootstrap to create createScriptProperties + skeleton engine.
@@ -1089,6 +1389,10 @@ void InstallEngineGlobal(JSContext* ctx) {
     define_fn("clearTimeout", EngineClearDeferred, 1);
     define_fn("clearInterval", EngineClearDeferred, 1);
     define_fn("registerAsset", EngineRegisterAsset, 1);
+    define_fn("isPortrait", EngineIsPortrait, 0);
+    define_fn("isLandscape", EngineIsLandscape, 0);
+    define_fn("isObjectValid", EngineIsObjectValid, 1);
+    define_fn("requestFeatures", EngineRequestFeatures, 1);
 
     // A handful of corpus scripts call setTimeout/clearTimeout bare (no
     // `engine.` prefix). Mirror onto globalThis so they resolve.
@@ -1113,6 +1417,11 @@ void InstallEngineGlobal(JSContext* ctx) {
                               model_global,
                               "__wwApplyModelData",
                               JS_NewCFunction(ctx, WwApplyModelData, "__wwApplyModelData", 2),
+                              JS_PROP_C_W_E);
+    JS_DefinePropertyValueStr(ctx,
+                              model_global,
+                              "__wwReplaceModelData",
+                              JS_NewCFunction(ctx, WwReplaceModelData, "__wwReplaceModelData", 2),
                               JS_PROP_C_W_E);
     JS_FreeValue(ctx, model_global);
 }
@@ -1394,6 +1703,7 @@ int MaterialSetProperty(JSContext* ctx, JSValueConst obj, JSAtom atom, JSValueCo
 // --- property accessors -----------------------------------------------------
 
 JSValue NodeGetOrigin(JSContext* ctx, JSValueConst this_val) {
+    TransformGateScope transform_gate;  // run by the engine without the scene gate
     auto* n = GetLayerNode(this_val);
     if (! n) return MakeVec3(ctx, 0, 0, 0);
     auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
@@ -1408,6 +1718,7 @@ JSValue NodeGetOrigin(JSContext* ctx, JSValueConst this_val) {
     return MakeVec3(ctx, v.x(), v.y(), v.z());
 }
 JSValue NodeSetOrigin(JSContext* ctx, JSValueConst this_val, JSValueConst val) {
+    TransformGateScope transform_gate;  // run by the engine without the scene gate
     auto* n = GetLayerNode(this_val);
     if (! n) return JS_UNDEFINED;
     double x = 0, y = 0, z = 0;
@@ -1424,12 +1735,14 @@ JSValue NodeSetOrigin(JSContext* ctx, JSValueConst this_val, JSValueConst val) {
     return JS_UNDEFINED;
 }
 JSValue NodeGetScale(JSContext* ctx, JSValueConst this_val) {
+    TransformGateScope transform_gate;  // run by the engine without the scene gate
     auto* n = GetLayerNode(this_val);
     if (! n) return MakeVec3(ctx, 1, 1, 1);
     auto v = n->Scale();
     return MakeVec3(ctx, v.x(), v.y(), v.z());
 }
 JSValue NodeSetScale(JSContext* ctx, JSValueConst this_val, JSValueConst val) {
+    TransformGateScope transform_gate;  // run by the engine without the scene gate
     auto* n = GetLayerNode(this_val);
     if (! n) return JS_UNDEFINED;
     double x = 0, y = 0, z = 0;
@@ -1441,12 +1754,14 @@ JSValue NodeSetScale(JSContext* ctx, JSValueConst this_val, JSValueConst val) {
 constexpr double kRadToDeg = 180.0 / f64::consts::PI.to_primitive();
 constexpr double kDegToRad = f64::consts::PI.to_primitive() / 180.0;
 JSValue          NodeGetAngles(JSContext* ctx, JSValueConst this_val) {
+    TransformGateScope transform_gate;  // run by the engine without the scene gate
     auto* n = GetLayerNode(this_val);
     if (! n) return MakeVec3(ctx, 0, 0, 0);
     auto v = n->Rotation();
     return MakeVec3(ctx, v.x() * kRadToDeg, v.y() * kRadToDeg, v.z() * kRadToDeg);
 }
 JSValue NodeSetAngles(JSContext* ctx, JSValueConst this_val, JSValueConst val) {
+    TransformGateScope transform_gate;  // run by the engine without the scene gate
     auto* n = GetLayerNode(this_val);
     if (! n) return JS_UNDEFINED;
     double x = 0, y = 0, z = 0;
@@ -1714,6 +2029,10 @@ JSValue NodeSetIgnore(JSContext*, JSValueConst, JSValueConst) { return JS_UNDEFI
 JSValue NodeGetFov(JSContext* ctx, JSValueConst this_val) {
     auto* node = GetLayerNode(this_val);
     auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    // (run without the scene gate by the engine: the scene's own field comes from the snapshot when scripts started early)
+    if (host != nullptr && host->camera_snapshot_valid && host->scene != nullptr && node == host->scene_root)
+        return JS_NewFloat64(ctx, host->scene_fov_snapshot);
+    GateScope gate;
     if (node == nullptr || host == nullptr || host->scene == nullptr) return JS_UNDEFINED;
     if (node == host->scene_root) return JS_NewFloat64(ctx, host->scene->SceneFov());
     auto path = host->scene->CameraPathOfNode(node);
@@ -1724,6 +2043,7 @@ JSValue NodeGetFov(JSContext* ctx, JSValueConst this_val) {
 JSValue NodeSetFov(JSContext* ctx, JSValueConst this_val, JSValueConst value) {
     auto* node = GetLayerNode(this_val);
     auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    if (host) host->camera_snapshot_valid = false;
     if (node == nullptr || host == nullptr || host->scene == nullptr) return JS_UNDEFINED;
     auto   path = host->scene->CameraPathOfNode(node);
     double fov {};
@@ -2382,6 +2702,35 @@ JSValue NodeGetLayer(JSContext* ctx, JSValueConst this_val, int argc, JSValueCon
     return WrapLayerName(ctx, rstd::move(layer_name));
 }
 
+// getLayerByID(id): the layer of the scene object with this id (the id the editor gave it, as a string or a number)
+JSValue NodeSceneGetLayerByID(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    auto* root = GetLayerNode(this_val);
+    if (! root || argc < 1) return JS_NULL;
+    const char* text = JS_ToCString(ctx, argv[0]);
+    if (! text) return JS_NULL;
+    const std::string wanted(text);
+    JS_FreeCString(ctx, text);
+    owe::SceneNode* result = nullptr;
+    auto            find   = [&](owe::SceneNode* node) {
+        auto identity = node->WallpaperIdentity();
+        if (identity.is_some() && std::to_string((*identity).value.to_primitive()) == wanted) {
+            result = node;
+            return false;
+        }
+        return true;
+    };
+    VisitScriptSceneLayers(host, root, find);
+    return result ? WrapLayerNode(ctx, result) : JS_NULL;
+}
+
+// engine.isObjectValid(object): a layer is valid while it is in the scene; any other object while it exists
+JSValue EngineIsObjectValid(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
+    if (argc < 1 || ! JS_IsObject(argv[0])) return JS_FALSE;
+    if (auto* handle = GetLayerHandle(argv[0])) return JS_NewBool(ctx, ResolveLayerNode(handle) != nullptr);
+    return JS_TRUE;
+}
+
 JSValue NodeGetEffect(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
     auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
     auto* n    = GetLayerNode(this_val);
@@ -2524,7 +2873,14 @@ JSValue NodeSceneGetInitialLayerConfig(JSContext* ctx, JSValueConst, int argc, J
 JSValue NodeSceneGetCameraTransforms(JSContext* ctx, JSValueConst, int, JSValueConst*) {
     auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
     if (! host || ! host->scene) return JS_ThrowTypeError(ctx, "scene camera is not available");
-    auto transforms = host->scene->ScriptCameraTransforms();
+    // (run without the scene gate: from the snapshot when scripts started early, else under the gate)
+    Option<owe::SceneCameraTransforms> transforms;
+    if (host->camera_snapshot_valid) {
+        if (host->camera_snapshot_has) transforms = Some(host->camera_snapshot);
+    } else {
+        GateScope gate;
+        transforms = host->scene->ScriptCameraTransforms();
+    }
     if (transforms.is_none()) return JS_ThrowTypeError(ctx, "active scene camera is not available");
 
     JSValue out = JS_NewObject(ctx);
@@ -2566,6 +2922,8 @@ bool ReadOptionalCameraVector(JSContext* ctx, JSValueConst object, const char* n
 
 JSValue NodeSceneSetCameraTransforms(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
     auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    GateScope gate;  // a write: the engine runs this native without the gate
+    if (host) host->camera_snapshot_valid = false;
     if (! host || ! host->scene) return JS_ThrowTypeError(ctx, "scene camera is not available");
     if (argc < 1 || ! JS_IsObject(argv[0]))
         return JS_ThrowTypeError(ctx, "camera transforms must be an object");
@@ -2751,6 +3109,7 @@ JSValue WwApplyModelData(JSContext* ctx, JSValueConst /*this_val*/, int argc, JS
         usize(static_cast<size_t>(id)) >= host->models.len() || ! JS_IsObject(argv[1]))
         return JS_UNDEFINED;
     auto& binding = host->models[usize(static_cast<size_t>(id))];
+    if (binding.destroyed) return JS_UNDEFINED;
     bool  ok      = ForEachModelShape(ctx, argv[1], [&](usize index, JSValueConst shape) {
         if (index >= binding.data.shapes.len()) return true;
         ModelShapeData parsed;
@@ -2774,6 +3133,84 @@ JSValue WwApplyModelData(JSContext* ctx, JSValueConst /*this_val*/, int argc, JS
         return true;
     });
     if (! ok) return JS_ThrowTypeError(ctx, "applyData expects typed-array buffers");
+    return JS_UNDEFINED;
+}
+
+// modelData.replaceData(config): replaces the shapes' data, also with data that is not compatible (other buffer lengths).
+// A shape given as null is deleted. The layer showing the model takes the new vertices and indices of the shapes it
+// has; shapes added or deleted change the data only (the layer's mesh keeps its shape count).
+JSValue WwReplaceModelData(JSContext* ctx, JSValueConst /*this_val*/, int argc, JSValueConst* argv) {
+    auto*   host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    int32_t id   = -1;
+    if (argc < 2 || JS_ToInt32(ctx, &id, argv[0]) != 0 || id < 0 ||
+        usize(static_cast<size_t>(id)) >= host->models.len() || ! JS_IsObject(argv[1]))
+        return JS_UNDEFINED;
+    auto& binding = host->models[usize(static_cast<size_t>(id))];
+    if (binding.destroyed) return JS_UNDEFINED;
+    JSValue shapes = JS_GetPropertyStr(ctx, argv[1], "shapes");
+    if (! JS_IsObject(shapes)) {
+        JS_FreeValue(ctx, shapes);
+        return JS_UNDEFINED;
+    }
+    JSValue length = JS_GetPropertyStr(ctx, shapes, "length");
+    int32_t count  = 0;
+    JS_ToInt32(ctx, &count, length);
+    JS_FreeValue(ctx, length);
+    ModelData replaced;
+    replaced.name = binding.data.name.clone();
+    bool ok       = true;
+    for (int32_t i = 0; i < count && ok; ++i) {
+        JSValue shape = JS_GetPropertyUint32(ctx, shapes, static_cast<uint32_t>(i));
+        if (JS_IsNull(shape)) {
+            // deleted
+        } else if (JS_IsObject(shape)) {
+            ModelShapeData parsed;
+            ok = ReadModelShape(ctx, shape, parsed);
+            // what the call leaves out stays as it was
+            if (usize(static_cast<size_t>(i)) < binding.data.shapes.len()) {
+                auto& old = binding.data.shapes[usize(static_cast<size_t>(i))];
+                if (parsed.vertices.is_empty()) parsed.vertices = rstd::move(old.vertices);
+                if (parsed.indices.is_empty()) parsed.indices = rstd::move(old.indices);
+                if (parsed.format.is_empty()) parsed.format = rstd::move(old.format);
+                if (parsed.material.is_empty()) parsed.material = rstd::move(old.material);
+            }
+            replaced.shapes.push(rstd::move(parsed));
+        }
+        JS_FreeValue(ctx, shape);
+    }
+    JS_FreeValue(ctx, shapes);
+    if (! ok) return JS_ThrowTypeError(ctx, "replaceData expects typed-array buffers");
+    binding.data = rstd::move(replaced);
+    auto* mesh   = binding.node != nullptr ? binding.node->Mesh() : nullptr;
+    if (mesh != nullptr) {
+        for (usize index {}; index < binding.data.shapes.len() && index < mesh->Submeshes().len(); ++index) {
+            auto& target  = binding.data.shapes[index];
+            auto& submesh = mesh->Submeshes()[index];
+            if (! target.vertices.is_empty() && ! submesh.vertex_arrays.is_empty())
+                submesh.vertex_arrays[usize()].SetVertexs(usize(), target.vertices.as_slice());
+            if (! target.indices.is_empty() && ! submesh.index_arrays.is_empty()) {
+                submesh.index_arrays[usize()].Assign(usize(), target.indices.as_slice());
+                submesh.index_arrays[usize()].SetRenderDataCount(target.indices.len());
+            }
+        }
+        mesh->SetDirty();
+    }
+    return JS_UNDEFINED;
+}
+
+// thisScene.destroyModelData(model): the script is done with the model; a layer still showing it keeps it until the
+// layer is removed
+JSValue NodeSceneDestroyModelData(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
+    auto* host = static_cast<EngineHostState*>(JS_GetContextOpaque(ctx));
+    if (argc < 1 || ! JS_IsObject(argv[0])) return JS_UNDEFINED;
+    JSValue idv = JS_GetPropertyStr(ctx, argv[0], "__modelId");
+    int32_t id  = -1;
+    const bool ok = JS_ToInt32(ctx, &id, idv) == 0;
+    JS_FreeValue(ctx, idv);
+    if (! ok || id < 0 || usize(static_cast<size_t>(id)) >= host->models.len()) return JS_UNDEFINED;
+    auto& binding     = host->models[usize(static_cast<size_t>(id))];
+    binding.destroyed = true;
+    if (binding.node == nullptr) binding.data = ModelData {};
     return JS_UNDEFINED;
 }
 
@@ -3257,6 +3694,54 @@ JSValue PropertyObjectGetAnimation(JSContext* ctx, JSValueConst, int argc, JSVal
     return WrapAnimation(ctx, ActivePropertyAnimation(ctx, argc, argv));
 }
 
+// The animation of a material's shader value by its name: a script on another layer starts it
+// (Ocarina of Time's song text plays the interface's "accept" animation through
+// getEffect(0).getMaterial(0).getAnimation("accept").play()).
+auto MaterialAnimationNamed(SceneMaterial* material, ref<str> name)
+    -> Option<Arc<owe::SceneAnimationPlayback>> {
+    Option<Arc<owe::SceneAnimationPlayback>> found;
+    if (material == nullptr) return found;
+    material->customShader.valueAnimations.iter().for_each([&](auto entry) {
+        auto [key, animation] = entry;
+        (void)key;
+        if (found.is_none() && animation->track.is_some() &&
+            (**animation->track).playback->Name() == name)
+            found = Some((**animation->track).playback.clone());
+    });
+    return found;
+}
+
+JSValue MaterialGetAnimation(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+    auto* handle = static_cast<MaterialHandle*>(JS_GetOpaque(this_val, s_material_class_id));
+    if (handle != nullptr && handle->material != nullptr && argc > 0 && JS_IsString(argv[0])) {
+        const char* name = JS_ToCString(ctx, argv[0]);
+        if (name == nullptr) return JS_EXCEPTION;
+        auto found = MaterialAnimationNamed(handle->material, rstd::cppstd::as_str(name).unwrap());
+        JS_FreeCString(ctx, name);
+        if (found.is_some()) return WrapAnimation(ctx, rstd::move(found));
+    }
+    return PropertyObjectGetAnimation(ctx, this_val, argc, argv);
+}
+
+JSValue EffectGetAnimation(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+    auto* handle = GetEffectHandle(this_val);
+    if (handle != nullptr && handle->host != nullptr && handle->host->scene != nullptr &&
+        handle->ref && argc > 0 && JS_IsString(argv[0]) &&
+        (handle->owner.is_none() || (*handle->owner)->node)) {
+        const char* name = JS_ToCString(ctx, argv[0]);
+        if (name == nullptr) return JS_EXCEPTION;
+        Option<Arc<owe::SceneAnimationPlayback>> found;
+        for (usize index {}; found.is_none() && index < usize(32); index = index + usize(1)) {
+            auto* material = handle->host->scene->ImageEffectMaterial(*handle->ref, index);
+            if (material == nullptr) break;
+            found = MaterialAnimationNamed(material, rstd::cppstd::as_str(name).unwrap());
+        }
+        JS_FreeCString(ctx, name);
+        if (found.is_some()) return WrapAnimation(ctx, rstd::move(found));
+    }
+    return PropertyObjectGetAnimation(ctx, this_val, argc, argv);
+}
+
 JSValue WrapAnimationLayer(JSContext* ctx, Option<Arc<owe::SceneAnimationPlayback>> playback) {
     JSValue object    = JS_NewObject(ctx);
     JSValue animation = WrapAnimation(ctx, rstd::move(playback));
@@ -3385,12 +3870,21 @@ JSValue NamedLayerSetFrame(JSContext* ctx, JSValueConst value, int argc, JSValue
     return JS_UNDEFINED;
 }
 
-// An animation layer's getAnimation returns undefined in Wallpaper Engine, whatever it is asked
-// (puppet-layer-getanimation): Ocarina of Time's
-// getAnimationLayer("Surprise").getAnimation("surprise") .isPlaying() throws, and Link keeps his
-// angle.
-JSValue NamedAnimationLayerGetAnimation(JSContext*, JSValueConst, int, JSValueConst*) {
-    return JS_UNDEFINED;
+// An animation layer's getAnimation finds the property animations the layer has (its blend, rate or
+// visible animation, by the animation's name): Ocarina of Time's
+// getAnimationLayer("Surprise").getAnimation("surprise").play() is how a song ends and the ocarina
+// is played again. A layer with none (a skeletal animation) gives undefined, whatever it is asked
+// (puppet-layer-getanimation).
+JSValue NamedAnimationLayerGetAnimation(JSContext* ctx, JSValueConst value, int argc,
+                                        JSValueConst* argv) {
+    auto* layer = GetNamedAnimationLayer(value);
+    if (layer == nullptr || argc == 0 || ! JS_IsString(argv[0])) return JS_UNDEFINED;
+    const char* name = JS_ToCString(ctx, argv[0]);
+    if (name == nullptr) return JS_EXCEPTION;
+    auto playback = layer->NamedAnimation(rstd::cppstd::as_str(name).unwrap());
+    JS_FreeCString(ctx, name);
+    if (playback.is_none()) return JS_UNDEFINED;
+    return WrapAnimation(ctx, rstd::move(playback));
 }
 
 JSValue WrapNamedAnimationLayer(JSContext* ctx, Arc<owe::SceneAnimationLayer> layer) {
@@ -3584,7 +4078,13 @@ JSValue NodeGetAnimation(JSContext* ctx, JSValueConst this_val, int argc, JSValu
         if (name != nullptr) JS_FreeCString(ctx, name);
         return MakeAnimationStub(ctx);
     }
-    auto playback = node->NamedAnimation(rstd::cppstd::as_str(name).unwrap());
+    auto animation_name = rstd::cppstd::as_str(name).unwrap();
+    auto playback       = node->NamedAnimation(animation_name);
+    // the property animations of its animation layers are the layer's too (a puppet's glance)
+    for (usize index {}; playback.is_none() && index < node->AnimationLayerCount(); ++index) {
+        auto layer = node->AnimationLayer(index);
+        if (layer.is_some()) playback = (*layer)->NamedAnimation(animation_name);
+    }
     JS_FreeCString(ctx, name);
     // a name no property animation has gives undefined, as in Wallpaper Engine
     if (playback.is_none()) return JS_UNDEFINED;
@@ -3743,6 +4243,8 @@ const JSCFunctionListEntry s_layer_proto_funcs[] = {
     JS_CFUNC_DEF("getName", 0, NodeGetName),
     JS_CFUNC_DEF("getLayer", 1, NodeGetLayer),
     JS_CFUNC_DEF("getLayerCount", 0, NodeSceneGetLayerCount),
+    JS_CFUNC_DEF("getLayerByID", 1, NodeSceneGetLayerByID),
+    JS_CFUNC_DEF("destroyModelData", 1, NodeSceneDestroyModelData),
     JS_CFUNC_DEF("getEffect", 1, NodeGetEffect),
     JS_CFUNC_DEF("getEffectCount", 0, NodeGetEffectCount),
     JS_CFUNC_DEF("enumerateLayers", 0, NodeSceneEnumerateLayers),
@@ -3825,11 +4327,11 @@ const JSCFunctionListEntry s_effect_proto_funcs[] = {
     JS_CGETSET_DEF("visible", EffectGetVisible, EffectSetVisible),
     JS_CGETSET_DEF("name", EffectGetName, NodeSetIgnore),
     JS_CFUNC_DEF("getMaterial", 1, EffectGetMaterial),
-    JS_CFUNC_DEF("getAnimation", 1, PropertyObjectGetAnimation),
+    JS_CFUNC_DEF("getAnimation", 1, EffectGetAnimation),
 };
 
 const JSCFunctionListEntry s_material_proto_funcs[] = {
-    JS_CFUNC_DEF("getAnimation", 1, PropertyObjectGetAnimation),
+    JS_CFUNC_DEF("getAnimation", 1, MaterialGetAnimation),
 };
 
 void InitEffectClass(JSContext* ctx, JSRuntime* rt) {
@@ -3886,6 +4388,21 @@ void BindThisScene(JSContext* ctx, JSValueConst val) {
 JSValue MakeMediaPlaybackEvent(JSContext* ctx, const MediaStatus& status) {
     JSValue ev = JS_NewObject(ctx);
     JS_DefinePropertyValueStr(ctx, ev, "state", JS_NewUint32(ctx, status.state), JS_PROP_C_W_E);
+    return ev;
+}
+
+// MediaStatusEvent: whether the user has media integration on
+JSValue MakeMediaStatusEvent(JSContext* ctx, const MediaStatus& status) {
+    JSValue ev = JS_NewObject(ctx);
+    JS_DefinePropertyValueStr(ctx, ev, "enabled", JS_NewBool(ctx, status.enabled), JS_PROP_C_W_E);
+    return ev;
+}
+
+// MediaTimelineEvent: the track's position and duration in seconds
+JSValue MakeMediaTimelineEvent(JSContext* ctx, const MediaStatus& status) {
+    JSValue ev = JS_NewObject(ctx);
+    JS_DefinePropertyValueStr(ctx, ev, "position", JS_NewFloat64(ctx, status.position), JS_PROP_C_W_E);
+    JS_DefinePropertyValueStr(ctx, ev, "duration", JS_NewFloat64(ctx, status.duration), JS_PROP_C_W_E);
     return ev;
 }
 
@@ -3982,13 +4499,29 @@ JsRuntime::JsRuntime(): m_impl(Box<Impl>::make()) {
         rstd_error("script: JS_NewRuntime/JS_NewContext failed");
         return;
     }
+    // Everything below is hundreds of engine calls (classes, globals, the bootstrap script): run it on the engine thread.
+#ifdef OWE_JS_SPIDERMONKEY
+    owe_js_set_gate(m_impl->rt, GateLockFn, GateUnlockFn, GateReleaseAllFn, GateNotifyFn, nullptr);
+    // natives that read only the engine's own state (the frame inputs), or take the gate themselves when they need the scene
+    for (void* fn : { reinterpret_cast<void*>(&EngineGetterFrametime), reinterpret_cast<void*>(&EngineGetterRuntime),
+                      reinterpret_cast<void*>(&EngineGetterTimeOfDay), reinterpret_cast<void*>(&EngineGetterScreenRes),
+                      reinterpret_cast<void*>(&NodeSceneGetCameraTransforms), reinterpret_cast<void*>(&NodeGetFov),
+                      reinterpret_cast<void*>(&NodeSceneSetCameraTransforms), reinterpret_cast<void*>(&NodeSetFov) })
+        owe_js_gate_exempt(m_impl->rt, fn);
+    for (void* fn : { reinterpret_cast<void*>(&NodeGetOrigin), reinterpret_cast<void*>(&NodeSetOrigin),
+                      reinterpret_cast<void*>(&NodeGetAngles), reinterpret_cast<void*>(&NodeSetAngles),
+                      reinterpret_cast<void*>(&NodeGetScale), reinterpret_cast<void*>(&NodeSetScale) })
+        owe_js_gate_exempt(m_impl->rt, fn);
+#endif
+    OnEngine(m_impl->rt, [&]() -> void {
     // QuickJS's default stack-overflow check is conservative (relative to
     // the OS thread stack at runtime init). When the wallpaper renderer
     // runs scripts from a deep call site (Vulkan render thread, post-
     // particle emission), `new Date()` and similar built-ins hit the
     // stack-frame guard and throw "Maximum call stack size exceeded".
     // Disable the soft check; the OS stack is plenty for clock/audio-
-    // response style scripts in the corpus.
+    // response style scripts in the corpus. (The SpiderMonkey backend reads 0 as "the engine thread's own, large,
+    // limit": recursion there throws a RangeError instead of overflowing the stack.)
     JS_SetMaxStackSize(m_impl->rt, 0);
     JS_SetContextOpaque(m_impl->ctx, &m_impl->host);
     // Built-in ES modules (WEMath, …). Resolves bare `import 'WEMath'`
@@ -4009,6 +4542,7 @@ JsRuntime::JsRuntime(): m_impl(Box<Impl>::make()) {
     // Capture them now so per-script binding can fall back to the stub
     // when no SceneNode is provided.
     CaptureDefaultBindings(m_impl->ctx);
+    });
 }
 
 void ReleaseFieldScriptValues(JSContext* ctx, FieldScript& script) {
@@ -4024,6 +4558,20 @@ void ReleaseFieldScriptValues(JSContext* ctx, FieldScript& script) {
 }
 
 JsRuntime::~JsRuntime() {
+    if (getenv("OWE_JS_DEBUG"))
+        fprintf(stderr, "[js] scene gate: %llu contended acquires, %.1f ms waiting in total (both threads)\n", g_gate_waits.load(), g_gate_wait_ns.load() / 1e6);
+    OnEngine(m_impl->rt, [&]() -> void {
+    if (m_impl->ctx) {
+        // the scene's layers may be gone by now: scripts see the stand-in layer, not their own
+        BindThisContext(m_impl->ctx, m_impl->host.default_layer, m_impl->host.default_layer);
+        for (auto& fs : m_impl->scripts) {
+            auto* I = fs->m_impl.get();
+            if (! I->alive || I->init_deferred || ! I->init_done) continue;
+            m_impl->host.active_field_script = fs.get();
+            InvokeCallback(m_impl->ctx, I->module_ns, "destroy", 0, nullptr, m_impl.get(), I->sha.as_str());
+        }
+        m_impl->host.active_field_script = nullptr;
+    }
     for (auto& fs : m_impl->scripts) ReleaseFieldScriptValues(m_impl->ctx, *fs);
     for (auto& fs : m_impl->deferred_scripts) ReleaseFieldScriptValues(m_impl->ctx, *fs);
     m_impl->scripts.clear();
@@ -4049,14 +4597,17 @@ JsRuntime::~JsRuntime() {
     for (auto& callback : m_impl->host.ended_callbacks) JS_FreeValue(m_impl->ctx, callback.fn);
     m_impl->host.ended_callbacks.clear();
     PruneSceneLayerBindings(m_impl->ctx, m_impl->host, nullptr);
+    });
     if (m_impl->ctx) JS_FreeContext(m_impl->ctx);
     if (m_impl->rt) JS_FreeRuntime(m_impl->rt);
 }
 
 void JsRuntime::SetFrameInputs(const FrameInputs& fi) {
+    OnEngine(m_impl->rt, [&]() -> void {
     m_impl->host.inputs = fi;
     UpdateInputObject(m_impl->ctx);
     RefreshAudioBuffers(m_impl->ctx, m_impl->host);
+});
 }
 
 void JsRuntime::SetAudioResponseDemand(Option<Arc<AudioResponseDemand>> demand) {
@@ -4091,6 +4642,7 @@ void DispatchGeneralSettings(JSContext* ctx, JsRuntime::Impl* rt, FieldScript* s
 } // namespace
 
 void JsRuntime::SetGeneralSettings(const Json& changes) {
+    OnEngine(m_impl->rt, [&]() -> void {
     auto object = changes.as_object();
     if (object.is_none()) return;
     for (const auto& [key, value] : (**object).iter())
@@ -4102,9 +4654,11 @@ void JsRuntime::SetGeneralSettings(const Json& changes) {
         if (script->m_impl->init_done)
             DispatchGeneralSettings(m_impl->ctx, m_impl.get(), script, changes);
     }
+});
 }
 
 void JsRuntime::SetUserProperty(ref<str> key, const Json& property) {
+    OnEngine(m_impl->rt, [&]() -> void {
     if (! m_impl->ctx) return;
     auto key_bytes = Vec<u8>::from(key.as_bytes());
     key_bytes.push(u8());
@@ -4150,9 +4704,11 @@ void JsRuntime::SetUserProperty(ref<str> key, const Json& property) {
     JS_FreeValue(ctx, props);
     JS_FreeValue(ctx, engine);
     JS_FreeValue(ctx, global);
+});
 }
 
 void JsRuntime::SetUserProperties(const rstd::json::Map& properties) {
+    OnEngine(m_impl->rt, [&]() -> void {
     if (! m_impl->ctx) return;
     JSContext* ctx    = m_impl->ctx;
     JSValue    global = JS_GetGlobalObject(ctx);
@@ -4203,9 +4759,11 @@ void JsRuntime::SetUserProperties(const rstd::json::Map& properties) {
     JS_FreeValue(ctx, props);
     JS_FreeValue(ctx, engine);
     JS_FreeValue(ctx, global);
+});
 }
 
 void JsRuntime::SetMediaStatus(const MediaStatus& status) {
+    OnEngine(m_impl->rt, [&]() -> void {
     if (! m_impl->ctx) return;
     JSContext* ctx         = m_impl->ctx;
     auto&      host        = m_impl->host;
@@ -4220,7 +4778,12 @@ void JsRuntime::SetMediaStatus(const MediaStatus& status) {
                                     prev.album_artist != status.album_artist;
     const bool thumbnail_changed =
         first || prev.art_url != status.art_url || prev.previous_art_url != status.previous_art_url;
-    if (! playback_changed && ! properties_changed && ! thumbnail_changed) return;
+    // Wallpaper Engine tells a script when the user turns media integration on or off (and the state it starts in, after init), and
+    // for players that report a position, whenever the position or the length of the track moves
+    const bool status_changed   = prev.enabled != status.enabled;
+    const bool timeline_changed = prev.position != status.position || prev.duration != status.duration;
+    if (! playback_changed && ! properties_changed && ! thumbnail_changed && ! status_changed && ! timeline_changed)
+        return;
 
     const auto script_count = m_impl->scripts.len();
     for (usize index {}; index < script_count; ++index) {
@@ -4229,6 +4792,12 @@ void JsRuntime::SetMediaStatus(const MediaStatus& status) {
         if (! I->alive || I->init_deferred) continue;
         BindFieldScriptContext(ctx, *I, m_impl->host.default_layer);
         m_impl->host.active_field_script = fs;
+        if (status_changed) {
+            JSValue ev = MakeMediaStatusEvent(ctx, status);
+            InvokeEventCallback(
+                ctx, I->module_ns, "mediaStatusChanged", ev, m_impl.get(), I->sha.as_str());
+            JS_FreeValue(ctx, ev);
+        }
         if (playback_changed) {
             JSValue ev = MakeMediaPlaybackEvent(ctx, status);
             InvokeEventCallback(
@@ -4247,8 +4816,15 @@ void JsRuntime::SetMediaStatus(const MediaStatus& status) {
                 ctx, I->module_ns, "mediaThumbnailChanged", ev, m_impl.get(), I->sha.as_str());
             JS_FreeValue(ctx, ev);
         }
+        if (timeline_changed) {
+            JSValue ev = MakeMediaTimelineEvent(ctx, status);
+            InvokeEventCallback(
+                ctx, I->module_ns, "mediaTimelineChanged", ev, m_impl.get(), I->sha.as_str());
+            JS_FreeValue(ctx, ev);
+        }
     }
     m_impl->host.active_field_script = nullptr;
+});
 }
 
 void JsRuntime::SetAnimationLayerResolvers(AnimationLayerCreator   creator,
@@ -4294,10 +4870,12 @@ void JsRuntime::SetBonePhysicsHandler(BonePhysicsHandler handler) {
 }
 
 void JsRuntime::SetPersistence(PathBuf path) {
+    OnEngine(m_impl->rt, [&]() -> void {
     m_impl->host.ls_path = rstd::move(path);
     m_impl->host.ls_data.clear();
     m_impl->host.ls_pending.clear();
     (void)LoadLocalStorage(&m_impl->host, m_impl->host.ls_path);
+});
 }
 
 namespace
@@ -4306,15 +4884,20 @@ void RunFieldScriptInit(JSContext* ctx, JsRuntime::Impl* rt, FieldScript* fs);
 }
 
 void JsRuntime::SetScene(owe::Scene* scene) {
+    OnEngine(m_impl->rt, [&]() -> void {
     m_impl->host.scene = scene;
     if (scene) m_impl->host.registered_layer_queries = true;
+});
 }
 
 void JsRuntime::InvalidateLayer(owe::SceneNode& node) {
+    OnEngine(m_impl->rt, [&]() -> void {
     InvalidateLayerPointer(rstd::addressof(node));
+});
 }
 
 void JsRuntime::InvalidateLayerPointer(owe::SceneNode* pointer) {
+    OnEngine(m_impl->rt, [&]() -> void {
     auto& host = m_impl->host;
     for (auto& timer : host.deferred) {
         if (timer.dead || ! timer.owner || timer.owner->m_impl->node != pointer) continue;
@@ -4325,6 +4908,7 @@ void JsRuntime::InvalidateLayerPointer(owe::SceneNode* pointer) {
         for (auto& script : scripts) {
             auto& field = *script->m_impl;
             if (field.node == pointer) {
+                CallDestroy(m_impl->ctx, m_impl.get(), script.get());
                 field.node  = nullptr;
                 field.alive = false;
             }
@@ -4343,11 +4927,14 @@ void JsRuntime::InvalidateLayerPointer(owe::SceneNode* pointer) {
     (void)host.node_origin_hooks.remove(pointer);
     (void)host.image_alignment_hooks.remove(pointer);
     (void)host.initial_layer_configs.remove(pointer);
+});
 }
 
 void JsRuntime::SetInitializationOrder(FieldScript& script, rstd::uint64_t order) {
+    OnEngine(m_impl->rt, [&]() -> void {
     if (script.m_impl->rt != m_impl.get() || script.m_impl->init_done) return;
     script.m_impl->initialization_order = order;
+});
 }
 
 void JsRuntime::RegisterInitialLayerConfig(owe::SceneNode* node, Json config) {
@@ -4362,6 +4949,7 @@ void JsRuntime::SetAuthoredLayerNames(HashSet<String> names) {
 }
 
 void JsRuntime::SetSceneRoot(owe::SceneNode* root) {
+    OnEngine(m_impl->rt, [&]() -> void {
     if (! m_impl->ctx) return;
     if (m_impl->scene_root && m_impl->scene_root != root) {
         auto invalidate_removed = [&](Vec<Box<FieldScript>>& scripts) {
@@ -4396,6 +4984,7 @@ void JsRuntime::SetSceneRoot(owe::SceneNode* root) {
         return a < b || (a == b && left.registration < right.registration);
     });
     for (const auto& entry : pending) RunFieldScriptInit(m_impl->ctx, m_impl.get(), entry.script);
+});
 }
 
 // Wallpaper Engine hands a property script its own copy of the value in each
@@ -4431,12 +5020,79 @@ JSValue CopyFieldValue(JSContext* ctx, JSValueConst value) {
     return copy;
 }
 
+void JsRuntime::TickAllAsync(slice<owe::SceneAnimationEventDispatch> animation_events) {
+#ifdef OWE_JS_SPIDERMONKEY
+    m_impl->async_fn = [this, animation_events] { this->TickAll(animation_events); };
+    owe_js_post_on_engine(
+        m_impl->rt, [](void* p) { (*static_cast<std::function<void()>*>(p))(); }, &m_impl->async_fn);
+#else
+    TickAll(animation_events);
+#endif
+}
+void JsRuntime::SetCameraSnapshot(bool has, const owe::SceneCameraTransforms& transforms, double scene_fov) {
+    OnEngine(m_impl->rt, [&]() -> void {
+        m_impl->host.camera_snapshot_valid = true;
+        m_impl->host.camera_snapshot_has   = has;
+        m_impl->host.camera_snapshot       = transforms;
+        m_impl->host.scene_fov_snapshot    = scene_fov;
+    });
+}
+
+bool JsRuntime::AsyncTickAllowed() {
+    // Animation events are produced by the frame's animation tick, which comes after the early start: a script that
+    // listens to them needs the sequential order.
+    return OnEngine(m_impl->rt, [&]() -> bool {
+        for (usize i {}; i < m_impl->scripts.len(); ++i) {
+            auto* I = m_impl->scripts[i]->m_impl.get();
+            if (I->alive && ! JS_IsUndefined(I->animation_event_fn)) return false;
+        }
+        return true;
+    });
+}
+
+void JsRuntime::WaitTick() {
+#ifdef OWE_JS_SPIDERMONKEY
+    owe_js_sync_engine(m_impl->rt);
+#endif
+}
+
 void JsRuntime::TickAll(slice<owe::SceneAnimationEventDispatch> animation_events) {
+    OnEngine(m_impl->rt, [&]() -> void {
     JSContext* ctx = m_impl->ctx;
     SweepDeferred(ctx, &m_impl->host);
     CallEndedCallbacks(ctx, &m_impl->host);
     RemoveFinishedSinglePlays(&m_impl->host);
     const auto script_count = usize(m_impl->scripts.len().to_primitive());
+    // Run asynchronously, the parts of this tick that read the scene itself (not through a native callback, which the
+    // engine takes the gate for) hold the gate. Most scenes need none of it: no animated properties, no cursor, no events.
+    bool prelude_gate = false;
+    if (SceneGate::Active()) {
+        if (! m_impl->animated_known || m_impl->animated_scripts_count != script_count) {
+            SceneGate::Acquire();
+            bool any = false;
+            for (usize index {}; index < script_count && ! any; ++index) {
+                auto* script = m_impl->scripts[index]->m_impl.get();
+                if (! script->alive || script->init_deferred) continue;
+                any = (script->object_kind == ScriptPropertyObjectKind::AnimationLayer &&
+                       script->animation_layer.is_some() &&
+                       (*script->animation_layer)->FieldAnimation(script->property.as_str()).is_some()) ||
+                      (script->node != nullptr && script->object_kind == ScriptPropertyObjectKind::Layer &&
+                       script->node->HasFieldAnimationTrack(script->property.as_str()));
+            }
+            m_impl->animated_scripts       = any;
+            m_impl->animated_scripts_count = script_count;
+            m_impl->animated_known         = true;
+            SceneGate::Release();
+        }
+        prelude_gate = m_impl->animated_scripts || m_impl->host.inputs.cursor_in_window || ! animation_events.is_empty();
+        if (getenv("OWE_JS_DEBUG")) {
+            static int printed = 0;
+            if (printed++ < 3)
+                fprintf(stderr, "[js] async tick prelude: gate %d (animated scripts %d, cursor in window %d, events %d)\n", (int)prelude_gate,
+                        (int)m_impl->animated_scripts, (int)m_impl->host.inputs.cursor_in_window, (int)(! animation_events.is_empty()));
+        }
+        if (prelude_gate) SceneGate::Acquire();
+    }
 
     // Node animations run before scripts; cached script returns must not erase their values.
     for (usize index {}; index < script_count; ++index) {
@@ -4479,13 +5135,37 @@ void JsRuntime::TickAll(slice<owe::SceneAnimationEventDispatch> animation_events
         script->last_value    = rstd::move(value);
     }
 
+    // resizeScreen: the screen is another size than the last tick saw (the first tick only records it)
+    {
+        const auto& inputs = m_impl->host.inputs;
+        const bool  first_tick = m_impl->previous_screen_w < 0.0f;
+        const bool  resized    = ! first_tick && (inputs.screen_w != m_impl->previous_screen_w ||
+                                               inputs.screen_h != m_impl->previous_screen_h);
+        m_impl->previous_screen_w = inputs.screen_w;
+        m_impl->previous_screen_h = inputs.screen_h;
+        if (resized) {
+            for (usize script_index {}; script_index < script_count; ++script_index) {
+                auto* fs = m_impl->scripts[script_index].get();
+                auto* I  = fs->m_impl.get();
+                if (! I->alive || I->init_deferred) continue;
+                BindFieldScriptContext(ctx, *I, m_impl->host.default_layer);
+                m_impl->host.active_field_script = fs;
+                JSValue size                     = MakeVec2Value(ctx, inputs.screen_w, inputs.screen_h);
+                InvokeCallback(ctx, I->module_ns, "resizeScreen", 1, &size, m_impl.get(), I->sha.as_str());
+                JS_FreeValue(ctx, size);
+            }
+            m_impl->host.active_field_script = nullptr;
+        }
+    }
+
     // Cursor event dispatch. For every script bound to a SceneNode, hit-
     // test the cursor against the node's world AABB and fire any of
     // cursorEnter/Leave/Move/Down/Up/Click that the script's module
     // exports. Runs before update() so update can react to state writes
     // the callbacks made this frame.
-    const CursorWorld cursor    = CursorToWorld(m_impl->host.inputs, m_impl->host.scene);
     const bool        in_window = m_impl->host.inputs.cursor_in_window;
+    // (reads the camera: only when there is a cursor to place)
+    const CursorWorld cursor    = in_window ? CursorToWorld(m_impl->host.inputs, m_impl->host.scene) : CursorWorld {};
     const bool        cursor_moved =
         in_window && (! m_impl->cursor_was_in_window ||
                       m_impl->host.inputs.cursor_x != m_impl->previous_cursor_x ||
@@ -4505,9 +5185,23 @@ void JsRuntime::TickAll(slice<owe::SceneAnimationEventDispatch> animation_events
         auto* fs = m_impl->scripts[script_index].get();
         auto* I  = fs->m_impl.get();
         if (! I->alive || I->init_deferred || ! I->node) continue;
-        const bool now_inside = in_window && HitTestNode(I->node, cursor);
         BindFieldScriptContext(ctx, *I, m_impl->host.default_layer);
         m_impl->host.active_field_script = fs;
+        bool now_inside = in_window && HitTestNode(I->node, cursor, m_impl->host.scene, m_impl->host.inputs);
+        // cursorHitTest(event): a script that exports it decides itself whether the cursor is on its layer
+        if (in_window) {
+            JSValue hit_fn = JS_GetPropertyStr(ctx, I->module_ns, "cursorHitTest");
+            if (JS_IsFunction(ctx, hit_fn)) {
+                JSValue arg = ensure_ev(-1);
+                JSValue r   = JS_Call(ctx, hit_fn, JS_UNDEFINED, 1, &arg);
+                if (JS_IsException(r))
+                    m_impl->LogError(ctx, I->sha.as_str(), "cursorHitTest");
+                else if (! JS_IsUndefined(r))
+                    now_inside = JS_ToBool(ctx, r) != 0;
+                JS_FreeValue(ctx, r);
+            }
+            JS_FreeValue(ctx, hit_fn);
+        }
         if (now_inside != I->cursor_inside) {
             InvokeEventCallback(ctx,
                                 I->module_ns,
@@ -4524,26 +5218,29 @@ void JsRuntime::TickAll(slice<owe::SceneAnimationEventDispatch> animation_events
         if (btn_pressed && now_inside) {
             for (int b = 0; b < 3; ++b) {
                 if (btn_pressed & (1u << b)) {
+                    I->button_pressed_here[b] = true;
                     InvokeEventCallback(ctx,
                                         I->module_ns,
                                         "cursorDown",
                                         ensure_ev(b),
                                         m_impl.get(),
                                         I->sha.as_str());
-                    InvokeEventCallback(ctx,
-                                        I->module_ns,
-                                        "cursorClick",
-                                        ensure_ev(b),
-                                        m_impl.get(),
-                                        I->sha.as_str());
                 }
             }
         }
-        if (btn_release && now_inside) {
+        // cursorUp when released over the layer, then cursorClick when the press was on it too (as Wallpaper Engine
+        // documents it); a button released elsewhere forgets its press
+        if (btn_release) {
             for (int b = 0; b < 3; ++b) {
                 if (btn_release & (1u << b)) {
+                    const bool pressed_here   = I->button_pressed_here[b];
+                    I->button_pressed_here[b] = false;
+                    if (! now_inside) continue;
                     InvokeEventCallback(
                         ctx, I->module_ns, "cursorUp", ensure_ev(b), m_impl.get(), I->sha.as_str());
+                    if (pressed_here)
+                        InvokeEventCallback(
+                            ctx, I->module_ns, "cursorClick", ensure_ev(b), m_impl.get(), I->sha.as_str());
                 }
             }
         }
@@ -4583,6 +5280,7 @@ void JsRuntime::TickAll(slice<owe::SceneAnimationEventDispatch> animation_events
         }
     }
     m_impl->host.active_field_script = nullptr;
+    if (prelude_gate) SceneGate::Release();
 
     for (usize script_index {}; script_index < script_count; ++script_index) {
         auto* fs = m_impl->scripts[script_index].get();
@@ -4623,6 +5321,8 @@ void JsRuntime::TickAll(slice<owe::SceneAnimationEventDispatch> animation_events
         JS_FreeValue(ctx, ret);
     }
     m_impl->host.active_field_script = nullptr;
+    m_impl->host.camera_snapshot_valid = false;
+});
 }
 
 bool JsRuntime::Empty() const noexcept {
@@ -4718,6 +5418,18 @@ bool FunctionTakesArg(JSContext* ctx, JSValue fn) {
     return n >= 1;
 }
 
+// Right after init Wallpaper Engine calls mediaStatusChanged with whether media integration is on (measured with the
+// script-callback-probe wallpaper: init, mediaStatusChanged {enabled: true}, applyUserProperties, applyGeneralSettings).
+void DispatchInitialMediaStatus(JSContext* ctx, JsRuntime::Impl* rt, FieldScript* fs) {
+    auto* I = fs->m_impl.get();
+    if (! I->alive) return;
+    BindFieldScriptContext(ctx, *I, rt->host.default_layer);
+    rt->host.active_field_script = fs;
+    JSValue ev                   = MakeMediaStatusEvent(ctx, rt->host.media);
+    InvokeEventCallback(ctx, I->module_ns, "mediaStatusChanged", ev, rt, I->sha.as_str());
+    JS_FreeValue(ctx, ev);
+}
+
 void RunFieldScriptInit(JSContext* ctx, JsRuntime::Impl* rt, FieldScript* fs) {
     if (! fs || ! fs->m_impl->alive || fs->m_impl->init_done || fs->m_impl->init_in_progress)
         return;
@@ -4734,6 +5446,7 @@ void RunFieldScriptInit(JSContext* ctx, JsRuntime::Impl* rt, FieldScript* fs) {
     if (! JS_IsFunction(ctx, I->init_fn)) {
         I->init_in_progress = false;
         I->init_done        = true;
+        DispatchInitialMediaStatus(ctx, rt, fs);
         return;
     }
 
@@ -4762,6 +5475,7 @@ void RunFieldScriptInit(JSContext* ctx, JsRuntime::Impl* rt, FieldScript* fs) {
     JS_FreeValue(ctx, r);
     I->init_in_progress = false;
     I->init_done        = true;
+    DispatchInitialMediaStatus(ctx, rt, fs);
 }
 
 JSValue AwaitModuleEvaluation(JSContext* ctx, JSValue value) {
@@ -4804,7 +5518,9 @@ bool EvaluateFieldScriptModule(JSContext* ctx, JsRuntime::Impl* rt, FieldScript&
     rt->host.active_animation = I->animation.is_some() ? Some((*I->animation).clone())
                                                        : None<Arc<owe::SceneAnimationPlayback>>();
     JSModuleDef* module       = static_cast<JSModuleDef*>(JS_VALUE_GET_PTR(compiled));
+    rt->host.in_module_scope = true;
     JSValue      result       = AwaitModuleEvaluation(ctx, JS_EvalFunction(ctx, compiled));
+    rt->host.in_module_scope = false;
     if (JS_IsException(result)) {
         rt->LogError(ctx, I->sha.as_str(), "module eval failed");
         JS_FreeValue(ctx, result);
@@ -4891,6 +5607,7 @@ FieldScript* JsRuntime::MakeFieldScript(ref<str> source, ref<str> script_sha,
                                         FieldKind field_kind_in, const Json& properties_config,
                                         const Json& initial_value, ScriptBindingContext context,
                                         FieldScriptInitialization initialization) {
+    return OnEngine(m_impl->rt, [&]() -> FieldScript* {
     JSContext* ctx = m_impl->ctx;
     if (! ctx) return nullptr;
     EngineBindingGuard binding_guard(ctx, m_impl->host);
@@ -4981,9 +5698,11 @@ FieldScript* JsRuntime::MakeFieldScript(ref<str> source, ref<str> script_sha,
         if (m_impl->scene_root) RunFieldScriptInit(ctx, m_impl.get(), raw);
     }
     return raw;
+});
 }
 
 bool JsRuntime::InitializeFieldScript(FieldScript& script) {
+    return OnEngine(m_impl->rt, [&]() -> bool {
     if (! m_impl->ctx || ! m_impl->scene_root || script.m_impl->rt != m_impl.get() ||
         ! script.m_impl->alive || ! script.m_impl->init_deferred ||
         script.m_impl->init_in_progress || JS_IsUndefined(script.m_impl->deferred_module))
@@ -5016,6 +5735,7 @@ bool JsRuntime::InitializeFieldScript(FieldScript& script) {
         return true;
     }
     return false;
+});
 }
 
 bool JsRuntime::OwnsDeferredFieldScript(const FieldScript& script) const noexcept {
@@ -5024,6 +5744,7 @@ bool JsRuntime::OwnsDeferredFieldScript(const FieldScript& script) const noexcep
 }
 
 bool JsRuntime::DiscardDeferredFieldScript(FieldScript& script) {
+    return OnEngine(m_impl->rt, [&]() -> bool {
     for (usize index {}; index < m_impl->deferred_scripts.len(); ++index) {
         if (m_impl->deferred_scripts[index].get() != &script) continue;
         for (auto& timer : m_impl->host.deferred) {
@@ -5036,9 +5757,11 @@ bool JsRuntime::DiscardDeferredFieldScript(FieldScript& script) {
         return true;
     }
     return false;
+});
 }
 
 void JsRuntime::PruneInactiveFieldScripts() {
+    OnEngine(m_impl->rt, [&]() -> void {
     usize index {};
     while (index < m_impl->scripts.len()) {
         if (m_impl->scripts[index]->alive()) {
@@ -5048,6 +5771,7 @@ void JsRuntime::PruneInactiveFieldScripts() {
         auto script = m_impl->scripts.remove(index);
         ReleaseFieldScriptValues(m_impl->ctx, *script);
     }
+});
 }
 
 } // namespace owe::script

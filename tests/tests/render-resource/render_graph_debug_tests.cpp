@@ -570,6 +570,253 @@ TEST(SceneRenderGraph, ASilentCasterKeepsTheAtlasWritten) {
     EXPECT_TRUE(graph->graph.compile().is_ok());
 }
 
+namespace
+{
+// stands in for the source that writes a batch's model matrices
+struct NullBatchSource {
+    auto Describe(mut_ref<dyn<vrento::UniformBindingSink>>) const
+        -> Result<empty, vrento::UniformError> {
+        return Ok(empty {});
+    }
+    auto Version(ref<dyn<vrento::UniformUpdateContext>>) const -> u64 { return u64(); }
+    auto Evaluate(ref<dyn<vrento::UniformUpdateContext>>, mut_ref<dyn<vrento::UniformValueSink>>) const
+        -> Result<empty, vrento::UniformError> {
+        return Ok(empty {});
+    }
+    auto AcquireBindingLease() const -> Option<Box<dyn<vrento::UniformBindingLease>>> {
+        return None();
+    }
+};
+Box<dyn<vrento::UniformSource>> MakeNullBatchSource(const void*, Vec<owe::SceneNode*>, u32) {
+    return Box<dyn<vrento::UniformSource>>::make(NullBatchSource {});
+}
+void NoRelease(const void*) {}
+} // namespace
+
+// Casters of the same geometry and shader (a script clones them, each with a mesh and material of its
+// own) are one instanced draw: a draw for each object and view; a caster of other geometry is drawn
+// alone, and OWE_SHADOW_BATCH=0 would draw every one alone.
+TEST(SceneRenderGraph, CastersOfTheSameGeometryAreDrawnTogether) {
+    owe::Scene scene;
+    scene.SetShadowBatchSourceFactory(&MakeNullBatchSource, nullptr, &NoRelease);
+    scene.RegisterRenderTarget(String::make("_rt_default"_str),
+                               owe::SceneRenderTarget { .width = i32(1280), .height = i32(720) });
+    scene.RegisterRenderTarget(String::make("_rt_shadowAtlas"_str),
+                               owe::SceneRenderTarget {
+                                   .width  = i32(256),
+                                   .height = i32(256),
+                                   .kind   = owe::SceneRenderTargetKind::DepthSampled,
+                               });
+    auto viewports = Vec<owe::SceneShadowViewport>::make();
+    for (int view = 0; view < 2; ++view)
+        viewports.push(owe::SceneShadowViewport {
+            .width  = rstd::f32(128.0f),
+            .height = rstd::f32(128.0f),
+        });
+    scene.RegisterShadowDefinition(owe::SceneShadowDefinition {
+        .target    = String::make("_rt_shadowAtlas"_str),
+        .viewports = rstd::move(viewports),
+    });
+    for (int object = 0; object < 5; ++object) {
+        auto caster          = Arc<owe::SceneNode>::make();
+        caster->shadow.cast  = true;
+        auto caster_mesh     = Arc<owe::SceneMesh>::make();
+        auto caster_material = GraphMaterial();
+        caster_material.name = "caster-main"_Str;
+        auto variant         = Arc<owe::SceneMaterial>::make(GraphMaterial());
+        variant->name        = "caster-shadow"_Str;
+        caster_material.shadow_variants.push(rstd::move(variant));
+        auto batch  = Arc<owe::SceneMaterial>::make(GraphMaterial());
+        batch->name = "caster-shadow-batch"_Str;
+        caster_material.shadow_batch_variants.push(rstd::move(batch));
+        caster_mesh->AddMaterial(rstd::move(caster_material));
+        caster_mesh->Submeshes().push(owe::SceneMesh::Submesh {});
+        caster->AddMesh(rstd::move(caster_mesh));
+        scene.RootMut()->AppendChild(caster.clone());
+    }
+    auto snapshot = owe::ExtractRenderSceneSnapshot(scene);
+    ASSERT_EQ(snapshot.ShadowCasters().len(), usize(5));
+    EXPECT_TRUE(snapshot.ShadowCasters()[usize()].batch_material.is_some());
+    auto graph = owe::BuildSceneRenderState(scene, snapshot);
+    ASSERT_TRUE(graph.is_ok());
+    EXPECT_TRUE(graph->graph.compile().is_ok());
+    usize casters {};
+    u32   instances {};
+    for (const auto& draw : graph->draws)
+        if (draw.source->parameters().depth_only) {
+            ++casters;
+            instances = draw.source->parameters().instance_count;
+        }
+    // one draw of the five objects, each drawn into the definition's two views
+    EXPECT_EQ(casters, usize(1));
+    EXPECT_EQ(instances, u32(10));
+}
+
+namespace
+{
+Box<dyn<vrento::UniformSource>> MakeNullObjectSource(const void*, Vec<owe::SceneNode*>) {
+    return Box<dyn<vrento::UniformSource>>::make(NullBatchSource {});
+}
+} // namespace
+
+// Objects of one mesh and material (a script clones them, each with a mesh and material of its own) that
+// wait for the same flush are one instanced draw, whatever else is drawn between them; one drawn another
+// way (blended) stays alone.
+TEST(SceneRenderGraph, ObjectsOfTheSameMeshAreDrawnTogether) {
+    static int context = 0;
+    owe::Scene scene;
+    scene.SetShadowBatchSourceFactory(&MakeNullBatchSource, &context, &NoRelease);
+    scene.SetObjectBatchSourceFactory(&MakeNullObjectSource);
+    scene.RegisterRenderTarget(String::make("_rt_default"_str),
+                               owe::SceneRenderTarget { .width = i32(64), .height = i32(64) });
+    auto camera =
+        Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 100.0, 50.0));
+    camera->SetLookAt({ 0.0, 0.0, 10.0 }, { 0.0, 0.0, 0.0 }, { 0.0, 1.0, 0.0 });
+    camera->Update();
+    scene.RegisterCamera(String::make("global_perspective"_str), camera.clone());
+    (void)scene.SetActiveCamera("global_perspective"_str);
+
+    auto model = [&](float z, bool blended) {
+        auto node = Arc<owe::SceneNode>::make();
+        node->SetTranslate({ 0.0f, 0.0f, z });
+        node->SetDrawsAsModel(true);
+        auto mesh     = Arc<owe::SceneMesh>::make();
+        auto material = GraphMaterial();
+        auto pipeline = material.Pipeline();
+        pipeline.depth_test  = true;
+        pipeline.depth_write = true;
+        pipeline.blend_mode  = blended ? owe::BlendMode::Translucent : owe::BlendMode::Disable;
+        material.SetPipeline(pipeline);
+        auto variant = Arc<owe::SceneMaterial>::make(GraphMaterial());
+        variant->SetPipeline(pipeline);
+        material.object_batch_variant = Some(rstd::move(variant));
+        mesh->AddMaterial(rstd::move(material));
+        mesh->Submeshes().push(owe::SceneMesh::Submesh {});
+        node->AddMesh(rstd::move(mesh));
+        scene.RootMut()->AppendChild(node.clone());
+    };
+    for (int object = 0; object < 5; ++object) model(float(object) - 3.0f, false);
+    model(-5.0f, true);
+
+    auto snapshot = owe::ExtractRenderSceneSnapshot(scene);
+    auto graph    = owe::BuildSceneRenderState(scene, snapshot);
+    ASSERT_TRUE(graph.is_ok());
+    EXPECT_TRUE(graph->graph.compile().is_ok());
+    usize draws {}, instanced {};
+    u32   instances {};
+    for (const auto& draw : graph->draws) {
+        const auto& desc = draw.source->parameters();
+        if (desc.depth_only) continue;
+        ++draws;
+        if (desc.instance_count > u32(1)) {
+            ++instanced;
+            instances = desc.instance_count;
+        }
+    }
+    // the five opaque objects are one draw of five instances, the blended one is its own
+    EXPECT_EQ(instanced, usize(1));
+    EXPECT_EQ(instances, u32(5));
+    EXPECT_EQ(draws, usize(2));
+}
+
+// The shadow maps of lights that do not light now are not drawn (Ocarina of Time's torches sit in
+// a layer a script hides: two six-face maps, half of all its draws); showing the light brings them
+// back, and the atlas always keeps a writer.
+TEST(SceneRenderGraph, OnlyLightsThatLightNowDrawShadowCasters) {
+    owe::Scene scene;
+    scene.RegisterRenderTarget(String::make("_rt_default"_str),
+                               owe::SceneRenderTarget { .width = i32(1280), .height = i32(720) });
+    scene.RegisterRenderTarget(String::make("_rt_shadowAtlas"_str),
+                               owe::SceneRenderTarget {
+                                   .width  = i32(256),
+                                   .height = i32(256),
+                                   .kind   = owe::SceneRenderTargetKind::DepthSampled,
+                               });
+    // three lights of one view each, in views 0, 1 and 2
+    auto light_nodes = Vec<Arc<owe::SceneNode>>::make();
+    for (int light = 0; light < 3; ++light) {
+        auto viewports = Vec<owe::SceneShadowViewport>::make();
+        viewports.push(owe::SceneShadowViewport {
+            .width  = rstd::f32(256.0f),
+            .height = rstd::f32(256.0f),
+        });
+        scene.RegisterShadowDefinition(owe::SceneShadowDefinition {
+            .target      = String::make("_rt_shadowAtlas"_str),
+            .viewports   = rstd::move(viewports),
+            .light_id    = i32(light),
+            .view_offset = u32(light),
+        });
+        light_nodes.push(Arc<owe::SceneNode>::make());
+        scene.AttachRuntimeNode(*scene.RootMut(), light_nodes[usize(light)].clone());
+        auto registered = Box<owe::SceneLight>::make(owe::SceneLight::Desc {
+            .type = owe::SceneLightType::Point, .cast_shadow = true, .shadow_view = i32(light) });
+        registered->setNode(light_nodes[usize(light)].as_ptr());
+        (void)scene.RegisterLight(rstd::move(registered));
+    }
+
+    auto caster          = Arc<owe::SceneNode>::make();
+    caster->shadow.cast  = true;
+    auto caster_mesh     = Arc<owe::SceneMesh>::make();
+    auto caster_material = GraphMaterial();
+    caster_material.name = "caster-main"_Str;
+    for (int light = 0; light < 3; ++light) {
+        auto variant  = Arc<owe::SceneMaterial>::make(GraphMaterial());
+        variant->name = "caster-shadow"_Str;
+        caster_material.shadow_variants.push(rstd::move(variant));
+    }
+    caster_mesh->AddMaterial(rstd::move(caster_material));
+    caster_mesh->Submeshes().push(owe::SceneMesh::Submesh {});
+    caster->AddMesh(rstd::move(caster_mesh));
+    scene.RootMut()->AppendChild(caster.clone());
+
+    // all three light: ONE draw for the caster covers their three views (one instance a view)
+    EXPECT_EQ(scene.ShadowLightMask(), rstd::uint64_t(7));
+    (void)scene.ConsumeRenderGraphDirty();
+    EXPECT_FALSE(scene.ConsumeRenderGraphDirty());
+    auto all = owe::ExtractRenderSceneSnapshot(scene);
+    ASSERT_EQ(all.ShadowCasters().len(), usize(1));
+    EXPECT_EQ(all.ShadowCasters()[usize()].definition, usize(0));
+    EXPECT_EQ(all.ShadowCasters()[usize()].definition_count, usize(3));
+    EXPECT_EQ(all.ShadowCasters()[usize()].instance_count, u32(3));
+
+    // the last light's layer hidden: its view is not drawn, and the change dirties the graph
+    (void)scene.SetNodeVisible(*light_nodes[usize(2)], false);
+    EXPECT_EQ(scene.ShadowLightMask(), rstd::uint64_t(3));
+    EXPECT_TRUE(scene.ConsumeRenderGraphDirty());
+    auto hidden = owe::ExtractRenderSceneSnapshot(scene);
+    ASSERT_EQ(hidden.ShadowCasters().len(), usize(1));
+    EXPECT_EQ(hidden.ShadowCasters()[usize()].definition_count, usize(2));
+    auto graph = owe::BuildSceneRenderState(scene, hidden);
+    ASSERT_TRUE(graph.is_ok());
+    EXPECT_TRUE(graph->graph.compile().is_ok());
+    EXPECT_FALSE(scene.ConsumeRenderGraphDirty());
+
+    // the middle one hidden too, the first back: views 0 and 2 do not follow each other, so two draws
+    (void)scene.SetNodeVisible(*light_nodes[usize(2)], true);
+    (void)scene.SetNodeVisible(*light_nodes[usize(1)], false);
+    EXPECT_EQ(scene.ShadowLightMask(), rstd::uint64_t(5));
+    EXPECT_TRUE(scene.ConsumeRenderGraphDirty());
+    auto gap = owe::ExtractRenderSceneSnapshot(scene);
+    ASSERT_EQ(gap.ShadowCasters().len(), usize(2));
+    EXPECT_EQ(gap.ShadowCasters()[usize()].definition, usize(0));
+    EXPECT_EQ(gap.ShadowCasters()[usize()].definition_count, usize(1));
+    EXPECT_EQ(gap.ShadowCasters()[usize(1)].definition, usize(2));
+    EXPECT_EQ(gap.ShadowCasters()[usize(1)].definition_count, usize(1));
+
+    // shown again: one draw for all three
+    (void)scene.SetNodeVisible(*light_nodes[usize(1)], true);
+    EXPECT_TRUE(scene.ConsumeRenderGraphDirty());
+    EXPECT_EQ(owe::ExtractRenderSceneSnapshot(scene).ShadowCasters().len(), usize(1));
+
+    // every light hidden: one definition stays, so the atlas has a writer
+    for (int light = 0; light < 3; ++light)
+        (void)scene.SetNodeVisible(*light_nodes[usize(light)], false);
+    EXPECT_EQ(scene.ShadowLightMask(), rstd::uint64_t(1));
+    auto none = owe::ExtractRenderSceneSnapshot(scene);
+    ASSERT_EQ(none.ShadowCasters().len(), usize(1));
+    EXPECT_EQ(none.ShadowCasters()[usize()].definition_count, usize(1));
+}
+
 // Silence belongs to a model's material, not the model: Ocarina of Time's courtyard is one model of
 // 25 materials whose last is a translucent window, and its walls still cast.
 TEST(SceneRenderGraph, OnlyTheTranslucentPartsOfAModelAreSilent) {
@@ -675,14 +922,13 @@ TEST(SceneRenderGraph, OrdersShadowAtlasWriterBeforeReceiver) {
     scene.RootMut()->AppendChild(receiver.clone());
 
     auto snapshot = owe::ExtractRenderSceneSnapshot(scene);
-    // one caster draw for each light, with that light's views
-    ASSERT_EQ(snapshot.ShadowCasters().len(), usize(2));
+    // one caster draw for both lights (their views follow each other: view 0, then views 1 and 2),
+    // one instance a view, drawn with the first light's material (the first view's offset)
+    ASSERT_EQ(snapshot.ShadowCasters().len(), usize(1));
     EXPECT_EQ(snapshot.ShadowCasters()[usize()].definition, usize());
-    EXPECT_EQ(snapshot.ShadowCasters()[usize()].instance_count, u32(1));
-    EXPECT_EQ(snapshot.ShadowCasters()[usize(1)].definition, usize(1));
-    EXPECT_EQ(snapshot.ShadowCasters()[usize(1)].instance_count, u32(2));
-    EXPECT_EQ(snapshot.ShadowCasters()[usize(1)].material->name.as_str(),
-              "caster-shadow-second"_str);
+    EXPECT_EQ(snapshot.ShadowCasters()[usize()].definition_count, usize(2));
+    EXPECT_EQ(snapshot.ShadowCasters()[usize()].instance_count, u32(3));
+    EXPECT_EQ(snapshot.ShadowCasters()[usize()].material->name.as_str(), "caster-shadow"_str);
     auto graph = owe::BuildSceneRenderState(scene, snapshot);
     ASSERT_TRUE(graph.is_ok());
     auto ordered = graph->graph.compile();
@@ -889,7 +1135,7 @@ TEST(SceneRenderGraph, LinkedSurfaceReadsFollowSceneOrder) {
         EXPECT_EQ(source_emitted, state->name == "after"_str);
         auto pass = graph->draw(state->id);
         ASSERT_TRUE(pass.is_some());
-        auto uses = (*pass)->resourceUses();
+        const auto& uses = (*pass)->resourceUses();
         for (auto use : uses.textures) {
             for (const auto& entry : plan.textures) {
                 if (entry.handle != use || entry.request().name != "_rt_link_7"_str) continue;

@@ -23,6 +23,8 @@ constexpr double kDegToRad = f64::consts::PI.to_primitive() / 180.0;
 struct ScriptScene::Impl {
     JsRuntime     rt;
     Vec<Actuator> actuators;
+    bool          async_pending { false };
+    Vec<owe::SceneAnimationEventDispatch> async_events;
 };
 
 ScriptScene::ScriptScene(Option<Arc<AudioResponseDemand>> demand): m_impl(Box<Impl>::make()) {
@@ -144,6 +146,30 @@ void ScriptScene::Tick(const FrameInputs&                      fi,
                        slice<owe::SceneAnimationEventDispatch> animation_events) {
     m_impl->rt.SetFrameInputs(fi);
     m_impl->rt.TickAll(animation_events);
+    ApplyActuators();
+}
+
+void ScriptScene::BeginTick(const FrameInputs& fi, Vec<owe::SceneAnimationEventDispatch> animation_events) {
+    if (m_impl->async_pending) return;
+    m_impl->async_events = rstd::move(animation_events);
+    m_impl->rt.SetFrameInputs(fi);
+    // The caller (the render thread) keeps the gate until it has finished with the scene for this frame.
+    SceneGate::AcquireRender();
+    m_impl->rt.TickAllAsync(m_impl->async_events.as_slice());
+    m_impl->async_pending = true;
+}
+
+void ScriptScene::FinishTick() {
+    if (! m_impl->async_pending) return;
+    SceneGate::ReleaseAll();
+    m_impl->rt.WaitTick();
+    m_impl->async_pending = false;
+    ApplyActuators();
+}
+
+bool ScriptScene::TickPending() const noexcept { return m_impl->async_pending; }
+
+void ScriptScene::ApplyActuators() {
     const auto actuator_count = m_impl->actuators.len();
     for (usize index {}; index < actuator_count; ++index) {
         auto* script = m_impl->actuators[index].script;
@@ -171,9 +197,35 @@ float LocalTimeOfDay(double epoch_ms) {
     return static_cast<float>(into_day / 86400.0);
 }
 
+bool BeginSceneScripts(owe::Scene& scene, const FrameInputs& fi) {
+    auto script_scene = scene.ExtensionMut<ScriptScene>();
+    if (script_scene.is_none() || (**script_scene).TickPending()) return false;
+    if (static_cast<double>(fi.runtime) < scene.ScriptStart()) return false;
+    if (! (**script_scene).runtime().AsyncTickAllowed()) return false;
+    {
+        auto camera = scene.ScriptCameraTransforms();
+        (**script_scene).runtime().SetCameraSnapshot(camera.is_some(), camera.is_some() ? *camera : owe::SceneCameraTransforms {}, scene.SceneFov());
+    }
+    auto events = scene.ConsumeAnimationEvents();
+    auto inputs = fi;
+    if (auto start = scene.ScriptClock(); start.is_some()) {
+        inputs.clock_ms    = Some(*start + static_cast<double>(fi.runtime) * 1000.0);
+        inputs.time_of_day = LocalTimeOfDay(*inputs.clock_ms);
+    }
+    (**script_scene).BeginTick(inputs, rstd::move(events));
+    return true;
+}
+
 void TickSceneScripts(owe::Scene& scene, const FrameInputs& fi) {
     auto script_scene = scene.ExtensionMut<ScriptScene>();
     if (script_scene.is_none()) return;
+    if ((**script_scene).TickPending()) {
+        // started early by BeginSceneScripts: collect it where the scripts would have run
+        (**script_scene).FinishTick();
+        (void)scene.ConsumeAnimationEvents();
+        scene.ProcessLayerDeletions();
+        return;
+    }
     auto events = scene.ConsumeAnimationEvents();
     // Scripts start at the scene's script start, on the scene's clock.
     if (static_cast<double>(fi.runtime) < scene.ScriptStart()) return;

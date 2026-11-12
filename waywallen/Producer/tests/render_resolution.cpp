@@ -64,8 +64,11 @@ int main() {
         rstd_assert(extent.normalizePointer(0, 0).is_some());
         rstd_assert(extent.normalizePointer(float(extent.width), float(extent.height)).is_some());
         rstd_assert(extent.normalizePointer(-1, -1).is_none());
-        rstd_assert(extent.normalizePointer(float(extent.width) + 1, 0).is_none());
-        rstd_assert(extent.normalizePointer(0, float(extent.height) + 1).is_none());
+        // A drag reports positions beyond the extent; only (-1, -1) means the pointer left.
+        auto beyond = extent.normalizePointer(float(extent.width) * 2, -float(extent.height));
+        rstd_assert(beyond && (*beyond)[rstd::usize()] == 2.0 && (*beyond)[rstd::usize(1)] == -1.0);
+        rstd_assert(extent.normalizePointer(-1, 0).is_some());
+        rstd_assert(extent.normalizePointer(0, -1).is_some());
     }
     rstd_assert((ww_wescene::RenderExtent { 0, 644 }).normalizePointer(0, 0).is_none());
     rstd_assert((ww_wescene::RenderExtent { 2048, 0 }).normalizePointer(0, 0).is_none());

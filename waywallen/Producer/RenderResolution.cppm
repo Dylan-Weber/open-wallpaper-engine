@@ -11,7 +11,9 @@ struct RenderExtent {
     rstd::uint32_t height;
 
     auto normalizePointer(float x, float y) const -> rstd::Option<rstd::array<double, 2>> {
-        if (! width || ! height || ! (x >= 0.0f && y >= 0.0f && x <= width && y <= height))
+        // (-1, -1) is the pointer leaving; any other position is real, even past the extent
+        // while a drag carries on beyond the picture.
+        if (! width || ! height || (x - x) != 0.0f || (y - y) != 0.0f || (x == -1.0f && y == -1.0f))
             return rstd::None();
         return rstd::Some(rstd::array<double, 2> { double(x) / width, double(y) / height });
     }

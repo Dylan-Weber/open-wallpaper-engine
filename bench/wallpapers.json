@@ -1,0 +1,214 @@
+{
+ "note": "frames_short/frames_long default to 100/1100 (the difference is timed, so a long run makes the viewer's 10 ms exit poll negligible); fps 60; size 1920x1080. Video and web wallpapers are not scenes: see README.",
+ "wallpapers": [
+  {
+   "name": "water-effect-13",
+   "id": "820654165",
+   "category": "simple"
+  },
+  {
+   "name": "nebula",
+   "id": "1824243132",
+   "category": "simple"
+  },
+  {
+   "name": "yingyang-kitty",
+   "id": "1695353047",
+   "category": "simple"
+  },
+  {
+   "name": "rain",
+   "id": "1444077782",
+   "category": "particles"
+  },
+  {
+   "name": "winter",
+   "id": "1929493662",
+   "category": "particles"
+  },
+  {
+   "name": "sculpture-forest",
+   "id": "2190689170",
+   "category": "particles"
+  },
+  {
+   "name": "minecraft",
+   "id": "1586781714",
+   "category": "particles"
+  },
+  {
+   "name": "country-stroll",
+   "id": "2000029791",
+   "category": "particles"
+  },
+  {
+   "name": "lonely-winter",
+   "id": "1851524277",
+   "category": "particles"
+  },
+  {
+   "name": "puppet-warp-test",
+   "id": "2541606883",
+   "category": "puppet"
+  },
+  {
+   "name": "klonoa-puppet",
+   "id": "3052019842",
+   "category": "puppet"
+  },
+  {
+   "name": "jinx-puppet",
+   "id": "3096277901",
+   "category": "puppet"
+  },
+  {
+   "name": "knight-puppet-pbr",
+   "id": "2515150033",
+   "category": "puppet"
+  },
+  {
+   "name": "puppet-simulation",
+   "id": "3227072870",
+   "category": "puppet"
+  },
+  {
+   "name": "littlebigplanet",
+   "id": "3081593255",
+   "category": "3d-shadow",
+   "frames_short": 50,
+   "frames_long": 450
+  },
+  {
+   "name": "ocarina-of-time",
+   "id": "3737268876",
+   "category": "3d-shadow",
+   "frames_short": 30,
+   "frames_long": 230
+  },
+  {
+   "name": "snow",
+   "id": "2084207616",
+   "category": "3d-shadow"
+  },
+  {
+   "name": "elden-ring",
+   "id": "2678777830",
+   "category": "3d-shadow"
+  },
+  {
+   "name": "hollow-knight",
+   "id": "2699039775",
+   "category": "3d-shadow"
+  },
+  {
+   "name": "biker",
+   "id": "3220339692",
+   "category": "3d-shadow"
+  },
+  {
+   "name": "noita",
+   "id": "3277993869",
+   "category": "3d-shadow"
+  },
+  {
+   "name": "bonfire-fox",
+   "id": "2370640409",
+   "category": "3d-shadow"
+  },
+  {
+   "name": "outer-wilds-22fx",
+   "id": "2759157886",
+   "category": "effects"
+  },
+  {
+   "name": "china-town",
+   "id": "2149140853",
+   "category": "effects"
+  },
+  {
+   "name": "paper-airplane",
+   "id": "2740023533",
+   "category": "effects"
+  },
+  {
+   "name": "forgotten-lands",
+   "id": "2751564702",
+   "category": "effects"
+  },
+  {
+   "name": "reze",
+   "id": "3686252018",
+   "category": "effects",
+   "frames_short": 50,
+   "frames_long": 450
+  },
+  {
+   "name": "bleach",
+   "id": "2854277071",
+   "category": "effects"
+  },
+  {
+   "name": "night-city",
+   "id": "2281052567",
+   "category": "effects"
+  },
+  {
+   "name": "pixels-100-text",
+   "id": "3122339805",
+   "category": "text"
+  },
+  {
+   "name": "lonely-cat",
+   "id": "3299228616",
+   "category": "text"
+  },
+  {
+   "name": "lofi-cafe",
+   "id": "2370927443",
+   "category": "text"
+  },
+  {
+   "name": "arknights",
+   "id": "3462491575",
+   "category": "scripts"
+  },
+  {
+   "name": "outer-wilds-solar",
+   "id": "2155673318",
+   "category": "scripts"
+  },
+  {
+   "name": "one-of-us",
+   "id": "2135858259",
+   "category": "scripts"
+  },
+  {
+   "name": "street-japan-audio",
+   "id": "1864677589",
+   "category": "audio"
+  },
+  {
+   "name": "razer-quartz-audio",
+   "id": "2004893596",
+   "category": "audio"
+  },
+  {
+   "name": "mermaid-audio",
+   "id": "2816746616",
+   "category": "audio"
+  },
+  {
+   "name": "tenna-dance-audio",
+   "id": "3504714770",
+   "category": "audio"
+  },
+  {
+   "name": "more-physics",
+   "id": "3734636606",
+   "category": "physics",
+   "frames_short": 10,
+   "frames_long": 40,
+   "timeout": 1200
+  }
+ ]
+}

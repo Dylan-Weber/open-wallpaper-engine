@@ -1749,7 +1749,10 @@ struct TextLayouter::Impl {
             while (end < quads.len() && quads[end].atlas.page == page) ++end;
             auto count      = (end - begin).to_primitive();
             auto part_index = parts.len();
-            auto capacity   = rstd::cmp::max<rstd::size_t>(count, 1);
+            // The capacity grows in steps (8, 16, 32, ...), not by a letter at a time: a bigger capacity changes the mesh's
+            // layout and rebuilds the render graph (24 ms with 100 text layers), a text within it only updates data.
+            rstd::size_t capacity = 8;
+            while (capacity < count) capacity *= 2;
             if (part_index < capacities.len() && part_index < mesh->Submeshes().len() &&
                 mesh->Submeshes()[part_index].material_slot == u32(page))
                 capacity = rstd::cmp::max(capacity, capacities[part_index]);

@@ -1,4 +1,5 @@
 module;
+#include <stdlib.h>
 
 #include <rstd/enum.hpp>
 
@@ -159,7 +160,10 @@ owe::script::MediaStatus ToScriptMediaStatus(const MediaStatus& status) {
                                       .album            = status.album.clone(),
                                       .album_artist     = status.album_artist.clone(),
                                       .art_url          = status.art_url.clone(),
-                                      .previous_art_url = status.previous_art_url.clone() };
+                                      .previous_art_url = status.previous_art_url.clone(),
+                                      .enabled          = status.enabled,
+                                      .position         = status.position,
+                                      .duration         = status.duration };
 }
 
 } // namespace
@@ -360,6 +364,9 @@ private:
     scene_audio::ResponseProcessor            m_scene_audio_response;
     bool                                      m_first_frame_ok { false };
     double                                    m_frame_delta {};
+    Option<owe::script::FrameInputs>          m_early_inputs;  // inputs of a frame whose scripts were started early
+    double                                    m_next_frame_delta {};
+    auto                                      makeFrameInputs(bool next = false) -> owe::script::FrameInputs;
     // SceneWallpaperConfig::frame_times, and the next one a frame steps by
     Vec<f64>                                  m_frame_times;
     usize                                     m_frame_index {};
@@ -434,6 +441,8 @@ void SceneRenderController::start() {
             }
 
             auto message  = rstd::move(received).unwrap();
+            // scripts may be running alongside this thread: hold the scene gate while it handles the message
+            owe::script::SceneGate::Hold gate_hold;
             bool shutdown = false;
             RSTD_MATCH(rstd::move(message)) {
                 RSTD_CASE_PAYLOAD(Init, value) { on(rstd::move(value)); }
@@ -525,11 +534,51 @@ void SceneRenderController::applyPendingChanges() {
     if (m_pending_media) on(m_pending_media.take().unwrap());
 }
 
+// The inputs of this frame's scripts or, with `next`, of the following frame's, which the scripts start on while this frame
+// is still being recorded: the clock is what it will be once this frame's time has passed, and the frame step is the next one.
+auto SceneRenderController::makeFrameInputs(bool next) -> owe::script::FrameInputs {
+    (next ? m_next_frame_delta : m_frame_delta) =
+        m_stopped ? 0.0
+                  : RecordedFrameStep(m_frame_times,
+                                      m_frame_index + (next ? usize(1) : usize()),
+                                      frame_timer.TargetFrameTime()) *
+                        m_speed.to_primitive();
+    const double frame_delta = next ? m_next_frame_delta : m_frame_delta;
+    m_scene->SetTargetFps(u32(frame_timer.RequiredFps().to_primitive()));
+    owe::script::FrameInputs fi;
+    fi.frametime   = static_cast<float>(frame_delta);
+    fi.runtime     = static_cast<float>(m_scene->Runtime().Frame().elapsed.to_primitive() + (next ? m_frame_delta : 0.0));
+    fi.time_of_day = LocalTimeOfDay();
+    auto ortho     = m_scene->Ortho();
+    fi.canvas_w    = static_cast<float>(ortho[usize()].to_primitive());
+    fi.canvas_h    = static_cast<float>(ortho[usize(1)].to_primitive());
+    fi.screen_w    = fi.canvas_w;
+    fi.screen_h    = fi.canvas_h;
+    {
+        auto pos    = m_mouse_pos.load();
+        fi.cursor_x = pos[usize()];
+        fi.cursor_y = pos[usize(1)];
+    }
+    fi.cursor_in_window       = cursorInWindow();
+    fi.mouse_buttons_down     = buttonsDown().to_primitive();
+    fi.mouse_buttons_pressed  = consumePressed().to_primitive();
+    fi.mouse_buttons_released = consumeReleased().to_primitive();
+    if (m_fixed_audio)
+        fi.audio = *m_fixed_audio;
+    else
+        (void)m_scene_audio_response.advance(fi.frametime, fi.audio);
+    return fi;
+}
+
 void SceneRenderController::onDraw() {
+#ifdef OWE_JS_SPIDERMONKEY
+    bool script_kick = false;
+#endif
     if (m_pending_swapchain && ! m_render->framePending()) on(m_pending_swapchain.take().unwrap());
     if (m_pending_scene && ! m_render->framePending()) on(m_pending_scene.take().unwrap());
     applyPendingChanges();
     frame_timer.FrameBegin();
+    const auto perf_frame_start = perf::Now();
     if (m_pipeline.is_some() && m_scene && renderInited()) {
         const bool first_draw = ! m_first_frame_ok;
         auto       load_bench = loadBenchView();
@@ -539,7 +588,9 @@ void SceneRenderController::onDraw() {
         auto first_frame_prepare_span =
             first_draw ? SceneLoadSpan(load_bench, &SceneLoadProbeIds::render_first_frame_prepare)
                        : rstd::bench::probe::SpanGuard {};
-        auto prepared = [&]() -> Result<PrepareOutcome, ScenePrepareError> {
+        bool       prepared_new_frame = false;
+        const auto perf_prepare_start = perf::Now();
+        auto       prepared           = [&]() -> Result<PrepareOutcome, ScenePrepareError> {
             // Existing frames still need execution while new preparation is blocked.
             if (m_render->framePending()) return Ok(PrepareOutcome::Ready);
             if ((*m_pipeline)->pending().frame) return (*m_pipeline)->retryPreparation(load_bench);
@@ -547,36 +598,17 @@ void SceneRenderController::onDraw() {
                 auto retried = (*m_pipeline)->retryPreparation(load_bench);
                 if (retried.is_err() || *retried != PrepareOutcome::Ready) return retried;
             }
-            m_frame_delta = m_stopped ? 0.0
-                                      : RecordedFrameStep(m_frame_times,
-                                                          m_frame_index,
-                                                          frame_timer.TargetFrameTime()) *
-                                            m_speed.to_primitive();
-            m_scene->SetTargetFps(u32(frame_timer.RequiredFps().to_primitive()));
             owe::script::FrameInputs fi;
-            fi.frametime   = static_cast<float>(m_frame_delta);
-            fi.runtime     = static_cast<float>(m_scene->Runtime().Frame().elapsed.to_primitive());
-            fi.time_of_day = LocalTimeOfDay();
-            auto ortho     = m_scene->Ortho();
-            fi.canvas_w    = static_cast<float>(ortho[usize()].to_primitive());
-            fi.canvas_h    = static_cast<float>(ortho[usize(1)].to_primitive());
-            fi.screen_w    = fi.canvas_w;
-            fi.screen_h    = fi.canvas_h;
-            {
-                auto pos    = m_mouse_pos.load();
-                fi.cursor_x = pos[usize()];
-                fi.cursor_y = pos[usize(1)];
+            if (m_early_inputs.is_some()) {
+                fi            = m_early_inputs.take().unwrap();
+                m_frame_delta = m_next_frame_delta;
+            } else {
+                fi = makeFrameInputs();
             }
-            fi.cursor_in_window       = cursorInWindow();
-            fi.mouse_buttons_down     = buttonsDown().to_primitive();
-            fi.mouse_buttons_pressed  = consumePressed().to_primitive();
-            fi.mouse_buttons_released = consumeReleased().to_primitive();
-            if (m_fixed_audio)
-                fi.audio = *m_fixed_audio;
-            else
-                (void)m_scene_audio_response.advance(fi.frametime, fi.audio);
+            prepared_new_frame = true;
             return (*m_pipeline)->prepare(fi, load_bench);
         }();
+        perf::Add(perf::Stage::Prepare, perf_prepare_start);
         if (prepared.is_err() || *prepared != PrepareOutcome::Ready) {
             if (prepared.is_err()) ReportScenePreparationError(prepared.unwrap_err());
             frame_timer.FrameEnd();
@@ -587,7 +619,39 @@ void SceneRenderController::onDraw() {
         auto first_draw_span =
             first_draw ? SceneLoadSpan(load_bench, &SceneLoadProbeIds::render_first_draw)
                        : rstd::bench::probe::SpanGuard {};
-        m_render->drawFrame(*m_scene);
+#ifdef OWE_JS_SPIDERMONKEY
+        // Start the next frame's scripts now, so that their computation overlaps with recording this frame. They take
+        // the scene gate for anything that touches the scene, and the render thread holds it until this frame is
+        // submitted and the next frame's animations are ticked (endFrameForScripts), so every script read sees the scene
+        // the sequential order would show it, and every write lands before the next prepare reads it.
+        script_kick = false;
+        {
+            static const bool overlap = [] {
+                const char* v = getenv("OWE_SCRIPT_OVERLAP");
+                return ! v || v[0] != '0';
+            }();
+            if (overlap && prepared_new_frame && ! m_stopped && m_early_inputs.is_none()) {
+                auto next = makeFrameInputs(true);
+                if ((*m_pipeline)->beginFrameScripts(next)) script_kick = true;
+                m_early_inputs = Some(next);  // used by the next prepare, whether or not scripts were started
+            }
+        }
+        struct KickGuard {
+            bool* kick;
+            ~KickGuard() { if (*kick) owe::script::SceneGate::ReleaseRender(); }
+        } kick_guard { &script_kick };
+#endif
+#ifdef OWE_JS_SPIDERMONKEY
+        // Recording does not read the layers' transforms: let the scripts have them meanwhile.
+        const int transform_depth = script_kick ? owe::script::SceneGate::SuspendTransforms() : 0;
+#endif
+        {
+            perf::Scope timer(perf::Stage::Draw);
+            m_render->drawFrame(*m_scene);
+        }
+#ifdef OWE_JS_SPIDERMONKEY
+        if (script_kick) owe::script::SceneGate::ResumeTransforms(transform_depth);
+#endif
         (void)first_draw_span.finish();
         (void)first_frame_span.finish();
 
@@ -595,6 +659,8 @@ void SceneRenderController::onDraw() {
             frame_timer.FrameEnd();
             return;
         }
+        perf::Add(perf::Stage::Frame, perf_frame_start);
+        perf::FrameDone();
         if (! m_camera_eye_log.is_empty()) {
             // the whole log is rewritten each frame: a capture run may end at any frame
             if (auto entry = CameraEyeLogEntry(*m_scene); entry.is_some()) {
@@ -611,6 +677,12 @@ void SceneRenderController::onDraw() {
         if ((*m_pipeline)->acknowledgeFrameSubmitted()) {
             m_scene->PassFrameTime(m_frame_delta);
             ++m_frame_index;
+#ifdef OWE_JS_SPIDERMONKEY
+            if (script_kick) {
+                (*m_pipeline)->endFrameForScripts();
+                script_kick = false;
+            }
+#endif
         }
 
         if (first_draw) {
