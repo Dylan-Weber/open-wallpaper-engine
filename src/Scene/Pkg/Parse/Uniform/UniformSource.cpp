@@ -933,6 +933,70 @@ auto TransformUniformSource::Evaluate(ref<dyn<UniformUpdateContext>> context,
     return writer.Finish();
 }
 
+auto BatchedModelUniformSource::Describe(mut_ref<dyn<UniformBindingSink>> sink) const
+    -> Result<empty, UniformError> {
+    using Output = BatchedModelUniformOutput;
+    auto models = Bind(sink,
+                       Output::Models,
+                       "g_OweModelMatrices"_str,
+                       UniformValueShape::MatrixArray(
+                           u32(4), u32(4), usize(kShadowBatchObjects), usize(kShadowBatchObjects)));
+    if (models.is_err()) return models;
+    return Bind(sink, Output::Views, "g_OweShadowViews"_str, UniformValueShape::Float(u32(1)));
+}
+
+auto BatchedModelUniformSource::Version(ref<dyn<UniformUpdateContext>> context) const -> u64 {
+    return context->Frame()->revision;
+}
+
+auto BatchedModelUniformSource::Evaluate(ref<dyn<UniformUpdateContext>> context,
+                                         mut_ref<dyn<UniformValueSink>> sink) const
+    -> Result<empty, UniformError> {
+    using Output = BatchedModelUniformOutput;
+    UniformWriter writer(sink);
+    const auto    render_view = context->RenderView();
+    Vec<float>    values;
+    // the whole array, as the shader declares it: the objects past the batch's are not read
+    values.resize(usize(kShadowBatchObjects) * usize(16), 0.0f);
+    for (usize index {}; index < m_nodes.len(); ++index) {
+        auto& node = *m_nodes[index];
+        bool  shown = true;
+        for (auto* up = &node; up != nullptr; up = up->Parent()) shown &= up->Visible();
+        const auto* state = m_state->FindNodeState(&node);
+        if (! shown || state == nullptr) continue;
+        auto camera_ref = state->camera_resolver->Resolve(node);
+        if (camera_ref.is_none()) continue;
+        auto& camera = **camera_ref;
+        node.UpdateTrans();
+        // the model matrix as TransformUniformSource writes it
+        Matrix4d model = state->vertices_in_world_space ? Matrix4d::Identity() : node.ModelTrans();
+        const auto& parallax = m_state->CameraParallax();
+        auto        attached = camera.GetAttachedNode();
+        const bool  layer_camera = attached.is_some() && (*attached)->HasLayer();
+        if (layer_camera) model = RestoreCollapsedAxes(model);
+        if (node.Camera() != "effect"_str && parallax.enable && ! layer_camera) {
+            const auto shift = m_state->ComputeParallaxOffset(*state, camera, render_view);
+            if (shift[usize(0)] != 0.0f || shift[usize(1)] != 0.0f)
+                model = Affine3d(Translation3d(Vector3d(shift[usize(0)], shift[usize(1)], 0.0)))
+                            .matrix() *
+                        model;
+        }
+        model *= node.GeometryTransform();
+        if (auto* mesh = node.Mesh(); mesh != nullptr) model *= mesh->GeometryTransform();
+        const Eigen::Matrix4f matrix = model.cast<float>();
+        for (int value = 0; value < 16; ++value)
+            values[index * usize(16) + usize(value)] = matrix.data()[value];
+    }
+    writer.Write(Output::Models,
+                 UniformValue::fromMatrixArray(values.as_slice().as_raw_ptr(),
+                                               u32(4),
+                                               u32(4),
+                                               usize(kShadowBatchObjects),
+                                               UniformMatrixStorage::ColumnMajor));
+    writer.Write(Output::Views, static_cast<float>(m_views.to_primitive()));
+    return writer.Finish();
+}
+
 auto FrameUniformSource::Describe(mut_ref<dyn<UniformBindingSink>> sink) const
     -> Result<empty, UniformError> {
     using Output = FrameUniformOutput;

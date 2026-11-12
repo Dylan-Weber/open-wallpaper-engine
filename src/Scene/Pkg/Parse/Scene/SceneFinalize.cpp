@@ -38,6 +38,18 @@ struct CopyableArcHold {
     CopyableArcHold& operator=(const CopyableArcHold&)     = delete;
 };
 
+// The scene's batched shadow casters write their model matrices through a source that reads the uniform
+// state; the scene holds a reference to it, released with the scene.
+Box<dyn<UniformSource>> MakeShadowBatchSource(const void* context, Vec<SceneNode*> nodes,
+                                              u32 views) {
+    const auto& state = *static_cast<const Arc<UniformSceneState>*>(context);
+    return Box<dyn<UniformSource>>::make(
+        BatchedModelUniformSource { state.clone(), rstd::move(nodes), views });
+}
+void ReleaseShadowBatchState(const void* context) {
+    delete static_cast<const Arc<UniformSceneState>*>(context);
+}
+
 bool RegisterUniformNodeSources(Scene& scene, const Arc<UniformSceneState>& uniform_state,
                                 const Arc<UniformCameraResolver>& camera_resolver,
                                 const Arc<SceneNode>& node, const UniformNodeConfigDraft& config) {
@@ -56,6 +68,10 @@ bool RegisterUniformNodeSources(Scene& scene, const Arc<UniformSceneState>& unif
     if (config.effect_projection_node.is_some())
         state->effect_projection_node = Some((*config.effect_projection_node).clone());
     uniform_state->SetNodeState(*node_id, state.clone());
+    if (! scene.HasShadowBatchSource())
+        scene.SetShadowBatchSourceFactory(&MakeShadowBatchSource,
+                                          new Arc<UniformSceneState>(uniform_state.clone()),
+                                          &ReleaseShadowBatchState);
 
     auto       registrar = dyn<UniformSourceRegistrar>::from_ref(scene);
     auto       writer    = dyn<UniformAttachmentWriter>::from_ref(scene);

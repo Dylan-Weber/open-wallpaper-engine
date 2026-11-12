@@ -15,6 +15,12 @@ using rstd::sync::Arc;
 export namespace owe
 {
 
+enum class BatchedModelUniformOutput : rstd::uint32_t
+{
+    Models,
+    Views,
+};
+
 enum class TransformUniformOutput : rstd::uint32_t
 {
     ModelInverse,
@@ -374,6 +380,26 @@ public:
 private:
     Arc<UniformSceneState> m_state;
     Arc<UniformNodeState>  m_node;
+};
+
+// The model matrices of the objects of one batched shadow-caster draw, in g_OweModelMatrices, and
+// the number of views each of them is drawn into, g_OweShadowViews (see StartCasterViewsAtTheirLight).
+// An object that is not shown gets a matrix that collapses it.
+class BatchedModelUniformSource {
+public:
+    BatchedModelUniformSource(Arc<UniformSceneState> state, Vec<SceneNode*> nodes, u32 views)
+        : m_state(rstd::move(state)), m_nodes(rstd::move(nodes)), m_views(views) {}
+
+    auto Describe(mut_ref<dyn<UniformBindingSink>>) const -> Result<empty, UniformError>;
+    auto Version(ref<dyn<UniformUpdateContext>>) const -> u64;
+    auto Evaluate(ref<dyn<UniformUpdateContext>>, mut_ref<dyn<UniformValueSink>>) const
+        -> Result<empty, UniformError>;
+    auto AcquireBindingLease() const -> Option<Box<dyn<UniformBindingLease>>> { return None(); }
+
+private:
+    Arc<UniformSceneState> m_state;
+    Vec<SceneNode*>        m_nodes;
+    u32                    m_views;
 };
 
 class FrameUniformSource {

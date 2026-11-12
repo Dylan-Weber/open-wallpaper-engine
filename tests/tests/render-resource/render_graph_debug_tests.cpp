@@ -570,6 +570,88 @@ TEST(SceneRenderGraph, ASilentCasterKeepsTheAtlasWritten) {
     EXPECT_TRUE(graph->graph.compile().is_ok());
 }
 
+namespace
+{
+// stands in for the source that writes a batch's model matrices
+struct NullBatchSource {
+    auto Describe(mut_ref<dyn<vrento::UniformBindingSink>>) const
+        -> Result<empty, vrento::UniformError> {
+        return Ok(empty {});
+    }
+    auto Version(ref<dyn<vrento::UniformUpdateContext>>) const -> u64 { return u64(); }
+    auto Evaluate(ref<dyn<vrento::UniformUpdateContext>>, mut_ref<dyn<vrento::UniformValueSink>>) const
+        -> Result<empty, vrento::UniformError> {
+        return Ok(empty {});
+    }
+    auto AcquireBindingLease() const -> Option<Box<dyn<vrento::UniformBindingLease>>> {
+        return None();
+    }
+};
+Box<dyn<vrento::UniformSource>> MakeNullBatchSource(const void*, Vec<owe::SceneNode*>, u32) {
+    return Box<dyn<vrento::UniformSource>>::make(NullBatchSource {});
+}
+void NoRelease(const void*) {}
+} // namespace
+
+// Casters of the same geometry and shader (a script clones them, each with a mesh and material of its
+// own) are one instanced draw: a draw for each object and view; a caster of other geometry is drawn
+// alone, and OWE_SHADOW_BATCH=0 would draw every one alone.
+TEST(SceneRenderGraph, CastersOfTheSameGeometryAreDrawnTogether) {
+    owe::Scene scene;
+    scene.SetShadowBatchSourceFactory(&MakeNullBatchSource, nullptr, &NoRelease);
+    scene.RegisterRenderTarget(String::make("_rt_default"_str),
+                               owe::SceneRenderTarget { .width = i32(1280), .height = i32(720) });
+    scene.RegisterRenderTarget(String::make("_rt_shadowAtlas"_str),
+                               owe::SceneRenderTarget {
+                                   .width  = i32(256),
+                                   .height = i32(256),
+                                   .kind   = owe::SceneRenderTargetKind::DepthSampled,
+                               });
+    auto viewports = Vec<owe::SceneShadowViewport>::make();
+    for (int view = 0; view < 2; ++view)
+        viewports.push(owe::SceneShadowViewport {
+            .width  = rstd::f32(128.0f),
+            .height = rstd::f32(128.0f),
+        });
+    scene.RegisterShadowDefinition(owe::SceneShadowDefinition {
+        .target    = String::make("_rt_shadowAtlas"_str),
+        .viewports = rstd::move(viewports),
+    });
+    for (int object = 0; object < 5; ++object) {
+        auto caster          = Arc<owe::SceneNode>::make();
+        caster->shadow.cast  = true;
+        auto caster_mesh     = Arc<owe::SceneMesh>::make();
+        auto caster_material = GraphMaterial();
+        caster_material.name = "caster-main"_Str;
+        auto variant         = Arc<owe::SceneMaterial>::make(GraphMaterial());
+        variant->name        = "caster-shadow"_Str;
+        caster_material.shadow_variants.push(rstd::move(variant));
+        auto batch  = Arc<owe::SceneMaterial>::make(GraphMaterial());
+        batch->name = "caster-shadow-batch"_Str;
+        caster_material.shadow_batch_variants.push(rstd::move(batch));
+        caster_mesh->AddMaterial(rstd::move(caster_material));
+        caster_mesh->Submeshes().push(owe::SceneMesh::Submesh {});
+        caster->AddMesh(rstd::move(caster_mesh));
+        scene.RootMut()->AppendChild(caster.clone());
+    }
+    auto snapshot = owe::ExtractRenderSceneSnapshot(scene);
+    ASSERT_EQ(snapshot.ShadowCasters().len(), usize(5));
+    EXPECT_TRUE(snapshot.ShadowCasters()[usize()].batch_material.is_some());
+    auto graph = owe::BuildSceneRenderState(scene, snapshot);
+    ASSERT_TRUE(graph.is_ok());
+    EXPECT_TRUE(graph->graph.compile().is_ok());
+    usize casters {};
+    u32   instances {};
+    for (const auto& draw : graph->draws)
+        if (draw.source->parameters().depth_only) {
+            ++casters;
+            instances = draw.source->parameters().instance_count;
+        }
+    // one draw of the five objects, each drawn into the definition's two views
+    EXPECT_EQ(casters, usize(1));
+    EXPECT_EQ(instances, u32(10));
+}
+
 // The shadow maps of lights that do not light now are not drawn (Ocarina of Time's torches sit in
 // a layer a script hides: two six-face maps, half of all its draws); showing the light brings them
 // back, and the atlas always keeps a writer.

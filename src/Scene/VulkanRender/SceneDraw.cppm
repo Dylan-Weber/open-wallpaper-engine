@@ -39,6 +39,10 @@ public:
     struct UpdateSource {
         Option<mut_ref<SceneNode>> node;
         Option<Arc<SceneMaterial>> material_override;
+        // The draw is a batch of shadow casters: the uniform source that writes their model
+        // matrices (`node` is the first of them), and the objects, to tell whether any is shown.
+        Option<vrento::UniformSourceOwner> batch_source;
+        Vec<SceneNode*>                    batch_nodes;
     };
     struct Desc {
         SceneDrawItemId     draw_item;

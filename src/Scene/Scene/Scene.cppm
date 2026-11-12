@@ -499,6 +499,9 @@ struct SceneShaderValueAnimation {
 
 using SceneShaderValueAnimationMap = BTreeMap<String, SceneShaderValueAnimation>;
 
+// The most objects one batched shadow-caster draw holds (the length of g_OweModelMatrices).
+inline constexpr rstd::size_t kShadowBatchObjects = 64;
+
 struct SceneMaterialCustomShader {
     Option<Arc<SceneShader>>     shader;
     ShaderValues                 constValues;
@@ -879,6 +882,9 @@ public:
     SceneMaterialCustomShader customShader;
     // its shadow casters, one for each of the scene's shadow definitions
     Vec<Arc<SceneMaterial>> shadow_variants;
+    // the same drawn for up to kShadowBatchObjects objects at once (one of each definition, or none
+    // when the material cannot be batched)
+    Vec<Arc<SceneMaterial>> shadow_batch_variants;
     // a translucent or additive material: its casters draw no pixels (Wallpaper Engine casts no
     // shadow from it)
     bool shadow_silent { false };
@@ -918,6 +924,7 @@ private:
         customShader     = other.customShader.Clone();
         (void)SetPipeline(other.Pipeline());
         shadow_variants = other.shadow_variants.clone();
+        shadow_batch_variants = other.shadow_batch_variants.clone();
         shadow_silent   = other.shadow_silent;
         m_dirty_flags.fetch_or(other.m_dirty_flags.load());
     }
@@ -931,6 +938,7 @@ private:
         customShader     = rstd::move(other.customShader);
         (void)SetPipeline(other.Pipeline());
         shadow_variants = rstd::move(other.shadow_variants);
+        shadow_batch_variants = rstd::move(other.shadow_batch_variants);
         shadow_silent   = other.shadow_silent;
         m_dirty_flags.fetch_or(other.m_dirty_flags.load());
     }
@@ -2751,6 +2759,8 @@ bool SceneLightLightsNow(const SceneLight& light);
 struct RenderShadowCasterRecord {
     RenderItemId       render_item;
     Arc<SceneMaterial> material;
+    // the material that draws it together with other objects, if it can be
+    Option<Arc<SceneMaterial>> batch_material;
     u32                instance_count { 1 };
     // drawn through an empty scissor: it only keeps the atlas written
     bool silent { false };
@@ -3431,6 +3441,25 @@ public:
     auto GlobalSources() const -> slice<UniformSourceAttachment> {
         return m_uniforms.GlobalSources();
     }
+    // Makes the uniform source that writes the model matrices of a batched shadow-caster draw (the
+    // parse step that owns the uniform state sets how, once).
+    using ShadowBatchSourceFactory = Box<dyn<UniformSource>> (*)(const void* context,
+                                                                  Vec<SceneNode*> nodes, u32 views);
+    // `context` is released by `release` when the scene goes (or when another is set).
+    void SetShadowBatchSourceFactory(ShadowBatchSourceFactory factory, const void* context,
+                                     void (*release)(const void*)) {
+        if (m_shadow_batch_release != nullptr && m_shadow_batch_context != nullptr)
+            m_shadow_batch_release(m_shadow_batch_context);
+        m_shadow_batch_factory = factory;
+        m_shadow_batch_context = context;
+        m_shadow_batch_release = release;
+    }
+    bool HasShadowBatchSource() const { return m_shadow_batch_factory != nullptr; }
+    auto MakeShadowBatchSource(Vec<SceneNode*> nodes, u32 views) const
+        -> Option<Box<dyn<UniformSource>>> {
+        if (m_shadow_batch_factory == nullptr) return None();
+        return Some(m_shadow_batch_factory(m_shadow_batch_context, rstd::move(nodes), views));
+    }
     auto NodeSources(SceneNodeId node) const -> slice<UniformSourceAttachment> {
         return m_uniforms.NodeSources(node);
     }
@@ -3568,6 +3597,9 @@ private:
     };
 
     SceneUniformRegistry          m_uniforms;
+    ShadowBatchSourceFactory      m_shadow_batch_factory { nullptr };
+    const void*                   m_shadow_batch_context { nullptr };
+    void (*m_shadow_batch_release)(const void*) { nullptr };
     SceneTextureAnimationRegistry m_texture_animations;
     SceneRuntime                  m_runtime;
     String                        m_scene_id { "unknown_id"_Str };

@@ -656,7 +656,9 @@ auto SceneDraw::createUniformBufferUpdates(ref<dyn<UniformBindingPrepareContext>
                       updates_.material_override
                           ? Some(ref<SceneMaterial>::from_raw_parts(
                                 updates_.material_override->as_ptr().as_raw_ptr()))
-                          : None<ref<SceneMaterial>>());
+                          : None<ref<SceneMaterial>>(),
+                      updates_.batch_source ? Some((*updates_.batch_source).clone())
+                                            : None<vrento::UniformSourceOwner>());
         if (binding.is_err()) return Err(rstd::move(binding).unwrap_err_unchecked());
         updates.push(rstd::move(binding).unwrap_unchecked());
     }
@@ -1011,7 +1013,16 @@ bool SceneDraw::update(DrawUpdateContext& context) {
     }
 
     visible_ = true;
-    if (m_desc.depth_only && updates_.node.is_some())
+    if (m_desc.depth_only && updates_.batch_nodes.len() > usize(1)) {
+        // a batch is drawn when any of its objects is shown (the others collapse in their matrix)
+        visible_ = false;
+        for (auto* member : updates_.batch_nodes) {
+            bool shown = true;
+            for (auto* node = member; node != nullptr; node = node->Parent())
+                shown &= node->Visible();
+            visible_ |= shown;
+        }
+    } else if (m_desc.depth_only && updates_.node.is_some())
         for (auto* node = updates_.node->as_raw_ptr(); node != nullptr; node = node->Parent())
             visible_ &= node->Visible();
     draws_.clear();
