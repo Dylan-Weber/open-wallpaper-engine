@@ -1459,9 +1459,80 @@ void main() {
                                     .as_str());
 
     EXPECT_EQ(out.find("g_ViewportViewProjectionMatrices[gl_InstanceID]"), std::string::npos);
-    EXPECT_NE(out.find("g_OweShadowViewProjections[gl_InstanceID + OWE_SHADOW_VIEW_OFFSET]"),
+    EXPECT_NE(out.find("g_OweShadowViewProjections[OWE_SHADOW_VIEW + OWE_SHADOW_VIEW_OFFSET]"),
               std::string::npos);
     EXPECT_NE(out.find("uniform mat4 g_OweShadowViewProjections[24];"), std::string::npos);
+}
+
+// A batch of casters of one mesh (up to OWE_SHADOW_BATCH) is one draw of objects * g_OweShadowViews
+// instances: instance i draws view i % g_OweShadowViews of object i / g_OweShadowViews, whose model matrix is
+// that element of g_OweModelMatrices. Without the combo the shader is as before.
+TEST(ShaderParser, PreShaderHeaderCanDrawABatchOfCasters) {
+    const std::string out = rstd::cppstd::to_string(
+        owe::ShaderParser::PreShaderHeader(rstd::cppstd::as_str(
+                                               R"(
+in uint gl_InstanceID;
+varying uint gl_ViewportIndex;
+uniform mat4 g_ModelMatrix;
+uniform mat4 g_ViewportViewProjectionMatrices[6];
+void main() {
+    gl_Position = mul(mul(vec4(a_Position, 1.0), g_ModelMatrix), g_ViewportViewProjectionMatrices[gl_InstanceID]);
+    gl_ViewportIndex = gl_InstanceID;
+}
+)")
+                                               .unwrap(),
+                                           {},
+                                           owe::ShaderType::VERTEX)
+            .as_str());
+    // the stock names are gone from the code, behind the macros that pick the object and the view
+    EXPECT_EQ(out.find("mul(vec4(a_Position, 1.0), g_ModelMatrix)"), std::string::npos);
+    EXPECT_EQ(out.find("gl_ViewportIndex = gl_InstanceID;"), std::string::npos);
+    EXPECT_NE(out.find("OWE_SHADOW_MODEL"), std::string::npos);
+    EXPECT_NE(out.find("gl_ViewportIndex = OWE_SHADOW_VIEW;"), std::string::npos);
+    EXPECT_NE(out.find("g_OweShadowViewProjections[OWE_SHADOW_VIEW + OWE_SHADOW_VIEW_OFFSET]"),
+              std::string::npos);
+    EXPECT_NE(out.find("#if OWE_SHADOW_BATCH > 1"), std::string::npos);
+    EXPECT_NE(out.find("uniform mat4 g_OweModelMatrices[OWE_SHADOW_BATCH];"), std::string::npos);
+    EXPECT_NE(out.find("uniform float g_OweShadowViews;"), std::string::npos);
+    EXPECT_NE(out.find("#define OWE_SHADOW_OBJECT int((float(gl_InstanceID) + 0.5) / g_OweShadowViews)"),
+              std::string::npos);
+    EXPECT_NE(out.find("#define OWE_SHADOW_MODEL g_ModelMatrix"), std::string::npos);
+}
+
+// A batch of OWE_SCENE_BATCH objects of one mesh is one draw of that many instances: instance i reads
+// its model matrix (and normal matrix) from element i of an array in the vertex stage. Without the combo
+// the shader is as before, and a stage that does not declare them is untouched.
+TEST(ShaderParser, PreShaderHeaderCanDrawABatchOfObjects) {
+    const auto header = [](const char* source, owe::ShaderType type) {
+        return rstd::cppstd::to_string(
+            owe::ShaderParser::PreShaderHeader(rstd::cppstd::as_str(source).unwrap(), {}, type)
+                .as_str());
+    };
+    const std::string vertex = header(R"(
+uniform mat4 g_ModelMatrix;
+uniform mat3 g_NormalModelMatrix;
+uniform mat4 g_ViewProjectionMatrix;
+attribute vec3 a_Position;
+void main() {
+    gl_Position = mul(mul(vec4(a_Position, 1.0), g_ModelMatrix), g_ViewProjectionMatrix);
+}
+)", owe::ShaderType::VERTEX);
+    EXPECT_NE(vertex.find("#if OWE_SCENE_BATCH > 1\nin uint gl_InstanceID;"), std::string::npos);
+    EXPECT_NE(vertex.find("uniform mat4 g_OweInstanceModel[OWE_SCENE_BATCH];"), std::string::npos);
+    EXPECT_NE(vertex.find("#define g_ModelMatrix g_OweInstanceModel[gl_InstanceID]"), std::string::npos);
+    EXPECT_NE(vertex.find("uniform mat3 g_OweInstanceNormal[OWE_SCENE_BATCH];"), std::string::npos);
+    EXPECT_NE(vertex.find("#define g_NormalModelMatrix g_OweInstanceNormal[gl_InstanceID]"),
+              std::string::npos);
+    // the unbatched shader still declares them, once each
+    EXPECT_NE(vertex.find("#else\nuniform mat4 g_ModelMatrix;\nuniform mat3 g_NormalModelMatrix;\n#endif"),
+              std::string::npos);
+    EXPECT_EQ(vertex.find("uniform mat4 g_ModelMatrix;"), vertex.rfind("uniform mat4 g_ModelMatrix;"));
+    // the fragment stage keeps what it declares
+    const std::string fragment = header(R"(
+uniform mat4 g_ModelMatrix;
+void main() { gl_FragColor = vec4(1.0); }
+)", owe::ShaderType::FRAGMENT);
+    EXPECT_EQ(fragment.find("g_OweInstanceModel"), std::string::npos);
 }
 
 TEST(ShaderParser, CasterViewsComeFromTheSharedShadowViews) {

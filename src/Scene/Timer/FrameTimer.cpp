@@ -92,3 +92,9 @@ auto owe::ParseFrameTimes(ref<str> source) -> Result<Vec<f64>, String> {
 double owe::RecordedFrameStep(const Vec<f64>& times, usize index, double fallback) {
     return index < times.len() ? times[index].to_primitive() : fallback;
 }
+
+double owe::PacedFrameStep(double target, double elapsed) {
+    if (! (elapsed >= 0.0)) return target;  // also NaN
+    const double cap = target > kMaxPacedFrameStep ? target : kMaxPacedFrameStep;
+    return elapsed < target ? target : (elapsed > cap ? cap : elapsed);
+}

@@ -630,17 +630,94 @@ inline String NormalizePackedAudioSpectrumAccess(ref<str> src) {
 inline String StartCasterViewsAtTheirLight(ref<str> src) {
     constexpr ref<str> stock = "g_ViewportViewProjectionMatrices[gl_InstanceID]"_str;
     if (! src.contains(stock)) return String::make(src);
+    // A batch of up to OWE_SHADOW_BATCH objects (casters of one mesh) is one draw of
+    // objects * g_OweShadowViews instances: instance i is view i % g_OweShadowViews of object
+    // i / g_OweShadowViews (the views a draw covers, written by the batch's uniform source).
+    // Without the combo the shader is the stock one.
     auto out  = String::make("uniform mat4 g_OweShadowViewProjections[24];\n"
                              "#ifndef OWE_SHADOW_VIEW_OFFSET\n"
                              "#define OWE_SHADOW_VIEW_OFFSET 0\n"
+                             "#endif\n"
+                             "#ifndef OWE_SHADOW_BATCH\n"
+                             "#define OWE_SHADOW_BATCH 1\n"
+                             "#endif\n"
+                             "#if OWE_SHADOW_BATCH > 1\n"
+                             "uniform mat4 g_OweModelMatrices[OWE_SHADOW_BATCH];\n"
+                             "uniform float g_OweShadowViews;\n"
+                             "#define OWE_SHADOW_OBJECT int((float(gl_InstanceID) + 0.5) / g_OweShadowViews)\n"
+                             "#define OWE_SHADOW_VIEW (gl_InstanceID - OWE_SHADOW_OBJECT * int(g_OweShadowViews))\n"
+                             "#define OWE_SHADOW_MODEL g_OweModelMatrices[OWE_SHADOW_OBJECT]\n"
+                             "#else\n"
+                             "#define OWE_SHADOW_VIEW gl_InstanceID\n"
+                             "#define OWE_SHADOW_MODEL g_ModelMatrix\n"
                              "#endif\n"_str);
+    auto replace_all = [](String text, ref<str> from, ref<str> to) {
+        auto result = String::make();
+        auto rest   = text.as_str();
+        for (auto pos = rest.find(from); pos.is_some(); pos = rest.find(from)) {
+            result.push_str(*rest.get(usize(), *pos));
+            result.push_str(to);
+            rest = *rest.get(*pos + from.len(), rest.len());
+        }
+        result.push_str(rest);
+        return result;
+    };
     auto rest = src;
     for (auto pos = rest.find(stock); pos.is_some(); pos = rest.find(stock)) {
         out.push_str(*rest.get(usize(), *pos));
-        out.push_str("g_OweShadowViewProjections[gl_InstanceID + OWE_SHADOW_VIEW_OFFSET]"_str);
+        out.push_str("g_OweShadowViewProjections[OWE_SHADOW_VIEW + OWE_SHADOW_VIEW_OFFSET]"_str);
         rest = *rest.get(*pos + stock.len(), rest.len());
     }
     out.push_str(rest);
+    out = replace_all(rstd::move(out), "gl_ViewportIndex = gl_InstanceID;"_str,
+                      "gl_ViewportIndex = OWE_SHADOW_VIEW;"_str);
+    out = replace_all(rstd::move(out), "vec4(localPos, 1.0), g_ModelMatrix)"_str,
+                      "vec4(localPos, 1.0), OWE_SHADOW_MODEL)"_str);
+    out = replace_all(rstd::move(out), "vec4(a_Position, 1.0), g_ModelMatrix)"_str,
+                      "vec4(a_Position, 1.0), OWE_SHADOW_MODEL)"_str);
+    return out;
+}
+
+// A batch of OWE_SCENE_BATCH objects of one mesh is one draw of that many instances: instance i reads
+// its model matrix (and normal matrix) from element i of an array. Only the vertex stage declares them
+// for the shaders this serves; without the combo the shader is as before.
+inline String BatchObjectMatrices(ref<str> src) {
+    constexpr ref<str> model  = "uniform mat4 g_ModelMatrix;"_str;
+    constexpr ref<str> normal = "uniform mat3 g_NormalModelMatrix;"_str;
+    auto               at     = src.find(model);
+    if (at.is_none()) return String::make(src);
+    auto normal_at = src.find(normal);
+    auto out       = String::make();
+    // the normal matrix's declaration moves into the block; it may sit before or after the model's
+    auto copy_without = [&](usize from, usize to) {
+        auto part = *src.get(from, to);
+        if (normal_at.is_some() && *normal_at >= from && *normal_at < to) {
+            out.push_str(*src.get(from, *normal_at));
+            out.push_str(*src.get(*normal_at + normal.len(), to));
+        } else {
+            out.push_str(part);
+        }
+    };
+    copy_without(usize(), *at);
+    out.push_str("#ifndef OWE_SCENE_BATCH\n"
+                 "#define OWE_SCENE_BATCH 1\n"
+                 "#endif\n"
+                 "#if OWE_SCENE_BATCH > 1\n"
+                 "in uint gl_InstanceID;\n"
+                 "uniform mat4 g_OweInstanceModel[OWE_SCENE_BATCH];\n"
+                 "#define g_ModelMatrix g_OweInstanceModel[gl_InstanceID]\n"_str);
+    if (normal_at.is_some())
+        out.push_str("uniform mat3 g_OweInstanceNormal[OWE_SCENE_BATCH];\n"
+                     "#define g_NormalModelMatrix g_OweInstanceNormal[gl_InstanceID]\n"_str);
+    out.push_str("#else\n"_str);
+    out.push_str(model);
+    out.push_str("\n"_str);
+    if (normal_at.is_some()) {
+        out.push_str(normal);
+        out.push_str("\n"_str);
+    }
+    out.push_str("#endif"_str);
+    copy_without(*at + model.len(), src.len());
     return out;
 }
 
@@ -2759,7 +2836,9 @@ String ShaderParser::PreShaderHeader(ref<str> src, const Combos& combos, ShaderT
     auto normalized_audio = NormalizePackedAudioSpectrumAccess(undefined.as_str());
     auto normalized_mul   = NormalizeLeadingIntegerMulLiteral(normalized_audio.as_str());
     auto shadow_views     = StartCasterViewsAtTheirLight(normalized_mul.as_str());
-    auto user_src         = shadow_views.as_str();
+    auto object_batch     = type == ShaderType::VERTEX ? BatchObjectMatrices(shadow_views.as_str())
+                                                       : String::make(shadow_views.as_str());
+    auto user_src         = object_batch.as_str();
 
     // All stages route through glslang's HLSL frontend.
     String pre;

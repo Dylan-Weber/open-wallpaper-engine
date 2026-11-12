@@ -2063,6 +2063,41 @@ TEST(SceneUserTextBinding, AppliesEmptyString) {
     EXPECT_TRUE(value.empty());
 }
 
+// Wallpaper Engine's text layers take only a string value; a boolean or a number leaves the layer's
+// own text (the Pixels wallpaper binds a layer to a heading label whose value is false and shows nothing).
+TEST(SceneUserTextBinding, OnlyStringValuesReplaceTheText) {
+    owe::Scene  scene;
+    std::string value = "authored";
+    int         calls = 0;
+    scene.RegisterUserTextBinding(String::make("title"_str),
+                                  Box<dyn<FnMut<void(ref<str>)>>>::make([&](ref<str> next) {
+                                      value = to_string(next);
+                                      ++calls;
+                                  }));
+
+    for (auto json : { R"({"type":"text","value":false})"_str,
+                       R"({"type":"text","value":true})"_str,
+                       R"({"type":"bool","value":true})"_str,
+                       R"({"type":"slider","value":0.5})"_str,
+                       R"({"type":"combo","value":2})"_str,
+                       R"(false)"_str,
+                       R"(3)"_str }) {
+        auto property = owe::ParseJson(json).unwrap();
+        EXPECT_FALSE(scene.ApplyUserTextBindings("title"_str, property));
+    }
+    EXPECT_EQ(calls, 0);
+    EXPECT_EQ(value, "authored");
+
+    for (auto json : { R"({"type":"combo","value":"1"})"_str,
+                       R"({"type":"color","value":"0.2 0.8 0.4"})"_str,
+                       R"({"type":"text","value":"hello"})"_str }) {
+        auto property = owe::ParseJson(json).unwrap();
+        EXPECT_TRUE(scene.ApplyUserTextBindings("title"_str, property));
+    }
+    EXPECT_EQ(calls, 3);
+    EXPECT_EQ(value, "hello");
+}
+
 TEST(SceneUserPropertyBinding, AppliesJsonPayloadToOwnedCallback) {
     owe::Scene scene;
     bool       called = false;
@@ -3886,6 +3921,75 @@ TEST(SceneParserScript, ScriptBuiltModelBecomesAMeshLayerWhoseVerticesItRewrites
     owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
     EXPECT_FLOAT_EQ(built->Mesh()->Submeshes()[usize()].vertex_arrays[usize()].Data()[0], 42.0f);
     EXPECT_TRUE(built->Mesh()->Dirty().load());
+
+    std::filesystem::remove_all(dir);
+}
+
+TEST(SceneParserScript, ScriptModelDataIsReplacedAndDestroyedAndLayersAreFoundById) {
+    const auto dir = std::filesystem::temp_directory_path() / "owe-script-model-data-replace";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir / "materials");
+    std::ofstream(dir / "materials/mesh.json") << R"({"passes": [{"shader": "genericimage2",
+        "blending": "translucent", "textures": ["gradient/gradient_rainbow"]}]})";
+
+    auto document = owe::wpscene::ParseSceneDocumentJson(
+        R"JSON({
+            "camera": {},
+            "general": {},
+            "objects": [
+                {
+                    "id": 90,
+                    "name": "Controller",
+                    "visible": {
+                        "value": true,
+                        "script": "const material = engine.registerAsset('materials/mesh.json'); let data; let frame = 0; export function init(value) { const v = new Float32Array(32); for (let i = 0; i < 4; ++i) { v[i * 8] = i; v[i * 8 + 7] = i; } data = thisScene.createModelData({boundingBoxMins: new Vec3(-1, -1, -1), boundingBoxMaxs: new Vec3(5, 5, 5), shapes: [{vertexBuffer: v, indexBuffer: new Uint16Array([0, 1, 2, 0, 2, 3]), vertexFormat: [IModelData.POSITION, IModelData.NORMAL, IModelData.UV], material: material, isVertexBufferDynamic: true}]}); const layer = thisScene.createLayer({name: 'built', model: data}); layer.origin = new Vec3(10, 20, 0); return value; } export function update(value) { const v = new Float32Array(32); v[0] = 77; data.replaceData({shapes: [{vertexBuffer: v}]}); thisScene.getLayerByID('91').origin = new Vec3(7, 8, 0); thisScene.destroyModelData(data); const w = new Float32Array(32); w[0] = 99; data.applyData({shapes: [{vertexBuffer: w}]}); return value; }"
+                    }
+                },
+                { "id": 91, "name": "Target", "image": "models/util/solidlayer.json", "origin": "0 0 0", "size": "10 10", "visible": true }
+            ]
+        })JSON"_str,
+        owe::wpscene::kSceneVersionUnknown);
+    ASSERT_TRUE(document.is_some());
+
+    auto assets = owe::fs::make_physical_fs(
+        owe::fs::Path(rstd::cppstd::as_str(WAYWALLEN_ASSETS_DIR).unwrap()));
+    auto own =
+        owe::fs::make_physical_fs(owe::fs::Path(rstd::cppstd::as_str(dir.string()).unwrap()));
+    ASSERT_TRUE(assets.is_ok());
+    ASSERT_TRUE(own.is_ok());
+    owe::fs::VFS vfs;
+    ASSERT_TRUE(vfs.mount("/assets"_str, rstd::move(assets).unwrap_unchecked()).is_ok());
+    ASSERT_TRUE(vfs.mount("/assets"_str, rstd::move(own).unwrap_unchecked()).is_ok());
+
+    wavsen::audio::SoundManager sound_manager;
+    owe::SceneParser            parser;
+    auto                        parsed = parser.Parse(
+        "script-model-data-replace"_str,
+        ref<owe::wpscene::SceneDocument>::from_raw_parts(rstd::addressof(*document)),
+        mut_ref<owe::fs::VFS>::from_raw_parts(rstd::addressof(vfs)),
+        mut_ref<wavsen::audio::SoundManager>::from_raw_parts(rstd::addressof(sound_manager)));
+    ASSERT_TRUE(parsed.is_ok());
+    auto scene = rstd::move(parsed).unwrap();
+
+    auto built = scene.scene->RootMut()->FindByName("built"_str);
+    ASSERT_NE(built, nullptr);
+    EXPECT_TRUE(built->Visible());
+    EXPECT_FLOAT_EQ(built->Translate().x(), 10.0f);
+    ASSERT_TRUE(built->Mesh());
+    EXPECT_TRUE(built->Mesh()->Dynamic());
+    ASSERT_EQ(built->Mesh()->Submeshes().len(), usize(1));
+    const auto& submesh = built->Mesh()->Submeshes()[usize()];
+    ASSERT_EQ(submesh.vertex_arrays.len(), usize(1));
+    ASSERT_EQ(submesh.index_arrays.len(), usize(1));
+    EXPECT_EQ(submesh.vertex_arrays[usize()].VertexCount(), usize(4));
+    EXPECT_EQ(submesh.index_arrays[usize()].DataCount(), usize(6));
+    owe::script::TickSceneScripts(*scene.scene, owe::script::FrameInputs {});
+    // replaceData took the new vertices, and destroyModelData made the applyData after it do nothing
+    EXPECT_FLOAT_EQ(built->Mesh()->Submeshes()[usize()].vertex_arrays[usize()].Data()[0], 77.0f);
+    auto target = scene.scene->RootMut()->FindByName("Target"_str);
+    ASSERT_NE(target, nullptr);
+    EXPECT_FLOAT_EQ(target->Translate().x(), 7.0f);
+    EXPECT_FLOAT_EQ(target->Translate().y(), 8.0f);
 
     std::filesystem::remove_all(dir);
 }

@@ -47,6 +47,9 @@ struct MediaStatus {
     String   album_artist;
     String   art_url;
     String   previous_art_url;
+    bool     enabled { true };
+    double   position { 0 };
+    double   duration { 0 };
 };
 
 struct SceneAudioClientIdentity {

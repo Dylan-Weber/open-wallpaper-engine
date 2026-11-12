@@ -47,7 +47,7 @@ liffto = { version = "0.1.0" }
 vvk = { version = "0.1.1" }
 spirvto = { version = "0.1.0" }
 wavsen = { git = "https://github.com/Dylan-Weber/wavsen.git", rev = "38323c241987ea9d6c1bcac53c86d261df7ac7a2" }
-vrento = { git = "https://github.com/Dylan-Weber/vrento.git", rev = "01ab90390531d034508078825386a3f467822727" }
+vrento = { git = "https://github.com/Dylan-Weber/vrento.git", rev = "e10892fe0e1b695b84e31f72f709884ccd4649fd" }
 vectext = { git = "https://github.com/vecren/vectext.git" }
 
 [workspace.external-dependencies.pkg-config.glfw]
@@ -67,6 +67,12 @@ module = "wayland-egl"
 
 [workspace.external-dependencies.pkg-config.lz4]
 module = "liblz4"
+
+[workspace.external-dependencies.pkg-config.mozjs]
+module = "mozjs-140"
+
+[workspace.external-dependencies.pkg-config.v8]
+module = "owe-v8"
 
 [workspace.external-dependencies.pkg-config.waywallen-bridge]
 module = "waywallen-bridge"
@@ -125,3 +131,9 @@ adapter = "src/Web/cmake/CEF.cmake"
 package = "CEF"
 source = "cef-macos"
 adapter = "src/Web/cmake/CEF.cmake"
+
+[profile.release-v8]
+inherits = "release"
+
+[profile.release-sm]
+inherits = "release"

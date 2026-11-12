@@ -51,4 +51,12 @@ private:
 auto ParseFrameTimes(ref<str> source) -> Result<Vec<f64>, String>;
 // Frame `index`'s step: the recorded time, or `fallback` (the target frame time) once the list runs out.
 double RecordedFrameStep(const Vec<f64>& times, usize index, double fallback);
+
+// The most a paced frame steps the scene by: a stall (a drag, a suspended machine) must not make the scene jump.
+constexpr double kMaxPacedFrameStep = 0.1;
+// A paced frame loop that runs behind its target (a 120 fps target on a scene that draws at 70) steps the scene by the
+// wall time that really passed since the last frame, `elapsed` seconds, so animation keeps its speed: never less than
+// `target`, never more than the cap (a target slower than the cap is kept as it is), and `target` when `elapsed` is not
+// a usable time.
+double PacedFrameStep(double target, double elapsed);
 } // namespace owe

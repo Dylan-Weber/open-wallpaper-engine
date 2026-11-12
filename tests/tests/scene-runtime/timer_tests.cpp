@@ -1,5 +1,7 @@
 #include <rstd/test/gtest.hpp>
 
+#include <limits>
+
 import rstd;
 import wescene.timer;
 
@@ -41,6 +43,25 @@ TEST(ThreadTimer, StopsWithoutEmittingAndCanRestart) {
     rstd::thread::sleep(Duration::from_millis(u64(10)));
     EXPECT_EQ(calls.load(), stopped);
     EXPECT_FALSE(timer.Running());
+}
+
+// Callbacks start one interval apart, whatever they take: a 12 ms callback on a 20 ms interval is 50 a second, not the
+// 31 a second of a 20 ms sleep after each 12 ms callback.
+TEST(ThreadTimer, StartsCallbacksOneIntervalApartNotOneIntervalAfterTheLastEnds) {
+    Atomic<u32>      calls {};
+    owe::ThreadTimer timer(owe::ThreadTimer::Callback::make([&] {
+        rstd::thread::sleep(Duration::from_millis(u64(12)));
+        calls.fetch_add(u32(1));
+    }));
+    timer.SetInterval(Duration::from_millis(u64(20)));
+    auto started = Instant::now();
+    timer.Start();
+    rstd::thread::sleep(Duration::from_millis(u64(1000)));
+    timer.Stop();
+    const auto seconds = static_cast<double>(started.elapsed().as_millis().to_primitive()) / 1000.0;
+    const auto rate    = static_cast<double>(calls.load().to_primitive()) / seconds;
+    EXPECT_GT(rate, 44.0);
+    EXPECT_LT(rate, 52.0);
 }
 
 TEST(FrameTimer, OwnsMutableCallbackAndPreservesBackpressure) {
@@ -143,4 +164,19 @@ TEST(RecordedFrameTimes, StepsTheListThenTheTargetFrameTime) {
     EXPECT_NEAR(owe::RecordedFrameStep(times, usize(1), 1.0 / 30.0), 0.0572, 1e-12);
     EXPECT_NEAR(owe::RecordedFrameStep(times, usize(2), 1.0 / 30.0), 1.0 / 30.0, 1e-12);
     EXPECT_NEAR(owe::RecordedFrameStep(Vec<f64>::make(), usize(0), 1.0 / 60.0), 1.0 / 60.0, 1e-12);
+}
+
+// A paced frame loop that falls behind its target steps the scene by the time that really passed (clamped), so
+// animation keeps its speed at 70 fps under a 120 fps target; it never steps less than the target, so a fast frame
+// does not slow the scene, and never more than the cap, so a stall does not make the scene jump.
+TEST(PacedFrameStep, FollowsTheMeasuredIntervalBetweenTheTargetAndTheCap) {
+    const double target = 1.0 / 120.0;
+    EXPECT_EQ(owe::PacedFrameStep(target, 1.0 / 70.0), 1.0 / 70.0);
+    EXPECT_EQ(owe::PacedFrameStep(target, 1.0 / 120.0), target);
+    EXPECT_EQ(owe::PacedFrameStep(target, 1.0 / 240.0), target);
+    EXPECT_EQ(owe::PacedFrameStep(target, 0.0), target);
+    EXPECT_EQ(owe::PacedFrameStep(target, 0.5), owe::kMaxPacedFrameStep);
+    EXPECT_EQ(owe::PacedFrameStep(1.0 / 5.0, 0.5), 1.0 / 5.0);  // a target slower than the cap is kept
+    EXPECT_EQ(owe::PacedFrameStep(target, -1.0), target);
+    EXPECT_EQ(owe::PacedFrameStep(target, std::numeric_limits<double>::quiet_NaN()), target);
 }

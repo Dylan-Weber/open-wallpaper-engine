@@ -39,6 +39,10 @@ public:
     struct UpdateSource {
         Option<mut_ref<SceneNode>> node;
         Option<Arc<SceneMaterial>> material_override;
+        // The draw is a batch of shadow casters: the uniform source that writes their model
+        // matrices (`node` is the first of them), and the objects, to tell whether any is shown.
+        Option<vrento::UniformSourceOwner> batch_source;
+        Vec<SceneNode*>                    batch_nodes;
     };
     struct Desc {
         SceneDrawItemId     draw_item;
@@ -49,6 +53,8 @@ public:
         Vec<VkViewport>     viewports;
         Vec<VkRect2D>       scissors;
         usize               graph_pass_index { 0 };
+        // The gates of the copies of a framebuffer snapshot only this draw samples.
+        Vec<rstd::uint64_t> snapshot_copy_gates;
         // Which submesh of node->Mesh() this pass renders. SceneToRenderGraph
         // emits one pass per (node, submesh).
         u32                                    submesh_index { 0 };
@@ -102,7 +108,7 @@ public:
     PassInvalidationFlags finalizeResourceRequests(Scene&);
     auto declareResources(ResourceDeclarationContext&) -> Option<vrento::vulkan::GraphicsDrawDesc>;
     auto textureAccesses() const -> Vec<PassTextureAccess>;
-    PassResourceUses resourceUses() const;
+    const PassResourceUses& resourceUses() const;
     auto             pipelineLayoutRequirement(const resource::ShaderArtifact&) const
         -> Result<Option<PipelineLayoutRequirement>, resource::ResourceError>;
     auto globalDescriptorBufferUses(const PreparedPassResources&) const
@@ -124,6 +130,12 @@ public:
     auto frameData(const DrawBindingContext&) const -> Option<Arc<ShaderDrawInput>>;
     void clearResources();
     auto parameters() const -> const Desc& { return m_desc; }
+    // The node this draw renders and the material it draws with in place of the mesh's (a shadow
+    // caster's), for diagnostics and culling decisions.
+    auto sourceNode() const -> SceneNode* { return updates_.node.is_some() ? updates_.node->as_raw_ptr() : nullptr; }
+    auto sourceMaterial() const -> const SceneMaterial* {
+        return updates_.material_override.is_some() ? updates_.material_override->as_ptr().as_raw_ptr() : nullptr;
+    }
     void refreshSnapshot() { captureGeometry(); }
 
 private:
@@ -139,7 +151,12 @@ private:
         -> Option<vrento::vulkan::GraphicsDrawDesc>;
     Vec<vrento::vulkan::GraphicsDrawRange>         draws_;
     bool                                           visible_ { true };
+    // the lists frameData() hands every frame while they stay the same
+    mutable vrento::vulkan::SharedList<VkViewport>                     viewports_shared_;
+    mutable vrento::vulkan::SharedList<VkRect2D>                       scissors_shared_;
+    mutable vrento::vulkan::SharedList<vrento::vulkan::GraphicsDrawRange> draws_shared_;
     void                                           captureGeometry();
+    void                                           updateSnapshotCopies();
     Option<MaterialSnapshot>                       material_;
     Option<vrento::GeometrySnapshot>               geometry_;
     Vec<rstd::collections::HashMap<String, usize>> vertex_offsets_;
@@ -148,6 +165,7 @@ private:
     Option<bool>    output_alpha_;
     array<float, 3> clear_color_ {};
     Desc            m_desc;
+    mutable Option<PassResourceUses> m_uses_cache;
     UpdateSource    updates_;
 };
 
