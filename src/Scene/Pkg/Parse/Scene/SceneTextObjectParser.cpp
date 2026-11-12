@@ -212,7 +212,7 @@ void ParseTextObjImpl(SceneLayerBuildContext& context, wpscene::TextObject& obj)
     if (has_text_user) {
         auto value = UserPropertyValue(context.user_properties, obj.text_user.name.as_str());
         if (value.is_some()) {
-            auto text = SceneJsonScalarString(**value);
+            auto text = SceneUserTextValue(**value);
             if (text.is_some()) s_text = String::make(text->as_str());
         }
     }

@@ -28,6 +28,15 @@ inline auto SceneJsonScalarString(const Json& value) -> Option<String> {
     return None();
 }
 
+// What a text layer bound to a property shows. Wallpaper Engine takes only a string value (text, combo,
+// color and textinput properties); a boolean or a number (bool, slider, a combo whose options are numbers)
+// leaves the layer's own text, so a heading label whose value is false does not draw "false".
+inline auto SceneUserTextValue(const Json& property) -> Option<String> {
+    const auto& value = SceneUserPropertyPayload(property);
+    if (value.is_string()) return Some(String::make(*value.as_str()));
+    return None();
+}
+
 inline bool SceneJsonScalarEquals(const Json& a, const Json& b) {
     if (a == b) return true;
     auto as = SceneJsonScalarString(a);
