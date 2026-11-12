@@ -1,5 +1,6 @@
 module;
 
+#include <cstdlib>
 #include <rstd/enum.hpp>
 
 module wescene.scene_wallpaper;
@@ -346,6 +347,10 @@ private:
     scene_audio::ResponseProcessor      m_scene_audio_response;
     bool                                m_first_frame_ok { false };
     double                              m_frame_delta {};
+    // A paced frame steps the scene by the time between the last two submitted frames (PacedFrameStep), so a loop that
+    // runs behind its fps target keeps the scene's speed; the mark is dropped when the loop stops.
+    Option<Instant>                     m_step_mark;
+    double                              m_measured_step {};
 
     Atomic<array<float, 2>> m_mouse_pos { array<float, 2> { 0.5f, 0.5f } };
     Atomic<u32>             m_buttons_down {};
@@ -463,6 +468,7 @@ void SceneRenderController::stop() {
 
 void SceneRenderController::on(RenderMsg::Stop_payload&& m) {
     m_stopped = m.stop;
+    m_step_mark = None();
     if (m.stop)
         frame_timer.Stop();
     else
@@ -489,8 +495,12 @@ void SceneRenderController::onDraw() {
                 auto retried = (*m_pipeline)->retryPreparation(load_bench);
                 if (retried.is_err() || *retried != PrepareOutcome::Ready) return retried;
             }
-            m_frame_delta =
-                m_stopped ? 0.0 : frame_timer.TargetFrameTime() * m_speed.to_primitive();
+            // A capture (unpaced) steps by the exact frame time, so it stays deterministic.
+            static const bool fixed_step = getenv("OWE_FIXED_STEP") != nullptr;  // the old fixed 1 / fps step, to compare
+            const double      step       = fixed_step || frame_timer.Unpaced()
+                                               ? frame_timer.TargetFrameTime()
+                                               : PacedFrameStep(frame_timer.TargetFrameTime(), m_measured_step);
+            m_frame_delta = m_stopped ? 0.0 : step * m_speed.to_primitive();
             owe::script::FrameInputs fi;
             fi.frametime   = static_cast<float>(m_frame_delta);
             fi.runtime     = static_cast<float>(m_scene->Runtime().Frame().elapsed.to_primitive());
@@ -531,6 +541,10 @@ void SceneRenderController::onDraw() {
             return;
         }
         if (! m_stopped) m_scene->PassFrameTime(m_frame_delta);
+        if (m_step_mark.is_some())
+            m_measured_step =
+                static_cast<double>(rstd::as_cast<u64>(m_step_mark->elapsed().as_micros()).to_primitive()) / 1'000'000.0;
+        m_step_mark = Some(Instant::now());
 
         if (first_draw) {
             m_first_frame_ok = true;
@@ -756,6 +770,7 @@ void SceneRenderController::on(RenderMsg::Init_payload&& m) {
 
 void SceneRenderController::on(RenderMsg::SwapchainReady_payload&& m) {
     if (! m.ready) {
+        m_step_mark = None();
         frame_timer.Stop();
         return;
     }

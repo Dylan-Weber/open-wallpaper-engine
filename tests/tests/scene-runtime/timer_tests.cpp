@@ -1,5 +1,7 @@
 #include <rstd/test/gtest.hpp>
 
+#include <limits>
+
 import rstd;
 import wescene.timer;
 
@@ -106,4 +108,19 @@ TEST(FrameTimer, SerializesSamplesWithFpsChanges) {
     rstd::move(writer).join().unwrap();
     EXPECT_EQ(timer.RequiredFps(), u16(129));
     EXPECT_TRUE(timer.TargetFrameTime() > 0.0);
+}
+
+// A paced frame loop that falls behind its target steps the scene by the time that really passed (clamped), so
+// animation keeps its speed at 70 fps under a 120 fps target; it never steps less than the target, so a fast frame
+// does not slow the scene, and never more than the cap, so a stall does not make the scene jump.
+TEST(PacedFrameStep, FollowsTheMeasuredIntervalBetweenTheTargetAndTheCap) {
+    const double target = 1.0 / 120.0;
+    EXPECT_EQ(owe::PacedFrameStep(target, 1.0 / 70.0), 1.0 / 70.0);
+    EXPECT_EQ(owe::PacedFrameStep(target, 1.0 / 120.0), target);
+    EXPECT_EQ(owe::PacedFrameStep(target, 1.0 / 240.0), target);
+    EXPECT_EQ(owe::PacedFrameStep(target, 0.0), target);
+    EXPECT_EQ(owe::PacedFrameStep(target, 0.5), owe::kMaxPacedFrameStep);
+    EXPECT_EQ(owe::PacedFrameStep(1.0 / 5.0, 0.5), 1.0 / 5.0);  // a target slower than the cap is kept
+    EXPECT_EQ(owe::PacedFrameStep(target, -1.0), target);
+    EXPECT_EQ(owe::PacedFrameStep(target, std::numeric_limits<double>::quiet_NaN()), target);
 }

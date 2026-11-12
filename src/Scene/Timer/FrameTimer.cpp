@@ -69,3 +69,9 @@ void FrameTimer::SetCallback(Option<Callback> callback) {
 void FrameTimer::Run() { m_timer.Start(); }
 void FrameTimer::Stop() { m_timer.Stop(); }
 bool FrameTimer::Running() const { return m_timer.Running(); }
+
+double owe::PacedFrameStep(double target, double elapsed) {
+    if (! (elapsed >= 0.0)) return target;  // also NaN
+    const double cap = target > kMaxPacedFrameStep ? target : kMaxPacedFrameStep;
+    return elapsed < target ? target : (elapsed > cap ? cap : elapsed);
+}
