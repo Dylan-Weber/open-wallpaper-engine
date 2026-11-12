@@ -1,12 +1,14 @@
 module;
 #include <rstd/macro.hpp>
 #include "vvk/macros.hpp"
+#include <cstdlib>
 
 export module wescene.vulkan_render:scene_render_state;
 import wescene.core;
 import wescene.types;
 import rstd;
 import rstd.cppstd;
+import eigen;
 import rstd.log;
 import wescene.load_bench;
 import wescene.resource_registry;
@@ -154,10 +156,20 @@ class SceneRenderState {
     ResourceDeclarationData            resource_data;
     Option<Arc<SceneImageSource>>      image_source;
     Vec<Box<dyn<UniformBufferUpdate>>> uniform_update_owners;
+    // Diagnostics (OWE_GRAPH_DUMP): the draw each uniform binding belongs to, and per class of draw
+    // how often its uniform block changed or equalled the last upload.
+    struct DrawClassCount {
+        String key;
+        u64    draws {}, changed {}, identical {};
+    };
+    Vec<usize>          uniform_draw;
+    Vec<DrawClassCount> class_counts;
+    u64                 class_frames {};
 
 public:
     void clear() {
         uniform_update_owners.clear();
+        uniform_draw.clear();
         draws.clear();
         input_        = None();
         textures      = None();
@@ -261,7 +273,7 @@ public:
         -> Result<Vec<vrento::vulkan::SharedDescriptorBufferUse>, resource::ResourceError> {
         Vec<vrento::vulkan::SharedDescriptorBufferUse> result;
         for (const auto& entry : draws) {
-            auto                  uses = entry.source->resourceUses();
+            const auto&                  uses = entry.source->resourceUses();
             PreparedPassResources resources(prepared, uses);
             auto                  collected = entry.source->globalDescriptorBufferUses(resources);
             if (collected.is_err()) return Err(collected.unwrap_err());
@@ -272,6 +284,7 @@ public:
     }
     void clearBindings() {
         uniform_update_owners.clear();
+        uniform_draw.clear();
         for (auto& entry : draws) entry.source->clearResources();
     }
     auto bindResources(Scene& scene, RenderingResources& rr,
@@ -286,7 +299,7 @@ public:
             .pipeline_layouts = ref<PipelineLayoutAssignments>::from_raw_parts(&prepared.layouts())
         };
         for (auto& entry : draws) {
-            auto uses = entry.source->resourceUses();
+            const auto& uses = entry.source->resourceUses();
             for (auto descriptor : uses.descriptors)
                 rr.resources.RemovePreparedDescriptor(descriptor);
             entry.source->clearResources();
@@ -298,11 +311,17 @@ public:
                                                     rstd::move(resolved).unwrap_err()));
         }
         uniform_update_owners.clear();
+        uniform_draw.clear();
         SceneUniformBindingPrepareContext uniform_prepare_impl(scene);
         auto uniform_prepare = dyn<UniformBindingPrepareContext>::from_ref(uniform_prepare_impl);
         Vec<resource::BufferUseHandle> prepared_uniform_buffers;
+        usize                          draw_index {};
         for (auto& entry : draws) {
-            auto                  uses = entry.source->resourceUses();
+            struct Advance {
+                usize& value;
+                ~Advance() { ++value; }
+            } advance { draw_index };
+            const auto&                  uses = entry.source->resourceUses();
             PreparedPassResources resources(rr.resources.Prepared(), uses);
             auto                  created =
                 entry.source->createUniformBufferUpdates(uniform_prepare.as_ref(), resources);
@@ -324,6 +343,7 @@ public:
                 if (exists) continue;
                 prepared_uniform_buffers.push(binding->Buffer());
                 uniform_update_owners.push(rstd::move(binding));
+                uniform_draw.push(usize(draw_index));
             }
         }
         for (auto& entry : draws) entry.invalidation = PassInvalidationNone;
@@ -429,6 +449,172 @@ public:
         return result;
     }
 
+    // Diagnostics: the class a draw belongs to, for the OWE_GRAPH_DUMP breakdown.
+    static auto classOf(const SceneDraw::Desc& desc) -> String {
+        const auto output = desc.output.as_str();
+        auto       has    = [&](ref<str> part) { return output.contains(part); };
+        const char* view = desc.render_view == SceneRenderViewKind::Reflection ? "reflection" : "primary";
+        if (desc.depth_only) {
+            bool silent = ! desc.scissors.is_empty();
+            for (const auto& rect : desc.scissors)
+                if (rect.extent.width != 0 || rect.extent.height != 0) silent = false;
+            return rstd::format("depth-only (shadow map) {} views={} instances={}",
+                                silent ? "SILENT (empty scissor)" : "active",
+                                desc.viewports.len(),
+                                desc.instance_count);
+        }
+        if (output == "_rt_default"_str) return rstd::format("scene colour view={}", view);
+        if (has("Composite"_str)) return rstd::format("layer composite view={}", view);
+        if (has("copy"_str)) return rstd::format("snapshot copy view={}", view);
+        return rstd::format("effect/intermediate pass view={}", view);
+    }
+    void countBlock(usize draw, bool identical) {
+        if (draw >= draws.len()) return;
+        auto key = classOf(draws[draw].source->parameters());
+        for (auto& entry : class_counts)
+            if (entry.key == key) {
+                (identical ? entry.identical : entry.changed) += u64(1);
+                return;
+            }
+        DrawClassCount entry { .key = rstd::move(key) };
+        (identical ? entry.identical : entry.changed) += u64(1);
+        class_counts.push(rstd::move(entry));
+    }
+    // Per class: draws per frame, and the blocks (per frame) that changed or equalled the last upload.
+    void logDrawClasses(u64 frames) {
+        Vec<DrawClassCount> draws_by_class;
+        for (const auto& entry : draws) {
+            auto key = classOf(entry.source->parameters());
+            bool found {};
+            for (auto& count : draws_by_class)
+                if (count.key == key) {
+                    count.draws += u64(1);
+                    found = true;
+                    break;
+                }
+            if (! found) draws_by_class.push(DrawClassCount { .key = rstd::move(key), .draws = u64(1) });
+        }
+        rstd_error("draw classes: {} draws, {} uniform blocks, over {} frames", draws.len(), uniform_update_owners.len(), frames);
+        for (const auto& count : draws_by_class) {
+            u64 changed {}, identical {};
+            for (const auto& block : class_counts)
+                if (block.key == count.key) {
+                    changed   = block.changed;
+                    identical = block.identical;
+                }
+            rstd_error("  {} draws, blocks/frame changed {} identical {} : {}",
+                       count.draws,
+                       frames > u64(0) ? changed / frames : u64(),
+                       frames > u64(0) ? identical / frames : u64(),
+                       count.key);
+        }
+    }
+
+    // Diagnostics (OWE_GRAPH_DUMP): for each point light, how many of its shadow casters are rigid
+    // meshes (no skinning or morphing in their shadow material, so a bound from their vertex positions
+    // holds) and how many of those lie wholly beyond the light's radius, where the light's falloff is
+    // exactly zero and the caster cannot shadow anything it lights.
+    void logShadowBounds(const Scene& scene) {
+        struct Count {
+            u64 draws {}, rigid {}, skinned {}, morphing {}, no_bound {}, beyond {};
+        };
+        auto definitions = scene.ShadowDefinitions();
+        auto lights      = scene.Lights();
+        Vec<Count> counts;
+        for (usize d {}; d < definitions.len(); ++d) counts.push(Count {});
+        for (const auto& entry : draws) {
+            const auto& desc = entry.source->parameters();
+            if (! desc.depth_only || desc.viewports.len() != usize(6)) continue;
+            // which definition: the one whose first viewport is this draw's
+            usize found = definitions.len();
+            for (usize d {}; d < definitions.len(); ++d) {
+                const auto& view = definitions[d].viewports[usize()];
+                if (definitions[d].viewports.len() == usize(6) && view.x == f32(desc.viewports[usize()].x) &&
+                    view.width == f32(desc.viewports[usize()].width) &&
+                    view.y == f32(desc.viewports[usize()].y)) {
+                    found = d;
+                    break;
+                }
+            }
+            if (found == definitions.len()) continue;
+            auto& count = counts[found];
+            ++count.draws;
+            const auto* material = entry.source->sourceMaterial();
+            auto*       node     = entry.source->sourceNode();
+            if (material == nullptr || node == nullptr || node->Mesh() == nullptr) {
+                ++count.no_bound;
+                continue;
+            }
+            bool skinned {}, morphing {};
+            if (material->customShader.variant.is_some()) {
+                const auto& combos = material->customShader.variant->Description().resolved_combos;
+                auto        on     = [&](ref<str> key) {
+                    auto value = combos.get(key);
+                    return value.is_some() && (**value).as_str() != "0"_str;
+                };
+                skinned  = on("SKINNING"_str);
+                morphing = on("MORPHING"_str);
+            }
+            if (skinned) {
+                ++count.skinned;
+                continue;
+            }
+            if (morphing) {
+                ++count.morphing;
+                continue;
+            }
+            // a bound of the submesh's vertex positions
+            const auto& submeshes = node->Mesh()->Submeshes();
+            const auto  index     = usize(desc.submesh_index.to_primitive());
+            if (index >= submeshes.len()) {
+                ++count.no_bound;
+                continue;
+            }
+            Eigen::Vector3d lo = Eigen::Vector3d::Constant(1e300), hi = Eigen::Vector3d::Constant(-1e300);
+            bool            any {};
+            for (const auto& vertices : submeshes[index].vertex_arrays) {
+                auto offset = vertices.AttributeOffset("a_Position"_str);
+                if (offset.is_none()) continue;
+                const float* data   = vertices.Data();
+                const usize  stride = vertices.OneSize();
+                for (usize v {}; v < vertices.VertexCount(); ++v) {
+                    const float* p = data + (v * stride + *offset).to_primitive();
+                    for (int a = 0; a < 3; ++a) {
+                        lo[a] = std::min<double>(lo[a], p[a]);
+                        hi[a] = std::max<double>(hi[a], p[a]);
+                    }
+                    any = true;
+                }
+            }
+            if (! any) {
+                ++count.no_bound;
+                continue;
+            }
+            ++count.rigid;
+            const Eigen::Vector3d center_local = (lo + hi) * 0.5;
+            const double          radius_local = ((hi - lo) * 0.5).norm();
+            Eigen::Matrix4d       model        = node->ModelTrans() * node->GeometryTransform() * node->Mesh()->GeometryTransform();
+            const Eigen::Vector3d center       = (model * center_local.homogeneous()).head<3>();
+            const double          scale        = model.block<3, 3>(0, 0).norm(); // Frobenius: at least the largest stretch
+            const double          radius       = radius_local * scale;
+            // this definition's light
+            const SceneLight* light {};
+            for (const auto& candidate : lights)
+                if (candidate->desc().shadow_view >= i32() &&
+                    u32(rstd::as_cast<rstd::uint32_t>(candidate->desc().shadow_view)) == definitions[found].view_offset)
+                    light = candidate.as_ptr().as_raw_ptr();
+            if (light == nullptr || light->node() == nullptr) continue;
+            const Eigen::Vector3d position = light->node()->ModelTrans().block<3, 1>(0, 3);
+            if ((center - position).norm() - radius > static_cast<double>(light->radius()) * (1.0 + 1e-6) + 1e-9)
+                ++count.beyond;
+        }
+        for (usize d {}; d < definitions.len(); ++d)
+            if (counts[d].draws > u64(0))
+                rstd_error("point light shadow definition {}: {} casters; rigid {} (of them wholly beyond the light's radius {}); skinned {}; morphing {}; no bound {}",
+                           d, counts[d].draws, counts[d].rigid, counts[d].beyond, counts[d].skinned,
+                           counts[d].morphing, counts[d].no_bound);
+    }
+
     bool update(const SceneFrame& frame, VkExtent2D extent,
                 ref<dyn<SceneTextureAnimationView>> textures, RenderingResources& rr,
                 SceneRenderUpdateProgress& progress) {
@@ -438,9 +624,16 @@ public:
             { static_cast<float>(extent.width), static_cast<float>(extent.height) },
             textures);
         auto context = dyn<UniformBufferFrameContext>::from_ref(frame_context);
+        static const bool diagnostics = std::getenv("OWE_GRAPH_DUMP") != nullptr;
         for (; progress.uniforms < uniform_update_owners.len(); ++progress.uniforms) {
             auto& binding = uniform_update_owners[progress.uniforms];
+            const auto before = diagnostics ? vrento::uniform_update_stats() : vrento::UniformUpdateStats {};
             auto  result  = binding->Update(context.as_ref(), buffer_writer.as_mut_ref());
+            if (diagnostics && result.is_ok() && progress.uniforms < uniform_draw.len()) {
+                const auto after = vrento::uniform_update_stats();
+                countBlock(uniform_draw[progress.uniforms],
+                           after.identical > before.identical);
+            }
             if (result.is_err()) {
                 auto error = rstd::move(result).unwrap_err_unchecked();
                 rstd_error("update uniform buffer failed: {}", error.message.as_str());
@@ -450,7 +643,7 @@ public:
         auto graphics = dyn<resource_registry::GraphicsResourcePreparer>::from_ref(rr.resources);
         for (; progress.draws < draws.len(); ++progress.draws) {
             auto&                 entry = draws[progress.draws];
-            auto                  uses  = entry.source->resourceUses();
+            const auto&                  uses  = entry.source->resourceUses();
             PreparedPassResources resources(rr.resources.Prepared(), uses);
             DrawUpdateContext     update_context {
                 .buffers   = buffer_writer.as_mut_ref(),

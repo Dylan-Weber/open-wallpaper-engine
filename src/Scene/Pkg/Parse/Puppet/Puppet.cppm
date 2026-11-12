@@ -287,6 +287,11 @@ public:
 
     // Borrowed until this instance is evaluated, prepared, or destroyed again.
     slice<Eigen::Affine3f>  genFrame(double time) noexcept;
+    // The pose for the frame at `time`, generated once per time, and a version that changes only
+    // when the bone matrices or the texture channel blend map do: a puppet that holds its pose
+    // is not evaluated and uploaded again.
+    slice<Eigen::Affine3f> Pose(double time) noexcept;
+    auto                   PoseVersion() const noexcept -> rstd::uint64_t { return m_pose_version; }
     rstd::uint32_t          boneIndex(ref<str> name) const noexcept;
     rstd::uint32_t          boneCount() const noexcept;
     Vec<rstd::uint32_t>     boneParents() const;
@@ -357,6 +362,15 @@ private:
     BonePhysics                  m_physics;
     Eigen::Vector3f              m_object_scale { Eigen::Vector3f::Ones() };
     Arc<Puppet>                  m_puppet;
+    // The bind and animation-reference rotations and scales of each bone, decomposed once: they
+    // are fixed by the puppet and genFrame ran the decomposition for every bone every frame.
+    bool                 m_pose_valid { false };
+    double               m_pose_time { 0.0 };
+    rstd::uint64_t       m_pose_version { 0 };
+    Vec<Eigen::Affine3f> m_pose_published;
+    Vec<float>           m_blend_published;
+    Vec<Eigen::Quaterniond> m_bind_rotation, m_animation_rotation;
+    Vec<Eigen::Vector3f>    m_bind_scale, m_animation_scale;
 };
 
 } // namespace owe

@@ -440,6 +440,9 @@ struct VulkanRender::Impl {
                             Vec<vrento::resource_registry::PreparedTextureUpdate>&)
         -> Result<empty, resource::ResourceError>;
     bool beginFrame(vrento::texture::Submission);
+    // OWE_GRAPH_STATS=N logs how often the frame graph's binding validation was reused every N frames
+    rstd::uint64_t m_frames_begun {};
+    const Scene*   m_diag_scene { nullptr };
     bool prepareOutputFrame(Scene&);
     bool executeFrame();
     void reportFrameError(vrento::vulkan::GraphExecutionErrorSnapshot);
@@ -686,6 +689,33 @@ bool VulkanRender::Impl::beginFrame(vrento::texture::Submission work) {
     }
     m_frame            = Some(frame.unwrap());
     m_last_frame_error = None();
+    static const long stats_every = [] {
+        const char* value = std::getenv("OWE_GRAPH_STATS");
+        return value ? std::atol(value) : 0L;
+    }();
+    static const long dump_at = [] {
+        const char* value = std::getenv("OWE_GRAPH_DUMP");
+        return value ? std::atol(value) : 0L;
+    }();
+    ++m_frames_begun;
+    if (dump_at > 0 && static_cast<long>(m_frames_begun) == dump_at) {
+        m_scene_render_state.logDrawClasses(u64(m_frames_begun));
+        if (m_diag_scene != nullptr) m_scene_render_state.logShadowBounds(*m_diag_scene);
+    }
+    if (stats_every > 0 && m_frames_begun % static_cast<rstd::uint64_t>(stats_every) == 0) {
+        auto stats = m_renderer->compiled().unwrap().description().binding_check_stats();
+        rstd_error("frame graph bindings: {} frames, validation reused {}, rerun {} (last word that differed: {})",
+                  m_frames_begun,
+                  stats.hits,
+                  stats.misses,
+                  stats.last_difference);
+        auto uniforms = vrento::uniform_update_stats();
+        rstd_error("uniform blocks: {} updates, {} evaluated, {} uploaded, {} identical to the last upload",
+                   uniforms.updates,
+                   uniforms.evaluated,
+                   uniforms.uploaded,
+                   uniforms.identical);
+    }
     return true;
 }
 void VulkanRender::Impl::reportFrameError(vrento::vulkan::GraphExecutionErrorSnapshot error) {
@@ -710,6 +740,7 @@ void VulkanRender::Impl::failOutput(bool uncertain) {
     m_renderer->clear();
 }
 bool VulkanRender::Impl::prepareOutputFrame(Scene& scene) {
+    m_diag_scene = &scene;
     if (m_output->blocked) return false;
     if (m_frame) return true;
     auto& rr = m_rendering_resources;

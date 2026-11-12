@@ -893,14 +893,8 @@ auto ColorUniformSource::Evaluate(ref<dyn<UniformUpdateContext>>,
 namespace
 {
 
-// Whether a light lights now: shown by its user property, and shown with every layer it is in.
-bool LightsNow(const SceneLight& light) {
-    if (light.node() == nullptr || ! light.runtimeVisible()) return false;
-    for (const SceneNode* node = light.node(); node != nullptr; node = node->Parent()) {
-        if (! node->Visible()) return false;
-    }
-    return true;
-}
+// Whether a light lights now (the render scene's shadow maps follow the same rule).
+bool LightsNow(const SceneLight& light) { return SceneLightLightsNow(light); }
 
 // The lights that take the shaders' light slots, by index in `lights`: those that light now, in
 // order, up to `slots`.
@@ -1477,7 +1471,9 @@ auto PuppetUniformSource::Describe(mut_ref<dyn<UniformBindingSink>> sink) const
 }
 
 auto PuppetUniformSource::Version(ref<dyn<UniformUpdateContext>> context) const -> u64 {
-    return context->Frame()->revision;
+    // The pose is generated here, once per frame, and Evaluate reuses it.
+    m_layer->Pose(context->Frame()->elapsed.to_primitive());
+    return u64(m_layer->PoseVersion());
 }
 
 auto PuppetUniformSource::Evaluate(ref<dyn<UniformUpdateContext>> context,
@@ -1486,20 +1482,27 @@ auto PuppetUniformSource::Evaluate(ref<dyn<UniformUpdateContext>> context,
     UniformWriter writer(sink);
     const double  time = context->Frame()->elapsed.to_primitive();
     if (writer.Wants(PuppetUniformOutput::Bones)) {
-        auto matrices = m_layer->genFrame(time);
+        auto matrices = m_layer->Pose(time);
         if (! matrices.is_empty()) {
-            auto value = UniformValue::fromMatrixArray(matrices[usize()].data(),
-                                                       u32(4),
-                                                       u32(4),
-                                                       matrices.len(),
-                                                       UniformMatrixStorage::ColumnMajor);
-            writer.Write(PuppetUniformOutput::Bones, value);
+            // Written from the pose itself: no copy of up to 256 matrices into a value.
+            writer.WriteView(ToUniformOutput(PuppetUniformOutput::Bones),
+                             UniformValueView { matrices[usize()].data(),
+                                                matrices.len() * usize(16),
+                                                UniformValueLayout::Matrix(
+                                                    u32(4),
+                                                    u32(4),
+                                                    matrices.len(),
+                                                    UniformMatrixStorage::ColumnMajor) });
         }
     }
     if (writer.Wants(PuppetUniformOutput::BlendMap)) {
         auto blend_map = m_layer->TextureChannelBlendMap(time);
-        if (! blend_map.is_empty())
-            writer.Write(PuppetUniformOutput::BlendMap, UniformValue::fromZeroExtended(blend_map));
+        if (! blend_map.is_empty()) {
+            auto layout           = UniformValueLayout::Linear(blend_map.len());
+            layout.zero_fill_tail = true;
+            writer.WriteView(ToUniformOutput(PuppetUniformOutput::BlendMap),
+                             UniformValueView { blend_map.as_raw_ptr(), blend_map.len(), layout });
+        }
     }
     return writer.Finish();
 }

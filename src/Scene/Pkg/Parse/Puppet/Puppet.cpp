@@ -206,6 +206,24 @@ slice<Eigen::Affine3f> PuppetLayer::genFrame(double time) noexcept {
         if (layer.anim != nullptr && layer.anim_layer.visible) any_visible_layer = true;
     }
 
+    if (m_bind_rotation.len() != bones.len()) {
+        m_bind_rotation.clear();
+        m_animation_rotation.clear();
+        m_bind_scale.clear();
+        m_animation_scale.clear();
+        for (usize i {}; i < bones.len(); ++i) {
+            const auto& bone = bones[i];
+            const auto  bind = DecomposeBindLinear(bone.local_bind.linear());
+            const auto& ref  = bone.animation_reference.is_some() ? *bone.animation_reference
+                                                                  : bone.local_bind;
+            const auto  anim = DecomposeBindLinear(ref.linear());
+            m_bind_rotation.push(Quaterniond(bind.rotation));
+            m_bind_scale.push(Vector3f(bind.scale));
+            m_animation_rotation.push(Quaterniond(anim.rotation));
+            m_animation_scale.push(Vector3f(anim.scale));
+        }
+    }
+
     // Compose local TRS along the animation hierarchy before applying inverse binds.
     for (usize i {}; i < m_final_affines.len(); ++i) {
         const auto& bone   = bones[i];
@@ -239,12 +257,12 @@ slice<Eigen::Affine3f> PuppetLayer::genFrame(double time) noexcept {
         // Bind state. vco is a fixed render-time pivot offset for root sprite
         // bones (matches world_bind's pretranslate in prepared()) and is added
         // after layer deltas so the replacement anchor stays in puppet space.
-        const BindLinear bind_linear = DecomposeBindLinear(bone.local_bind.linear());
+        const BindLinear bind_linear { m_bind_rotation[i], m_bind_scale[i] };
         // Older MDLS stores a separate animation rest pose; the mesh bind pose
         // may still describe the unpacked pieces, not the assembled puppet.
         const auto& animation_reference =
             bone.animation_reference.is_some() ? *bone.animation_reference : bone.local_bind;
-        const auto animation_linear = DecomposeBindLinear(animation_reference.linear());
+        const BindLinear animation_linear { m_animation_rotation[i], m_animation_scale[i] };
 
         const auto& initial_reference =
             additive_uses_first_frame ? bone.local_bind : animation_reference;
@@ -345,6 +363,32 @@ slice<Eigen::Affine3f> PuppetLayer::genFrame(double time) noexcept {
     }
     applyLocalOverrides(time);
     return m_final_affines.as_slice();
+}
+
+slice<Eigen::Affine3f> PuppetLayer::Pose(double time) noexcept {
+    if (m_pose_valid && m_pose_time == time) return m_final_affines.as_slice();
+    auto  pose  = genFrame(time);
+    auto  blend = TextureChannelBlendMap(time);
+    bool  same  = m_pose_valid && pose.len() == m_pose_published.len() &&
+                 blend.len() == m_blend_published.len();
+    if (same && pose.len() > usize(0))
+        same = __builtin_memcmp(pose.as_raw_ptr(),
+                                m_pose_published.as_slice().as_raw_ptr(),
+                                pose.len().to_primitive() * sizeof(Eigen::Affine3f)) == 0;
+    if (same && blend.len() > usize(0))
+        same = __builtin_memcmp(blend.as_raw_ptr(),
+                                m_blend_published.as_slice().as_raw_ptr(),
+                                blend.len().to_primitive() * sizeof(float)) == 0;
+    if (! same) {
+        ++m_pose_version;
+        m_pose_published.clear();
+        for (usize i {}; i < pose.len(); ++i) m_pose_published.push(Eigen::Affine3f(pose[i]));
+        m_blend_published.clear();
+        for (usize i {}; i < blend.len(); ++i) m_blend_published.push(float(blend[i]));
+    }
+    m_pose_valid = true;
+    m_pose_time  = time;
+    return pose;
 }
 
 // The scripts' local poses for this frame (setLocalBoneTransform), parents first, each moving its

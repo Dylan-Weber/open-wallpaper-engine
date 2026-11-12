@@ -305,6 +305,68 @@ TEST(Puppet, GravitySagsAScaledObjectAsFarInTheScene) {
     EXPECT_NEAR(settled({ 2.0f, 1.0f, 4.0f }).y(), -20.0f * 1000.0f / 300.0f, 0.1f);
 }
 
+// A puppet that holds its pose keeps its pose version, so its uniforms are neither evaluated nor
+// uploaded again; one under physics moves the version with the pose.
+TEST(Puppet, PoseVersionHoldsForAStaticPuppetAndMovesWithPhysics) {
+    auto  still = Arc<owe::Puppet>::make();
+    still->bones.emplace_back();
+    still->prepared();
+    owe::PuppetLayer rest(still.clone());
+    rest.prepared({});
+    double time = 0.0;
+    (void)rest.Pose(time);
+    const auto held = rest.PoseVersion();
+    for (int frame = 0; frame < 30; ++frame, time += 1.0 / 60.0) {
+        (void)rest.Pose(time);
+        EXPECT_EQ(rest.PoseVersion(), held) << "frame " << frame;
+    }
+
+    auto  puppet  = Arc<owe::Puppet>::make();
+    auto& hanging = puppet->bones.emplace_back();
+    std::string settings = Settings(false, true);
+    settings.replace(settings.find("\"ge\":false"), 10, "\"ge\":true");
+    settings.replace(settings.find("\"tm\":2.0"), 8, "\"tm\":100");
+    hanging.simulation_json = String::make(rstd::cppstd::as_str(settings).unwrap());
+    puppet->prepared();
+    owe::PuppetLayer sagging(puppet.clone());
+    sagging.prepared({});
+    time = 0.0;
+    (void)sagging.Pose(time);
+    auto version = sagging.PoseVersion();
+    for (int frame = 0; frame < 10; ++frame) {
+        time += 1.0 / 60.0;
+        (void)sagging.Pose(time);
+        EXPECT_NE(sagging.PoseVersion(), version) << "frame " << frame;
+        version = sagging.PoseVersion();
+        // the same frame again leaves the pose, the physics and the version where they are
+        (void)sagging.Pose(time);
+        EXPECT_EQ(sagging.PoseVersion(), version);
+    }
+}
+
+// Pose is genFrame once per frame: a layer driven by either gives the same matrices.
+TEST(Puppet, PoseMatchesGenFrame) {
+    auto  puppet  = Arc<owe::Puppet>::make();
+    auto& hanging = puppet->bones.emplace_back();
+    puppet->bones.emplace_back();
+    std::string settings = Settings(false, true);
+    settings.replace(settings.find("\"ge\":false"), 10, "\"ge\":true");
+    settings.replace(settings.find("\"tm\":2.0"), 8, "\"tm\":100");
+    hanging.simulation_json = String::make(rstd::cppstd::as_str(settings).unwrap());
+    puppet->prepared();
+    owe::PuppetLayer posed(puppet.clone()), generated(puppet.clone());
+    posed.prepared({});
+    generated.prepared({});
+    double time = 0.0;
+    for (int frame = 0; frame < 200; ++frame, time += 1.0 / 60.0) {
+        const auto a = posed.Pose(time);
+        const auto b = generated.genFrame(time);
+        ASSERT_EQ(a.len().to_primitive(), b.len().to_primitive());
+        for (usize i {}; i < a.len(); ++i)
+            ASSERT_TRUE(a[i].matrix() == b[i].matrix()) << "frame " << frame << " bone " << i;
+    }
+}
+
 TEST(Puppet, LayerImpulseMovesTheBoneAndResetPutsItBack) {
     auto  puppet        = Arc<owe::Puppet>::make();
     auto& leg           = puppet->bones.emplace_back();

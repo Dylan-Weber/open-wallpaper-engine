@@ -873,6 +873,7 @@ static void EmitShadowPasses(ExtraInfo& extra) {
         if (item == nullptr || ! caster.material || caster.definition >= definitions.len())
             continue;
         const auto& definition = definitions[caster.definition];
+        const auto  covered    = caster.definition_count;
         const auto  target     = definition.target.as_str();
         auto        draw       = extra.scene->ResourceIndex().resolve(item->scene_draw_item);
         if (draw.is_none() || draw->node == nullptr || draw->mesh == nullptr) continue;
@@ -888,6 +889,9 @@ static void EmitShadowPasses(ExtraInfo& extra) {
              instance_count = caster.instance_count,
              silent         = caster.silent,
              clear_depth    = first,
+             covered,
+             definitions,
+             first_definition = caster.definition,
              target](fg::PassId pass, vulkan::SceneDraw::Input& input) {
                 auto& pdesc            = input.description;
                 input.updates.node     = Some(mut_ref<SceneNode>::from_raw_parts(draw->node));
@@ -901,24 +905,25 @@ static void EmitShadowPasses(ExtraInfo& extra) {
                 pdesc.output                    = rstd::into(target);
                 pdesc.clear_depth               = clear_depth;
 
-                pdesc.viewports.reserve(definition.viewports.len());
-                pdesc.scissors.reserve(definition.viewports.len());
-                for (const auto& viewport : definition.viewports) {
-                    pdesc.viewports.push(VkViewport {
-                        .x        = viewport.x.to_primitive(),
-                        .y        = viewport.y.to_primitive(),
-                        .width    = viewport.width.to_primitive(),
-                        .height   = viewport.height.to_primitive(),
-                        .minDepth = 0.0f,
-                        .maxDepth = 1.0f,
-                    });
-                    pdesc.scissors.push(VkRect2D {
-                        .offset = { viewport.scissor_x.to_primitive(),
-                                    viewport.scissor_y.to_primitive() },
-                        .extent = { silent ? 0u : viewport.scissor_width.to_primitive(),
-                                    silent ? 0u : viewport.scissor_height.to_primitive() },
-                    });
-                }
+                // the views of every definition this draw covers, in the scene's order: instance i
+                // draws view i
+                for (usize covered_index {}; covered_index < covered; ++covered_index)
+                    for (const auto& viewport : definitions[first_definition + covered_index].viewports) {
+                        pdesc.viewports.push(VkViewport {
+                            .x        = viewport.x.to_primitive(),
+                            .y        = viewport.y.to_primitive(),
+                            .width    = viewport.width.to_primitive(),
+                            .height   = viewport.height.to_primitive(),
+                            .minDepth = 0.0f,
+                            .maxDepth = 1.0f,
+                        });
+                        pdesc.scissors.push(VkRect2D {
+                            .offset = { viewport.scissor_x.to_primitive(),
+                                        viewport.scissor_y.to_primitive() },
+                            .extent = { silent ? 0u : viewport.scissor_width.to_primitive(),
+                                        silent ? 0u : viewport.scissor_height.to_primitive() },
+                        });
+                    }
 
                 AddMaterialTextureReads(*material, target, extra, pass, pdesc, true);
                 auto atlas = Remember(
@@ -1071,7 +1076,7 @@ auto owe::BuildSceneRenderState(Scene& scene, const RenderSceneSnapshot& render_
     auto buffers = extra.textures.declare_buffers(extra.graph, resource_plan.buffers.as_slice());
     if (buffers.is_err()) return Err(buffers.unwrap_err());
     for (const auto& draw : extra.draws) {
-        auto uses  = draw.source->resourceUses();
+        const auto& uses  = draw.source->resourceUses();
         auto reads = vrento::vulkan::graphics_buffer_reads(
             extra.graph, extra.textures, resource_plan, uses.buffers.as_slice());
         if (reads.is_err()) return Err(reads.unwrap_err());
