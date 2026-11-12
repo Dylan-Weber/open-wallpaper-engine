@@ -3052,6 +3052,66 @@ TEST(ScriptLayerLookup, InvalidatedEffectAndMaterialsDoNotModifyTheirLayer) {
     EXPECT_FLOAT_EQ((**color)[usize(1)], 0.0f);
 }
 
+TEST(ScriptLayerLookup, AnotherLayersScriptPlaysAnEffectMaterialAnimationByName) {
+    // Ocarina of Time's song text starts the interface's "accept" animation with
+    // thisScene.getLayer(...).getEffect(0).getMaterial(0).getAnimation("accept").play(); its end
+    // events hand the ocarina back.
+    owe::Scene scene;
+    auto       layer = Arc<owe::SceneNode>::make(
+        Eigen::Vector3f::Zero(), Eigen::Vector3f::Ones(), Eigen::Vector3f::Zero(), "target"_str);
+    scene.RootMut()->AppendChild(layer.clone());
+    auto layer_effect =
+        Arc<owe::SceneNodeLayer>::make(layer.as_ptr(), 64.0f, 64.0f, "_rt_test"_str);
+    auto effect                             = Arc<owe::SceneImageEffect>::make();
+    effect->name                            = "color"_Str;
+    auto                        effect_node = Arc<owe::SceneNode>::make();
+    auto                        mesh        = Arc<owe::SceneMesh>::make();
+    owe::SceneMaterial          material;
+    owe::SceneShaderVariantDesc variant;
+    (void)variant.uniform_aliases.insert("alpha"_Str, "g_Alpha"_Str);
+    material.customShader.variant = Some(owe::SceneShaderVariant::from(rstd::move(variant)));
+    (void)material.customShader.constValues.insert("g_Alpha"_Str, owe::ShaderValue(1.0f));
+    auto clip     = Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {
+        .name = String::make("accept"_str),
+        .mode = String::make("single"_str),
+        .fps  = 30.0f,
+        .end  = i32(30),
+    });
+    auto playback = Arc<owe::SceneAnimationPlayback>::make(rstd::move(clip), true);
+    auto curve    = Arc<owe::SceneAnimationCurve>::make();
+    curve->c0.push({ .frame = i32(), .value = 0.0f });
+    curve->c0.push({ .frame = i32(30), .value = 1.0f });
+    (void)material.customShader.valueAnimations.insert(
+        "g_Alpha"_Str,
+        owe::SceneShaderValueAnimation {
+            .base  = owe::ShaderValue(1.0f),
+            .track = Some(Arc<owe::SceneAnimationTrack>::make(
+                owe::SceneAnimationTrack { .curve = curve.clone(), .playback = playback.clone() })) });
+    mesh->AddMaterial(rstd::move(material));
+    effect_node->AddMesh(rstd::move(mesh));
+    effect->AddNode(owe::SceneImageEffectNode { .output    = owe::SceneEffectTarget::LayerNext(),
+                                                .sceneNode = effect_node.clone() });
+    layer_effect->AddEffect(effect);
+    layer->AttachLayer(layer_effect.clone());
+
+    JsRuntime runtime;
+    runtime.SetScene(&scene);
+    runtime.SetSceneRoot(scene.RootMut().as_raw_ptr());
+    auto* other = MakeProbe(runtime, "test/other_layer_plays_accept", R"JS(
+        export function update() {
+            const animation = thisScene.getLayer('target').getEffect(0).getMaterial(0).getAnimation('accept');
+            if (animation === undefined || typeof animation.play !== 'function') return -1;
+            animation.play();
+            return 2;
+        }
+    )JS");
+    ASSERT_NE(other, nullptr);
+    EXPECT_FALSE(playback->IsPlaying());
+    runtime.TickAll();
+    EXPECT_TRUE(playback->IsPlaying());
+    EXPECT_DOUBLE_EQ(LastScalar(other), 2.0);
+}
+
 TEST(ScriptLayerLookup, MissingLayerKeepsDefaultTransformShape) {
     auto root = rstd::sync::Arc<owe::SceneNode>::make();
 

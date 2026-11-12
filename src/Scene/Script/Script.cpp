@@ -3478,6 +3478,54 @@ JSValue PropertyObjectGetAnimation(JSContext* ctx, JSValueConst, int argc, JSVal
     return WrapAnimation(ctx, ActivePropertyAnimation(ctx, argc, argv));
 }
 
+// The animation of a material's shader value by its name: a script on another layer starts it
+// (Ocarina of Time's song text plays the interface's "accept" animation through
+// getEffect(0).getMaterial(0).getAnimation("accept").play()).
+auto MaterialAnimationNamed(SceneMaterial* material, ref<str> name)
+    -> Option<Arc<owe::SceneAnimationPlayback>> {
+    Option<Arc<owe::SceneAnimationPlayback>> found;
+    if (material == nullptr) return found;
+    material->customShader.valueAnimations.iter().for_each([&](auto entry) {
+        auto [key, animation] = entry;
+        (void)key;
+        if (found.is_none() && animation->track.is_some() &&
+            (**animation->track).playback->Name() == name)
+            found = Some((**animation->track).playback.clone());
+    });
+    return found;
+}
+
+JSValue MaterialGetAnimation(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+    auto* handle = static_cast<MaterialHandle*>(JS_GetOpaque(this_val, s_material_class_id));
+    if (handle != nullptr && handle->material != nullptr && argc > 0 && JS_IsString(argv[0])) {
+        const char* name = JS_ToCString(ctx, argv[0]);
+        if (name == nullptr) return JS_EXCEPTION;
+        auto found = MaterialAnimationNamed(handle->material, rstd::cppstd::as_str(name).unwrap());
+        JS_FreeCString(ctx, name);
+        if (found.is_some()) return WrapAnimation(ctx, rstd::move(found));
+    }
+    return PropertyObjectGetAnimation(ctx, this_val, argc, argv);
+}
+
+JSValue EffectGetAnimation(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+    auto* handle = GetEffectHandle(this_val);
+    if (handle != nullptr && handle->host != nullptr && handle->host->scene != nullptr &&
+        handle->ref && argc > 0 && JS_IsString(argv[0]) &&
+        (handle->owner.is_none() || (*handle->owner)->node)) {
+        const char* name = JS_ToCString(ctx, argv[0]);
+        if (name == nullptr) return JS_EXCEPTION;
+        Option<Arc<owe::SceneAnimationPlayback>> found;
+        for (usize index {}; found.is_none() && index < usize(32); index = index + usize(1)) {
+            auto* material = handle->host->scene->ImageEffectMaterial(*handle->ref, index);
+            if (material == nullptr) break;
+            found = MaterialAnimationNamed(material, rstd::cppstd::as_str(name).unwrap());
+        }
+        JS_FreeCString(ctx, name);
+        if (found.is_some()) return WrapAnimation(ctx, rstd::move(found));
+    }
+    return PropertyObjectGetAnimation(ctx, this_val, argc, argv);
+}
+
 JSValue WrapAnimationLayer(JSContext* ctx, Option<Arc<owe::SceneAnimationPlayback>> playback) {
     JSValue object    = JS_NewObject(ctx);
     JSValue animation = WrapAnimation(ctx, rstd::move(playback));
@@ -4061,11 +4109,11 @@ const JSCFunctionListEntry s_effect_proto_funcs[] = {
     JS_CGETSET_DEF("visible", EffectGetVisible, EffectSetVisible),
     JS_CGETSET_DEF("name", EffectGetName, NodeSetIgnore),
     JS_CFUNC_DEF("getMaterial", 1, EffectGetMaterial),
-    JS_CFUNC_DEF("getAnimation", 1, PropertyObjectGetAnimation),
+    JS_CFUNC_DEF("getAnimation", 1, EffectGetAnimation),
 };
 
 const JSCFunctionListEntry s_material_proto_funcs[] = {
-    JS_CFUNC_DEF("getAnimation", 1, PropertyObjectGetAnimation),
+    JS_CFUNC_DEF("getAnimation", 1, MaterialGetAnimation),
 };
 
 void InitEffectClass(JSContext* ctx, JSRuntime* rt) {
