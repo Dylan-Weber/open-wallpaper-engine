@@ -918,6 +918,9 @@ void RenderSceneSnapshot::Rebuild(Scene& scene, RenderSceneVersion version) {
             m_shadow_casters.push(RenderShadowCasterRecord {
                 .render_item      = id,
                 .material         = variants[definition].clone(),
+                .batch_material   = definition < view->material->shadow_batch_variants.len()
+                                        ? Some(view->material->shadow_batch_variants[definition].clone())
+                                        : None<Arc<SceneMaterial>>(),
                 .instance_count   = views,
                 .silent           = view->material->shadow_silent,
                 .definition       = definition,
@@ -1584,7 +1587,10 @@ Scene::Scene()
     RegisterNode(*m_scene_graph);
     m_runtime.RegisterSystem(SceneTextureAnimationRuntime { m_texture_animations });
 }
-Scene::~Scene() = default;
+Scene::~Scene() {
+    if (m_shadow_batch_release != nullptr && m_shadow_batch_context != nullptr)
+        m_shadow_batch_release(m_shadow_batch_context);
+}
 
 SceneNodeId Scene::RegisterNode(SceneNode& node, Option<WallpaperLayerId> wallpaper) {
     if (! node.m_identity.Valid() || node.m_identity.generation != m_resource_generation) {

@@ -630,17 +630,51 @@ inline String NormalizePackedAudioSpectrumAccess(ref<str> src) {
 inline String StartCasterViewsAtTheirLight(ref<str> src) {
     constexpr ref<str> stock = "g_ViewportViewProjectionMatrices[gl_InstanceID]"_str;
     if (! src.contains(stock)) return String::make(src);
+    // A batch of up to OWE_SHADOW_BATCH objects (casters of one mesh) is one draw of
+    // objects * g_OweShadowViews instances: instance i is view i % g_OweShadowViews of object
+    // i / g_OweShadowViews (the views a draw covers, written by the batch's uniform source).
+    // Without the combo the shader is the stock one.
     auto out  = String::make("uniform mat4 g_OweShadowViewProjections[24];\n"
                              "#ifndef OWE_SHADOW_VIEW_OFFSET\n"
                              "#define OWE_SHADOW_VIEW_OFFSET 0\n"
+                             "#endif\n"
+                             "#ifndef OWE_SHADOW_BATCH\n"
+                             "#define OWE_SHADOW_BATCH 1\n"
+                             "#endif\n"
+                             "#if OWE_SHADOW_BATCH > 1\n"
+                             "uniform mat4 g_OweModelMatrices[OWE_SHADOW_BATCH];\n"
+                             "uniform float g_OweShadowViews;\n"
+                             "#define OWE_SHADOW_OBJECT int((float(gl_InstanceID) + 0.5) / g_OweShadowViews)\n"
+                             "#define OWE_SHADOW_VIEW (gl_InstanceID - OWE_SHADOW_OBJECT * int(g_OweShadowViews))\n"
+                             "#define OWE_SHADOW_MODEL g_OweModelMatrices[OWE_SHADOW_OBJECT]\n"
+                             "#else\n"
+                             "#define OWE_SHADOW_VIEW gl_InstanceID\n"
+                             "#define OWE_SHADOW_MODEL g_ModelMatrix\n"
                              "#endif\n"_str);
+    auto replace_all = [](String text, ref<str> from, ref<str> to) {
+        auto result = String::make();
+        auto rest   = text.as_str();
+        for (auto pos = rest.find(from); pos.is_some(); pos = rest.find(from)) {
+            result.push_str(*rest.get(usize(), *pos));
+            result.push_str(to);
+            rest = *rest.get(*pos + from.len(), rest.len());
+        }
+        result.push_str(rest);
+        return result;
+    };
     auto rest = src;
     for (auto pos = rest.find(stock); pos.is_some(); pos = rest.find(stock)) {
         out.push_str(*rest.get(usize(), *pos));
-        out.push_str("g_OweShadowViewProjections[gl_InstanceID + OWE_SHADOW_VIEW_OFFSET]"_str);
+        out.push_str("g_OweShadowViewProjections[OWE_SHADOW_VIEW + OWE_SHADOW_VIEW_OFFSET]"_str);
         rest = *rest.get(*pos + stock.len(), rest.len());
     }
     out.push_str(rest);
+    out = replace_all(rstd::move(out), "gl_ViewportIndex = gl_InstanceID;"_str,
+                      "gl_ViewportIndex = OWE_SHADOW_VIEW;"_str);
+    out = replace_all(rstd::move(out), "vec4(localPos, 1.0), g_ModelMatrix)"_str,
+                      "vec4(localPos, 1.0), OWE_SHADOW_MODEL)"_str);
+    out = replace_all(rstd::move(out), "vec4(a_Position, 1.0), g_ModelMatrix)"_str,
+                      "vec4(a_Position, 1.0), OWE_SHADOW_MODEL)"_str);
     return out;
 }
 
