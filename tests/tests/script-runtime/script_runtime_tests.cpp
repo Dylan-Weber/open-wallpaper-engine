@@ -2091,6 +2091,45 @@ TEST(ScriptCursor, GlobalInputRefreshesFrameFields) {
     EXPECT_EQ(fs->last_value().as_Scalar().value.v, 300'400.0);
 }
 
+TEST(ScriptCursor, SavedCursorPositionIsASnapshot) {
+    // Scripts keep `input.cursorScreenPosition` and edit it (a drag-to-rotate camera flips its y); the
+    // engine's next frame must not move the saved copy, nor may the edit reach the live position.
+    JsRuntime rt;
+    rt.SetFrameInputs(MakeFi());
+    auto* fs = rt.MakeFieldScript(
+        R"JS(
+            let saved = null;
+            export function update() {
+                if (! saved) {
+                    saved = input.cursorScreenPosition;
+                    saved.y = 1000 - saved.y;
+                }
+                return (input.cursorScreenPosition.x - saved.x) +
+                       (input.cursorScreenPosition.y - 100) * 1000;
+            }
+        )JS"_str,
+        "test/cursor_snapshot"_str,
+        FieldKind::Scalar,
+        owe::MakeObject(),
+        owe::IntoJson(0));
+    ASSERT_NE(fs, nullptr);
+
+    auto fi             = MakeFi();
+    fi.screen_w         = 800.0f;
+    fi.screen_h         = 600.0f;
+    fi.cursor_x         = 0.25f; // 200
+    fi.cursor_y         = 100.0f / 600.0f;
+    fi.cursor_in_window = true;
+    rt.SetFrameInputs(fi);
+    rt.TickAll();
+    EXPECT_EQ(fs->last_value().as_Scalar().value.v, 0.0);
+
+    fi.cursor_x = 0.5f; // 400: moved 200 right of the saved 200
+    rt.SetFrameInputs(fi);
+    rt.TickAll();
+    EXPECT_EQ(fs->last_value().as_Scalar().value.v, 200.0);
+}
+
 TEST(ScriptCursor, WorldPositionFlipsTopDownInputY) {
     JsRuntime rt;
     rt.SetFrameInputs(MakeFi());

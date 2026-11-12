@@ -1722,10 +1722,17 @@ globalThis.thisScene = __wwCreateNodeStub();
 // `input` is the WE-global cursor / input state. Scripts often guard with
 // `if (input && input.cursorWorldPosition)` so a populated stub is fine;
 // values stay at zero until the host wires real cursor data.
+//
+// The host updates the three positions in place (__cursor*), but a script reads a fresh vector each time, as in
+// Wallpaper Engine: Starscape's camera keeps `initCursorPos = input.cursorScreenPosition` and compares it with later
+// reads, which must not follow the cursor.
 globalThis.input = {
-    cursorWorldPosition:  new Vec3(0, 0, 0),
-    cursorLocalPosition:  new Vec3(0, 0, 0),
-    cursorScreenPosition: new Vec2(0, 0),
+    __cursorWorld:        new Vec3(0, 0, 0),
+    __cursorLocal:        new Vec3(0, 0, 0),
+    __cursorScreen:       new Vec2(0, 0),
+    get cursorWorldPosition()  { const v = this.__cursorWorld;  return new Vec3(v.x, v.y, v.z); },
+    get cursorLocalPosition()  { const v = this.__cursorLocal;  return new Vec3(v.x, v.y, v.z); },
+    get cursorScreenPosition() { const v = this.__cursorScreen; return new Vec2(v.x, v.y); },
     mouseButtonsDown:     0,
     mouseButtonsPressed:  0,
     mouseButtonsReleased: 0,

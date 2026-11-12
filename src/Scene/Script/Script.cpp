@@ -978,17 +978,17 @@ void UpdateInputObject(JSContext* ctx) {
         return;
     }
 
-    JSValue screen = JS_GetPropertyStr(ctx, input, "cursorScreenPosition");
+    JSValue screen = JS_GetPropertyStr(ctx, input, "__cursorScreen");
     if (JS_IsObject(screen))
         SetVec2Fields(ctx, screen, fi.cursor_x * fi.screen_w, fi.cursor_y * fi.screen_h);
     JS_FreeValue(ctx, screen);
 
     const CursorWorld world = CursorToWorld(fi, host->scene);
-    JSValue           wp    = JS_GetPropertyStr(ctx, input, "cursorWorldPosition");
+    JSValue           wp    = JS_GetPropertyStr(ctx, input, "__cursorWorld");
     if (JS_IsObject(wp)) SetVec3Fields(ctx, wp, world.x, world.y, 0.0);
     JS_FreeValue(ctx, wp);
 
-    JSValue lp = JS_GetPropertyStr(ctx, input, "cursorLocalPosition");
+    JSValue lp = JS_GetPropertyStr(ctx, input, "__cursorLocal");
     if (JS_IsObject(lp)) SetVec3Fields(ctx, lp, world.x, world.y, 0.0);
     JS_FreeValue(ctx, lp);
 
