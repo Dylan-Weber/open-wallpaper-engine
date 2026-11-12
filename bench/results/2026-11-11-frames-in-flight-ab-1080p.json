@@ -1,0 +1,1530 @@
+{
+ "configs": [
+  "base",
+  "d1",
+  "d2"
+ ],
+ "rounds": 2,
+ "results": [
+  {
+   "name": "water-effect-13",
+   "category": "simple",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 0.982,
+    "cpu_ms_per_frame": 0.761,
+    "rss_mb": 318.0,
+    "gpu_mem_mb": 250.0,
+    "gpu_util_pct": 20.0,
+    "all_ms": [
+     1.269,
+     0.695
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 0.74,
+    "cpu_ms_per_frame": 0.636,
+    "rss_mb": 318.5,
+    "gpu_mem_mb": 297.0,
+    "gpu_util_pct": 23.5,
+    "all_ms": [
+     0.766,
+     0.715
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 0.811,
+    "cpu_ms_per_frame": 0.715,
+    "rss_mb": 320.5,
+    "gpu_mem_mb": 252.0,
+    "gpu_util_pct": 30.0,
+    "all_ms": [
+     0.775,
+     0.847
+    ]
+   }
+  },
+  {
+   "name": "nebula",
+   "category": "simple",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 1.083,
+    "cpu_ms_per_frame": 0.749,
+    "rss_mb": 421.5,
+    "gpu_mem_mb": 326.0,
+    "gpu_util_pct": 26.0,
+    "all_ms": [
+     1.189,
+     0.976
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 1.028,
+    "cpu_ms_per_frame": 0.748,
+    "rss_mb": 422.0,
+    "gpu_mem_mb": 343.0,
+    "gpu_util_pct": 32.0,
+    "all_ms": [
+     1.19,
+     0.867
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 0.609,
+    "cpu_ms_per_frame": 0.626,
+    "rss_mb": 422.5,
+    "gpu_mem_mb": 298.5,
+    "gpu_util_pct": 20.0,
+    "all_ms": [
+     0.613,
+     0.606
+    ]
+   }
+  },
+  {
+   "name": "yingyang-kitty",
+   "category": "simple",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 0.66,
+    "cpu_ms_per_frame": 0.623,
+    "rss_mb": 1039.5,
+    "gpu_mem_mb": 479.5,
+    "gpu_util_pct": 11.0,
+    "all_ms": [
+     0.635,
+     0.685
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 0.746,
+    "cpu_ms_per_frame": 0.657,
+    "rss_mb": 1038.5,
+    "gpu_mem_mb": 483.0,
+    "gpu_util_pct": 16.0,
+    "all_ms": [
+     0.725,
+     0.767
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 0.584,
+    "cpu_ms_per_frame": 0.587,
+    "rss_mb": 1039.5,
+    "gpu_mem_mb": 505.0,
+    "gpu_util_pct": 13.5,
+    "all_ms": [
+     0.623,
+     0.544
+    ]
+   }
+  },
+  {
+   "name": "rain",
+   "category": "particles",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 5.719,
+    "cpu_ms_per_frame": 3.917,
+    "rss_mb": 397.5,
+    "gpu_mem_mb": 1058.5,
+    "gpu_util_pct": 43.0,
+    "all_ms": [
+     5.625,
+     5.813
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 6.121,
+    "cpu_ms_per_frame": 3.988,
+    "rss_mb": 398.5,
+    "gpu_mem_mb": 1100.0,
+    "gpu_util_pct": 64.5,
+    "all_ms": [
+     6.318,
+     5.924
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 3.788,
+    "cpu_ms_per_frame": 3.761,
+    "rss_mb": 394.5,
+    "gpu_mem_mb": 1139.5,
+    "gpu_util_pct": 79.0,
+    "all_ms": [
+     3.788,
+     3.788
+    ]
+   }
+  },
+  {
+   "name": "winter",
+   "category": "particles",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 4.778,
+    "cpu_ms_per_frame": 2.913,
+    "rss_mb": 436.0,
+    "gpu_mem_mb": 1189.5,
+    "gpu_util_pct": 62.0,
+    "all_ms": [
+     4.975,
+     4.581
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 4.932,
+    "cpu_ms_per_frame": 2.957,
+    "rss_mb": 437.0,
+    "gpu_mem_mb": 1837.0,
+    "gpu_util_pct": 66.0,
+    "all_ms": [
+     4.395,
+     5.469
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 2.699,
+    "cpu_ms_per_frame": 2.72,
+    "rss_mb": 436.5,
+    "gpu_mem_mb": 1752.0,
+    "gpu_util_pct": 74.0,
+    "all_ms": [
+     2.68,
+     2.717
+    ]
+   }
+  },
+  {
+   "name": "sculpture-forest",
+   "category": "particles",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 6.965,
+    "cpu_ms_per_frame": 3.526,
+    "rss_mb": 1657.0,
+    "gpu_mem_mb": 1737.0,
+    "gpu_util_pct": 57.0,
+    "all_ms": [
+     6.506,
+     7.423
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 7.181,
+    "cpu_ms_per_frame": 3.713,
+    "rss_mb": 1486.0,
+    "gpu_mem_mb": 1932.0,
+    "gpu_util_pct": 63.0,
+    "all_ms": [
+     7.299,
+     7.063
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 4.126,
+    "cpu_ms_per_frame": 3.627,
+    "rss_mb": 1651.5,
+    "gpu_mem_mb": 1837.0,
+    "gpu_util_pct": 98.5,
+    "all_ms": [
+     4.224,
+     4.027
+    ]
+   }
+  },
+  {
+   "name": "minecraft",
+   "category": "particles",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 1.631,
+    "cpu_ms_per_frame": 1.239,
+    "rss_mb": 524.5,
+    "gpu_mem_mb": 430.0,
+    "gpu_util_pct": 31.0,
+    "all_ms": [
+     1.852,
+     1.41
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 1.29,
+    "cpu_ms_per_frame": 1.052,
+    "rss_mb": 524.0,
+    "gpu_mem_mb": 470.0,
+    "gpu_util_pct": 22.0,
+    "all_ms": [
+     1.381,
+     1.199
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 0.98,
+    "cpu_ms_per_frame": 1.026,
+    "rss_mb": 524.0,
+    "gpu_mem_mb": 338.0,
+    "gpu_util_pct": 20.0,
+    "all_ms": [
+     0.968,
+     0.993
+    ]
+   }
+  },
+  {
+   "name": "country-stroll",
+   "category": "particles",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 3.38,
+    "cpu_ms_per_frame": 2.147,
+    "rss_mb": 446.5,
+    "gpu_mem_mb": 1067.5,
+    "gpu_util_pct": 42.0,
+    "all_ms": [
+     3.395,
+     3.365
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 3.379,
+    "cpu_ms_per_frame": 2.211,
+    "rss_mb": 427.5,
+    "gpu_mem_mb": 473.0,
+    "gpu_util_pct": 36.5,
+    "all_ms": [
+     3.432,
+     3.326
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 2.393,
+    "cpu_ms_per_frame": 2.231,
+    "rss_mb": 428.0,
+    "gpu_mem_mb": 414.0,
+    "gpu_util_pct": 53.0,
+    "all_ms": [
+     2.438,
+     2.347
+    ]
+   }
+  },
+  {
+   "name": "lonely-winter",
+   "category": "particles",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 1.429,
+    "cpu_ms_per_frame": 1.214,
+    "rss_mb": 424.5,
+    "gpu_mem_mb": 356.5,
+    "gpu_util_pct": 21.0,
+    "all_ms": [
+     1.539,
+     1.319
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 1.562,
+    "cpu_ms_per_frame": 1.276,
+    "rss_mb": 425.0,
+    "gpu_mem_mb": 325.0,
+    "gpu_util_pct": 18.5,
+    "all_ms": [
+     1.563,
+     1.56
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 1.22,
+    "cpu_ms_per_frame": 1.212,
+    "rss_mb": 421.5,
+    "gpu_mem_mb": 328.5,
+    "gpu_util_pct": 20.5,
+    "all_ms": [
+     1.2,
+     1.239
+    ]
+   }
+  },
+  {
+   "name": "puppet-warp-test",
+   "category": "puppet",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 0.726,
+    "cpu_ms_per_frame": 0.538,
+    "rss_mb": 331.0,
+    "gpu_mem_mb": 620.0,
+    "gpu_util_pct": 23.5,
+    "all_ms": [
+     0.706,
+     0.746
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 0.76,
+    "cpu_ms_per_frame": 0.579,
+    "rss_mb": 330.0,
+    "gpu_mem_mb": 803.0,
+    "gpu_util_pct": 22.0,
+    "all_ms": [
+     0.604,
+     0.916
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 0.7,
+    "cpu_ms_per_frame": 0.664,
+    "rss_mb": 331.0,
+    "gpu_mem_mb": 803.0,
+    "gpu_util_pct": 39.0,
+    "all_ms": [
+     0.736,
+     0.664
+    ]
+   }
+  },
+  {
+   "name": "klonoa-puppet",
+   "category": "puppet",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 1.058,
+    "cpu_ms_per_frame": 0.778,
+    "rss_mb": 372.0,
+    "gpu_mem_mb": 1215.5,
+    "gpu_util_pct": 50.0,
+    "all_ms": [
+     0.928,
+     1.189
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 1.149,
+    "cpu_ms_per_frame": 0.818,
+    "rss_mb": 373.0,
+    "gpu_mem_mb": 961.5,
+    "gpu_util_pct": 28.5,
+    "all_ms": [
+     1.219,
+     1.079
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 0.896,
+    "cpu_ms_per_frame": 0.865,
+    "rss_mb": 373.0,
+    "gpu_mem_mb": 1005.5,
+    "gpu_util_pct": 41.0,
+    "all_ms": [
+     0.959,
+     0.833
+    ]
+   }
+  },
+  {
+   "name": "jinx-puppet",
+   "category": "puppet",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 1.865,
+    "cpu_ms_per_frame": 1.466,
+    "rss_mb": 336.5,
+    "gpu_mem_mb": 368.0,
+    "gpu_util_pct": 38.5,
+    "all_ms": [
+     1.813,
+     1.916
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 1.869,
+    "cpu_ms_per_frame": 1.477,
+    "rss_mb": 336.5,
+    "gpu_mem_mb": 312.0,
+    "gpu_util_pct": 30.5,
+    "all_ms": [
+     1.783,
+     1.954
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 1.611,
+    "cpu_ms_per_frame": 1.496,
+    "rss_mb": 336.5,
+    "gpu_mem_mb": 340.0,
+    "gpu_util_pct": 36.0,
+    "all_ms": [
+     1.5,
+     1.721
+    ]
+   }
+  },
+  {
+   "name": "knight-puppet-pbr",
+   "category": "puppet",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 1.224,
+    "cpu_ms_per_frame": 1.008,
+    "rss_mb": 383.0,
+    "gpu_mem_mb": 320.0,
+    "gpu_util_pct": 23.0,
+    "all_ms": [
+     1.199,
+     1.248
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 1.245,
+    "cpu_ms_per_frame": 1.002,
+    "rss_mb": 390.0,
+    "gpu_mem_mb": 295.0,
+    "gpu_util_pct": 23.0,
+    "all_ms": [
+     1.231,
+     1.259
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 0.966,
+    "cpu_ms_per_frame": 0.998,
+    "rss_mb": 390.0,
+    "gpu_mem_mb": 295.0,
+    "gpu_util_pct": 25.5,
+    "all_ms": [
+     0.985,
+     0.947
+    ]
+   }
+  },
+  {
+   "name": "puppet-simulation",
+   "category": "puppet",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 1.622,
+    "cpu_ms_per_frame": 1.059,
+    "rss_mb": 350.0,
+    "gpu_mem_mb": 417.5,
+    "gpu_util_pct": 50.5,
+    "all_ms": [
+     1.379,
+     1.865
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 1.908,
+    "cpu_ms_per_frame": 1.228,
+    "rss_mb": 348.0,
+    "gpu_mem_mb": 482.0,
+    "gpu_util_pct": 52.5,
+    "all_ms": [
+     1.812,
+     2.003
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 1.239,
+    "cpu_ms_per_frame": 1.082,
+    "rss_mb": 351.5,
+    "gpu_mem_mb": 545.5,
+    "gpu_util_pct": 47.0,
+    "all_ms": [
+     1.329,
+     1.149
+    ]
+   }
+  },
+  {
+   "name": "littlebigplanet",
+   "category": "3d-shadow",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 14.872,
+    "cpu_ms_per_frame": 14.654,
+    "rss_mb": 490.0,
+    "gpu_mem_mb": 674.5,
+    "gpu_util_pct": 34.5,
+    "all_ms": [
+     14.255,
+     15.488
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 15.171,
+    "cpu_ms_per_frame": 15.066,
+    "rss_mb": 490.0,
+    "gpu_mem_mb": 1151.5,
+    "gpu_util_pct": 63.0,
+    "all_ms": [
+     14.977,
+     15.365
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 14.602,
+    "cpu_ms_per_frame": 15.022,
+    "rss_mb": 493.5,
+    "gpu_mem_mb": 1179.0,
+    "gpu_util_pct": 40.5,
+    "all_ms": [
+     14.631,
+     14.574
+    ]
+   }
+  },
+  {
+   "name": "ocarina-of-time",
+   "category": "3d-shadow",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 32.327,
+    "cpu_ms_per_frame": 32.495,
+    "rss_mb": 515.0,
+    "gpu_mem_mb": 590.5,
+    "gpu_util_pct": 32.5,
+    "all_ms": [
+     31.117,
+     33.537
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 37.175,
+    "cpu_ms_per_frame": 35.349,
+    "rss_mb": 515.5,
+    "gpu_mem_mb": 482.0,
+    "gpu_util_pct": 23.5,
+    "all_ms": [
+     34.845,
+     39.505
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 33.645,
+    "cpu_ms_per_frame": 34.667,
+    "rss_mb": 524.5,
+    "gpu_mem_mb": 406.0,
+    "gpu_util_pct": 26.5,
+    "all_ms": [
+     33.151,
+     34.139
+    ]
+   }
+  },
+  {
+   "name": "snow",
+   "category": "3d-shadow",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 2.029,
+    "cpu_ms_per_frame": 1.711,
+    "rss_mb": 352.5,
+    "gpu_mem_mb": 401.0,
+    "gpu_util_pct": 29.5,
+    "all_ms": [
+     1.962,
+     2.096
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 1.853,
+    "cpu_ms_per_frame": 1.613,
+    "rss_mb": 351.0,
+    "gpu_mem_mb": 1176.0,
+    "gpu_util_pct": 22.5,
+    "all_ms": [
+     1.813,
+     1.894
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 1.72,
+    "cpu_ms_per_frame": 1.667,
+    "rss_mb": 352.0,
+    "gpu_mem_mb": 1274.0,
+    "gpu_util_pct": 43.0,
+    "all_ms": [
+     1.762,
+     1.679
+    ]
+   }
+  },
+  {
+   "name": "elden-ring",
+   "category": "3d-shadow",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 3.188,
+    "cpu_ms_per_frame": 1.53,
+    "rss_mb": 422.5,
+    "gpu_mem_mb": 2001.0,
+    "gpu_util_pct": 72.0,
+    "all_ms": [
+     3.329,
+     3.047
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 3.421,
+    "cpu_ms_per_frame": 1.693,
+    "rss_mb": 423.0,
+    "gpu_mem_mb": 1883.0,
+    "gpu_util_pct": 67.0,
+    "all_ms": [
+     2.942,
+     3.9
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 2.231,
+    "cpu_ms_per_frame": 1.613,
+    "rss_mb": 414.0,
+    "gpu_mem_mb": 1883.0,
+    "gpu_util_pct": 98.0,
+    "all_ms": [
+     2.206,
+     2.256
+    ]
+   }
+  },
+  {
+   "name": "hollow-knight",
+   "category": "3d-shadow",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 2.486,
+    "cpu_ms_per_frame": 1.214,
+    "rss_mb": 486.0,
+    "gpu_mem_mb": 1352.0,
+    "gpu_util_pct": 52.5,
+    "all_ms": [
+     2.456,
+     2.517
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 2.825,
+    "cpu_ms_per_frame": 1.44,
+    "rss_mb": 489.5,
+    "gpu_mem_mb": 625.0,
+    "gpu_util_pct": 59.5,
+    "all_ms": [
+     2.599,
+     3.05
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 1.729,
+    "cpu_ms_per_frame": 1.387,
+    "rss_mb": 487.5,
+    "gpu_mem_mb": 580.0,
+    "gpu_util_pct": 95.0,
+    "all_ms": [
+     2.107,
+     1.35
+    ]
+   }
+  },
+  {
+   "name": "biker",
+   "category": "3d-shadow",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 1.781,
+    "cpu_ms_per_frame": 1.114,
+    "rss_mb": 951.5,
+    "gpu_mem_mb": 590.0,
+    "gpu_util_pct": 37.5,
+    "all_ms": [
+     1.791,
+     1.771
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 2.049,
+    "cpu_ms_per_frame": 1.38,
+    "rss_mb": 951.5,
+    "gpu_mem_mb": 590.0,
+    "gpu_util_pct": 55.0,
+    "all_ms": [
+     1.973,
+     2.125
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 1.309,
+    "cpu_ms_per_frame": 1.238,
+    "rss_mb": 951.0,
+    "gpu_mem_mb": 646.5,
+    "gpu_util_pct": 42.5,
+    "all_ms": [
+     1.23,
+     1.389
+    ]
+   }
+  },
+  {
+   "name": "noita",
+   "category": "3d-shadow",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 0.896,
+    "cpu_ms_per_frame": 0.685,
+    "rss_mb": 305.5,
+    "gpu_mem_mb": 352.5,
+    "gpu_util_pct": 26.0,
+    "all_ms": [
+     1.067,
+     0.726
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 0.565,
+    "cpu_ms_per_frame": 0.524,
+    "rss_mb": 305.5,
+    "gpu_mem_mb": 352.5,
+    "gpu_util_pct": 10.0,
+    "all_ms": [
+     0.495,
+     0.634
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 0.498,
+    "cpu_ms_per_frame": 0.503,
+    "rss_mb": 305.5,
+    "gpu_mem_mb": 343.0,
+    "gpu_util_pct": 11.0,
+    "all_ms": [
+     0.461,
+     0.535
+    ]
+   }
+  },
+  {
+   "name": "bonfire-fox",
+   "category": "3d-shadow",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 2.916,
+    "cpu_ms_per_frame": 2.068,
+    "rss_mb": 416.0,
+    "gpu_mem_mb": 838.0,
+    "gpu_util_pct": 31.5,
+    "all_ms": [
+     2.841,
+     2.99
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 3.12,
+    "cpu_ms_per_frame": 2.256,
+    "rss_mb": 414.5,
+    "gpu_mem_mb": 801.5,
+    "gpu_util_pct": 40.0,
+    "all_ms": [
+     3.024,
+     3.216
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 2.141,
+    "cpu_ms_per_frame": 2.221,
+    "rss_mb": 399.5,
+    "gpu_mem_mb": 738.5,
+    "gpu_util_pct": 44.5,
+    "all_ms": [
+     2.115,
+     2.166
+    ]
+   }
+  },
+  {
+   "name": "outer-wilds-22fx",
+   "category": "effects",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 3.764,
+    "cpu_ms_per_frame": 1.492,
+    "rss_mb": 363.5,
+    "gpu_mem_mb": 657.0,
+    "gpu_util_pct": 64.0,
+    "all_ms": [
+     3.981,
+     3.547
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 4.434,
+    "cpu_ms_per_frame": 1.704,
+    "rss_mb": 363.5,
+    "gpu_mem_mb": 695.0,
+    "gpu_util_pct": 74.5,
+    "all_ms": [
+     4.858,
+     4.009
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 2.69,
+    "cpu_ms_per_frame": 1.637,
+    "rss_mb": 363.5,
+    "gpu_mem_mb": 715.0,
+    "gpu_util_pct": 100.0,
+    "all_ms": [
+     2.493,
+     2.887
+    ]
+   }
+  },
+  {
+   "name": "china-town",
+   "category": "effects",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 5.604,
+    "cpu_ms_per_frame": 2.669,
+    "rss_mb": 468.0,
+    "gpu_mem_mb": 777.0,
+    "gpu_util_pct": 73.0,
+    "all_ms": [
+     5.644,
+     5.564
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 4.883,
+    "cpu_ms_per_frame": 2.579,
+    "rss_mb": 469.5,
+    "gpu_mem_mb": 856.0,
+    "gpu_util_pct": 57.0,
+    "all_ms": [
+     4.655,
+     5.112
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 2.918,
+    "cpu_ms_per_frame": 2.46,
+    "rss_mb": 468.0,
+    "gpu_mem_mb": 774.0,
+    "gpu_util_pct": 95.0,
+    "all_ms": [
+     3.337,
+     2.5
+    ]
+   }
+  },
+  {
+   "name": "paper-airplane",
+   "category": "effects",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 3.371,
+    "cpu_ms_per_frame": 1.948,
+    "rss_mb": 562.5,
+    "gpu_mem_mb": 1553.5,
+    "gpu_util_pct": 60.5,
+    "all_ms": [
+     3.579,
+     3.163
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 3.689,
+    "cpu_ms_per_frame": 2.103,
+    "rss_mb": 535.5,
+    "gpu_mem_mb": 1598.0,
+    "gpu_util_pct": 62.5,
+    "all_ms": [
+     3.356,
+     4.023
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 2.393,
+    "cpu_ms_per_frame": 2.032,
+    "rss_mb": 533.5,
+    "gpu_mem_mb": 1598.0,
+    "gpu_util_pct": 94.5,
+    "all_ms": [
+     2.509,
+     2.276
+    ]
+   }
+  },
+  {
+   "name": "forgotten-lands",
+   "category": "effects",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 3.084,
+    "cpu_ms_per_frame": 2.335,
+    "rss_mb": 446.5,
+    "gpu_mem_mb": 551.0,
+    "gpu_util_pct": 35.5,
+    "all_ms": [
+     3.083,
+     3.085
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 3.054,
+    "cpu_ms_per_frame": 2.454,
+    "rss_mb": 430.0,
+    "gpu_mem_mb": 717.0,
+    "gpu_util_pct": 31.0,
+    "all_ms": [
+     3.024,
+     3.083
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 2.409,
+    "cpu_ms_per_frame": 2.42,
+    "rss_mb": 442.0,
+    "gpu_mem_mb": 861.0,
+    "gpu_util_pct": 47.5,
+    "all_ms": [
+     2.44,
+     2.377
+    ]
+   }
+  },
+  {
+   "name": "reze",
+   "category": "effects",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 7.413,
+    "cpu_ms_per_frame": 4.552,
+    "rss_mb": 474.5,
+    "gpu_mem_mb": 1171.0,
+    "gpu_util_pct": 50.5,
+    "all_ms": [
+     6.647,
+     8.18
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 8.681,
+    "cpu_ms_per_frame": 5.434,
+    "rss_mb": 473.5,
+    "gpu_mem_mb": 1125.0,
+    "gpu_util_pct": 53.0,
+    "all_ms": [
+     8.877,
+     8.485
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 4.858,
+    "cpu_ms_per_frame": 4.993,
+    "rss_mb": 473.0,
+    "gpu_mem_mb": 980.0,
+    "gpu_util_pct": 62.0,
+    "all_ms": [
+     4.582,
+     5.134
+    ]
+   }
+  },
+  {
+   "name": "bleach",
+   "category": "effects",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 5.494,
+    "cpu_ms_per_frame": 2.01,
+    "rss_mb": 469.5,
+    "gpu_mem_mb": 1027.0,
+    "gpu_util_pct": 72.0,
+    "all_ms": [
+     5.366,
+     5.621
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 5.55,
+    "cpu_ms_per_frame": 2.095,
+    "rss_mb": 480.5,
+    "gpu_mem_mb": 953.0,
+    "gpu_util_pct": 71.0,
+    "all_ms": [
+     5.687,
+     5.414
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 4.263,
+    "cpu_ms_per_frame": 2.279,
+    "rss_mb": 489.0,
+    "gpu_mem_mb": 879.0,
+    "gpu_util_pct": 100.0,
+    "all_ms": [
+     4.937,
+     3.589
+    ]
+   }
+  },
+  {
+   "name": "night-city",
+   "category": "effects",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 5.092,
+    "cpu_ms_per_frame": 2.346,
+    "rss_mb": 1384.0,
+    "gpu_mem_mb": 1723.5,
+    "gpu_util_pct": 59.0,
+    "all_ms": [
+     4.975,
+     5.21
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 5.234,
+    "cpu_ms_per_frame": 2.436,
+    "rss_mb": 1160.5,
+    "gpu_mem_mb": 1699.0,
+    "gpu_util_pct": 60.0,
+    "all_ms": [
+     5.147,
+     5.321
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 3.251,
+    "cpu_ms_per_frame": 2.434,
+    "rss_mb": 1320.0,
+    "gpu_mem_mb": 1979.0,
+    "gpu_util_pct": 99.5,
+    "all_ms": [
+     3.122,
+     3.38
+    ]
+   }
+  },
+  {
+   "name": "pixels-100-text",
+   "category": "text",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 6.104,
+    "cpu_ms_per_frame": 5.989,
+    "rss_mb": 412.0,
+    "gpu_mem_mb": 1033.0,
+    "gpu_util_pct": 28.5,
+    "all_ms": [
+     6.354,
+     5.855
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 5.931,
+    "cpu_ms_per_frame": 5.736,
+    "rss_mb": 414.0,
+    "gpu_mem_mb": 1212.5,
+    "gpu_util_pct": 36.5,
+    "all_ms": [
+     6.029,
+     5.834
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 5.279,
+    "cpu_ms_per_frame": 5.417,
+    "rss_mb": 415.0,
+    "gpu_mem_mb": 596.0,
+    "gpu_util_pct": 40.0,
+    "all_ms": [
+     5.32,
+     5.238
+    ]
+   }
+  },
+  {
+   "name": "lonely-cat",
+   "category": "text",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 4.011,
+    "cpu_ms_per_frame": 3.159,
+    "rss_mb": 534.5,
+    "gpu_mem_mb": 488.5,
+    "gpu_util_pct": 24.5,
+    "all_ms": [
+     3.899,
+     4.123
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 4.149,
+    "cpu_ms_per_frame": 3.287,
+    "rss_mb": 538.0,
+    "gpu_mem_mb": 481.0,
+    "gpu_util_pct": 30.5,
+    "all_ms": [
+     4.112,
+     4.186
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 3.218,
+    "cpu_ms_per_frame": 3.13,
+    "rss_mb": 533.5,
+    "gpu_mem_mb": 507.5,
+    "gpu_util_pct": 37.5,
+    "all_ms": [
+     3.385,
+     3.052
+    ]
+   }
+  },
+  {
+   "name": "lofi-cafe",
+   "category": "text",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 6.056,
+    "cpu_ms_per_frame": 4.139,
+    "rss_mb": 420.5,
+    "gpu_mem_mb": 761.5,
+    "gpu_util_pct": 39.0,
+    "all_ms": [
+     5.588,
+     6.523
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 6.772,
+    "cpu_ms_per_frame": 4.234,
+    "rss_mb": 421.0,
+    "gpu_mem_mb": 869.0,
+    "gpu_util_pct": 72.0,
+    "all_ms": [
+     6.588,
+     6.957
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 3.922,
+    "cpu_ms_per_frame": 3.894,
+    "rss_mb": 423.5,
+    "gpu_mem_mb": 862.0,
+    "gpu_util_pct": 87.0,
+    "all_ms": [
+     3.899,
+     3.945
+    ]
+   }
+  },
+  {
+   "name": "arknights",
+   "category": "scripts",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 7.574,
+    "cpu_ms_per_frame": 6.717,
+    "rss_mb": 484.5,
+    "gpu_mem_mb": 1420.0,
+    "gpu_util_pct": 49.0,
+    "all_ms": [
+     7.954,
+     7.194
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 7.647,
+    "cpu_ms_per_frame": 6.899,
+    "rss_mb": 489.0,
+    "gpu_mem_mb": 979.0,
+    "gpu_util_pct": 34.0,
+    "all_ms": [
+     8.056,
+     7.239
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 6.486,
+    "cpu_ms_per_frame": 6.634,
+    "rss_mb": 495.5,
+    "gpu_mem_mb": 1430.0,
+    "gpu_util_pct": 59.0,
+    "all_ms": [
+     6.535,
+     6.436
+    ]
+   }
+  },
+  {
+   "name": "outer-wilds-solar",
+   "category": "scripts",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 2.091,
+    "cpu_ms_per_frame": 1.571,
+    "rss_mb": 517.5,
+    "gpu_mem_mb": 856.0,
+    "gpu_util_pct": 39.0,
+    "all_ms": [
+     1.843,
+     2.339
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 2.236,
+    "cpu_ms_per_frame": 1.726,
+    "rss_mb": 510.0,
+    "gpu_mem_mb": 802.5,
+    "gpu_util_pct": 38.0,
+    "all_ms": [
+     2.024,
+     2.449
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 1.901,
+    "cpu_ms_per_frame": 1.869,
+    "rss_mb": 531.0,
+    "gpu_mem_mb": 802.5,
+    "gpu_util_pct": 46.0,
+    "all_ms": [
+     1.876,
+     1.925
+    ]
+   }
+  },
+  {
+   "name": "one-of-us",
+   "category": "scripts",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 1.881,
+    "cpu_ms_per_frame": 1.484,
+    "rss_mb": 340.5,
+    "gpu_mem_mb": 517.0,
+    "gpu_util_pct": 31.5,
+    "all_ms": [
+     1.865,
+     1.896
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 1.757,
+    "cpu_ms_per_frame": 1.35,
+    "rss_mb": 346.5,
+    "gpu_mem_mb": 432.5,
+    "gpu_util_pct": 27.5,
+    "all_ms": [
+     1.924,
+     1.591
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 1.293,
+    "cpu_ms_per_frame": 1.305,
+    "rss_mb": 339.0,
+    "gpu_mem_mb": 475.5,
+    "gpu_util_pct": 42.0,
+    "all_ms": [
+     1.416,
+     1.17
+    ]
+   }
+  },
+  {
+   "name": "street-japan-audio",
+   "category": "audio",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 2.385,
+    "cpu_ms_per_frame": 1.879,
+    "rss_mb": 386.0,
+    "gpu_mem_mb": 478.5,
+    "gpu_util_pct": 30.0,
+    "all_ms": [
+     2.322,
+     2.449
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 2.401,
+    "cpu_ms_per_frame": 1.929,
+    "rss_mb": 408.0,
+    "gpu_mem_mb": 511.5,
+    "gpu_util_pct": 24.0,
+    "all_ms": [
+     2.341,
+     2.461
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 1.83,
+    "cpu_ms_per_frame": 1.743,
+    "rss_mb": 385.0,
+    "gpu_mem_mb": 591.0,
+    "gpu_util_pct": 31.5,
+    "all_ms": [
+     1.846,
+     1.814
+    ]
+   }
+  },
+  {
+   "name": "razer-quartz-audio",
+   "category": "audio",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 2.685,
+    "cpu_ms_per_frame": 2.178,
+    "rss_mb": 419.5,
+    "gpu_mem_mb": 1376.0,
+    "gpu_util_pct": 26.0,
+    "all_ms": [
+     2.699,
+     2.671
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 2.896,
+    "cpu_ms_per_frame": 2.369,
+    "rss_mb": 419.5,
+    "gpu_mem_mb": 2012.0,
+    "gpu_util_pct": 53.0,
+    "all_ms": [
+     2.799,
+     2.993
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 2.385,
+    "cpu_ms_per_frame": 2.366,
+    "rss_mb": 420.0,
+    "gpu_mem_mb": 2017.0,
+    "gpu_util_pct": 55.0,
+    "all_ms": [
+     2.234,
+     2.537
+    ]
+   }
+  },
+  {
+   "name": "mermaid-audio",
+   "category": "audio",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 2.76,
+    "cpu_ms_per_frame": 1.108,
+    "rss_mb": 582.0,
+    "gpu_mem_mb": 1279.0,
+    "gpu_util_pct": 71.0,
+    "all_ms": [
+     3.263,
+     2.257
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 2.971,
+    "cpu_ms_per_frame": 1.128,
+    "rss_mb": 581.0,
+    "gpu_mem_mb": 1330.0,
+    "gpu_util_pct": 77.0,
+    "all_ms": [
+     3.212,
+     2.729
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 1.32,
+    "cpu_ms_per_frame": 1.196,
+    "rss_mb": 589.0,
+    "gpu_mem_mb": 608.0,
+    "gpu_util_pct": 92.5,
+    "all_ms": [
+     1.47,
+     1.169
+    ]
+   }
+  },
+  {
+   "name": "tenna-dance-audio",
+   "category": "audio",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 0.655,
+    "cpu_ms_per_frame": 0.554,
+    "rss_mb": 1299.5,
+    "gpu_mem_mb": 594.0,
+    "gpu_util_pct": 13.0,
+    "all_ms": [
+     0.757,
+     0.554
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 0.564,
+    "cpu_ms_per_frame": 0.554,
+    "rss_mb": 1299.0,
+    "gpu_mem_mb": 620.0,
+    "gpu_util_pct": 16.0,
+    "all_ms": [
+     0.523,
+     0.604
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 0.377,
+    "cpu_ms_per_frame": 0.461,
+    "rss_mb": 1299.0,
+    "gpu_mem_mb": 575.0,
+    "gpu_util_pct": 13.5,
+    "all_ms": [
+     0.362,
+     0.392
+    ]
+   }
+  },
+  {
+   "name": "more-physics",
+   "category": "physics",
+   "size": "1920x1080",
+   "base": {
+    "ms_per_frame": 212.817,
+    "cpu_ms_per_frame": 222.23,
+    "rss_mb": 508.5,
+    "gpu_mem_mb": 419.5,
+    "gpu_util_pct": 16.0,
+    "all_ms": [
+     207.901,
+     217.734
+    ]
+   },
+   "d1": {
+    "ms_per_frame": 213.889,
+    "cpu_ms_per_frame": 222.115,
+    "rss_mb": 508.5,
+    "gpu_mem_mb": 509.0,
+    "gpu_util_pct": 18.5,
+    "all_ms": [
+     210.056,
+     217.723
+    ]
+   },
+   "d2": {
+    "ms_per_frame": 222.972,
+    "cpu_ms_per_frame": 234.552,
+    "rss_mb": 508.0,
+    "gpu_mem_mb": 613.0,
+    "gpu_util_pct": 17.5,
+    "all_ms": [
+     221.906,
+     224.038
+    ]
+   }
+  }
+ ]
+}

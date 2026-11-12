@@ -1459,9 +1459,44 @@ void main() {
                                     .as_str());
 
     EXPECT_EQ(out.find("g_ViewportViewProjectionMatrices[gl_InstanceID]"), std::string::npos);
-    EXPECT_NE(out.find("g_OweShadowViewProjections[gl_InstanceID + OWE_SHADOW_VIEW_OFFSET]"),
+    EXPECT_NE(out.find("g_OweShadowViewProjections[OWE_SHADOW_VIEW + OWE_SHADOW_VIEW_OFFSET]"),
               std::string::npos);
     EXPECT_NE(out.find("uniform mat4 g_OweShadowViewProjections[24];"), std::string::npos);
+}
+
+// A batch of casters of one mesh (up to OWE_SHADOW_BATCH) is one draw of objects * g_OweShadowViews
+// instances: instance i draws view i % g_OweShadowViews of object i / g_OweShadowViews, whose model matrix is
+// that element of g_OweModelMatrices. Without the combo the shader is as before.
+TEST(ShaderParser, PreShaderHeaderCanDrawABatchOfCasters) {
+    const std::string out = rstd::cppstd::to_string(
+        owe::ShaderParser::PreShaderHeader(rstd::cppstd::as_str(
+                                               R"(
+in uint gl_InstanceID;
+varying uint gl_ViewportIndex;
+uniform mat4 g_ModelMatrix;
+uniform mat4 g_ViewportViewProjectionMatrices[6];
+void main() {
+    gl_Position = mul(mul(vec4(a_Position, 1.0), g_ModelMatrix), g_ViewportViewProjectionMatrices[gl_InstanceID]);
+    gl_ViewportIndex = gl_InstanceID;
+}
+)")
+                                               .unwrap(),
+                                           {},
+                                           owe::ShaderType::VERTEX)
+            .as_str());
+    // the stock names are gone from the code, behind the macros that pick the object and the view
+    EXPECT_EQ(out.find("mul(vec4(a_Position, 1.0), g_ModelMatrix)"), std::string::npos);
+    EXPECT_EQ(out.find("gl_ViewportIndex = gl_InstanceID;"), std::string::npos);
+    EXPECT_NE(out.find("OWE_SHADOW_MODEL"), std::string::npos);
+    EXPECT_NE(out.find("gl_ViewportIndex = OWE_SHADOW_VIEW;"), std::string::npos);
+    EXPECT_NE(out.find("g_OweShadowViewProjections[OWE_SHADOW_VIEW + OWE_SHADOW_VIEW_OFFSET]"),
+              std::string::npos);
+    EXPECT_NE(out.find("#if OWE_SHADOW_BATCH > 1"), std::string::npos);
+    EXPECT_NE(out.find("uniform mat4 g_OweModelMatrices[OWE_SHADOW_BATCH];"), std::string::npos);
+    EXPECT_NE(out.find("uniform float g_OweShadowViews;"), std::string::npos);
+    EXPECT_NE(out.find("#define OWE_SHADOW_OBJECT int((float(gl_InstanceID) + 0.5) / g_OweShadowViews)"),
+              std::string::npos);
+    EXPECT_NE(out.find("#define OWE_SHADOW_MODEL g_ModelMatrix"), std::string::npos);
 }
 
 TEST(ShaderParser, CasterViewsComeFromTheSharedShadowViews) {

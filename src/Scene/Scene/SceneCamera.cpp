@@ -161,7 +161,40 @@ Matrix4d SceneCamera::ProjectionMatrix() const {
         -m_width / 2.0, m_width / 2.0, -m_height / 2.0, m_height / 2.0, m_nearClip, m_farClip);
 }
 
+auto SceneCamera::MakeViewKey() const -> ViewKey {
+    ViewKey key;
+    key.width       = m_width;
+    key.height      = m_height;
+    key.aspect      = m_aspect;
+    key.near_clip   = m_nearClip;
+    key.far_clip    = m_farClip;
+    key.fov         = m_fov;
+    key.eye         = m_eye;
+    key.center      = m_center;
+    key.up          = m_up;
+    key.offset      = m_view_offset;
+    key.perspective = m_perspective;
+    key.lookat      = m_lookat;
+    if (! m_lookat && m_node != nullptr) {
+        m_node->UpdateTrans();
+        key.node     = m_node;
+        key.revision = m_node->TransRevision();
+    }
+    return key;
+}
+
+bool SceneCamera::SameViewKey(const ViewKey& a, const ViewKey& b) {
+    auto same = [](double x, double y) { return x == y || (x != x && y != y); };
+    return same(a.width, b.width) && same(a.height, b.height) && same(a.aspect, b.aspect) &&
+           same(a.near_clip, b.near_clip) && same(a.far_clip, b.far_clip) && same(a.fov, b.fov) &&
+           a.eye == b.eye && a.center == b.center && a.up == b.up && a.offset == b.offset &&
+           a.node == b.node && a.revision == b.revision && a.perspective == b.perspective &&
+           a.lookat == b.lookat;
+}
+
 void SceneCamera::CalculateViewProjectionMatrix() {
+    const auto key = MakeViewKey();
+    if (m_view_key_valid && SameViewKey(key, m_view_key)) return;
     Matrix4d view;
     if (m_lookat) {
         view = LookAt(m_eye, m_center, m_up);
@@ -176,6 +209,8 @@ void SceneCamera::CalculateViewProjectionMatrix() {
         view = Matrix4d::Identity();
     view = view * Affine3d(Translation3d(-m_view_offset)).matrix();
     m_camera.Set(view, ProjectionMatrix());
+    m_view_key       = key;
+    m_view_key_valid = true;
 }
 
 void SceneCamera::Update() { CalculateViewProjectionMatrix(); }

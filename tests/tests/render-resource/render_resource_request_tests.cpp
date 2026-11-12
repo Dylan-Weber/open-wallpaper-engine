@@ -916,7 +916,9 @@ TEST(UniformBufferBinding, OrdersSourcesAndSkipsUnchangedVersions) {
     ++low_state->version;
     ASSERT_TRUE(update->Update(frame.as_ref(), writer_trait.as_mut_ref()).is_ok());
 
-    EXPECT_EQ(writer.update_count, rstd::u64(2));
+    // The lower-priority source's new version is evaluated, but the block it gives (the higher
+    // priority source still wins with 7) equals the one already uploaded: nothing is uploaded.
+    EXPECT_EQ(writer.update_count, rstd::u64(1));
     ASSERT_EQ(writer.bytes.size(), 4u);
     float value = 0.0f;
     std::memcpy(&value, writer.bytes.data(), writer.bytes.size());

@@ -231,7 +231,8 @@ auto MakeUniformBufferBinding(ref<dyn<UniformBindingPrepareContext>> prepare,
                               Vec<PreparedUniformTextureMetadata>         textures,
                               SceneRenderViewKind                         render_view,
                               ShaderMatrixConvention matrix_convention, ShaderMatrixAbi matrix_abi,
-                              Option<ref<SceneMaterial>> material_override)
+                              Option<ref<SceneMaterial>> material_override,
+                              Option<vrento::UniformSourceOwner> extra_source)
     -> Result<Box<dyn<UniformBufferUpdate>>, UniformBufferUpdateError> {
     auto draw = prepare->ResolveDraw(draw_item);
     if (draw.is_none()) {
@@ -284,6 +285,15 @@ auto MakeUniformBufferBinding(ref<dyn<UniformBindingPrepareContext>> prepare,
         }
         sources.push(rstd::move(bound));
         ++source_ordinal;
+    }
+
+    if (extra_source) {
+        // a batch's own source (the model matrices of its objects), after the node's
+        auto prepared = vrento::PrepareUniformSource(
+            layout, rstd::move(*extra_source), i32(1000), matrix_convention, matrix_abi);
+        if (prepared.is_err()) return Err(rstd::move(prepared).unwrap_err_unchecked());
+        auto value = rstd::move(prepared).unwrap_unchecked();
+        if (value.is_some()) sources.push(rstd::move(value).unwrap_unchecked());
     }
 
     const auto&          shader = **material->customShader.shader;

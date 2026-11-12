@@ -5685,3 +5685,120 @@ TEST(ScriptAnimationLayer, CreateDestroyAndPlaySingle) {
     EXPECT_EQ(LastScalar(fs), 101.0);
     EXPECT_EQ(destroyed, usize(3));
 }
+
+// --- engine behaviour that must not depend on which JavaScript engine runs the scripts (QuickJS or SpiderMonkey) ----
+
+TEST(ScriptEngine, RegExpLegacyStaticsFollowAMatch) {
+    JsRuntime   rt;
+    FrameInputs fi {};
+    rt.SetFrameInputs(fi);
+    auto* fs = MakeProbe(rt,
+                         "test/engine_regexp_statics",
+                         R"JS(
+        export function update() {
+            /(\d+)-(\d+)/.exec('range 12-34 end');
+            return Number(RegExp.$1) * 100 + Number(RegExp.$2) + (RegExp.leftContext === 'range ' ? 10000 : 0);
+        }
+    )JS");
+    ASSERT_NE(fs, nullptr);
+    Tick(rt, 0.1);
+    EXPECT_EQ(LastScalar(fs), 10000.0 + 1200.0 + 34.0);
+}
+
+// The QuickJS backend runs with an unlimited stack (its limit is relative to the creating thread), so runaway
+// recursion there overflows the native stack. The SpiderMonkey backend bounds it.
+#ifdef OWE_JS_SPIDERMONKEY
+TEST(ScriptEngine, RunawayRecursionIsARangeErrorAndRecovers) {
+    JsRuntime   rt;
+    FrameInputs fi {};
+    rt.SetFrameInputs(fi);
+    auto* fs = MakeProbe(rt,
+                         "test/engine_recursion",
+                         R"JS(
+        let state = 0;
+        function runaway() { return runaway() + 1; }
+        export function update() {
+            try { runaway(); state = 1; }
+            catch (e) { state = (e instanceof RangeError) ? 2 : 3; }
+            return state;
+        }
+    )JS");
+    ASSERT_NE(fs, nullptr);
+    Tick(rt, 0.1);
+    EXPECT_EQ(LastScalar(fs), 2.0);
+    Tick(rt, 0.2);  // the engine is still usable after the overflow
+    EXPECT_EQ(LastScalar(fs), 2.0);
+}
+#endif
+
+TEST(ScriptEngine, ModerateRecursionDepthIsAllowed) {
+    JsRuntime   rt;
+    FrameInputs fi {};
+    rt.SetFrameInputs(fi);
+    auto* fs = MakeProbe(rt,
+                         "test/engine_depth",
+                         R"JS(
+        function depth(n) { return n === 0 ? 0 : 1 + depth(n - 1); }
+        export function update() { return depth(3000); }
+    )JS");
+    ASSERT_NE(fs, nullptr);
+    Tick(rt, 0.1);
+    EXPECT_EQ(LastScalar(fs), 3000.0);
+}
+
+TEST(ScriptEngine, ThrownErrorInOneFrameDoesNotBreakTheNext) {
+    JsRuntime   rt;
+    FrameInputs fi {};
+    rt.SetFrameInputs(fi);
+    auto* fs = MakeProbe(rt,
+                         "test/engine_throw_recovers",
+                         R"JS(
+        let calls = 0;
+        export function update() {
+            calls++;
+            if (calls === 1) throw new TypeError('first frame fails');
+            return calls;
+        }
+    )JS");
+    ASSERT_NE(fs, nullptr);
+    Tick(rt, 0.1);
+    Tick(rt, 0.2);
+    EXPECT_EQ(LastScalar(fs), 2.0);
+}
+
+TEST(ScriptEngine, TopLevelAwaitSettlesBeforeTheFirstUpdate) {
+    JsRuntime   rt;
+    FrameInputs fi {};
+    rt.SetFrameInputs(fi);
+    auto* fs = MakeProbe(rt,
+                         "test/engine_top_level_await",
+                         R"JS(
+        let steps = 0;
+        await Promise.resolve();
+        steps++;
+        await new Promise((resolve) => resolve());
+        steps++;
+        export function update() { return steps; }
+    )JS");
+    ASSERT_NE(fs, nullptr);
+    Tick(rt, 0.1);
+    EXPECT_EQ(LastScalar(fs), 2.0);
+}
+
+TEST(ScriptEngine, ManyShortLivedObjectsDoNotExhaustTheHeap) {
+    JsRuntime   rt;
+    FrameInputs fi {};
+    rt.SetFrameInputs(fi);
+    auto* fs = MakeProbe(rt,
+                         "test/engine_garbage",
+                         R"JS(
+        export function update() {
+            let sum = 0;
+            for (let i = 0; i < 20000; i++) { const o = { i, a: [i, i + 1], s: 'x' + i }; sum += o.a[1] - o.i; }
+            return sum;
+        }
+    )JS");
+    ASSERT_NE(fs, nullptr);
+    for (int frame = 1; frame <= 40; ++frame) Tick(rt, 0.05 * frame);
+    EXPECT_EQ(LastScalar(fs), 20000.0);
+}

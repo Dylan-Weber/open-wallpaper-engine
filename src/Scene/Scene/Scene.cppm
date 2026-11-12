@@ -499,6 +499,9 @@ struct SceneShaderValueAnimation {
 
 using SceneShaderValueAnimationMap = BTreeMap<String, SceneShaderValueAnimation>;
 
+// The most objects one batched shadow-caster draw holds (the length of g_OweModelMatrices).
+inline constexpr rstd::size_t kShadowBatchObjects = 64;
+
 struct SceneMaterialCustomShader {
     Option<Arc<SceneShader>>     shader;
     ShaderValues                 constValues;
@@ -879,6 +882,9 @@ public:
     SceneMaterialCustomShader customShader;
     // its shadow casters, one for each of the scene's shadow definitions
     Vec<Arc<SceneMaterial>> shadow_variants;
+    // the same drawn for up to kShadowBatchObjects objects at once (one of each definition, or none
+    // when the material cannot be batched)
+    Vec<Arc<SceneMaterial>> shadow_batch_variants;
     // a translucent or additive material: its casters draw no pixels (Wallpaper Engine casts no
     // shadow from it)
     bool shadow_silent { false };
@@ -918,6 +924,7 @@ private:
         customShader     = other.customShader.Clone();
         (void)SetPipeline(other.Pipeline());
         shadow_variants = other.shadow_variants.clone();
+        shadow_batch_variants = other.shadow_batch_variants.clone();
         shadow_silent   = other.shadow_silent;
         m_dirty_flags.fetch_or(other.m_dirty_flags.load());
     }
@@ -931,6 +938,7 @@ private:
         customShader     = rstd::move(other.customShader);
         (void)SetPipeline(other.Pipeline());
         shadow_variants = rstd::move(other.shadow_variants);
+        shadow_batch_variants = rstd::move(other.shadow_batch_variants);
         shadow_silent   = other.shadow_silent;
         m_dirty_flags.fetch_or(other.m_dirty_flags.load());
     }
@@ -1330,6 +1338,20 @@ private:
 
     vrento::CameraState<Eigen::Matrix4d> m_camera;
     vrento::CameraState<Eigen::Matrix4d> m_reflection_camera;
+    // What m_camera was computed from. The view and projection were recomputed, an inverse and a
+    // look-at, on every call (once per transform source per draw per frame); they are now only
+    // when one of these changes.
+    struct ViewKey {
+        double          width {}, height {}, aspect {}, near_clip {}, far_clip {}, fov {};
+        Eigen::Vector3d eye, center, up, offset;
+        const SceneNode* node {};
+        u64              revision {};
+        bool             perspective {}, lookat {};
+    };
+    auto MakeViewKey() const -> ViewKey;
+    static bool SameViewKey(const ViewKey& a, const ViewKey& b);
+    ViewKey     m_view_key;
+    bool        m_view_key_valid { false };
 
     SceneNode*             m_node { nullptr };
     Option<Arc<SceneNode>> m_owned_node;
@@ -1722,6 +1744,9 @@ public:
     // A model layer: with the scene's transparent sorting, models are ordered by depth.
     bool            DrawsAsModel() const { return m_draws_as_model; }
     void            SetDrawsAsModel(bool value) { m_draws_as_model = value; }
+    // The gates of the framebuffer snapshot copies this node's draw samples (set when the render graph is built).
+    auto&           SnapshotGates() { return m_snapshot_gates; }
+    const auto&     SnapshotGates() const { return m_snapshot_gates; }
     void            AddMesh(Arc<SceneMesh> mesh) { m_mesh = Some(rstd::move(mesh)); }
     bool            AppendChild(Arc<SceneNode> sub) { return m_node.AppendChild(rstd::move(sub)); }
     bool            RemoveChild(SceneNode& child) { return m_node.RemoveChild(child); }
@@ -1973,6 +1998,8 @@ public:
 
     void            UpdateTrans();
     Eigen::Matrix4d ModelTrans() const { return m_node.WorldMatrix(); };
+    // Counts the times the world matrix was recomputed: equal after UpdateTrans, equal matrix.
+    u64 TransRevision() const { return u64(m_node.WorldRevision()); }
 
     SceneMesh* Mesh() const { return m_mesh.is_some() ? m_mesh->as_ptr().as_raw_ptr() : nullptr; }
     const Option<Arc<SceneMesh>>& MeshShared() const { return m_mesh; }
@@ -2054,6 +2081,7 @@ private:
     bool   m_perspective { false };
     bool   m_reflected { false };
     bool   m_draws_as_model { false };
+    Vec<rstd::uint64_t> m_snapshot_gates;
 
     Option<Arc<SceneNodeLayer>> m_layer;
 };
@@ -2725,14 +2753,22 @@ struct SceneShadowDefinition {
     }
 };
 
+// Whether a light lights now: shown by its user property, and shown with every layer it is in.
+bool SceneLightLightsNow(const SceneLight& light);
+
 struct RenderShadowCasterRecord {
     RenderItemId       render_item;
     Arc<SceneMaterial> material;
+    // the material that draws it together with other objects, if it can be
+    Option<Arc<SceneMaterial>> batch_material;
     u32                instance_count { 1 };
     // drawn through an empty scissor: it only keeps the atlas written
     bool silent { false };
-    // the shadow definition it is drawn into
+    // the shadow definition it is drawn into, and how many consecutive ones this one draw covers:
+    // the caster draws one instance a view, so one draw serves every lit light whose views follow
+    // each other in the scene's list of shadow views (instance_count is their number of views)
     usize definition {};
+    usize definition_count { 1 };
 };
 
 struct SceneMeshDirtyEvent {
@@ -3284,6 +3320,14 @@ public:
     bool TransparentSorting() const { return m_transparent_sorting; }
     void SetTransparentSorting(bool value) { m_transparent_sorting = value; }
     bool ConsumeRenderGraphDirty();
+    // Bit d: the shadow definition d's light lights now (a light that does not is never sampled, so
+    // its shadow map is not drawn). Always at least one bit when there are definitions, so the
+    // atlas keeps a writer. The graph is dirty when it changes.
+    auto ShadowLightMask() const -> rstd::uint64_t;
+    void RecordRenderGraphShadowLightMask(rstd::uint64_t mask) {
+        m_render_graph_shadow_light_mask          = mask;
+        m_render_graph_shadow_light_mask_recorded = true;
+    }
     bool ApplyUserNodeVisibilityBindings(ref<str> key, const Json& property);
     bool ApplyUserImageEffectVisibilityBindings(ref<str> key, const Json& property);
     bool ApplyUserLightVisibilityBindings(ref<str> key, const Json& property);
@@ -3396,6 +3440,25 @@ public:
     }
     auto GlobalSources() const -> slice<UniformSourceAttachment> {
         return m_uniforms.GlobalSources();
+    }
+    // Makes the uniform source that writes the model matrices of a batched shadow-caster draw (the
+    // parse step that owns the uniform state sets how, once).
+    using ShadowBatchSourceFactory = Box<dyn<UniformSource>> (*)(const void* context,
+                                                                  Vec<SceneNode*> nodes, u32 views);
+    // `context` is released by `release` when the scene goes (or when another is set).
+    void SetShadowBatchSourceFactory(ShadowBatchSourceFactory factory, const void* context,
+                                     void (*release)(const void*)) {
+        if (m_shadow_batch_release != nullptr && m_shadow_batch_context != nullptr)
+            m_shadow_batch_release(m_shadow_batch_context);
+        m_shadow_batch_factory = factory;
+        m_shadow_batch_context = context;
+        m_shadow_batch_release = release;
+    }
+    bool HasShadowBatchSource() const { return m_shadow_batch_factory != nullptr; }
+    auto MakeShadowBatchSource(Vec<SceneNode*> nodes, u32 views) const
+        -> Option<Box<dyn<UniformSource>>> {
+        if (m_shadow_batch_factory == nullptr) return None();
+        return Some(m_shadow_batch_factory(m_shadow_batch_context, rstd::move(nodes), views));
     }
     auto NodeSources(SceneNodeId node) const -> slice<UniformSourceAttachment> {
         return m_uniforms.NodeSources(node);
@@ -3534,6 +3597,9 @@ private:
     };
 
     SceneUniformRegistry          m_uniforms;
+    ShadowBatchSourceFactory      m_shadow_batch_factory { nullptr };
+    const void*                   m_shadow_batch_context { nullptr };
+    void (*m_shadow_batch_release)(const void*) { nullptr };
     SceneTextureAnimationRegistry m_texture_animations;
     SceneRuntime                  m_runtime;
     String                        m_scene_id { "unknown_id"_Str };
@@ -3632,6 +3698,8 @@ private:
     HashSet<i32>            m_visibility_elidable_layer_ids;
     HashSet<rstd::uint64_t> m_hidden_scene_node_ids;
     HashSet<rstd::uint64_t> m_render_graph_hidden_scene_node_ids;
+    rstd::uint64_t          m_render_graph_shadow_light_mask {};
+    bool                    m_render_graph_shadow_light_mask_recorded { false };
 };
 
 // SceneViewer --camera-eye-log: the scene's clock and its active camera's eye (t, x, y, z), None
