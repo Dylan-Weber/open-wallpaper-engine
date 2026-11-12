@@ -652,6 +652,73 @@ TEST(SceneRenderGraph, CastersOfTheSameGeometryAreDrawnTogether) {
     EXPECT_EQ(instances, u32(10));
 }
 
+namespace
+{
+Box<dyn<vrento::UniformSource>> MakeNullObjectSource(const void*, Vec<owe::SceneNode*>) {
+    return Box<dyn<vrento::UniformSource>>::make(NullBatchSource {});
+}
+} // namespace
+
+// Objects of one mesh and material (a script clones them, each with a mesh and material of its own) that
+// wait for the same flush are one instanced draw, whatever else is drawn between them; one drawn another
+// way (blended) stays alone.
+TEST(SceneRenderGraph, ObjectsOfTheSameMeshAreDrawnTogether) {
+    static int context = 0;
+    owe::Scene scene;
+    scene.SetShadowBatchSourceFactory(&MakeNullBatchSource, &context, &NoRelease);
+    scene.SetObjectBatchSourceFactory(&MakeNullObjectSource);
+    scene.RegisterRenderTarget(String::make("_rt_default"_str),
+                               owe::SceneRenderTarget { .width = i32(64), .height = i32(64) });
+    auto camera =
+        Arc<owe::SceneCamera>::make(owe::SceneCamera::MakePerspective(1.0, 0.1, 100.0, 50.0));
+    camera->SetLookAt({ 0.0, 0.0, 10.0 }, { 0.0, 0.0, 0.0 }, { 0.0, 1.0, 0.0 });
+    camera->Update();
+    scene.RegisterCamera(String::make("global_perspective"_str), camera.clone());
+    (void)scene.SetActiveCamera("global_perspective"_str);
+
+    auto model = [&](float z, bool blended) {
+        auto node = Arc<owe::SceneNode>::make();
+        node->SetTranslate({ 0.0f, 0.0f, z });
+        node->SetDrawsAsModel(true);
+        auto mesh     = Arc<owe::SceneMesh>::make();
+        auto material = GraphMaterial();
+        auto pipeline = material.Pipeline();
+        pipeline.depth_test  = true;
+        pipeline.depth_write = true;
+        pipeline.blend_mode  = blended ? owe::BlendMode::Translucent : owe::BlendMode::Disable;
+        material.SetPipeline(pipeline);
+        auto variant = Arc<owe::SceneMaterial>::make(GraphMaterial());
+        variant->SetPipeline(pipeline);
+        material.object_batch_variant = Some(rstd::move(variant));
+        mesh->AddMaterial(rstd::move(material));
+        mesh->Submeshes().push(owe::SceneMesh::Submesh {});
+        node->AddMesh(rstd::move(mesh));
+        scene.RootMut()->AppendChild(node.clone());
+    };
+    for (int object = 0; object < 5; ++object) model(float(object) - 3.0f, false);
+    model(-5.0f, true);
+
+    auto snapshot = owe::ExtractRenderSceneSnapshot(scene);
+    auto graph    = owe::BuildSceneRenderState(scene, snapshot);
+    ASSERT_TRUE(graph.is_ok());
+    EXPECT_TRUE(graph->graph.compile().is_ok());
+    usize draws {}, instanced {};
+    u32   instances {};
+    for (const auto& draw : graph->draws) {
+        const auto& desc = draw.source->parameters();
+        if (desc.depth_only) continue;
+        ++draws;
+        if (desc.instance_count > u32(1)) {
+            ++instanced;
+            instances = desc.instance_count;
+        }
+    }
+    // the five opaque objects are one draw of five instances, the blended one is its own
+    EXPECT_EQ(instanced, usize(1));
+    EXPECT_EQ(instances, u32(5));
+    EXPECT_EQ(draws, usize(2));
+}
+
 // The shadow maps of lights that do not light now are not drawn (Ocarina of Time's torches sit in
 // a layer a script hides: two six-face maps, half of all its draws); showing the light brings them
 // back, and the atlas always keeps a writer.
