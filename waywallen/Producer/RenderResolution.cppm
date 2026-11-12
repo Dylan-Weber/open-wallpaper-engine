@@ -23,6 +23,19 @@ struct RenderResolution {
     waywallen_render_target_capabilities_t capabilities;
     bool                                   has_origin;
 
+    // The canvas widened to the aspect aspect_width : aspect_height, keeping its height: the extent a
+    // scene is drawn at to show more of its world instead of being cropped by a wider output. A canvas
+    // already at least that wide, or an unusable aspect, leaves it as it is.
+    static RenderExtent extend(RenderExtent canvas, rstd::uint32_t aspect_width,
+                               rstd::uint32_t aspect_height) {
+        if (! canvas.width || ! canvas.height || ! aspect_width || ! aspect_height) return canvas;
+        const rstd::uint64_t height = canvas.height;
+        if (rstd::uint64_t(canvas.width) * aspect_height >= height * aspect_width) return canvas;
+        const auto width = (height * aspect_width + aspect_height / 2) / aspect_height;
+        if (width > 65535) return canvas;
+        return { static_cast<rstd::uint32_t>(width), canvas.height };
+    }
+
     static RenderResolution describe(rstd::uint32_t width, rstd::uint32_t height, bool has_origin) {
         // A scene canvas defines coordinates, not a ceiling on generated pixel detail.
         return { { .revision         = 1,
