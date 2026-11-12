@@ -535,6 +535,9 @@ bool VulkanRender::Impl::beginFrame(vrento::texture::Submission work) {
                   stats.hits,
                   stats.misses,
                   stats.last_difference);
+        rstd_error("GraphFrame::begin split (us per frame): pending uploads {}, record upload batch {}, bind buffers {}, prepare frame {}",
+                   vrento::vulkan::g_begin_us[0] / m_frames_begun, vrento::vulkan::g_begin_us[1] / m_frames_begun,
+                   vrento::vulkan::g_begin_us[2] / m_frames_begun, vrento::vulkan::g_begin_us[3] / m_frames_begun);
         auto uniforms = vrento::uniform_update_stats();
         rstd_error("uniform blocks: {} updates, {} evaluated, {} uploaded, {} identical to the last upload",
                    uniforms.updates,
