@@ -52,6 +52,8 @@ def hold_locks(names=LOCK_NAMES, wait=True):
     """Take every shared benchmark lock, blocking, always in the order of LOCK_NAMES (the order the other jobs chain their
     `flock` calls in, so waiters queue behind each other and nobody deadlocks); held for the life of the process."""
     import fcntl
+    if os.environ.get('BENCH_QUEUED') == '1':
+        return  # run through ~/.cache/wpe-locks/bench-queue.sh, which holds the locks for this process
     os.makedirs(LOCK_DIR, exist_ok=True)
     for name in names:
         f = open(os.path.join(LOCK_DIR, name), 'a')
