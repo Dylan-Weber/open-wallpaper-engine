@@ -148,14 +148,22 @@ struct MediaStatus {
     String   album_artist;
     String   art_url;
     String   previous_art_url;
-    auto     clone() const -> MediaStatus {
+    // mediaStatusChanged: whether the user has media integration on
+    bool enabled { true };
+    // mediaTimelineChanged: the track's position and length in seconds, for players that report them
+    double position { 0 };
+    double duration { 0 };
+    auto   clone() const -> MediaStatus {
         return { state,
                  title.clone(),
                  artist.clone(),
                  album.clone(),
                  album_artist.clone(),
                  art_url.clone(),
-                 previous_art_url.clone() };
+                 previous_art_url.clone(),
+                 enabled,
+                 position,
+                 duration };
     }
 };
 

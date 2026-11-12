@@ -311,7 +311,15 @@ bool UniformSceneState::SetNodeParallaxDepth(const SceneNode& node, array<float,
 bool UniformSceneState::ApplyObjectParallaxDepth(i32 object_id, const Json& property) {
     const auto&     value = SceneUserPropertyPayload(property);
     array<float, 2> depth {};
-    if (owe::GetJsonValue(value, depth)) return SetObjectParallaxDepth(object_id, depth);
+    // A slider (a number, or a string of one number) sets both components; reading it as a pair would log "Wrong size
+    // of the array" for the string and give a number the pair (n, 0)
+    bool pair = value.as_array().is_some();
+    if (auto text = value.as_str(); text.is_some()) {
+        auto bytes = text->as_bytes();
+        for (usize index {}; index < bytes.len(); ++index)
+            if (bytes[index] == u8(32) || bytes[index] == u8(9)) pair = true;
+    }
+    if (pair && owe::GetJsonValue(value, depth)) return SetObjectParallaxDepth(object_id, depth);
 
     auto scalar = UserScalar(property);
     if (scalar.is_none()) return false;

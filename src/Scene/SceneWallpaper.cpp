@@ -160,7 +160,10 @@ owe::script::MediaStatus ToScriptMediaStatus(const MediaStatus& status) {
                                       .album            = status.album.clone(),
                                       .album_artist     = status.album_artist.clone(),
                                       .art_url          = status.art_url.clone(),
-                                      .previous_art_url = status.previous_art_url.clone() };
+                                      .previous_art_url = status.previous_art_url.clone(),
+                                      .enabled          = status.enabled,
+                                      .position         = status.position,
+                                      .duration         = status.duration };
 }
 
 } // namespace

@@ -188,6 +188,15 @@ private:
             return;
         }
 
+        if (auto enabled = command.get("enabled"_str); enabled.is_some()) {
+            auto flag = (**enabled).as_bool();
+            if (flag.is_some()) status.enabled = *flag;
+        }
+        if (auto position = command.get("position"_str); position.is_some() && (**position).as_f64())
+            status.position = (*(**position).as_f64()).to_primitive();
+        if (auto duration = command.get("duration"_str); duration.is_some() && (**duration).as_f64())
+            status.duration = (*(**duration).as_f64()).to_primitive();
+
         auto title   = status.title.clone();
         auto art_url = status.art_url.clone();
         wallpaper.setMediaStatus(rstd::move(status));

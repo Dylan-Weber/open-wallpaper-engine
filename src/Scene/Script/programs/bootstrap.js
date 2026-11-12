@@ -185,6 +185,13 @@ globalThis.engine.AUDIO_RESOLUTION_64 = 64;
 // corpus only ever calls it, so callable-form is the safer default).
 globalThis.engine.isRunningInEditor = function() { return false; };
 globalThis.engine.isScreensaver     = function() { return false; };
+// This is a desktop wallpaper. (isPortrait, isLandscape, isObjectValid and requestFeatures need the host's state and are
+// installed from C++.)
+globalThis.engine.isDesktopDevice = function() { return true; };
+globalThis.engine.isMobileDevice  = function() { return false; };
+globalThis.engine.isWallpaper     = function() { return true; };
+// Opening a user shortcut starts a program the user bound on Windows; owe has none to start, so it reports that it did not.
+globalThis.engine.openUserShortcut = function(name) { return false; };
 
 // --- SceneScript Core Foundational Math Classes & Host State ---
 const _Epsilon = 0.00001;
@@ -229,7 +236,7 @@ class Vec2 {
 		return dx*dx+dy*dy;
 	}
 	normalize(){
-		return this.divide(this.length() || 1);
+		return this.divide(this.length());
 	}
 	copy(){
 		return new Vec2(
@@ -486,7 +493,7 @@ class Vec3{
 		return dx*dx+dy*dy+dz*dz;
 	}
 	normalize(){
-		return this.divide(this.length() || 1);
+		return this.divide(this.length());
 	}
 	copy(){
 		return new Vec3(
@@ -798,7 +805,7 @@ class Vec4 {
 		return dx*dx+dy*dy+dz*dz+dw*dw;
 	}
 	normalize(){
-		return this.divide(this.length() || 1);
+		return this.divide(this.length());
 	}
 	copy(){
 		return new Vec4(this.x, this.y, this.z, this.w);
@@ -1302,6 +1309,10 @@ class Vec4 {
     toString() {
       return this.m.join(' ');
     }
+
+    toConfigString() {
+      return this.toString();
+    }
   }
 
   // ---- Mat3 (2D transforms) ----
@@ -1374,8 +1385,22 @@ class Vec4 {
       this.m[7] = position.y;
     }
 
+    // the rows of m, as Wallpaper Engine's scripts read them (measured: the identity's angle is 90, a 30 degree
+    // rotation's 120)
+    right() {
+      return new Vec3(this.m[0], this.m[1], this.m[2]);
+    }
+
+    up() {
+      return new Vec3(this.m[3], this.m[4], this.m[5]);
+    }
+
+    forward() {
+      return new Vec3(this.m[6], this.m[7], this.m[8]);
+    }
+
     angle() {
-      return Math.atan2(this.m[1], this.m[0]) * DEG;
+      return Math.atan2(this.m[0], -this.m[1]) * DEG;
     }
 
     add(other) {
@@ -1439,7 +1464,7 @@ class Vec4 {
       let sx = Math.hypot(m[0], m[1]);
       const sy = Math.hypot(m[3], m[4]);
       if (this.determinant() < 0) sx = -sx;
-      return { translation: new Vec2(m[6], m[7]), rotation: this.angle(), scale: new Vec2(sx, sy) };
+      return { translation: new Vec2(m[6], m[7]), rotation: Math.atan2(m[1], m[0]) * DEG, scale: new Vec2(sx, sy) };
     }
 
     copy() {
@@ -1452,6 +1477,10 @@ class Vec4 {
 
     toString() {
       return this.m.join(' ');
+    }
+
+    toConfigString() {
+      return this.toString();
     }
   }
 
@@ -1543,16 +1572,16 @@ globalThis.Vec4 = Vec4;
     Object.defineProperty(target, name, { value: fn, writable: true, configurable: true, enumerable: false });
   }
 
-  // equals: every component the same (a shorter operand's missing ones read 0)
+  // equals: the same kind of vector with every component within 1e-5 (anything else, or nothing, is false)
   for (const [Class, keys] of [[Vec2, ['x', 'y']], [Vec3, ['x', 'y', 'z']], [Vec4, ['x', 'y', 'z', 'w']]]) {
     define(Class.prototype, 'equals', function (other) {
-      if (typeof other === 'number') return keys.every((key) => this[key] === other);
-      return keys.every((key) => this[key] === (other[key] ?? 0));
+      if (!(other instanceof Class)) return false;
+      return keys.every((key) => Math.abs(this[key] - other[key]) < 1e-5);
     });
   }
 
   // Vec2: angles are counter-clockwise from +x
-  define(Vec2.prototype, 'perpendicular', function () { return new Vec2(-this.y, this.x); });
+  define(Vec2.prototype, 'perpendicular', function () { return new Vec2(this.y, -this.x); });
   define(Vec2.prototype, 'angle', function () { return Math.atan2(this.y, this.x) * DEG; });
   define(Vec2.prototype, 'angleBetween', function (other) {
     // signed: positive when `other` is counter-clockwise from this vector
@@ -1587,8 +1616,14 @@ globalThis.Mat3 = Mat3;
 globalThis.Mat4 = Mat4;
 globalThis.IModelData = IModelData;
 // a script's model data (thisScene.createModelData): applyData changes its shapes
+// A shape configuration may also be one shape's object or an array of shapes.
 globalThis.__wwNewModelData = function(id) {
-  return { __modelId: id, applyData: function(config) { __wwApplyModelData(id, config); } };
+  const shapes = (config) => Array.isArray(config) ? { shapes: config } : (config && config.shapes ? config : { shapes: [config] });
+  return {
+    __modelId: id,
+    applyData: function(config) { __wwApplyModelData(id, shapes(config)); },
+    replaceData: function(config) { __wwReplaceModelData(id, shapes(config)); },
+  };
 };
 globalThis._Internal = _Internal;
 globalThis.MediaPlaybackEvent = MediaPlaybackEvent;
@@ -1640,6 +1675,7 @@ function __wwCreateNodeStub() {
             if (key === 'getName')             return () => '';
             if (key === 'getLayer')            return (_n) => __wwGetStubLayer(_n);
             if (key === 'getLayerCount')       return () => 0;
+            if (key === 'getLayerByID')        return (_id) => null;
             if (key === 'enumerateLayers')     return () => [];
             if (key === 'getEffect')           return (_n) => __wwCreateEffectStub();
             if (key === 'getTextureAnimation') return () => __wwCreateTexAnimStub();
