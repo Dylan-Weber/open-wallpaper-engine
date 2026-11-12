@@ -47,7 +47,7 @@ liffto = { version = "0.1.0" }
 vvk = { version = "0.1.1" }
 spirvto = { version = "0.1.0" }
 wavsen = { git = "https://github.com/Dylan-Weber/wavsen.git", rev = "38323c241987ea9d6c1bcac53c86d261df7ac7a2" }
-vrento = { git = "https://github.com/Dylan-Weber/vrento.git", rev = "7aa1c895561f863fad99a9445fb834c4d4111a17" }
+vrento = { git = "https://github.com/Dylan-Weber/vrento.git", rev = "ecdc4c34cc41c4c56dc532f2273bdf5319c4cdbd" }
 vectext = { git = "https://github.com/vecren/vectext.git" }
 
 [workspace.external-dependencies.pkg-config.glfw]

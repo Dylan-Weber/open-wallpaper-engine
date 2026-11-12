@@ -20,7 +20,9 @@ SceneDraw::SceneDraw(Desc&& desc, UpdateSource source)
 }
 SceneDraw::SceneDraw(Input&& input)
     : SceneDraw(rstd::move(input.description), rstd::move(input.updates)) {}
-SceneDraw::~SceneDraw() {}
+SceneDraw::~SceneDraw() {
+    for (auto gate : m_desc.snapshot_copy_gates) vrento::vulkan::copy_gate_clear(gate);
+}
 
 namespace
 {
@@ -1034,7 +1036,18 @@ bool SceneDraw::update(DrawUpdateContext& context) {
     } else
         draws_.push({ m_desc.draw_buffers.draw_count.to_primitive(), 0 });
 
+    updateSnapshotCopies();
     return true;
+}
+
+// A snapshot is copied for the draw that samples it: when the draw issues nothing, the copy has no reader.
+void SceneDraw::updateSnapshotCopies() {
+    if (m_desc.snapshot_copy_gates.is_empty()) return;
+    bool empty = ! draws_.is_empty();
+    for (auto draw : draws_) empty &= draw.count == 0;
+    for (auto gate : m_desc.snapshot_copy_gates) {
+        vrento::vulkan::copy_gate_skip(gate, empty || draws_.is_empty());
+    }
 }
 
 void SceneDraw::acknowledgeGeometry() {

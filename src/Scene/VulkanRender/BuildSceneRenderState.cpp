@@ -31,6 +31,7 @@ struct ExtraInfo {
     HashMap<String, ContentRef> selected;
     Option<fg::Error>           error;
     fg::Serial                  next_pass { 1 };
+    rstd::uint64_t              last_copy_gate {};
     Arc<SceneImageSource>       image_source;
     Scene*                      scene;
     const RenderSceneSnapshot*  render_scene;
@@ -102,8 +103,13 @@ auto AddTextureCopy(ExtraInfo& extra, ContentRef source, ContentRef target) -> C
     auto output = Remember(extra, extra.textures.output(extra.graph, id, target));
     if (extra.error) return {};
     fg::ResourceRange range { .aspect = extra.textures.shape(extra.graph, source)->aspects };
-    auto              declared =
-        vrento::vulkan::declare_texture_copy_output(extra.graph, id, source, output, range, range);
+    // the gate lets the draw that samples the copy skip it (or shrink it) in frames it is not wanted whole
+    // a snapshot with mips is generated whole from level 0 afterwards: it is always copied whole
+    extra.last_copy_gate = extra.textures.shape(extra.graph, output)->mip_levels > 1
+                               ? rstd::uint64_t()
+                               : vrento::vulkan::copy_gate_allocate();
+    auto declared        = vrento::vulkan::declare_texture_copy_output(
+        extra.graph, id, source, output, range, range, 1, extra.last_copy_gate);
     if (declared.is_err()) {
         extra.error = Some(declared.unwrap_err());
         return {};
@@ -292,6 +298,7 @@ static void AddMaterialTextureReads(SceneMaterial& material, ref<str> pass_outpu
             } else {
                 ImportHistory(extra, *input);
                 input = Some(AddTextureCopy(extra, *input));
+                if (extra.last_copy_gate) pdesc.snapshot_copy_gates.push(rstd::uint64_t(extra.last_copy_gate));
                 (void)snapshots.insert(String::make(key), input->clone());
             }
         }
@@ -433,6 +440,10 @@ static SceneNodeLayer* ToGraphPass(SceneNode* node, ref<str> output, ExtraInfo& 
                 pdesc.output = rstd::into(pass_output_s);
                 AddMaterialTextureReads(
                     *material, pass_output, extra, pass, pdesc, reuses_previous_output);
+                // the node computes which part of the screen its snapshot is read at (a particle's footprint)
+                node->SnapshotGates().clear();
+                if (pass_output == SpecTex_Default)
+                    for (auto gate : pdesc.snapshot_copy_gates) node->SnapshotGates().push(rstd::uint64_t(gate));
 
                 auto output_node =
                     Remember(extra,
