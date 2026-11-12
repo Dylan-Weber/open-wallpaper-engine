@@ -1499,6 +1499,42 @@ void main() {
     EXPECT_NE(out.find("#define OWE_SHADOW_MODEL g_ModelMatrix"), std::string::npos);
 }
 
+// A batch of OWE_SCENE_BATCH objects of one mesh is one draw of that many instances: instance i reads
+// its model matrix (and normal matrix) from element i of an array in the vertex stage. Without the combo
+// the shader is as before, and a stage that does not declare them is untouched.
+TEST(ShaderParser, PreShaderHeaderCanDrawABatchOfObjects) {
+    const auto header = [](const char* source, owe::ShaderType type) {
+        return rstd::cppstd::to_string(
+            owe::ShaderParser::PreShaderHeader(rstd::cppstd::as_str(source).unwrap(), {}, type)
+                .as_str());
+    };
+    const std::string vertex = header(R"(
+uniform mat4 g_ModelMatrix;
+uniform mat3 g_NormalModelMatrix;
+uniform mat4 g_ViewProjectionMatrix;
+attribute vec3 a_Position;
+void main() {
+    gl_Position = mul(mul(vec4(a_Position, 1.0), g_ModelMatrix), g_ViewProjectionMatrix);
+}
+)", owe::ShaderType::VERTEX);
+    EXPECT_NE(vertex.find("#if OWE_SCENE_BATCH > 1\nin uint gl_InstanceID;"), std::string::npos);
+    EXPECT_NE(vertex.find("uniform mat4 g_OweInstanceModel[OWE_SCENE_BATCH];"), std::string::npos);
+    EXPECT_NE(vertex.find("#define g_ModelMatrix g_OweInstanceModel[gl_InstanceID]"), std::string::npos);
+    EXPECT_NE(vertex.find("uniform mat3 g_OweInstanceNormal[OWE_SCENE_BATCH];"), std::string::npos);
+    EXPECT_NE(vertex.find("#define g_NormalModelMatrix g_OweInstanceNormal[gl_InstanceID]"),
+              std::string::npos);
+    // the unbatched shader still declares them, once each
+    EXPECT_NE(vertex.find("#else\nuniform mat4 g_ModelMatrix;\nuniform mat3 g_NormalModelMatrix;\n#endif"),
+              std::string::npos);
+    EXPECT_EQ(vertex.find("uniform mat4 g_ModelMatrix;"), vertex.rfind("uniform mat4 g_ModelMatrix;"));
+    // the fragment stage keeps what it declares
+    const std::string fragment = header(R"(
+uniform mat4 g_ModelMatrix;
+void main() { gl_FragColor = vec4(1.0); }
+)", owe::ShaderType::FRAGMENT);
+    EXPECT_EQ(fragment.find("g_OweInstanceModel"), std::string::npos);
+}
+
 TEST(ShaderParser, CasterViewsComeFromTheSharedShadowViews) {
     owe::SceneShaderVariantDesc desc;
     desc.scene_id    = "shadow-views-test"_Str;

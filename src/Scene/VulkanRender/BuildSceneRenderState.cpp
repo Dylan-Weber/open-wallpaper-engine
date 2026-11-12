@@ -327,9 +327,17 @@ static void AddMaterialTextureReads(SceneMaterial& material, ref<str> pass_outpu
     }
 }
 
+// A run of objects of one mesh drawn as one instanced draw: the first leads, and the material variant reads
+// the objects' matrices from arrays that `source` writes (OWE_SCENE_BATCH).
+struct SceneBatchRun {
+    Vec<SceneNode*>                    nodes;
+    Arc<SceneMaterial>                 variant;
+    Option<vrento::UniformSourceOwner> source;
+};
 static SceneNodeLayer* ToGraphPass(SceneNode* node, ref<str> output, ExtraInfo& extra,
                                    bool                defer_effect = false,
-                                   SceneRenderViewKind render_view  = SceneRenderViewKind::Primary);
+                                   SceneRenderViewKind render_view  = SceneRenderViewKind::Primary,
+                                   const SceneBatchRun* batch       = nullptr);
 
 static void LoadGraphEffects(SceneNodeLayer* effs, ExtraInfo& extra) {
     for (auto* eff : effs->ResolvedEffects()) {
@@ -354,7 +362,8 @@ static void LoadGraphEffects(SceneNodeLayer* effs, ExtraInfo& extra) {
 }
 
 static SceneNodeLayer* ToGraphPass(SceneNode* node, ref<str> output, ExtraInfo& extra,
-                                   bool defer_effect, SceneRenderViewKind render_view) {
+                                   bool defer_effect, SceneRenderViewKind render_view,
+                                   const SceneBatchRun* batch) {
     auto& scene = *extra.scene;
 
     if (node->Mesh() == nullptr) return nullptr;
@@ -396,6 +405,7 @@ static SceneNodeLayer* ToGraphPass(SceneNode* node, ref<str> output, ExtraInfo& 
                 (*material_override)->SetBlendMode(*source_blend);
             }
         }
+        if (batch != nullptr) material_override = Some(batch->variant.clone());
         auto pass_name = material->name.as_str();
         // Per-submesh output override (clipping-mask submeshes write into a
         // shared RT that the main puppet pass samples via g_Texture8).
@@ -412,10 +422,16 @@ static SceneNodeLayer* ToGraphPass(SceneNode* node, ref<str> output, ExtraInfo& 
              material_override = material_override.clone(),
              preserve_output   = submesh.preserve_output,
              render_view,
+             batch,
              &scene,
              &extra](fg::PassId pass, vulkan::SceneDraw::Input& input) {
                 auto& pdesc                     = input.description;
                 input.updates.node              = Some(mut_ref<SceneNode>::from_raw_parts(node));
+                if (batch != nullptr) {
+                    input.updates.batch_nodes  = batch->nodes.clone();
+                    input.updates.batch_source = batch->source.clone();
+                    pdesc.instance_count       = u32(batch->nodes.len().to_primitive());
+                }
                 pdesc.submesh_index             = u32(static_cast<rstd::uint32_t>(smi));
                 pdesc.graph_pass_index          = usize(pass.value);
                 pdesc.render_view               = render_view;
@@ -660,11 +676,183 @@ static Option<bool> DepthDrawKind(SceneNode& node, Scene& scene) {
     return writes_depth;
 }
 
+// What decides whether two shadow casters can share a draw: the geometry the draw reads (so the
+// first one's buffers serve the others), and the shader it runs. Both are cloned for every object a
+// script creates, so they are told apart by content, not by identity.
+u64 ShadowGeometryKey(const SceneMesh& mesh, u32 submesh_index) {
+    DefaultHasher seed;
+    const auto&   submeshes = mesh.Submeshes();
+    if (submesh_index.to_primitive() >= submeshes.len().to_primitive()) return u64();
+    const auto& submesh = submeshes[usize(submesh_index.to_primitive())];
+    hash_into(mesh.Primitive() == MeshPrimitive::TRIANGLE, seed);
+    hash_into(submesh.vertex_arrays.len().to_primitive(), seed);
+    for (const auto& array : submesh.vertex_arrays) {
+        hash_into(array.DataSize().to_primitive(), seed);
+        hash_into(array.OneSize().to_primitive(), seed);
+        for (usize i {}; i < array.DataSize(); ++i) {
+            rstd::uint32_t bits;
+            __builtin_memcpy(&bits, array.Data() + i.to_primitive(), sizeof(bits));
+            hash_into(bits, seed);
+        }
+        for (const auto& attribute : array.Attributes()) {
+            hash_into(attribute.name.as_str(), seed);
+            hash_into(rstd::as_cast<u32>(attribute.type).to_primitive(), seed);
+        }
+    }
+    hash_into(submesh.index_arrays.len().to_primitive(), seed);
+    for (const auto& array : submesh.index_arrays) {
+        hash_into(array.DataCount().to_primitive(), seed);
+        for (usize i {}; i < array.DataCount(); ++i) hash_into(array.Data()[i.to_primitive()], seed);
+    }
+    hash_into(submesh.draw_ranges.len().to_primitive(), seed);
+    for (const auto& range : submesh.draw_ranges) {
+        hash_into(range.index_count.to_primitive(), seed);
+        hash_into(range.first_index.to_primitive(), seed);
+    }
+    hash_into(submesh.draw_range_order.is_some(), seed);
+    return u64(seed.finish());
+}
+
+u64 ShadowShaderKey(const SceneMaterial& material) {
+    DefaultHasher seed;
+    if (! material.customShader.shader) return u64();
+    const auto& shader = **material.customShader.shader;
+    hash_into(shader.name.as_str(), seed);
+    for (const auto& code : shader.codes) hash_into(SceneShaderStageCodeHash(code), seed);
+    return u64(seed.finish());
+}
+
+// What decides whether two scene objects can share an instanced draw: one submesh, a material with an
+// object batch variant, the same geometry and shader content, textures, pipeline state and constants, no
+// animated values, and the same camera.
+// 0 when two objects can share an instanced draw, else why not (for OWE_SCENE_BATCH_STATS)
+static int SceneBatchMismatch(SceneNode& a, SceneNode& b) {
+    auto* ma = a.Mesh();
+    auto* mb = b.Mesh();
+    if (ma == nullptr || mb == nullptr || ma->Submeshes().len() != usize(1) ||
+        mb->Submeshes().len() != usize(1) || a.HasLayer() || b.HasLayer())
+        return 1;
+    auto slot = [](SceneMesh& mesh) -> SceneMaterial* {
+        const auto s = rstd::as_cast<usize>(mesh.Submeshes()[usize()].material_slot);
+        if (s >= mesh.MaterialSlots().len() || ! mesh.MaterialSlots()[s]) return nullptr;
+        return mesh.MaterialSlots()[s].as_ptr().as_raw_ptr();
+    };
+    auto* xa = slot(*ma);
+    auto* xb = slot(*mb);
+    if (xa == nullptr || xb == nullptr || ! xa->object_batch_variant || ! xb->object_batch_variant)
+        return 2;
+    if (a.Camera() != b.Camera() || a.Perspective() != b.Perspective()) return 3;
+    if (! (xa->Pipeline() == xb->Pipeline())) return 4;
+    if (! xa->customShader.valueAnimations.is_empty() ||
+        ! xb->customShader.valueAnimations.is_empty())
+        return 5;
+    if (xa->textures.len() != xb->textures.len()) return 6;
+    for (usize i {}; i < xa->textures.len(); ++i)
+        if (xa->textures[i] != xb->textures[i]) return 6;
+    const auto& ca = xa->customShader.constValues;
+    const auto& cb = xb->customShader.constValues;
+    if (ca.len() != cb.len()) return 7;
+    for (const auto& [name, value_a] : ca.iter()) {
+        auto other = cb.get(name->as_str());
+        if (other.is_none()) return 7;
+        const auto& value_b = **other;
+        if (value_a->size() != value_b.size()) return 7;
+        for (usize i {}; i < value_a->size(); ++i)
+            if (value_a->data()[i.to_primitive()] != value_b.data()[i.to_primitive()]) return 7;
+    }
+    if (ShadowGeometryKey(*ma, u32(0)) != ShadowGeometryKey(*mb, u32(0))) return 8;
+    if (ShadowShaderKey(**xa->object_batch_variant) != ShadowShaderKey(**xb->object_batch_variant))
+        return 9;
+    return 0;
+}
+
+// Whether the order its draw comes in among other such draws changes nothing: depth tested and written,
+// and either not blended or blended only by alpha to coverage (per sample, as an opaque draw is).
+static bool SceneBatchEquivalent(SceneNode& a, SceneNode& b) { return SceneBatchMismatch(a, b) == 0; }
+
+static bool SceneDrawOrderFree(SceneNode& node) {
+    auto* mesh = node.Mesh();
+    if (mesh == nullptr || mesh->Submeshes().len() != usize(1) || node.HasLayer()) return false;
+    const auto s = rstd::as_cast<usize>(mesh->Submeshes()[usize()].material_slot);
+    if (s >= mesh->MaterialSlots().len() || ! mesh->MaterialSlots()[s]) return false;
+    const auto& pipeline = mesh->MaterialSlots()[s]->Pipeline();
+    const auto  blend    = pipeline.blend_mode;
+    return pipeline.depth_test && pipeline.depth_write &&
+           (blend == BlendMode::Disable || blend == BlendMode::Normal ||
+            blend == BlendMode::AlphaToCoverage);
+}
+
+static bool SceneHasObjectBatchVariant(SceneNode& node) {
+    auto* mesh = node.Mesh();
+    if (mesh == nullptr || mesh->Submeshes().len() != usize(1)) return false;
+    const auto s = rstd::as_cast<usize>(mesh->Submeshes()[usize()].material_slot);
+    return s < mesh->MaterialSlots().len() && mesh->MaterialSlots()[s] &&
+           mesh->MaterialSlots()[s]->object_batch_variant.is_some();
+}
+
 static void FlushDepthDraws(ExtraInfo& extra) {
     // in the scene's order: Wallpaper Engine draws a translucent model before an opaque one that
-    // comes after it, so the opaque one covers it (model-translucent-order, model-depth)
-    for (const auto& draw : extra.pending_depth_draws)
-        ToGraphPass(draw.node, SpecTex_Default, extra);
+    // comes after it, so the opaque one covers it (model-translucent-order, model-depth).
+    // OWE_SCENE_BATCH=0 draws every object alone; otherwise the objects of one mesh and material
+    // are one instanced draw (up to kShadowBatchObjects), among draws whose order changes nothing
+    // (a window of consecutive depth-written, unblended ones): the batch is drawn where its first object is.
+    static const bool batch_objects = [] {
+        const char* value = std::getenv("OWE_SCENE_BATCH");
+        return value == nullptr || value[0] != '0';
+    }();
+    const auto& pending = extra.pending_depth_draws;
+    const usize count   = pending.len();
+    Vec<bool>   done;
+    done.resize(count, false);
+    for (usize i {}; i < count; ++i) {
+        if (done[i]) continue;
+        done[i] = true;
+        Vec<usize> members;
+        members.push(usize(i));
+        if (batch_objects && SceneDrawOrderFree(*pending[i].node)) {
+            // the window of draws in whose order nothing depends
+            for (usize j = i + usize(1); j < count && members.len() < usize(kShadowBatchObjects); ++j) {
+                if (! SceneDrawOrderFree(*pending[j].node)) break;
+                if (! done[j] && SceneBatchEquivalent(*pending[i].node, *pending[j].node)) {
+                    members.push(usize(j));
+                    done[j] = true;
+                }
+            }
+        }
+        if (members.len() >= usize(2)) {
+            Vec<SceneNode*> nodes;
+            for (usize k {}; k < members.len(); ++k) {
+                SceneNode* member = pending[members[k]].node;
+                nodes.push(rstd::move(member));
+            }
+            auto* leader_mesh = pending[i].node->Mesh();
+            auto* material =
+                leader_mesh->MaterialSlots()[rstd::as_cast<usize>(
+                                                 leader_mesh->Submeshes()[usize()].material_slot)]
+                    .as_ptr()
+                    .as_raw_ptr();
+            auto source = extra.scene->MakeObjectBatchSource(nodes.clone());
+            if (source) {
+                SceneBatchRun batch { rstd::move(nodes),
+                                      (*material->object_batch_variant).clone(),
+                                      Some(vrento::UniformSourceOwner::make(rstd::move(*source))) };
+                ToGraphPass(pending[i].node, SpecTex_Default, extra, false,
+                            SceneRenderViewKind::Primary, &batch);
+                continue;
+            }
+            // no source: every member alone, in order
+            for (usize k = usize(1); k < members.len(); ++k) done[members[k]] = false;
+        }
+        ToGraphPass(pending[i].node, SpecTex_Default, extra);
+    }
+    if (std::getenv("OWE_SCENE_BATCH_STATS") != nullptr && count > usize(0)) {
+        // why the first object of the pending list cannot share with the others
+        unsigned reasons[10] {}, free_count {};
+        for (usize j = usize(1); j < count; ++j) ++reasons[SceneBatchMismatch(*pending[usize()].node, *pending[j].node)];
+        for (usize j {}; j < count; ++j) free_count += SceneDrawOrderFree(*pending[j].node) ? 1u : 0u;
+        rstd_error("scene batch: {} pending, {} order free; against the first: same {} | layer/submesh {} | no variant {} | camera {} | pipeline {} | animated {} | textures {} | constants {} | geometry {} | shader {}",
+                   unsigned(count.to_primitive()), free_count, reasons[0], reasons[1], reasons[2], reasons[3], reasons[4], reasons[5], reasons[6], reasons[7], reasons[8], reasons[9]);
+    }
     extra.pending_depth_draws.clear();
 }
 
@@ -816,8 +1004,20 @@ static void EmitSceneNode(SceneNode* node, ref<str> inherited_output, ref<str> i
                                 camera.is_some() && (*camera)->IsPerspective()
                             ? DepthDrawKind(*node, scene)
                             : None<bool>();
+            // an object that can be drawn with others of its mesh waits for the next flush too
+            // (OWE_SCENE_BATCH): drawn then, in the scene's order, as one instanced draw with them
+            static const bool batch_objects = [] {
+                const char* value = std::getenv("OWE_SCENE_BATCH");
+                return value == nullptr || value[0] != '0';
+            }();
+            const bool batchable_object =
+                kind.is_none() && batch_objects && ! linked && node_output == SpecTex_Default &&
+                inherited_camera.is_empty() && SceneDrawOrderFree(*node) &&
+                SceneHasObjectBatchVariant(*node);
             if (kind.is_some()) {
                 extra.pending_depth_draws.push({ node, *kind });
+            } else if (batchable_object) {
+                extra.pending_depth_draws.push({ node, false });
             } else {
                 FlushDepthDraws(extra);
                 ToGraphPass(node, node_output, extra);
@@ -880,51 +1080,6 @@ static void EmitPlanarReflectionNode(SceneNode* node, ExtraInfo& extra,
     }
 }
 
-// What decides whether two shadow casters can share a draw: the geometry the draw reads (so the
-// first one's buffers serve the others), and the shader it runs. Both are cloned for every object a
-// script creates, so they are told apart by content, not by identity.
-u64 ShadowGeometryKey(const SceneMesh& mesh, u32 submesh_index) {
-    DefaultHasher seed;
-    const auto&   submeshes = mesh.Submeshes();
-    if (submesh_index.to_primitive() >= submeshes.len().to_primitive()) return u64();
-    const auto& submesh = submeshes[usize(submesh_index.to_primitive())];
-    hash_into(mesh.Primitive() == MeshPrimitive::TRIANGLE, seed);
-    hash_into(submesh.vertex_arrays.len().to_primitive(), seed);
-    for (const auto& array : submesh.vertex_arrays) {
-        hash_into(array.DataSize().to_primitive(), seed);
-        hash_into(array.OneSize().to_primitive(), seed);
-        for (usize i {}; i < array.DataSize(); ++i) {
-            rstd::uint32_t bits;
-            __builtin_memcpy(&bits, array.Data() + i.to_primitive(), sizeof(bits));
-            hash_into(bits, seed);
-        }
-        for (const auto& attribute : array.Attributes()) {
-            hash_into(attribute.name.as_str(), seed);
-            hash_into(rstd::as_cast<u32>(attribute.type).to_primitive(), seed);
-        }
-    }
-    hash_into(submesh.index_arrays.len().to_primitive(), seed);
-    for (const auto& array : submesh.index_arrays) {
-        hash_into(array.DataCount().to_primitive(), seed);
-        for (usize i {}; i < array.DataCount(); ++i) hash_into(array.Data()[i.to_primitive()], seed);
-    }
-    hash_into(submesh.draw_ranges.len().to_primitive(), seed);
-    for (const auto& range : submesh.draw_ranges) {
-        hash_into(range.index_count.to_primitive(), seed);
-        hash_into(range.first_index.to_primitive(), seed);
-    }
-    hash_into(submesh.draw_range_order.is_some(), seed);
-    return u64(seed.finish());
-}
-
-u64 ShadowShaderKey(const SceneMaterial& material) {
-    DefaultHasher seed;
-    if (! material.customShader.shader) return u64();
-    const auto& shader = **material.customShader.shader;
-    hash_into(shader.name.as_str(), seed);
-    for (const auto& code : shader.codes) hash_into(SceneShaderStageCodeHash(code), seed);
-    return u64(seed.finish());
-}
 
 static void EmitShadowPasses(ExtraInfo& extra) {
     if (extra.render_scene == nullptr) return;
