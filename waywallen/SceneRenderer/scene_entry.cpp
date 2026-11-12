@@ -906,10 +906,12 @@ int run(int argc, char** argv) {
                 auto mode = as_str(v);
                 if (mode.is_ok() && *mode == "extend"_str) {
                     const auto canvas = ww_wescene::RenderExtent { opts.width, opts.height };
+                    // the daemon tells the renderer the size of the output it is shown on; unknown: no widening
                     const auto widened =
-                        ww_wescene::RenderResolution::extend(canvas,
-                                                             parse_u32(kv_get(init.settings, "extend_aspect_width"), 32u),
-                                                             parse_u32(kv_get(init.settings, "extend_aspect_height"), 9u));
+                        ww_wescene::RenderResolution::extend(
+                            canvas,
+                            parse_u32(kv_get(init.settings, "output_width"), 0u),
+                            parse_u32(kv_get(init.settings, "output_height"), 0u));
                     if (widened.width != canvas.width) {
                         opts.extend_view = true;
                         opts.fill_mode   = owe::FillMode::ASPECTFIT;
