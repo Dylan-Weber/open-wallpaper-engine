@@ -1955,11 +1955,9 @@ TEST(ScriptCursor, ClickRestartsNamedAnimationLayer) {
 }
 
 TEST(ScriptAnimationLayer, GetAnimationGivesNothing) {
-    // In Wallpaper Engine an animation layer has a getAnimation that returns undefined, whatever it
-    // is asked (puppet-layer-getanimation), and a layer's getAnimation(name) is undefined for a
-    // name no property animation has. Ocarina of Time's
-    // getAnimationLayer("Surprise").getAnimation("surprise").isPlaying() therefore throws, and Link
-    // keeps his angle.
+    // An animation layer has a getAnimation, but it finds property animations only: a layer with
+    // none (the skeletal animation of puppet-layer-getanimation) gives undefined, whatever it is
+    // asked, as does a layer's getAnimation(name) for a name no property animation has.
     owe::SceneNode node;
     auto           clip     = Arc<owe::SceneAnimationClip>::make(owe::SceneAnimationClipSpec {
         .name = String::make("Arona Drool"_str),
@@ -4756,9 +4754,15 @@ TEST(ScriptAnimation, NamedPuppetLayerUsesFieldPlaybackAndSample) {
     auto*     script = rt.MakeFieldScript(
         R"JS(
             export function update(value) {
-                // an animation layer's getAnimation is undefined, as in Wallpaper Engine
-                const animation = thisLayer.getAnimationLayer('Surprise').getAnimation('surprise');
-                return value + (animation === undefined ? 1 : 0);
+                // an animation layer's getAnimation finds the property animations it has
+                // (Ocarina of Time: getAnimationLayer("Surprise").getAnimation("surprise").play()
+                // hands the ocarina back after a song), and the layer's own getAnimation finds
+                // those of its animation layers
+                const layer     = thisLayer.getAnimationLayer('Surprise');
+                const animation = layer.getAnimation('surprise');
+                return value + (animation !== undefined && typeof animation.play === 'function' ? 1 : 0) +
+                       (layer.getAnimation('nothing') === undefined ? 10 : 0) +
+                       (thisLayer.getAnimation('surprise') !== undefined ? 100 : 0);
             }
         )JS"_str,
         "test/puppet_animation_layer"_str,
@@ -4773,7 +4777,7 @@ TEST(ScriptAnimation, NamedPuppetLayerUsesFieldPlaybackAndSample) {
     layer->SampleFields();
     rt.TickAll();
     EXPECT_FLOAT_EQ(layer->Blend(), 0.5f);
-    EXPECT_DOUBLE_EQ(LastScalar(script), 1.5);
+    EXPECT_DOUBLE_EQ(LastScalar(script), 111.5);
 }
 
 TEST(ScriptAnimation, TimerKeepsCurrentPropertyAnimation) {

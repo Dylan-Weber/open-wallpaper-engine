@@ -3606,12 +3606,21 @@ JSValue NamedLayerSetFrame(JSContext* ctx, JSValueConst value, int argc, JSValue
     return JS_UNDEFINED;
 }
 
-// An animation layer's getAnimation returns undefined in Wallpaper Engine, whatever it is asked
-// (puppet-layer-getanimation): Ocarina of Time's
-// getAnimationLayer("Surprise").getAnimation("surprise") .isPlaying() throws, and Link keeps his
-// angle.
-JSValue NamedAnimationLayerGetAnimation(JSContext*, JSValueConst, int, JSValueConst*) {
-    return JS_UNDEFINED;
+// An animation layer's getAnimation finds the property animations the layer has (its blend, rate or
+// visible animation, by the animation's name): Ocarina of Time's
+// getAnimationLayer("Surprise").getAnimation("surprise").play() is how a song ends and the ocarina
+// is played again. A layer with none (a skeletal animation) gives undefined, whatever it is asked
+// (puppet-layer-getanimation).
+JSValue NamedAnimationLayerGetAnimation(JSContext* ctx, JSValueConst value, int argc,
+                                        JSValueConst* argv) {
+    auto* layer = GetNamedAnimationLayer(value);
+    if (layer == nullptr || argc == 0 || ! JS_IsString(argv[0])) return JS_UNDEFINED;
+    const char* name = JS_ToCString(ctx, argv[0]);
+    if (name == nullptr) return JS_EXCEPTION;
+    auto playback = layer->NamedAnimation(rstd::cppstd::as_str(name).unwrap());
+    JS_FreeCString(ctx, name);
+    if (playback.is_none()) return JS_UNDEFINED;
+    return WrapAnimation(ctx, rstd::move(playback));
 }
 
 JSValue WrapNamedAnimationLayer(JSContext* ctx, Arc<owe::SceneAnimationLayer> layer) {
@@ -3805,7 +3814,13 @@ JSValue NodeGetAnimation(JSContext* ctx, JSValueConst this_val, int argc, JSValu
         if (name != nullptr) JS_FreeCString(ctx, name);
         return MakeAnimationStub(ctx);
     }
-    auto playback = node->NamedAnimation(rstd::cppstd::as_str(name).unwrap());
+    auto animation_name = rstd::cppstd::as_str(name).unwrap();
+    auto playback       = node->NamedAnimation(animation_name);
+    // the property animations of its animation layers are the layer's too (a puppet's glance)
+    for (usize index {}; playback.is_none() && index < node->AnimationLayerCount(); ++index) {
+        auto layer = node->AnimationLayer(index);
+        if (layer.is_some()) playback = (*layer)->NamedAnimation(animation_name);
+    }
     JS_FreeCString(ctx, name);
     // a name no property animation has gives undefined, as in Wallpaper Engine
     if (playback.is_none()) return JS_UNDEFINED;
