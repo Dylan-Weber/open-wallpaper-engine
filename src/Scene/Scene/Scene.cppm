@@ -2624,7 +2624,7 @@ private:
 
     struct Entry {
         SceneNode*              node { nullptr };
-        HashMap<usize, Binding> bindings;
+        vrento::FastMap<usize, Binding> bindings;
     };
 
     void RegisterDraw(const Scene&, const SceneDrawItemRecord&, HashMap<String, Animation>*,
@@ -2635,7 +2635,7 @@ private:
     }
 
     HashMap<String, Animation> m_animations;
-    HashMap<u64, Entry>        m_entries;
+    vrento::FastMap<u64, Entry> m_entries;
 };
 
 class SceneTextureAnimationRuntime {
@@ -2982,7 +2982,7 @@ public:
     }
 
 private:
-    HashMap<String, Arc<SceneCamera>> m_cameras;
+    vrento::FastMap<String, Arc<SceneCamera>> m_cameras;
     Vec<String>                       m_names;
     Option<String>                    m_active_name;
 };
