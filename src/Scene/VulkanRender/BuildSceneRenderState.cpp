@@ -213,11 +213,16 @@ static ContentRef AddMipFramebufferHistory(ExtraInfo& extra) {
     return history;
 }
 
-static void StoreMipFramebufferHistory(ExtraInfo& extra) {
+static void StoreMipFramebufferHistory(ExtraInfo& extra, const Option<ContentRef>& final_frame) {
     if (extra.mip_framebuffer_history.is_none()) return;
 
     auto history_desc     = MakeTextureDesc(extra, WE_MIP_MAPPED_FRAME_BUFFER);
     history_desc.imported = false;
+    if (final_frame) {
+        auto target = SelectTexture(extra, history_desc);
+        (void)AddTextureCopy(extra, final_frame->clone(), target);
+        return;
+    }
     AddTextureCopy(extra, MakeTextureDesc(extra, SpecTex_Default), rstd::move(history_desc));
 }
 
@@ -1028,15 +1033,25 @@ auto owe::BuildSceneRenderState(Scene& scene, const RenderSceneSnapshot& render_
 
     // Emit global post-process draws and copies after the scene traversal.
     auto post_processes = scene.PostProcesses();
+    // The last step of the last post-process may only move its result into the frame (bloom: the combine pass cannot
+    // write the frame it reads): then the frame is that result, and nothing is copied.
+    Option<ContentRef> final_frame;
     for (usize index {}; index < post_processes.len(); ++index) {
         const auto& pp = post_processes[index];
-        for (auto& step : pp->steps) {
+        for (usize step_index {}; step_index < pp->steps.len(); ++step_index) {
+            auto& step = pp->steps[step_index];
             if (step.is_Pass()) {
                 auto&    sp     = step.as_Pass().value;
                 ref<str> target = sp.output.is_empty() ? SpecTex_Default : sp.output.as_str();
                 ToGraphPass(sp.node.as_ptr(), target, extra);
             } else {
-                auto& cp = step.as_Copy().value;
+                auto&      cp = step.as_Copy().value;
+                const bool last =
+                    index + usize(1) == post_processes.len() && step_index + usize(1) == pp->steps.len();
+                if (last && cp.dst.as_str() == SpecTex_Default && IsSpecTex(cp.src.as_str())) {
+                    final_frame = Some(SelectTexture(extra, MakeTextureDesc(extra, cp.src.as_str())));
+                    continue;
+                }
                 AddTextureCopy(extra,
                                MakeTextureDesc(extra, cp.src.as_str()),
                                MakeTextureDesc(extra, cp.dst.as_str()));
@@ -1044,9 +1059,11 @@ auto owe::BuildSceneRenderState(Scene& scene, const RenderSceneSnapshot& render_
         }
     }
 
-    StoreMipFramebufferHistory(extra);
+    StoreMipFramebufferHistory(extra, final_frame);
 
-    auto           final_result = SelectTexture(extra, MakeTextureDesc(extra, SpecTex_Default));
+    auto           final_result = final_frame
+                                      ? final_frame->clone()
+                                      : SelectTexture(extra, MakeTextureDesc(extra, SpecTex_Default));
     auto           final_use    = Use(extra, final_result);
     fg::ResourceId surface_id { extra.textures.textures().len().to_primitive() + 1,
                                 extra.graph.data().scope };
