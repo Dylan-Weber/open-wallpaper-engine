@@ -575,6 +575,7 @@ void SceneRenderController::onDraw() {
     if (m_pending_scene && ! m_render->framePending()) on(m_pending_scene.take().unwrap());
     applyPendingChanges();
     frame_timer.FrameBegin();
+    const auto perf_frame_start = perf::Now();
     if (m_pipeline.is_some() && m_scene && renderInited()) {
         const bool first_draw = ! m_first_frame_ok;
         auto       load_bench = loadBenchView();
@@ -584,8 +585,9 @@ void SceneRenderController::onDraw() {
         auto first_frame_prepare_span =
             first_draw ? SceneLoadSpan(load_bench, &SceneLoadProbeIds::render_first_frame_prepare)
                        : rstd::bench::probe::SpanGuard {};
-        bool prepared_new_frame = false;
-        auto prepared = [&]() -> Result<PrepareOutcome, ScenePrepareError> {
+        bool       prepared_new_frame = false;
+        const auto perf_prepare_start = perf::Now();
+        auto       prepared           = [&]() -> Result<PrepareOutcome, ScenePrepareError> {
             // Existing frames still need execution while new preparation is blocked.
             if (m_render->framePending()) return Ok(PrepareOutcome::Ready);
             if ((*m_pipeline)->pending().frame) return (*m_pipeline)->retryPreparation(load_bench);
@@ -603,6 +605,7 @@ void SceneRenderController::onDraw() {
             prepared_new_frame = true;
             return (*m_pipeline)->prepare(fi, load_bench);
         }();
+        perf::Add(perf::Stage::Prepare, perf_prepare_start);
         if (prepared.is_err() || *prepared != PrepareOutcome::Ready) {
             if (prepared.is_err()) ReportScenePreparationError(prepared.unwrap_err());
             frame_timer.FrameEnd();
@@ -639,7 +642,10 @@ void SceneRenderController::onDraw() {
         // Recording does not read the layers' transforms: let the scripts have them meanwhile.
         const int transform_depth = script_kick ? owe::script::SceneGate::SuspendTransforms() : 0;
 #endif
-        m_render->drawFrame(*m_scene);
+        {
+            perf::Scope timer(perf::Stage::Draw);
+            m_render->drawFrame(*m_scene);
+        }
 #ifdef OWE_JS_SPIDERMONKEY
         if (script_kick) owe::script::SceneGate::ResumeTransforms(transform_depth);
 #endif
@@ -650,6 +656,8 @@ void SceneRenderController::onDraw() {
             frame_timer.FrameEnd();
             return;
         }
+        perf::Add(perf::Stage::Frame, perf_frame_start);
+        perf::FrameDone();
         if (! m_camera_eye_log.is_empty()) {
             // the whole log is rewritten each frame: a capture run may end at any frame
             if (auto entry = CameraEyeLogEntry(*m_scene); entry.is_some()) {

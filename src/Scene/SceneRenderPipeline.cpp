@@ -1,5 +1,6 @@
 module wescene.scene_render_pipeline;
 import rstd.bench;
+import wescene.timer;
 
 using namespace rstd::prelude;
 using namespace rstd::literals;
@@ -276,18 +277,25 @@ auto SceneRenderPipeline::prepare(const script::FrameInputs& inputs,
     m_input.SetPointerInput(inputs.cursor_x, inputs.cursor_y);
     m_input.SetAudioSpectrum(inputs.audio);
     auto animations_span = SceneLoadSpan(bench, &SceneLoadProbeIds::render_frame_animations);
-    if (! m_animations_ticked_early) m_scene.TickNodeFieldAnimations();
+    {
+        perf::Scope timer(perf::Stage::Anim);
+        if (! m_animations_ticked_early) m_scene.TickNodeFieldAnimations();
+    }
     (void)animations_span.finish();
     {
-        auto span = SceneLoadSpan(bench, &SceneLoadProbeIds::render_frame_scripts);
+        auto        span = SceneLoadSpan(bench, &SceneLoadProbeIds::render_frame_scripts);
+        perf::Scope timer(perf::Stage::Scripts);
         script::TickSceneScripts(m_scene, inputs);
     }
     m_scripts_started_early   = false;
     m_animations_ticked_early = false;
     animations_span = SceneLoadSpan(bench, &SceneLoadProbeIds::render_frame_animations);
-    m_scene.TickCameraPaths();
-    m_scene.TickMaterialShaderAnimations();
-    m_scene.TickTransformUpdaters();
+    {
+        perf::Scope timer(perf::Stage::Anim);
+        m_scene.TickCameraPaths();
+        m_scene.TickMaterialShaderAnimations();
+        m_scene.TickTransformUpdaters();
+    }
     (void)animations_span.finish();
     m_frame_work = FrameWork::BeforeRuntime;
     return retryPreparation(bench);

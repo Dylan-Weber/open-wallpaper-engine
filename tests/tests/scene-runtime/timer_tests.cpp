@@ -43,6 +43,25 @@ TEST(ThreadTimer, StopsWithoutEmittingAndCanRestart) {
     EXPECT_FALSE(timer.Running());
 }
 
+// Callbacks start one interval apart, whatever they take: a 12 ms callback on a 20 ms interval is 50 a second, not the
+// 31 a second of a 20 ms sleep after each 12 ms callback.
+TEST(ThreadTimer, StartsCallbacksOneIntervalApartNotOneIntervalAfterTheLastEnds) {
+    Atomic<u32>      calls {};
+    owe::ThreadTimer timer(owe::ThreadTimer::Callback::make([&] {
+        rstd::thread::sleep(Duration::from_millis(u64(12)));
+        calls.fetch_add(u32(1));
+    }));
+    timer.SetInterval(Duration::from_millis(u64(20)));
+    auto started = Instant::now();
+    timer.Start();
+    rstd::thread::sleep(Duration::from_millis(u64(1000)));
+    timer.Stop();
+    const auto seconds = static_cast<double>(started.elapsed().as_millis().to_primitive()) / 1000.0;
+    const auto rate    = static_cast<double>(calls.load().to_primitive()) / seconds;
+    EXPECT_GT(rate, 44.0);
+    EXPECT_LT(rate, 52.0);
+}
+
 TEST(FrameTimer, OwnsMutableCallbackAndPreservesBackpressure) {
     Atomic<u32>     calls {};
     auto            state = Box<u32>::make();
