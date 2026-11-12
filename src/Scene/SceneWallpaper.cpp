@@ -366,6 +366,10 @@ private:
     double                                    m_frame_delta {};
     Option<owe::script::FrameInputs>          m_early_inputs;  // inputs of a frame whose scripts were started early
     double                                    m_next_frame_delta {};
+    // Paced frames step the scene by the time between the last two submitted frames (PacedFrameStep), so a loop that
+    // runs behind its fps target keeps the scene's speed; the mark is dropped when the loop stops.
+    Option<Instant>                           m_step_mark;
+    double                                    m_measured_step {};
     auto                                      makeFrameInputs(bool next = false) -> owe::script::FrameInputs;
     // SceneWallpaperConfig::frame_times, and the next one a frame steps by
     Vec<f64>                                  m_frame_times;
@@ -511,6 +515,7 @@ void SceneRenderController::stop() {
 
 void SceneRenderController::on(RenderMsg::Stop_payload&& m) {
     m_stopped = m.stop;
+    m_step_mark = None();
     if (m.stop)
         frame_timer.Stop();
     else
@@ -537,12 +542,15 @@ void SceneRenderController::applyPendingChanges() {
 // The inputs of this frame's scripts or, with `next`, of the following frame's, which the scripts start on while this frame
 // is still being recorded: the clock is what it will be once this frame's time has passed, and the frame step is the next one.
 auto SceneRenderController::makeFrameInputs(bool next) -> owe::script::FrameInputs {
-    (next ? m_next_frame_delta : m_frame_delta) =
-        m_stopped ? 0.0
-                  : RecordedFrameStep(m_frame_times,
-                                      m_frame_index + (next ? usize(1) : usize()),
-                                      frame_timer.TargetFrameTime()) *
-                        m_speed.to_primitive();
+    // A capture (unpaced, recorded frame times, fixed audio) steps by the exact frame time, so it stays deterministic.
+    // OWE_FIXED_STEP=1 keeps the old fixed 1 / fps step (to compare a paced run with it).
+    static const bool fixed_step = getenv("OWE_FIXED_STEP") != nullptr;
+    const bool paced = ! fixed_step && ! frame_timer.Unpaced() && m_frame_times.len() == usize() && ! m_fixed_audio;
+    const double step = paced ? PacedFrameStep(frame_timer.TargetFrameTime(), m_measured_step)
+                              : RecordedFrameStep(m_frame_times,
+                                                  m_frame_index + (next ? usize(1) : usize()),
+                                                  frame_timer.TargetFrameTime());
+    (next ? m_next_frame_delta : m_frame_delta) = m_stopped ? 0.0 : step * m_speed.to_primitive();
     const double frame_delta = next ? m_next_frame_delta : m_frame_delta;
     m_scene->SetTargetFps(u32(frame_timer.RequiredFps().to_primitive()));
     owe::script::FrameInputs fi;
@@ -676,7 +684,12 @@ void SceneRenderController::onDraw() {
         }
         if ((*m_pipeline)->acknowledgeFrameSubmitted()) {
             m_scene->PassFrameTime(m_frame_delta);
+            perf::AddStep(m_frame_delta);
             ++m_frame_index;
+            if (m_step_mark.is_some())
+                m_measured_step =
+                    static_cast<double>(rstd::as_cast<u64>(m_step_mark->elapsed().as_micros()).to_primitive()) / 1'000'000.0;
+            m_step_mark = Some(Instant::now());
 #ifdef OWE_JS_SPIDERMONKEY
             if (script_kick) {
                 (*m_pipeline)->endFrameForScripts();
@@ -943,6 +956,7 @@ void SceneRenderController::on(RenderMsg::SwapchainReady_payload&& m) {
         return;
     }
     if (! m.ready) {
+        m_step_mark = None();
         frame_timer.Stop();
         return;
     }

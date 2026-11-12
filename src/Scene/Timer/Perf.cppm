@@ -41,10 +41,11 @@ enum class Stage : int {
     Rebuild, // flushChanges: the render graph rebuilt (snapshot, graph build, install)
     PrepRes, // flushChanges: tryPrepareResources (changed meshes, materials, textures)
     Queued,  // frames still executing on the GPU when a frame is submitted (a count, shown as "ms"): the display latency a deeper queue adds, in frames of GPU time
+    Step,    // the scene time the frame advanced by (shown as "ms"): its sum over the span is the animation speed
     Count
 };
 
-inline const char* const kStageNames[] = { "frame", "prepare", "scripts", "anim", "draw", "update", "begin", "advance", "record", "submit", "capture", "gbegin", "gpu", "wait", "acquire", "present", "flush", "runtime", "video", "fonts", "rebuild", "prepres", "queued" };
+inline const char* const kStageNames[] = { "frame", "prepare", "scripts", "anim", "draw", "update", "begin", "advance", "record", "submit", "capture", "gbegin", "gpu", "wait", "acquire", "present", "flush", "runtime", "video", "fonts", "rebuild", "prepres", "queued", "step" };
 
 namespace detail
 {
@@ -132,6 +133,11 @@ inline uint64_t Now() {
 inline void AddCount(Stage stage, uint64_t count) {
     if (! detail::g_enabled) return;
     detail::g_pending[int(stage)] += count * 1000000ull;
+}
+// the scene time (seconds) the frame advanced by, stored like a time in ms
+inline void AddStep(double seconds) {
+    if (! detail::g_enabled) return;
+    detail::g_pending[int(Stage::Step)] += uint64_t(seconds * 1e9);
 }
 // adds `Now() - start` to the frame's time in `stage` (a stage may run several times a frame)
 inline void Add(Stage stage, uint64_t start) {
