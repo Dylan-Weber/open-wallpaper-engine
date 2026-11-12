@@ -262,6 +262,33 @@ TEST(VideoPlayback, AdapterSharesAndRetainsControlState) {
     EXPECT_EQ(playback->Snapshot().seek_seconds, f64(3));
 }
 
+// A text that grows by a letter must not change the mesh's layout (and so rebuild the render graph) every time: the quad
+// capacity grows in steps, and a text that fits the capacity only updates the mesh's data.
+TEST(TextLayouter, GrowingTextChangesTheMeshLayoutOnlyWhenItOutgrowsTheCapacitySteps) {
+    auto                  resources  = TextResources();
+    constexpr std::size_t peak_quads = 64;
+    auto                  mesh       = Arc<owe::SceneMesh>::make();
+    rstd::initializer_list<owe::SceneVertexArray::SceneVertexAttribute> attributes {
+        { .name = "a_Position"_Str, .type = owe::VertexType::FLOAT3 },
+        { .name = "a_TexCoord"_Str, .type = owe::VertexType::FLOAT2 },
+        { .name = "a_Color"_Str, .type = owe::VertexType::FLOAT4 },
+    };
+    mesh->AddVertexArray(owe::SceneVertexArray(attributes, rstd::usize(peak_quads * 4)));
+    mesh->AddIndexArray(owe::SceneIndexArray(rstd::usize(peak_quads * 6)));
+
+    owe::text::TextLayouter layouter(resources.clone(), TextFont(), mesh.clone(), {}, peak_quads);
+    ASSERT_TRUE(layouter.SetText("1"_str).is_ok());
+    (void)mesh->ConsumeDirtyFlags();
+    for (auto text : { "12"_str, "123"_str, "1234"_str, "12345"_str, "123456"_str, "1234567"_str, "12345678"_str }) {
+        ASSERT_TRUE(layouter.SetText(text).is_ok());
+        EXPECT_EQ(mesh->ConsumeDirtyFlags() & owe::SceneMeshDirtyLayout, owe::SceneMeshDirtyNone);
+    }
+    EXPECT_EQ(mesh->GetIndexArray(rstd::usize()).RenderDataCount(), rstd::usize(48));
+    ASSERT_TRUE(layouter.SetText("123456789"_str).is_ok());
+    EXPECT_EQ(mesh->ConsumeDirtyFlags() & owe::SceneMeshDirtyLayout, owe::SceneMeshDirtyLayout);
+    EXPECT_EQ(mesh->GetIndexArray(rstd::usize()).RenderDataCount(), rstd::usize(54));
+}
+
 TEST(TextLayouter, TabIsIgnoredWithoutAControlQuad) {
     auto                  resources  = TextResources();
     constexpr std::size_t peak_quads = 16;
@@ -1345,7 +1372,7 @@ TEST(TextLayouter, AnOutlinedLetterAtALaterSizeIsDrawnFromTheFirstSizesCell) {
         EXPECT_TRUE(layouter.SetText("H"_str).is_ok());
         const auto&  vertices = mesh->GetVertexArray(usize());
         const auto   stride   = vertices.OneSize().to_primitive();
-        const auto   first    = vertices.VertexCount().to_primitive() - 4; // the letter
+        const auto   first    = mesh->GetIndexArray(usize()).RenderDataCount().to_primitive() / 6 * 4 - 4; // the letter
         const float* data     = vertices.Data();
         return data[(first + 1) * stride] - data[first * stride];
     };
@@ -1411,7 +1438,7 @@ TEST(TextLayouter, AnOutlinedLetterIsPlacedAsTheAtlasHasIt) {
         const auto& vertices = mesh->GetVertexArray(usize());
         const auto  stride   = vertices.OneSize().to_primitive();
         // the letter is the last quad
-        const auto   first = vertices.VertexCount().to_primitive() - 4;
+        const auto   first = mesh->GetIndexArray(usize()).RenderDataCount().to_primitive() / 6 * 4 - 4;
         const float* data  = vertices.Data();
         return array<float, 2> { data[first * stride], data[(first + 1) * stride] };
     };
@@ -1468,7 +1495,7 @@ TEST(TextLayouter, AnOutlinedLetterOnAScaledLayerIsRasterisedAtItsScale) {
         const auto&  vertices = mesh->GetVertexArray(usize());
         const auto   stride   = vertices.OneSize().to_primitive();
         const auto   uv       = stride / 3;
-        const auto   first    = vertices.VertexCount().to_primitive() - 4; // the letter
+        const auto   first    = mesh->GetIndexArray(usize()).RenderDataCount().to_primitive() / 6 * 4 - 4; // the letter
         const float* data     = vertices.Data();
         return array<float, 2> { data[(first + 1) * stride] - data[first * stride],
                                  data[(first + 1) * stride + uv] - data[first * stride + uv] };
