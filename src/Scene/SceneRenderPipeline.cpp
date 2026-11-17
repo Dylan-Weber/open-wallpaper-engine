@@ -263,7 +263,9 @@ auto SceneRenderPipeline::prepare(const script::FrameInputs& inputs,
     auto animations_span = SceneLoadSpan(bench, &SceneLoadProbeIds::render_frame_animations);
     m_scene.TickNodeFieldAnimations();
     (void)animations_span.finish();
-    {
+    // A paused wallpaper redrawn on request (frametime 0) shows its scene as it stands: Wallpaper
+    // Engine runs no scripts while paused, and a script dividing by engine.frametime gets NaN.
+    if (inputs.frametime > 0.0f) {
         auto span = SceneLoadSpan(bench, &SceneLoadProbeIds::render_frame_scripts);
         script::TickSceneScripts(m_scene, inputs);
     }
