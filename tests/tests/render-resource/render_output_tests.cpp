@@ -795,4 +795,71 @@ TEST(RenderOutput, DynamicFontUploads) {
     renderer.destroy();
     rstd_assert(queue.session().validation_errors() == 0);
 }
+// A paused wallpaper is still drawn on request (a resize, a new output) with frametime 0. Scripts
+// must not see that frame: Wallpaper Engine never runs them while paused, and a script dividing by
+// engine.frametime (OoT's 3D camera) turns NaN for good.
+TEST(RenderOutput, PausedRedrawDoesNotTickScripts) {
+    auto         document = owe::wpscene::ParseSceneDocumentJson(R"({
+        "camera": {},
+        "general": {"orthogonalprojection": {"width": 64, "height": 64}, "clearcolor": "0 0 1"},
+        "objects": [{"id": 1, "name": "tile", "visible": true,
+                     "image": "models/util/solidlayer.json", "size": "64 64",
+                     "origin": "32 32 0", "color": "1 0 0",
+                     "alpha": {"value": 1, "script": "let updates = 0; export function update() { return ++updates < 2 ? 1 : 0; }"}}]
+    })"_str,
+                                                                 owe::wpscene::kSceneVersionUnknown)
+                                .unwrap();
+    owe::fs::VFS vfs;
+    vfs.mount("/assets"_str, owe::fs::make_physical_fs(owe::fs::Path("assets"_str)).unwrap())
+        .unwrap();
+    wavsen::audio::SoundManager sound;
+    owe::SceneParser            parser;
+    auto  parsed = parser
+                       .Parse("paused-redraw"_str,
+                              ref<owe::wpscene::SceneDocument>::from_raw_parts(&document),
+                              mut_ref<owe::fs::VFS>::from_raw_parts(&vfs),
+                              mut_ref<wavsen::audio::SoundManager>::from_raw_parts(&sound))
+                       .unwrap();
+    auto& scene  = *parsed.scene;
+    owe::vulkan::VulkanRender renderer;
+    owe::RenderInitInfo       info;
+    info.offscreen          = true;
+    info.enable_valid_layer = true;
+    info.width = info.height  = 64;
+    info.msaa_samples         = 4;
+    info.pipeline_preparation = vk::PipelinePreparationMode::Deferred;
+    auto factory =
+        [&](const owe::RenderInitInfo::ExSwapchainHandles&) -> Option<vrento::ExSwapchainOwner> {
+        return Some(vrento::ExSwapchain::Make<OutputSurface>(renderer.deviceSession().unwrap()));
+    };
+    info.ex_swapchain_factory =
+        Some(Box<dyn<FnOnce<Option<vrento::ExSwapchainOwner>(
+                 const owe::RenderInitInfo::ExSwapchainHandles&)>>>::make(rstd::move(factory)));
+    rstd_assert(renderer.init(rstd::move(info)));
+    auto queue = vk::TextureContext::create(renderer.deviceSession().unwrap()).unwrap();
+    owe::SceneRenderPipeline pipeline(scene, *parsed.runtime_input, renderer);
+    auto ready = [&](Result<owe::PrepareOutcome, owe::ScenePrepareError> result) {
+        for (unsigned i {}; result.is_ok() && *result == owe::PrepareOutcome::Pending && i < 2000;
+             ++i) {
+            ::usleep(1000);
+            result = pipeline.retryPreparation();
+        }
+        rstd_assert(result.is_ok());
+        rstd_assert(pipeline.ready());
+    };
+    auto frame = [&](float frametime) {
+        ready(pipeline.prepare({ .frametime = frametime }));
+        renderer.drawFrame(scene);
+        rstd_assert(pipeline.acknowledgeFrameSubmitted());
+        scene.PassFrameTime(frametime);
+        auto data = pixels(queue, renderer.renderedTarget("_rt_default"_str).unwrap().take_ready());
+        return data[usize((32 * 64 + 32) * 4)];
+    };
+    ready(pipeline.rebuild());
+    EXPECT_EQ(frame(1.0f / 60.0f), u8(255));
+    EXPECT_EQ(frame(0.0f), u8(255));
+    EXPECT_EQ(frame(1.0f / 60.0f), u8(0));
+    renderer.destroy();
+    rstd_assert(queue.session().validation_errors() == 0);
+}
 } // namespace
